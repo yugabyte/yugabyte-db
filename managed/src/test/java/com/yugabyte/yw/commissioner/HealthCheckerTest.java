@@ -92,11 +92,11 @@ public class HealthCheckerTest extends FakeDBApplication {
       ShellProcessHandler.ShellResponse.create(
         0,
         ("{''error'': false, ''data'': [ {''node'':''" + dummyNode +
-         "'', ''has_error'': true, ''message'':''" + dummyCheck +
-         "'' } ] }").replace("''", "\"") );
+          "'', ''has_error'': true, ''message'':''" + dummyCheck +
+          "'' } ] }").replace("''", "\"") );
 
     when(mockHealthManager.runCommand(
-        any(), any(), any(), any(), any(), any(), any(), any(), any())
+      any(), any(), any(), any(), any(), any(), any(), any(), any())
     ).thenReturn(dummyShellResponse);
 
     testRegistry = new CollectorRegistry();
@@ -115,16 +115,16 @@ public class HealthCheckerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.sshPort = 3333;
     accessKey = AccessKey.create(
-        defaultProvider.uuid,
-        "key-" + name,
-        keyInfo);
+      defaultProvider.uuid,
+      "key-" + name,
+      keyInfo);
 
     universe = ModelFactory.createUniverse(name, defaultCustomer.getCustomerId());
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      universe.getUniverseDetails().getPrimaryCluster().userIntent;
     userIntent.accessKeyCode = accessKey.getKeyCode();
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     return Universe.get(universe.universeUUID);
@@ -141,8 +141,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
     universe = ModelFactory.createUniverse(name, UUID.randomUUID(),
-                                           defaultCustomer.getCustomerId(),
-                                           Common.CloudType.kubernetes, pi);
+      defaultCustomer.getCustomerId(),
+      Common.CloudType.kubernetes, pi);
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
     return Universe.get(universe.universeUUID);
   }
@@ -213,7 +213,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     verifyHealthManager(u, expectedEmail);
 
     String[] labels = { HealthChecker.kUnivUUIDLabel, HealthChecker.kUnivNameLabel,
-                        HealthChecker.kNodeLabel, HealthChecker.kCheckLabel };
+      HealthChecker.kNodeLabel, HealthChecker.kCheckLabel };
     String [] labelValues = { u.universeUUID.toString(), u.name, dummyNode, dummyCheck };
     Double val = testRegistry.getSampleValue(HealthChecker.kUnivMetricName, labels, labelValues);
     if (shouldFail) {
@@ -232,7 +232,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkCustomer(defaultCustomer);
 
     verify(mockHealthManager, times(0)).runCommand(
-        any(), any(), any(), any(), any(), any(), any(), any(), any());
+      any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -275,20 +275,20 @@ public class HealthCheckerTest extends FakeDBApplication {
       any()
     );
 
-      // disable report only errors
-      setupAlertingData(null, true, false);
-      healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, false, null);
-      verify(mockHealthManager, times(1)).runCommand(
-        eq(defaultProvider),
-        any(),
-        eq(u.name),
-        eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
-        eq(YB_ALERT_TEST_EMAIL),
-        eq(0L),
-        eq(false),
-        eq(false),
-        any()
-      );
+    // disable report only errors
+    setupAlertingData(null, true, false);
+    healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, false, null);
+    verify(mockHealthManager, times(1)).runCommand(
+      eq(defaultProvider),
+      any(),
+      eq(u.name),
+      eq(String.format("[%s][%s]", defaultCustomer.name, defaultCustomer.code)),
+      eq(YB_ALERT_TEST_EMAIL),
+      eq(0L),
+      eq(false),
+      eq(false),
+      any()
+    );
   }
 
   @Test

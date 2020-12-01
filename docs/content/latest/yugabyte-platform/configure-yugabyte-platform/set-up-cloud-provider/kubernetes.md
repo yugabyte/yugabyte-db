@@ -10,8 +10,8 @@ menu:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: false
+isTocNested: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -33,7 +33,7 @@ showAsideToc: false
   <li>
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
 

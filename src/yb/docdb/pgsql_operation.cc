@@ -15,6 +15,7 @@
 
 #include <limits>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
@@ -26,6 +27,9 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
 
 #include "yb/util/flag_tags.h"
@@ -71,6 +75,60 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
+void AddIntent(const std::string& encoded_key, KeyValueWriteBatchPB *out) {
+  auto pair = out->mutable_read_pairs()->Add();
+  pair->set_key(encoded_key);
+  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+}
+
+CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, KeyValueWriteBatchPB* out) {
+  const auto &val = ybctid.value().binary_value();
+  SCHECK(!val.empty(), InternalError, "empty ybctid");
+  AddIntent(val, out);
+  return Status::OK();
+}
+
+template<class R, class Request, class DocKeyProcessor, class EncodedDocKeyProcessor>
+Result<R> FetchDocKeyImpl(const Schema& schema,
+                          const Request& req,
+                          const DocKeyProcessor& dk_processor,
+                          const EncodedDocKeyProcessor& edk_processor) {
+  // Init DocDB key using either ybctid or partition and range values.
+  if (req.has_ybctid_column_value()) {
+    const auto& ybctid = req.ybctid_column_value().value().binary_value();
+    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
+    return edk_processor(ybctid);
+  } else {
+    vector<PrimitiveValue> hashed_components, range_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
+        req.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
+        req.range_column_values(), schema, schema.num_hash_key_columns(), &range_components));
+    return dk_processor(hashed_components.empty()
+        ? DocKey(schema, std::move(range_components))
+        : DocKey(
+            schema, req.hash_code(), std::move(hashed_components), std::move(range_components)));
+  }
+}
+
+Result<string> FetchEncodedDocKey(const Schema& schema, const PgsqlReadRequestPB& request) {
+  return FetchDocKeyImpl<string>(
+      schema, request,
+      [](const auto& doc_key) { return doc_key.Encode().ToStringBuffer(); },
+      [](const auto& encoded_doc_key) { return encoded_doc_key; });
+}
+
+Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& request) {
+  return FetchDocKeyImpl<DocKey>(
+      schema, request,
+      [](const auto& doc_key) { return doc_key; },
+      [&schema](const auto& encoded_doc_key) -> Result<DocKey> {
+        DocKey key(schema);
+        RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
+        return key;
+      });
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -80,32 +138,132 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
   request_.Swap(request);
   response_ = response;
 
-  // Init DocDB key using either ybctid or partition and range values.
-  if (request_.has_ybctid_column_value()) {
-    const string& ybctid = request_.ybctid_column_value().value().binary_value();
-    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
-    doc_key_.emplace(schema_);
-    RETURN_NOT_OK(doc_key_->DecodeFrom(ybctid));
-  } else {
-    vector<PrimitiveValue> hashed_components;
-    vector<PrimitiveValue> range_components;
-    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
-                                               schema_,
-                                               0,
-                                               &hashed_components));
-    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
-                                               schema_,
-                                               schema_.num_hash_key_columns(),
-                                               &range_components));
-    if (hashed_components.empty()) {
-      doc_key_.emplace(schema_, range_components);
-    } else {
-      doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
-    }
-  }
+  doc_key_ = VERIFY_RESULT(FetchDocKey(schema_, request_));
   encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
+}
+
+// Check if a duplicate value is inserted into a unique index.
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  VLOG(3) << "Looking for collisions in\n"
+          << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+  // We need to check backwards only for backfilled entries.
+  bool ret =
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      (request_.is_backfill() &&
+       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
+  if (!ret) {
+    VLOG(3) << "No collisions found";
+  }
+  return ret;
+}
+
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, Direction direction) {
+  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
+          << ". Trying to insert " << *doc_key_;
+  auto requested_read_time = data.read_time;
+  if (direction == Direction::kForward) {
+    return HasDuplicateUniqueIndexValue(data, requested_read_time);
+  }
+
+  auto iter = CreateIntentAwareIterator(
+      data.doc_write_batch->doc_db(),
+      BloomFilterMode::USE_BLOOM_FILTER,
+      doc_key_->Encode().AsSlice(),
+      rocksdb::kDefaultQueryId,
+      txn_op_context_,
+      data.deadline,
+      ReadHybridTime::Max());
+
+  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), SubDocKey(*doc_key_), requested_read_time.read));
+  const HybridTime oldest_past_min_ht_liveness =
+      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+          iter.get(),
+          SubDocKey(*doc_key_,
+                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+          requested_read_time.read));
+  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
+  if (!oldest_past_min_ht.is_valid()) {
+    return false;
+  }
+  return HasDuplicateUniqueIndexValue(
+      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
+}
+
+Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, ReadHybridTime read_time) {
+  // Set up the iterator to read the current primary key associated with the index key.
+  DocPgsqlScanSpec spec(schema_, request_.stmt_id(), *doc_key_);
+  DocRowwiseIterator iterator(schema_,
+                              schema_,
+                              txn_op_context_,
+                              data.doc_write_batch->doc_db(),
+                              data.deadline,
+                              read_time);
+  RETURN_NOT_OK(iterator.Init(spec));
+
+  // It is a duplicate value if the index key exists already and the index value (corresponding to
+  // the indexed table's primary key) is not the same.
+  if (!VERIFY_RESULT(iterator.HasNext())) {
+    VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
+    return false;
+  }
+
+  QLTableRow table_row;
+  RETURN_NOT_OK(iterator.NextRow(&table_row));
+  for (const auto& column_value : request_.column_values()) {
+    // Get the column.
+    if (!column_value.has_column_id()) {
+      return STATUS(InternalError, "column id missing", column_value.DebugString());
+    }
+    const ColumnId column_id(column_value.column_id());
+
+    // Check column-write operator.
+    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+      << "Illegal write instruction";
+
+    // Evaluate column value.
+    QLExprResult expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
+
+    boost::optional<const QLValuePB&> existing_value = table_row.GetValue(column_id);
+    const QLValuePB& new_value = expr_result.Value();
+    if (existing_value && *existing_value != new_value) {
+      VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
+              << "\nExisting: " << yb::ToString(*existing_value)
+              << " vs New: " << yb::ToString(new_value)
+              << "\nUsed read time as " << yb::ToString(data.read_time);
+      DVLOG(3) << "DocDB is now:\n"
+               << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+      return true;
+    }
+  }
+
+  VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
+  return false;
+}
+
+Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
+    IntentAwareIterator* iter,
+    const SubDocKey& sub_doc_key,
+    HybridTime min_read_time) {
+  HybridTime result;
+  VLOG(3) << "Doing iter->Seek " << *doc_key_;
+  iter->Seek(*doc_key_);
+  if (iter->valid()) {
+    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const Slice& sub_key_slice = bytes.AsSlice();
+    result = VERIFY_RESULT(
+        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
+            << SubDocKey::DebugSliceToString(sub_key_slice);
+  } else {
+    VLOG(3) << "iter->Seek " << *doc_key_ << " turned out to be invalid";
+  }
+  return result;
 }
 
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
@@ -144,13 +302,25 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   QLTableRow table_row;
   if (!is_upsert) {
-    RETURN_NOT_OK(ReadColumns(data, &table_row));
-    if (!table_row.IsEmpty()) {
-      VLOG(4) << "Duplicate row: " << table_row.ToString();
-      // Primary key or unique index value found.
-      response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-      response_->set_error_message("Duplicate key found in primary key or unique index");
-      return Status::OK();
+    if (request_.is_backfill()) {
+      if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
+        // Unique index value conflict found.
+        response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+        response_->set_error_message("Duplicate key found in unique index");
+        return Status::OK();
+      }
+    } else {
+      // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
+      // - they should error even if the conflicting row matches
+      // - retrieving and calculating whether the conflicting row matches is a waste
+      RETURN_NOT_OK(ReadColumns(data, &table_row));
+      if (!table_row.IsEmpty()) {
+        VLOG(4) << "Duplicate row: " << table_row.ToString();
+        // Primary key or unique index value found.
+        response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+        response_->set_error_message("Duplicate key found in primary key or unique index");
+        return Status::OK();
+      }
     }
   }
 
@@ -743,53 +913,23 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetPartitionIntent(
-    const Schema& schema,
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    KeyValueWriteBatchPB* out) {
-  auto pair = out->mutable_read_pairs()->Add();
-
-  std::vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
-      column_values, schema, 0 /* start_idx */, &hashed_components));
-
-  DocKey doc_key(schema, request_.hash_code(), hashed_components);
-  pair->set_key(doc_key.Encode().ToStringBuffer());
-  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
-
-  return Status::OK();
-}
-
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
   if (request_.partition_column_values().empty()) {
     // Empty components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    DocKey doc_key(schema);
-    auto pair = out->mutable_read_pairs()->Add();
-    pair->set_key(doc_key.Encode().ToStringBuffer());
-    pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+    AddIntent(DocKey(schema).Encode().ToStringBuffer(), out);
     return Status::OK();
   }
 
-  // Use "true" condition as DocDB only supports scalar argument currently.
-  if (true) {
-    // Executing scalar argument.
-    return GetPartitionIntent(schema, request_.partition_column_values(), out);
-
-  } else {
-    // Executing batch argument.
-    // Currently, this code is still an experiment for executing requests in parallel.
-    // NOTE: Batch arguments are used for parallelism execution by partitions, so the partition
-    //       field must be present in each batch_argument.
-    DCHECK_GT(request_.batch_arguments_size(), 0) << "Batch argument was not provided";
-
-    for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
-      DCHECK_GT(batch_argument.partition_column_values_size(), 0);
-      RETURN_NOT_OK(GetPartitionIntent(schema, batch_argument.partition_column_values(), out));
+  if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
+    for (const auto& batch_argument : request_.batch_arguments()) {
+      SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), out));
     }
+  } else {
+    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), out);
   }
-
   return Status::OK();
 }
 

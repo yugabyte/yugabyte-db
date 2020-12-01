@@ -7,37 +7,65 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - block:
-    - name: Copy setuptools from thirdparty
+    - name: s3cmd | Copy setuptools from {{ package_path }}
       synchronize:
-        src: "{{ local_package_path }}/setuptools-44.1.1"
+        src: "{{ package_path }}/setuptools-44.1.1"
         dest: "/usr"
+      when: remote_package_path is not defined or remote_package_path == ''
 
-    - name: Install setuptools
-      command: "chdir=/usr/setuptools-44.1.1 python setup.py install"
-
-    - name: Copy and unarchive dateutil from thirdparty
+    - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
       unarchive:
-        src: "{{ local_package_path }}/python-dateutil-2.8.1.tar.gz"
+        src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
         dest: "/usr"
+        remote_src: "{{ is_remote }}"
+      when: remote_package_path is defined and remote_package_path != ''
 
-    - name: Build dateutil
-      command: "chdir=/usr/python-dateutil-2.8.1 python setup.py build"
+    - set_fact:
+        python_magic_package_path: "/usr/python-magic-0.4.18"
 
-    - name: Install dateutil
-      command: "chdir=/usr/python-dateutil-2.8.1 python setup.py install"
-
-    - name: Copy and unarchive {{ s3cmd_package }} from thirdparty
+    - name: s3cmd | Copy and unarchive python magic from {{ package_path }}
       unarchive:
-        src: "{{ local_package_path }}/{{ s3cmd_package }}"
+        src: "{{ package_path }}/python-magic-0.4.18.tar.gz"
         dest: "/usr"
+        creates: "{{ python_magic_package_path }}"
+        remote_src: "{{ is_remote }}"
+
+    - set_fact:
+        python_dateutil_package_path: "/usr/python-dateutil-2.8.1"
+
+    - name: s3cmd | Copy and unarchive dateutil from {{ package_path }}
+      unarchive:
+        src: "{{ package_path }}/python-dateutil-2.8.1.tar.gz"
+        dest: "/usr"
+        creates: "{{ python_dateutil_package_path }}"
+        remote_src: "{{ is_remote }}"
 
     - set_fact:
         s3cmd_package_path: "/usr/{{ s3cmd_package_name }}"
 
-    - name: Run install script
+    - name: s3cmd | Copy and unarchive {{ s3cmd_package }} from {{ package_path }}
+      unarchive:
+        src: "{{ package_path }}/{{ s3cmd_package }}"
+        dest: "/usr"
+        creates: "{{ s3cmd_package_path }}"
+        remote_src: "{{ is_remote }}"
+
+    - name: s3cmd | Install setuptools
+      command: "chdir=/usr/setuptools-44.1.1 python setup.py install"
+
+    - name: s3cmd | Install python magic
+      command: "chdir={{ python_magic_package_path }} python setup.py install"
+
+    - name: s3cmd | Build dateutil
+      command: "chdir={{ python_dateutil_package_path }} python setup.py build"
+
+    - name: s3cmd | Install dateutil
+      command: "chdir={{ python_dateutil_package_path }} python setup.py install"
+
+    - name: s3cmd | Install s3cmd
       command: "chdir={{ s3cmd_package_path }} python setup.py install"
 
-    - name: Create symlinks to {{ bin_path }}
+    - name: s3cmd | Create symlinks to {{ bin_path }}
       file:
         src: "{{ s3cmd_package_path }}/s3cmd"
         path: "{{ bin_path }}/s3cmd"

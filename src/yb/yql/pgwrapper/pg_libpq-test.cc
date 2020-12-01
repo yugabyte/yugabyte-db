@@ -12,6 +12,7 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pg_quote.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -52,6 +53,16 @@ class PgLibPqTest : public LibPqTestBase {
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
   void TestCacheRefreshRetry(const bool is_retry_disabled);
+
+  const std::vector<std::string> names{
+    "uppercase:P",
+    "space: ",
+    "symbol:#",
+    "single_quote:'",
+    "double_quote:\"",
+    "backslash:\\",
+    "mixed:P #'\"\\",
+  };
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -73,6 +84,26 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
     ASSERT_EQ(key, 1);
     auto value = ASSERT_RESULT(GetString(res.get(), 0, 1));
     ASSERT_EQ(value, "hello");
+  }
+}
+
+// Test libpq connection to various database names.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  for (const std::string& db_name : names) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", QuotePgName(db_name)));
+    ASSERT_OK(ConnectToDB(db_name));
+  }
+}
+
+// Test libpq connection to various user names.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  for (const std::string& user_name : names) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", QuotePgName(user_name)));
+    ASSERT_OK(ConnectToDBAsUser("" /* db_name */, user_name));
   }
 }
 
@@ -1794,7 +1825,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(values[1][2], 2);
 }
 
-// Make sure that unique indexes work when index backfill is enabled (skips backfill for now)
+// Make sure that unique indexes work when index backfill is enabled.
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(BackfillUnique),
           PgLibPqTestIndexBackfill) {
@@ -1830,7 +1861,8 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (j ASC)", kTableName);
   ASSERT_NOK(status);
   auto msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
+  ASSERT_TRUE(msg.find("duplicate key value violates unique constraint") != std::string::npos)
+      << status;
 }
 
 // Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
@@ -1954,6 +1986,176 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(actual_num_rows, kNumRows);
 }
 
+// Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillNonconcurrent),
+          PgLibPqTestIndexBackfill) {
+  const std::string kIndexName = "x";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+
+  // To determine whether the index uses backfill or not, look at the table schema version before
+  // and after.  We can't look at the DocDB index permissions because
+  // - if backfill is skipped, index_permissions is unset, and the default value is
+  //   INDEX_PERM_READ_WRITE_AND_DELETE
+  // - if backfill is used, index_permissions is INDEX_PERM_READ_WRITE_AND_DELETE
+  // - GetTableSchemaById offers no way to see whether the default value for index permissions is
+  //   set
+  std::shared_ptr<client::YBTableInfo> info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+  }
+  ASSERT_EQ(info->schema.version(), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX NONCONCURRENTLY $0 ON $1 (i)",
+                               kIndexName,
+                               kTableName));
+
+  // If the index used backfill, it would have incremented the table schema version by two or three:
+  // - add index info with INDEX_PERM_DELETE_ONLY
+  // - update to INDEX_PERM_DO_BACKFILL (as part of issue #6218)
+  // - update to INDEX_PERM_READ_WRITE_AND_DELETE
+  // If the index did not use backfill, it would have incremented the table schema version by one:
+  // - add index info with no DocDB permission (default INDEX_PERM_READ_WRITE_AND_DELETE)
+  // Expect that it did not use backfill.
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+  }
+  ASSERT_EQ(info->schema.version(), 1);
+}
+
+// Test simultaneous CREATE INDEX.
+// TODO(jason): update this when closing issue #6269.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
+          PgLibPqTestIndexBackfill) {
+  constexpr int kNumRows = 10;
+  constexpr int kNumThreads = 5;
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+  const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))",
+      kTableName,
+      kNumRows));
+
+  std::vector<std::thread> threads;
+  std::vector<Status> statuses;
+  LOG(INFO) << "Starting threads";
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.emplace_back([&] {
+      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+      statuses.emplace_back(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+    });
+  }
+  LOG(INFO) << "Joining threads";
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  LOG(INFO) << "Inspecting statuses";
+  int num_ok = 0;
+  ASSERT_EQ(statuses.size(), kNumThreads);
+  for (auto& status : statuses) {
+    LOG(INFO) << "status: " << status;
+    if (status.ok()) {
+      num_ok++;
+    } else {
+      ASSERT_TRUE(status.IsNetworkError()) << status;
+      const std::string msg = status.message().ToBuffer();
+      ASSERT_TRUE(
+          (msg.find("Catalog Version Mismatch") != std::string::npos)
+          || (msg.find("Conflicts with higher priority transaction") != std::string::npos)
+          || (msg.find("Transaction aborted") != std::string::npos)
+          || (msg.find("Unknown transaction, could be recently aborted") != std::string::npos)
+          || (msg.find("Transaction metadata missing") != std::string::npos))
+        << status.message().ToBuffer();
+    }
+  }
+  ASSERT_EQ(num_ok, 1);
+
+  LOG(INFO) << "Checking postgres schema";
+  {
+    // Check number of indexes.
+    auto res = ASSERT_RESULT(conn.FetchFormat(
+        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
+    ASSERT_EQ(PQntuples(res.get()), 1);
+    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
+    const std::string expected = Format("$0_i_idx", kTableName);
+    ASSERT_EQ(actual, expected);
+
+    // Check whether index is public using index scan.
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  }
+  LOG(INFO) << "Checking DocDB schema";
+  std::vector<TableId> orphaned_docdb_index_ids;
+  {
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    std::string table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+    std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+
+    // Check schema version.
+    //   kNumThreads (INDEX_PERM_WRITE_AND_DELETE)
+    // + 1 (INDEX_PERM_READ_WRITE_AND_DELETE)
+    // = kNumThreads + 1
+    // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
+    // schema version.
+    ASSERT_EQ(table_info->schema.version(), kNumThreads + 1);
+
+    // Check number of indexes.
+    ASSERT_EQ(table_info->index_map.size(), kNumThreads);
+
+    // Check index permissions.  Also collect orphaned DocDB indexes.
+    int num_rwd = 0;
+    for (auto& pair : table_info->index_map) {
+      VLOG(1) << "table id: " << pair.first;
+      IndexPermissions perm = pair.second.index_permissions();
+      if (perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE) {
+        num_rwd++;
+      } else {
+        ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
+        orphaned_docdb_index_ids.emplace_back(pair.first);
+      }
+    }
+    ASSERT_EQ(num_rwd, 1);
+  }
+
+  LOG(INFO) << "Removing orphaned DocDB indexes";
+  {
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    for (TableId& index_id : orphaned_docdb_index_ids) {
+      client::YBTableName indexed_table_name;
+      ASSERT_OK(client->DeleteIndexTable(index_id, &indexed_table_name));
+    }
+  }
+
+  LOG(INFO) << "Checking if index still works";
+  {
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 1);
+    auto value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    ASSERT_EQ(value, 7);
+  }
+}
+
 // Override the index backfill test to disable transparent retries on cache version mismatch.
 class PgLibPqTestIndexBackfillNoRetry : public PgLibPqTestIndexBackfill {
  public:
@@ -1991,6 +2193,27 @@ TEST_F_EX(PgLibPqTest,
   // above `DROP INDEX` should have invalidated the corresponding table cache entry.  (There also
   // should be no catalog version mismatch because it is updated for the same session after DDL.)
   ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+}
+
+// Override the index backfill test to do alter slowly.
+class PgLibPqTestIndexBackfillAlterSlowly : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillAlterSlowly() {
+    more_tserver_flags.push_back("--TEST_alter_schema_delay_ms=10000");
+  }
+};
+
+// Test whether IsCreateTableDone works when creating an index with backfill enabled.  See issue
+// #6234.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillIsCreateTableDone),
+          PgLibPqTestIndexBackfillAlterSlowly) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
 }
 
 namespace {
@@ -2125,7 +2348,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "rn";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
@@ -2222,7 +2444,6 @@ TEST_F_EX(PgLibPqTest,
   const std::string kNamespaceName = "yugabyte";
   const std::string kTableName = "rn";
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
@@ -2285,11 +2506,65 @@ TEST_F_EX(PgLibPqTest,
   }
 }
 
+// Make sure that writes during CREATE UNIQUE INDEX don't cause unique duplicate row errors to be
+// thrown.  Simulate this situation:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//                                                INSERT a row to the indexed table
+//   CREATE UNIQUE INDEX
+//                                                INSERT a row to the indexed table
+//   - indislive
+//                                                INSERT a row to the indexed table
+//   - indisready
+//                                                INSERT a row to the indexed table
+//   - backfill
+//                                                INSERT a row to the indexed table
+//   - indisvalid
+//                                                INSERT a row to the indexed table
+// Particularly pay attention to the insert between indisready and backfill.  The insert
+// should cause a write to go to the index.  Backfill should choose a read time after this write, so
+// it should try to backfill this same row.  Rather than conflicting when we see the row already
+// exists in the index during backfill, check whether the rows match, and don't error if they do.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWithOnlineWrites),
+          PgLibPqTestIndexBackfillSlow) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+
+  // Start a thread that continuously inserts distinct values.  The hope is that this would cause
+  // inserts to happen at all permissions.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, kTableName, &stop = thread_holder.stop_flag()] {
+    auto insert_conn = ASSERT_RESULT(Connect());
+    int i = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      Status status = insert_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, ++i);
+      if (!status.ok()) {
+        // Schema version mismatches will likely occur when changing index permissions, and we can
+        // just ignore them for the purposes of this test.
+        // TODO(jason): no longer expect these errors after closing issue #3979.
+        ASSERT_TRUE(status.IsNetworkError()) << status;
+        std::string msg = status.message().ToBuffer();
+        ASSERT_TRUE(msg.find("schema version mismatch") != std::string::npos) << status;
+      }
+    }
+  });
+
+  // Create unique index (should not complain about duplicate row).
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
+
+  thread_holder.Stop();
+}
+
 // Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.
 class PgLibPqTestIndexBackfillSlowSmallClientDeadline : public PgLibPqTestIndexBackfillSlow {
  public:
   PgLibPqTestIndexBackfillSlowSmallClientDeadline() {
-    more_tserver_flags.push_back("--ysql_wait_until_index_permissions_timeout_ms=3000");
+    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=3000");
   }
 };
 
@@ -2313,7 +2588,7 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
   ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
   const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
       << status;
 
   // Make sure that the index is not public.
@@ -2338,7 +2613,7 @@ TEST_F_EX(PgLibPqTest,
   Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
   ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
   const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
       << status;
 
   // Make sure that the index exists in DocDB metadata.
@@ -2367,12 +2642,12 @@ TEST_F_EX(PgLibPqTest,
   }
 }
 
-// Override the index backfill slow test to have more than one master and 30s
-// WaitUntilIndexPermissionsAtLeast timeout.
+// Override the index backfill slow test to have more than one master and 30s BackfillIndex client
+// timeout.
 class PgLibPqTestIndexBackfillSlowMultiMaster : public PgLibPqTestIndexBackfillSlow {
  public:
   PgLibPqTestIndexBackfillSlowMultiMaster() {
-    more_tserver_flags.push_back("--ysql_wait_until_index_permissions_timeout_ms=30000");
+    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=30000");
   }
 
   int GetNumMasters() const override { return 3; }
@@ -2420,7 +2695,7 @@ TEST_F_EX(PgLibPqTest,
     Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
     const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
         << status;
   });
 
@@ -2469,7 +2744,7 @@ TEST_F_EX(PgLibPqTest,
     // index.
     ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
     const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for proper index permissions") != std::string::npos)
+    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
         << status;
   });
 
@@ -2520,8 +2795,8 @@ TEST_F_EX(PgLibPqTest,
 
 // TODO(jason): expect success when closing issue #5324.
   ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find("index backfill failed") != std::string::npos)
-      << status;
+  ASSERT_TRUE(status.message().ToBuffer().find(
+      "backfill query couldn't be sent") != std::string::npos) << status;
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch
@@ -2619,6 +2894,162 @@ TEST_F_EX(PgLibPqTest,
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryEnabled)) {
   TestCacheRefreshRetry(false /* is_retry_disabled */);
+}
+
+class PgLibPqDatabaseTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
+    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutGC)) {
+  NamespaceName test_name = "test_pgsql";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
+  }
+
+  // Verify DocDB Database creation, even though it failed in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "" /* prefix */);
+    return ret.ok() && ret.get();
+  }, MonoDelta::FromSeconds(60),
+     "Verify Namespace was created in DocDB"));
+
+  // After bg_task_wait, DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "ret");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
+}
+
+TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutAndRestartGC)) {
+  NamespaceName test_name = "test_pgsql";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
+  }
+
+  // Verify DocDB Database creation, even though it fails in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(60),
+      "Verify Namespace was created in DocDB"));
+
+  LOG(INFO) << "Restarting Master.";
+
+  // Restart the master before the BG task can kick in and GC the failed transaction.
+  auto master = cluster_->GetLeaderMaster();
+  master->Shutdown();
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
+    return s.ok();
+  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
+
+  // Confirm that Catalog Loader deletes the namespace on master restart.
+  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
+}
+
+class PgLibPqTableTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Use small clock skew, to decrease number of read restarts.
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
+    options->extra_master_flags.push_back("--TEST_simulate_slow_table_create_secs=2");
+    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
+  }
+};
+
+TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndRestartGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
+
+  LOG(INFO) << "Restarting Master.";
+
+  // Restart the master before the BG task can kick in and GC the failed transaction.
+  auto master = cluster_->GetLeaderMaster();
+  master->Shutdown();
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
+    return s.ok();
+  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
+
+  // Confirm that Catalog Loader deletes the namespace on master restart.
+  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
 }
 
 } // namespace pgwrapper

@@ -26,6 +26,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/kv_debug.h"
 #include "yb/docdb/value.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -480,13 +481,11 @@ Status IntentAwareIterator::NextFullValue(
   const size_t key_size = key.size();
   bool found_record = false;
 
-  // The condition specifies that the first type is the flags type,
-  // And that the key is still the same.
-  while ((found_record = iter_.Valid() &&
-          (key = iter_.key()).starts_with(key_data.key) &&
-          (ValueType)(key[key_size]) == ValueType::kHybridTime) &&
-         IsMergeRecord(v = iter_.value())) {
-    iter_.Next();
+  while ((found_record = iter_.Valid()) &&  // as long as we're pointing to a record
+         (key = iter_.key()).starts_with(key_data.key) &&  // with the same key we started with
+         key[key_size] == ValueTypeAsChar::kHybridTime && // whose key ends with a HT
+         IsMergeRecord(v = iter_.value())) { // and whose value is a merge record
+    iter_.Next(); // advance the iterator
   }
 
   if (found_record) {
@@ -716,7 +715,7 @@ void IntentAwareIterator::ProcessIntent() {
 
   if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
     resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
-    auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+    auto prefix = CurrentPrefix();
     if (!decode_result->intent_prefix.starts_with(prefix)) {
       resolved_intent_state_ = ResolvedIntentState::kInvalidPrefix;
     } else if (!SatisfyBounds(decode_result->intent_prefix)) {
@@ -782,7 +781,7 @@ void IntentAwareIterator::SeekToSuitableIntent() {
   resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_ = DocHybridTime::kMin;
   intent_dht_from_same_txn_ = DocHybridTime::kMin;
-  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  auto prefix = CurrentPrefix();
 
   // Find latest suitable intent for the first SubDocKey having suitable intents.
   while (intent_iter_.Valid()) {
@@ -1040,12 +1039,16 @@ void IntentAwareIterator::PopPrefix() {
               : SubDocKey::DebugSliceToString(prefix_stack_.back()));
 }
 
+Slice IntentAwareIterator::CurrentPrefix() const {
+  return prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+}
+
 void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
   skip_future_records_needed_ = false;
   if (!status_.ok()) {
     return;
   }
-  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  auto prefix = CurrentPrefix();
   while (iter_.Valid()) {
     if (!iter_.key().starts_with(prefix)) {
       VLOG(4) << "Unmatched prefix: " << SubDocKey::DebugSliceToString(iter_.key())
@@ -1123,7 +1126,7 @@ void IntentAwareIterator::SkipFutureIntents() {
   if (!intent_iter_.Initialized() || !status_.ok()) {
     return;
   }
-  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  auto prefix = CurrentPrefix();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
     VLOG(4) << "Checking resolved intent subdockey: "

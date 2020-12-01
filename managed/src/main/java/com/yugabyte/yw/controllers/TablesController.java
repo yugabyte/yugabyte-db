@@ -342,6 +342,14 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
+    if (universe.getUniverseDetails().updateInProgress ||
+        universe.getUniverseDetails().backupInProgress) {
+      String errMsg = String.format("Cannot run Backup task since the " +
+                                    "universe %s is currently in a locked state.",
+                                    universeUUID.toString());
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
 
     taskParams.universeUUID = universeUUID;
     taskParams.customerUUID = customerUUID;
@@ -402,6 +410,14 @@ public class TablesController extends AuthenticatedController {
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
     if (storageConfig == null) {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    if (universe.getUniverseDetails().updateInProgress ||
+        universe.getUniverseDetails().backupInProgress) {
+      String errMsg = String.format("Cannot run Backup task since the " +
+                                    "universe %s is currently in a locked state.",
+                                    universeUUID.toString());
+      LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 

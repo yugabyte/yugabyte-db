@@ -407,7 +407,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  MetricRegistry* metric_registry)
   : fs_manager_(fs_manager),
     server_(server),
-    next_report_seq_(0),
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING) {
   ThreadPoolMetrics metrics = {
@@ -854,13 +853,23 @@ Status TSTabletManager::StartSubtabletsSplit(
   while (iter != tcmetas->end()) {
     const auto& subtablet_id = iter->tablet_id;
 
-    iter->transition_deleter = VERIFY_RESULT(StartTabletStateTransitionForCreation(subtablet_id));
+    auto transition_deleter_result = StartTabletStateTransitionForCreation(subtablet_id);
+    if (transition_deleter_result.ok()) {
+      iter->transition_deleter = *transition_deleter_result;
+    } else if (transition_deleter_result.status().IsAlreadyPresent()) {
+      // State transition for sub tablet with subtablet_id could be already registered because its
+      // remote bootstrap (from already split parent tablet leader) is in progress.
+      iter = tcmetas->erase(iter);
+      continue;
+    } else {
+      return transition_deleter_result.status();
+    }
 
     // Try to load metadata from previous not completed split.
     if (RaftGroupMetadata::Load(fs_manager_, subtablet_id, &iter->raft_group_metadata).ok() &&
         CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
-      // Sub tablet has been already created and ready during previous split attempt,
-      // no need to re-create.
+      // Sub tablet has been already created and ready during previous split attempt at this node or
+      // as a result of remote bootstrap from another node, no need to re-create.
       iter = tcmetas->erase(iter);
       continue;
     }
@@ -919,6 +928,8 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
           op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
+  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
+
   auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
   RETURN_NOT_OK(tablet_peer->raft_consensus()->FlushLogIndex());
 
@@ -966,8 +977,8 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
         new_tablet_id, tcmeta.partition, tcmeta.key_bounds, yb::OpId::FromPB(op_state->op_id()),
         op_state->hybrid_time()));
-    LOG(INFO) << "Created raft group metadata for table: " << table_id
-              << " tablet: " << new_tablet_id;
+    LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
+                          << " tablet: " << new_tablet_id;
 
     // Copy consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
@@ -997,6 +1008,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
   }
 
   successfully_completed = true;
+  LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation has been applied";
   return Status::OK();
 }
 
@@ -1293,9 +1305,12 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
-  // TODO(raju): should tablet being tombstoned not avoid flushing memtable as well ?
-  tablet_peer->Shutdown((delete_type == TABLET_DATA_DELETED) ?
-      tablet::IsDropTable::kTrue : tablet::IsDropTable::kFalse);
+  // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
+  // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
+  //
+  // Note: This might change for PITR.
+  bool delete_data = delete_type == TABLET_DATA_DELETED || delete_type == TABLET_DATA_TOMBSTONED;
+  tablet_peer->Shutdown(tablet::IsDropTable(delete_data));
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -1683,9 +1698,17 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
+void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tablet_ptrs) const {
   SharedLock<RWMutex> shared_lock(mutex_);
   GetTabletPeersUnlocked(tablet_peers);
+  if (tablet_ptrs) {
+    for (const auto peer : *tablet_peers) {
+      auto tablet_ptr = peer->shared_tablet();
+      if (tablet_ptr) {
+        tablet_ptrs->push_back(tablet_ptr);
+      }
+    }
+  }
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -1693,8 +1716,8 @@ void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const {
-  SharedLock<RWMutex> shared_lock(mutex_);
-  auto filter = [this](const TabletId* id) {
+  SharedLock<decltype(mutex_)> shared_lock(mutex_);
+  auto filter = [this](const TabletId* id) REQUIRES_SHARED(mutex_) {
     auto it = tablet_map_.find(*id);
     if (it == tablet_map_.end()) {
       return true;

@@ -384,6 +384,8 @@ class PgApiImpl {
 
   CHECKED_STATUS InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
 
+  CHECKED_STATUS InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill);
+
   //------------------------------------------------------------------------------------------------
   // Update.
   CHECKED_STATUS NewUpdate(const PgObjectId& table_id,

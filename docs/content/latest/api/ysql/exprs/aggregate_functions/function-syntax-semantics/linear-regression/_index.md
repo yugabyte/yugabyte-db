@@ -20,7 +20,19 @@ This parent section and its two child sections describe these aggregate function
 
 See, for example, this Wikipedia article on [Regression analysis](https://en.wikipedia.org/wiki/Regression_analysis). Briefly, linear regression analysis estimates the relationship between a dependent variable and an independent variable, aiming to find the line that most closely fits the data. This is why each of the functions described has two input formal parameters. The _dependent variable_, the first formal parameter, is conventionally designated by _"y"_; and the _independent variable_, the second formal parameter, is conventionally designated by _"x"_.
 
-The purpose of each of the functions is rather specialized; but the domain is also very familiar to people who need to do linear regression. For this reason, the aim is simply to explain enough for specialists to be able to understand exactly what is available, and how to invoke what they decide that they need. Each function is illustrated with a simple example.
+See, for example, the article ["How To Interpret R-squared in Regression Analysis"](https://statisticsbyjim.com/regression/interpret-r-squared-regression/). It says this:
+
+>  Linear regression identifies the equation that produces the smallest difference between all of the observed values and their [fitted values](https://statisticsbyjim.com/glossary/fitted-values/). To be precise, linear regression finds the smallest sum of squared [residuals](https://statisticsbyjim.com/glossary/residuals/) that is possible for the dataset.
+
+In terms of the high school equation for a straight line:
+
+```
+y = m*x + c
+```
+
+the function [`regr_slope(y, x)`](./regr/#regr-slope-regr-intercept) estimates the gradient, _"m"_,  of the straight line that best fits the set of coordinate pairs over which the aggregation is done; and the function [`regr_intercept(y, x)`](./regr/#regr-slope-regr-intercept) estimates its intercept with the y-axis, _"c"_. The so-called "R-squared " measure, implemented by   [`regr_r2(y, x)`](./regr/#regr-r2), indicates the goodness-of-fit. It measures the percentage of the variance in the dependent variable that the independent variables explain collectively—in other words, the strength of the relationship between your model and the dependent variable on a 0 – 100% scale. For example, if `regr_r2()` returns a value of _0.7_, it means that seventy percent of the relationship between the putative dependent variable and the independent variable can be explained by a straight line with the gradient and intercept returned, respectively, by `regr_slope()` and `regr_intercept()`.  The remaining thirty percent can be attributed to stochastic variation. 
+
+The purpose of each of the functions is rather specialized; but the domain is also very familiar to people who need to do linear regression. For this reason, the aim here is simply to explain enough for specialists to be able to understand exactly what is available, and how to invoke what they decide that they need. Each function is illustrated with a simple example.
 
 Each of these aggregate functions is invoked by using the same syntax:
 

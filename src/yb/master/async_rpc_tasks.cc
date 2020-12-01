@@ -125,8 +125,7 @@ Status RetryingTSRpcTask::Run() {
   ++attempt_;
   auto task_state = state();
   if (task_state == MonitoredTaskState::kAborted) {
-    // May delete this.
-    return Failed(STATUS(IllegalState, "Unable to run task because it has been aborted"));
+    return STATUS(IllegalState, "Unable to run task because it has been aborted");
   }
   // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
   // Should look into removing the kScheduling state, if not needed, and simplifying the state
@@ -167,8 +166,7 @@ Status RetryingTSRpcTask::Run() {
 
   if (!PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kRunning)) {
     if (state() == MonitoredTaskState::kAborted) {
-      // May delete this.
-      return Failed(STATUS(Aborted, "Unable to run task because it has been aborted"));
+      return STATUS(Aborted, "Unable to run task because it has been aborted");
     }
 
     LOG_WITH_PREFIX(DFATAL) <<

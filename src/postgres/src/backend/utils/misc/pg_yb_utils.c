@@ -430,7 +430,7 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-    HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
 	}
 }
 
@@ -904,9 +904,15 @@ YBDecrementDdlNestingLevel(bool success,
 				/*
 				 * At this point we have already applied the DDL in the YSQL layer and
 				 * executing the postponed DocDB statement is not strictly required.
+				 * Ignore 'NotFound' because DocDB might already notice applied DDL.
 				 * See comment for YBGetDdlHandles in xact.h for more details.
 				 */
-				HandleYBStatusAtErrorLevel(YBCPgExecPostponedDdlStmt(handle), WARNING);
+				YBCStatus status = YBCPgExecPostponedDdlStmt(handle);
+				if (YBCStatusIsNotFound(status)) {
+					YBCFreeStatus(status);
+				} else {
+					HandleYBStatusAtErrorLevel(status, WARNING);
+				}
 			}
 			YBClearDdlHandles();
 		}

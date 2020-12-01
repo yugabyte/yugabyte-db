@@ -174,7 +174,7 @@ public class HealthManager extends DevopsBase {
 
     if (isTaskNotification) {
       commandArgs.add("--send_notification");
-      commandArgs.add("--task_info");
+      commandArgs.add("--alert_info");
       commandArgs.add(Json.stringify(taskInfo));
     }
 

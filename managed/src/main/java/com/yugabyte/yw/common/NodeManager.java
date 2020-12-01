@@ -67,6 +67,7 @@ public class NodeManager extends DevopsBase {
     Destroy,
     List,
     Control,
+    Precheck,
     Tags,
     InitYSQL,
     Disk_Update
@@ -161,6 +162,22 @@ public class NodeManager extends DevopsBase {
       if (type == NodeCommandType.Provision && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
+      }
+
+      if (type == NodeCommandType.Precheck) {
+        subCommand.add("--precheck_type");
+        if (keyInfo.skipProvisioning) {
+          subCommand.add("configure");
+        } else {
+          subCommand.add("provision");
+        }
+
+        if (keyInfo.airGapInstall) {
+          subCommand.add("--air_gap");
+        }
+        if (keyInfo.installNodeExporter) {
+          subCommand.add("--install_node_exporter");
+        }
       }
 
       if (params instanceof AnsibleSetupServer.Params) {
@@ -470,18 +487,26 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useTimeSync) {
             commandArgs.add("--use_chrony");
           }
+
           if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
             Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
+
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
           }
+
           if (taskParam.ipArnString != null) {
             commandArgs.add("--iam_profile_arn");
             commandArgs.add(taskParam.ipArnString);
+          }
+
+          if (!taskParam.remotePackagePath.isEmpty()) {
+            commandArgs.add("--remote_package_path");
+            commandArgs.add(taskParam.remotePackagePath);
           }
         }
         if (cloudType.equals(Common.CloudType.azu)) {
@@ -541,12 +566,15 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
         commandArgs.add("--instance_type");
-        commandArgs.add(nodeTaskParam.instanceType);
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        commandArgs.add(taskParam.instanceType);
+        commandArgs.add("--node_ip");
+        commandArgs.add(taskParam.nodeIP);
+        if (taskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(taskParam));
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
       case Control: {
@@ -596,6 +624,13 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
         commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+      }
+      case Precheck: {
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        }
+        break;
       }
     }
     commandArgs.add(nodeTaskParam.nodeName);

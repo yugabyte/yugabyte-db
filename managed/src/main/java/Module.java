@@ -3,9 +3,7 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -73,11 +71,14 @@ public class Module extends AbstractModule {
       bind(CallHome.class).asEagerSingleton();
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
+      bind(TaskGarbageCollector.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
       bind(CustomerTaskManager.class).asEagerSingleton();
       bind(YamlWrapper.class).asEagerSingleton();
+      bind(AlertManager.class).asEagerSingleton();
+      bind(QueryAlerts.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

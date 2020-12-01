@@ -447,7 +447,7 @@ extern void YBMarkDataNotSent(void);
 extern bool YBIsDataSent(void);
 
 /*
- * Utilities for postponed pggate DDL statement handles, that should be
+ * Utilities for postponed pggate DDL statement handles, that can be
  * executed after the YSQL DDL transaction has commited. To qualify for this
  * the DDL must have the following properties:
  *   1. It cannot be rolled back by abort (so we wait for commit to succeed).
@@ -456,10 +456,9 @@ extern bool YBIsDataSent(void);
  * which we cannot roll back, and also does not cause inconsistency if it fails
  * after YSQL-layer deleted the metadata entry for that object (because we do
  * not reuse oids/uuids -- so objects remain simply orphaned/unused).
- * Note: The expectation is that orphaned DocDB objects will be cleaned
- *       up by a DocDB (catalog manager) background-cleanup job. This would
- *       eventually also roll back failed (online) alter operations. Though as
- *       of 08/2020 this is not yet done (#3979).
+ * Note: Orphaned DocDB objects will be best-effort cleaned by a DocDB (catalog
+ *       manager) background-cleanup job. This would eventually also roll back
+ *       failed (online) alter operations (#3979).
  */
 extern void YBSaveDdlHandle(YBCPgStatement handle);
 extern List* YBGetDdlHandles(void);

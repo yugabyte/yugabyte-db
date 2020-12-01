@@ -3,16 +3,19 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import com.google.common.collect.ImmutableList;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -22,7 +25,6 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -68,6 +70,8 @@ import play.api.Play;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.mvc.Http.HeaderNames;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -252,101 +256,55 @@ public class UniverseController extends AuthenticatedController {
     return ApiResponse.success("Created user in DB.");
   }
 
+  @VisibleForTesting
+  static final String DEPRECATED = "Deprecated.";
+
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
-    Universe universe;
-    try {
-      universe = checkCallValid(customerUUID, universeUUID);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    }
-    Customer customer = Customer.get(customerUUID);
+    return ApiResponse.error(BAD_REQUEST, DEPRECATED);
+  }
 
-    String securityLevel = (String)
-        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (securityLevel == null || !securityLevel.equals("insecure")) {
-      return ApiResponse.error(BAD_REQUEST, "run_in_shell not supported for this application");
-    }
+  @VisibleForTesting
+  static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
 
-    Form<RunInShellFormData> formData =
-        formFactory.form(RunInShellFormData.class).bindFromRequest();
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-
-    RunInShellFormData data = formData.get();
-    if (data.command == null && data.command_file == null) {
-      return ApiResponse.error(BAD_REQUEST, "Need to provide either command or command_file");
-    }
-
-    if (data.shell_location == null) {
-      Application application = Play.current().injector().instanceOf(Application.class);
-      data.shell_location = application.path().getAbsolutePath() + "/../bin";
-    }
-
-    List<String> shellArguments = new ArrayList<>();
-    String[] hostPort;
-    switch(data.shell_type) {
-      case YSQLSH:
-        String ysqlEndpoints = universe.getYSQLServerAddresses();
-        hostPort = ysqlEndpoints.split(",")[0].split(":");
-        shellArguments.addAll(ImmutableList.of(
-            data.shell_location  + "/" + data.shell_type.name().toLowerCase(),
-            "-h", hostPort[0], "-p", hostPort[1], "-d", data.db_name));
-        if (data.command != null) {
-          shellArguments.addAll(ImmutableList.of("-c", data.command));
-        } else {
-          shellArguments.addAll(ImmutableList.of("-f",
-              data.shell_location + "/" + data.command_file));
-        }
-        break;
-      case YCQLSH:
-        String ycqlEndpoints = universe.getYQLServerAddresses();
-        hostPort = ycqlEndpoints.split(",")[0].split(":");
-        shellArguments.addAll(ImmutableList.of(data.shell_location + "/" + "cqlsh",
-            hostPort[0], hostPort[1], "-k", data.db_name));
-        if (data.command != null) {
-          shellArguments.addAll(ImmutableList.of("-e", data.command));
-        } else {
-          shellArguments.addAll(ImmutableList.of("-f",
-              data.shell_location + "/" + data.command_file));
-        }
-        break;
-      default:
-        return ApiResponse.error(BAD_REQUEST, "Invalid shell_type " + data.shell_type.name());
-    }
-
-    ShellProcessHandler.ShellResponse response =
-        shellProcessHandler.run(shellArguments, new HashMap<>(), false);
-    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(response.message);
- }
+  @VisibleForTesting
+  static final String RUN_QUERY_ISNT_ALLOWED = "run_query not supported for this application";
 
   public Result runQuery(UUID customerUUID, UUID universeUUID) {
+    String mode = appConfig.getString("yb.mode", "PLATFORM");
+    if (!mode.equals("OSS")) {
+      return ApiResponse.error(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+    }
+
+    boolean correctOrigin = false;
+    Optional<String> origin = request().header(HeaderNames.ORIGIN);
+    if (origin.isPresent()) {
+      try {
+        URI uri = new URI(origin.get());
+        correctOrigin = LEARN_DOMAIN_NAME.equals(uri.getHost());
+      } catch (URISyntaxException e) {
+      }
+    }
+
+    String securityLevel = (String)
+        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
+    if (!correctOrigin || securityLevel == null || !securityLevel.equals("insecure")) {
+      return ApiResponse.error(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+    }
+
     Universe universe;
     try {
       universe = checkCallValid(customerUUID, universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    }
-    Customer customer = Customer.get(customerUUID);
-
-    String securityLevel = (String)
-        configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (securityLevel == null || !securityLevel.equals("insecure")) {
-      return ApiResponse.error(BAD_REQUEST, "run_query not supported for this application");
     }
 
     Form<RunQueryFormData> formData = formFactory.form(RunQueryFormData.class).bindFromRequest();
-
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    Audit.createAuditEntry(ctx(), request(),
-        Json.toJson(formData.data()));
-    return ApiResponse.success(
-        ysqlQueryExecutor.executeQuery(universe, formData.get())
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    return ApiResponse.success(ysqlQueryExecutor.executeQuery(universe, formData.get())
     );
   }
 

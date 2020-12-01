@@ -2356,7 +2356,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 		rettupdata.t_data = td;
 		rettupdata.t_ybctid = PointerGetDatum(NULL);
 
-		slot = ExecStoreTuple(&rettupdata, tstate->slot, InvalidBuffer, false);
+		slot = ExecStoreHeapTuple(&rettupdata, tstate->slot, false);
 		tstate->dest->receiveSlot(slot, tstate->dest);
 
 		end_tup_output(tstate);

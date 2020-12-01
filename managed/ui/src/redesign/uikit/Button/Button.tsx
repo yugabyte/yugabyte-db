@@ -1,4 +1,4 @@
-import _ from 'lodash';
+import clsx from 'clsx';
 import React, { FC } from 'react';
 import './Button.scss';
 
@@ -17,14 +17,13 @@ export const Button: FC<ButtonProps> = ({
   children,
   ...props
 }) => {
-  const classes = ['yb-uikit-button', props.className];
-  if (isCTA) classes.push('yb-uikit-button--cta');
-  if (chevronLeft) classes.push('yb-uikit-button--chevron-left');
-  if (chevronRight) classes.push('yb-uikit-button--chevron-right');
-
   const extendedProps = {
     ...props,
-    className: _.compact(classes).join(' ')
+    className: clsx(props.className, 'yb-uikit-button', {
+      'yb-uikit-button--cta': isCTA,
+      'yb-uikit-button--chevron-left': chevronLeft,
+      'yb-uikit-button--chevron-right': chevronRight
+    })
   };
 
   return <button {...extendedProps}>{children}</button>;

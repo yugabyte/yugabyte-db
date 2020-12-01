@@ -11,7 +11,7 @@ menu:
     identifier: prepare-environment-4-kubernetes
     weight: 55
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -30,16 +30,12 @@ showAsideToc: false
     </a>
   </li>
 
-<!--
-
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
-
--->
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
@@ -47,14 +43,14 @@ showAsideToc: false
       Kubernetes
     </a>
   </li>
-<!--
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
--->
+
 </ul>
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:
@@ -68,7 +64,7 @@ Before installing the YugbyteDB Admin Console, verify you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
 - A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
-- A Kubernetes secret obtained from Yugabyte Support.
+- A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 
 To confirm that `helm` is configured correctly, run the following command:
 

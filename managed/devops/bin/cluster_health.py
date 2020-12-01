@@ -499,15 +499,25 @@ def send_email(subject, msg, sender, destination):
     s.quit()
 
 
-def send_alert_email(customer_tag, task_info_json, destination):
-    if task_info_json['alertname'] == 'Backup failure':
-        task_type = task_info_json['task_type']
-        target_type = task_info_json['target_type']
-        target_name = task_info_json['target_name']
-        task_info = task_info_json['task_info']
-        subject = "Yugabyte Platform Alert - <{}>".format(customer_tag)
-        msg_content = "{} {} failed for {}.\n\nTask Info: {}"\
+def send_alert_email(customer_tag, alert_info_json, destination):
+    is_valid = True
+    subject = "Yugabyte Platform Alert - <{}>".format(customer_tag)
+    if 'alert_name' in alert_info_json and alert_info_json['alert_name'] == 'Backup failure':
+        task_type = alert_info_json['task_type']
+        target_type = alert_info_json['target_type']
+        target_name = alert_info_json['target_name']
+        task_info = alert_info_json['task_info']
+        msg_content = "{} {} failed for {}.\n\nTask Info: {}" \
             .format(task_type, target_type, target_name, task_info)
+    elif 'alert_name' in alert_info_json:
+        alert_name = alert_info_json['alert_name']
+        alert_state = alert_info_json['state']
+        universe_name = alert_info_json['universe_name']
+        msg_content = "{} for {} is {}.".format(alert_name, universe_name, alert_state)
+    else:
+        logging.error("Invalid alert_info_json")
+        is_valid = False
+    if is_valid:
         sender = EMAIL_FROM
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
@@ -762,13 +772,13 @@ def main():
                         help='Only report nodes with errors')
     parser.add_argument('--send_notification', action="store_true",
                         help='Whether this is to alert to notify on or not')
-    parser.add_argument('--task_info', type=str, default=None, required=False,
+    parser.add_argument('--alert_info', type=str, default=None, required=False,
                         help='JSON serialized payload of backups that have failed')
     args = parser.parse_args()
-    if args.send_notification and args.task_info is not None:
-        task_info_json = json.loads(args.task_info)
-        send_alert_email(args.customer_tag, task_info_json, args.destination)
-        print(task_info_json)
+    if args.send_notification and args.alert_info is not None:
+        alert_info_json = json.loads(args.alert_info)
+        send_alert_email(args.customer_tag, alert_info_json, args.destination)
+        print(alert_info_json)
     elif args.cluster_payload is not None and args.universe_name is not None:
         universe = UniverseDefinition(args.cluster_payload)
         coordinator = CheckCoordinator(args.retry_interval_secs)

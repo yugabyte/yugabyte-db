@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import React, { FC, useRef } from 'react';
 import './Input.scss';
 
@@ -35,20 +36,17 @@ export const Input: FC<InputProps> = (props) => {
 
   return (
     <div
-      className={`
-      yb-uikit-input
-      ${props.disabled ? 'yb-uikit-input--disabled' : ''}
-      ${props.invalid ? 'yb-uikit-input--invalid' : ''}
-      ${props.className || ''}
-    `}
+      className={clsx(props.className, 'yb-uikit-input', {
+        'yb-uikit-input--disabled': props.disabled,
+        'yb-uikit-input--invalid': props.invalid
+      })}
     >
       <input ref={input} type="text" autoComplete="off" {...props} />
       {props.type === 'number' && (
         <div
-          className={`
-          yb-uikit-input__number-controls
-          ${props.disabled ? 'yb-uikit-input__number-controls--disabled' : ''}
-        `}
+          className={clsx('yb-uikit-input__number-controls', {
+            'yb-uikit-input__number-controls--disabled': props.disabled
+          })}
         >
           <div className="yb-uikit-input__number-up" onClick={up} />
           <div className="yb-uikit-input__number-delim" />

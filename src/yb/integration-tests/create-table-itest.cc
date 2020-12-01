@@ -358,7 +358,9 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
   ASSERT_OK(
-      client_->CreateNamespace("colocation_test", boost::none, "", "", "", boost::none, true));
+      client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
+                               "" /* ns_id */, "" /* src_ns_id */,
+                               boost::none /* next_pg_oid */, boost::none /* txn */, true));
 
   {
     string ns_id;
@@ -426,8 +428,9 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   ts_flags.push_back("--ysql_beta_feature_tablegroup=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
 
-  ASSERT_OK(
-      client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "", "", "", boost::none, false));
+  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     "" /* ns_id */, "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, boost::none /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));

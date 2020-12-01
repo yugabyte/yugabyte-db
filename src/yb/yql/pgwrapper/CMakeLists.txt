@@ -17,23 +17,37 @@ set(PGWRAPPER_SRCS
 set(PGWRAPPER_LIBS
     yb_util
     yb_pggate_flags)
-
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
-add_library(
-    pg_wrapper_test_base
-    pg_mini_test_base.cc
-    pg_wrapper_test_base.cc
-    libpq_test_base.cc
+set(PQ_UTILS_SRCS
     libpq_utils.cc)
+set(PQ_UTILS_DEPS
+    pgsql_protocol_proto
+    pq
+    ql_protocol_proto
+    yb_common_proto
+    yb_pggate_flags)
+ADD_YB_LIBRARY(pq_utils
+               SRCS ${PQ_UTILS_SRCS}
+               DEPS ${PQ_UTILS_DEPS})
+
+set(PG_WRAPPER_TEST_BASE_SRCS
+    libpq_test_base.cc
+    pg_mini_test_base.cc
+    pg_wrapper_test_base.cc)
+set(PG_WRAPPER_TEST_BASE_DEPS
+    pq_utils)
+ADD_YB_LIBRARY(pg_wrapper_test_base
+               SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
+               DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
 
 # TODO: find a way to add this only to the top-level CMakeLists.txt file.
 # See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
 allow_using_postgres_libraries()
 
-target_link_libraries(pg_wrapper_test_base pq gutil integration-tests yb_pggate_flags)
+target_link_libraries(pg_wrapper_test_base integration-tests)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
    ${YB_MIN_TEST_LIBS})

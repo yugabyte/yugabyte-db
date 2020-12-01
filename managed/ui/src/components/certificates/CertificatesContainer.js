@@ -20,6 +20,9 @@ const mapDispatchToProps = (dispatch) => {
     showDownloadCertificateModal: () => {
       dispatch(openDialog('downloadCertificateModal'));
     },
+    showCertificateDetailsModal: () => {
+      dispatch(openDialog('certificateDetailsModal'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },

@@ -188,8 +188,8 @@
 }
 
 .az-table-container {
-  .row {
-    padding-bottom: 6px;
+  .az-selector-label ~ div {
+    margin-bottom: 6px;
   }
 
   h4 {
@@ -199,11 +199,8 @@
   label {
     display: block;
     margin-bottom: 0;
-
-    .yb-input-checkbox {
-      width: 16px;
-      float: right;
-    }
+    height: 100%;
+    align-items: center;
   }
   .form-right-control {
     width: 65px;
@@ -213,6 +210,8 @@
       max-width: fit-content;
       width: fit-content;
       margin: 0 auto;
+      display: flex;
+      align-items: center;
     }
   }
 }
@@ -346,5 +345,31 @@
 
   &:hover {
     color: $YB_ORANGE_HOVER;
+  }
+}
+
+.gflag-array {
+  &__action-btn {
+    cursor: pointer;
+    margin-left: 4px;
+  }
+
+  &__editor {
+    font-family: 'Courier New', Courier, monospace;
+    background: $YB_LIGHT_BLUE;
+    color: $YB_TEXT_BLACK;
+    border: 1px solid $YB_GRAY_BORDER;
+    padding: 15px;
+    min-height: 100px;
+    overflow-y: auto;
+    max-height: 500px;
+    font-size: 14px;
+    border-radius: 7px;
+    width: 100%;
+    line-height: 1.2
+  
+    p {
+      margin: 0 0 5px 0;
+    }
   }
 }

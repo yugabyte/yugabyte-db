@@ -34,6 +34,7 @@
 
 #include <shared_mutex>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -262,11 +263,11 @@ class TSDescriptor {
 
   // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
   bool IsRemoved() const {
-    return removed_;
+    return removed_.load(std::memory_order_acquire);
   }
 
-  void SetRemoved() {
-    removed_ = true;
+  void SetRemoved(bool removed = true) {
+    removed_.store(removed, std::memory_order_release);
   }
 
   explicit TSDescriptor(std::string perm_id);
@@ -364,7 +365,7 @@ class TSDescriptor {
   // references to this object and those would be invalidated if we remove the descriptor from
   // the master's map. As a result, we just store a boolean indicating this entry is removed and
   // shouldn't be surfaced.
-  bool removed_ = false;
+  std::atomic<bool> removed_{false};
 
   // Did this tserver register by heartbeating through master. If false, we registered through
   // peer's Raft config.

@@ -25,6 +25,7 @@ import java.util.List;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
@@ -48,15 +49,12 @@ public class TestJsonIndex extends BaseCQLTest {
       session.execute(stmt);
     }
 
-    long runtimeMillis;
-    String query;
-
     // Run index scan and check the time.
-    query = "SELECT h FROM test_json_index WHERE j1->'a'->>'b' = 'bvalue_77';";
+    String query = "SELECT h FROM test_json_index WHERE j1->'a'->>'b' = 'bvalue_77';";
     // Not timing the first run.
     assertEquals(1, session.execute(query).all().size());
 
-    runtimeMillis = System.currentTimeMillis();
+    long runtimeMillis = System.currentTimeMillis();
     assertEquals(1, session.execute(query).all().size());
     long elapsedTimeMillis_index = System.currentTimeMillis() - runtimeMillis;
     LOG.info(String.format("Indexed query: Elapsed time = %d msecs", elapsedTimeMillis_index));
@@ -71,8 +69,11 @@ public class TestJsonIndex extends BaseCQLTest {
     long elapsedTimeMillis_full = System.currentTimeMillis() - runtimeMillis;
     LOG.info(String.format("Full scan query: Elapsed time = %d msecs", elapsedTimeMillis_full));
 
-    // Check that full-scan is 5 times slower than index-scan.
-    assertTrue((elapsedTimeMillis_full/3) > elapsedTimeMillis_index);
+    // Do performance testing ONLY in RELEASE build.
+    if (TestUtils.isReleaseBuild()) {
+      // Check that full-scan is 5 times slower than index-scan.
+      assertTrue((elapsedTimeMillis_full/3.0) >= elapsedTimeMillis_index);
+    }
 
     // Scenarios 2: Full scan and check the time. Attribute "j1->>a_column" is not indexed
     // even though column "a_column" is indexed.
@@ -85,8 +86,11 @@ public class TestJsonIndex extends BaseCQLTest {
     elapsedTimeMillis_full = System.currentTimeMillis() - runtimeMillis;
     LOG.info(String.format("Full scan query: Elapsed time = %d msecs", elapsedTimeMillis_full));
 
-    // Check that full-scan is slower than index-scan.
-    assertTrue((elapsedTimeMillis_full/3.0) > elapsedTimeMillis_index);
+    // Do performance testing ONLY in RELEASE build.
+    if (TestUtils.isReleaseBuild()) {
+      // Check that full-scan is slower than index-scan.
+      assertTrue((elapsedTimeMillis_full/3.0) >= elapsedTimeMillis_index);
+    }
   }
 
   @Test

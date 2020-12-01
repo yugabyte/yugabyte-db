@@ -103,7 +103,7 @@ class PgMiniMasterFailoverTest : public PgMiniTest {
   }
 };
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
@@ -113,7 +113,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
   ASSERT_EQ(value, "hello");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
   constexpr int kKeys = 100;
   auto conn = ASSERT_RESULT(Connect());
 
@@ -143,7 +143,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(With)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(With)) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
@@ -455,11 +455,11 @@ void PgMiniTest::TestRowLockConflictMatrix() {
   }
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(RowLockConflictMatrix)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrix)) {
   TestRowLockConflictMatrix();
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
   PGConn read_conn = ASSERT_RESULT(Connect());
   PGConn setup_conn = ASSERT_RESULT(Connect());
   PGConn write_conn = ASSERT_RESULT(Connect());
@@ -529,10 +529,10 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableReadOnly)) {
 
 void AssertAborted(const Status& status) {
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Transaction aborted");
+  ASSERT_STR_CONTAINS(status.ToString(), "aborted");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SelectModifySelect)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SelectModifySelect)) {
   {
     auto read_conn = ASSERT_RESULT(Connect());
     auto write_conn = ASSERT_RESULT(Connect());
@@ -909,6 +909,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
   auto new_master = cluster_->leader_mini_master();
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
+  // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
   // Ensure we can still access the colocated DB on restart.
   {
     PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1177,24 +1179,26 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
       )#"));
     ASSERT_OK(conn.Execute("create index on events_backwardscan (inserted asc);"));
 
-    ASSERT_OK(conn.Execute(R"#(
-        insert into events_backwardscan
+    for (int day = 1; day <= 31; ++day) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          insert into events_backwardscan
 
-        select
-          'log',
-          'src',
-          t,
-          t,
-          '{}'
+          select
+            'log',
+            'src',
+            t,
+            t,
+            '{}'
 
-        from generate_series(
-          timestamp '2020-01-01',
-          timestamp '2020-02-01',
-          interval  '1 minute'
-        )
+          from generate_series(
+            timestamp '2020-01-$0 00:00:00',
+            timestamp '2020-01-$0 23:59:59',
+            interval  '1 minute'
+          )
 
-        as t(day);
-    )#"));
+          as t(day);
+      )#", day));
+    }
 
     boost::optional<PGConn> uncommitted_intents_conn;
     if (uncommitted_intents) {

@@ -176,6 +176,10 @@ DEFINE_bool(client_suppress_created_logs, false,
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
+DEFINE_int32(backfill_index_client_rpc_timeout_ms, 60 * 60 * 1000, // 60 min.
+             "Timeout for BackfillIndex RPCs from client to master.");
+TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
+
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
 
@@ -496,9 +500,10 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->BackfillIndex(this, YBTableName(), table_id, deadline);
+Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
+  auto deadline = (CoarseMonoClock::Now()
+                   + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
+  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
@@ -709,6 +714,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
+                                 const boost::optional<TransactionMetadata>& txn,
                                  const bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
@@ -727,6 +733,9 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   }
   if (next_pg_oid) {
     req.set_next_pg_oid(*next_pg_oid);
+  }
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
   }
   req.set_colocated(colocated);
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
@@ -763,7 +772,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   }
 
   Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                             source_namespace_id, next_pg_oid, colocated);
+                             source_namespace_id, next_pg_oid, boost::none /* txn */, colocated);
   if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
     return Status::OK();
   }

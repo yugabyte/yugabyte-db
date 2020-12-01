@@ -650,6 +650,10 @@ YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t writ
   }
 }
 
+YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_backfill) {
+  return ToYBCStatus(pgapi->InsertStmtSetIsBackfill(handle, is_backfill));
+}
+
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,

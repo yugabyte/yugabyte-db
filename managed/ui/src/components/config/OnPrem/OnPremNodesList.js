@@ -209,7 +209,7 @@ class OnPremNodesList extends Component {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
             You need to pre-provision your nodes, Please execute the following script on the
-            YugaWare host machine once for each instance that you add here.
+            Yugabyte Platform host machine once for each instance that you add here.
             <YBCodeBlock>
               {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}
               <b>{'<IP Address> '}</b>
@@ -226,46 +226,46 @@ class OnPremNodesList extends Component {
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions.map(function (regionItem, idx) {
-        const zoneOptions = regionItem.zones.map(function (zoneItem, zoneIdx) {
-          return (
-            <option key={zoneItem + zoneIdx} value={zoneItem.code}>
-              {zoneItem.code}
+          const zoneOptions = regionItem.zones.map(function (zoneItem, zoneIdx) {
+            return (
+              <option key={zoneItem + zoneIdx} value={zoneItem.code}>
+                {zoneItem.code}
+              </option>
+            );
+          });
+          const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
+            return (
+              <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
+                {machineTypeItem.instanceTypeCode}
+              </option>
+            );
+          });
+          zoneOptions.unshift(
+            <option key={-1} value={''}>
+              Select
             </option>
           );
-        });
-        const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
-          return (
-            <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
-              {machineTypeItem.instanceTypeCode}
+          machineTypeOptions.unshift(
+            <option key={-1} value={''}>
+              Select
             </option>
           );
-        });
-        zoneOptions.unshift(
-          <option key={-1} value={''}>
-            Select
-          </option>
-        );
-        machineTypeOptions.unshift(
-          <option key={-1} value={''}>
-            Select
-          </option>
-        );
-        return (
-          <div key={`instance${idx}`}>
-            <div className="instance-region-type">{regionItem.code}</div>
-            <div className="form-field-grid">
-              <FieldArray
-                name={`instances.${regionItem.code}`}
-                component={InstanceTypeForRegion}
-                zoneOptions={zoneOptions}
-                machineTypeOptions={machineTypeOptions}
-                useHostname={useHostname}
-                formType={'modal'}
-              />
+          return (
+            <div key={`instance${idx}`}>
+              <div className="instance-region-type">{regionItem.code}</div>
+              <div className="form-field-grid">
+                <FieldArray
+                  name={`instances.${regionItem.code}`}
+                  component={InstanceTypeForRegion}
+                  zoneOptions={zoneOptions}
+                  machineTypeOptions={machineTypeOptions}
+                  useHostname={useHostname}
+                  formType={'modal'}
+                />
+              </div>
             </div>
-          </div>
-        );
-      })
+          );
+        })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
@@ -274,7 +274,7 @@ class OnPremNodesList extends Component {
     }?`;
     const modalAddressSpecificText = useHostname ? 'hostnames' : 'IP addresses';
     return (
-      <div>
+      <div className="onprem-node-instances">
         <span className="buttons pull-right">
           <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList} />
         </span>
@@ -282,7 +282,7 @@ class OnPremNodesList extends Component {
         <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
           On-Premises Datacenter Config
         </YBBreadcrumb>
-        <h3 className="no-top-margin">Instances</h3>
+        <h3 className="onprem-node-instances__title">Instances</h3>
 
         {provisionMessage}
 

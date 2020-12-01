@@ -70,18 +70,18 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 # What's being worked on?
 
-> This section has been updated on **Oct 28, 2020**.
+> This section has been updated on **Nov 30, 2020**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.5 latest release** is expected in **Nov 2020**, the **v2.4 stable release** is expected in **Jan 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.5 latest release** was released on **Nov 12, 2020**, the **v2.4 stable release** is expected in **Jan 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | Follower reads in YSQL | DONE | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
 | YSQL cluster administration features - Node-Level statistics | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
 | Support loading large data sets into YSQL using `COPY` | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5241) | Improving transactions which have a very large number of operations, as well as provide various options to batch load data more efficiently
-| Database runtime activity monitoring | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
+| Database runtime activity monitoring | DONE  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.5           |                 |               |
 | [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) | YCQL already supports online schema changes |
 | [Support for most `ALTER TABLE` variants](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |

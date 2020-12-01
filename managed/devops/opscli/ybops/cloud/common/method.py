@@ -24,7 +24,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, scp_package_to_tmp
+from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
 
 
 class AbstractMethod(object):
@@ -206,6 +206,11 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(DestroyInstancesMethod, self).__init__(base_command, "destroy")
 
+    def add_extra_args(self):
+        super(DestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
+
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
         self.cloud.setup_ansible(args).run("destroy-instance.yml", self.extra_vars)
@@ -358,6 +363,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument('--remote_package_path', default=None,
+                                 help="Path to download thirdparty packages "
+                                      "for itest. Only for AWS/onprem")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -384,6 +392,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
         if args.node_exporter_user:
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
+        if args.remote_package_path:
+            self.extra_vars.update({"remote_package_path": args.remote_package_path})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -625,7 +635,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     self.cloud.setup_ansible(args).run(
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
                 else:
-                    scp_package_to_tmp(
+                    scp_to_tmp(
                         args.package,
                         self.extra_vars["private_ip"],
                         self.extra_vars["ssh_user"],
@@ -691,7 +701,7 @@ class ControlInstanceMethod(AbstractInstancesMethod):
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot run ctl commands"
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot run ctl commands"
                                     .format(args.search_pattern))
 
         if host_info['server_type'] != self.YB_SERVER_TYPE:

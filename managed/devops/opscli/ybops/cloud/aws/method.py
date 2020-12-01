@@ -123,14 +123,15 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args)
+        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
 
         self.extra_vars.update({
             "cloud_subnet": host_info["subnet"],
-            "cloud_region": host_info["region"]
+            "cloud_region": host_info["region"],
+            "private_ip": host_info['private_ip']
         })
 
         super(AwsDestroyInstancesMethod, self).callback(args)

@@ -406,23 +406,28 @@ class YBTransaction::Impl final {
     return read_point_.IsRestartRequired();
   }
 
-  std::shared_future<TransactionMetadata> TEST_GetMetadata() {
+  std::shared_future<Result<TransactionMetadata>> GetMetadata() {
     std::unique_lock<std::mutex> lock(mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
-    metadata_future_ = std::shared_future<TransactionMetadata>(metadata_promise_.get_future());
+    metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
+        metadata_promise_.get_future());
     if (!ready_) {
       auto transaction = transaction_->shared_from_this();
       waiters_.push_back([this, transaction](const Status& status) {
-        // OK to crash here, because we are in test
-        CHECK_OK(status);
-        metadata_promise_.set_value(metadata_);
+        WARN_NOT_OK(status, "Transaction request failed");
+        if (status.ok()) {
+          metadata_promise_.set_value(metadata_);
+        } else {
+          metadata_promise_.set_value(status);
+        }
       });
       lock.unlock();
       RequestStatusTablet(TransactionRpcDeadline());
+    } else {
+      metadata_promise_.set_value(metadata_);
     }
-    metadata_promise_.set_value(metadata_);
     return metadata_future_;
   }
 
@@ -1010,8 +1015,8 @@ class YBTransaction::Impl final {
   std::mutex mutex_;
   TabletStates tablets_;
   std::vector<Waiter> waiters_;
-  std::promise<TransactionMetadata> metadata_promise_;
-  std::shared_future<TransactionMetadata> metadata_future_;
+  std::promise<Result<TransactionMetadata>> metadata_promise_;
+  std::shared_future<Result<TransactionMetadata>> metadata_future_;
   size_t running_requests_ = 0;
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ = false;
@@ -1139,8 +1144,8 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
   return impl_->FinishChild();
 }
 
-std::shared_future<TransactionMetadata> YBTransaction::TEST_GetMetadata() const {
-  return impl_->TEST_GetMetadata();
+std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata() const {
+  return impl_->GetMetadata();
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {

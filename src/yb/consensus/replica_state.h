@@ -448,6 +448,9 @@ class ReplicaState {
 
   PendingOperations::iterator FindPendingOperation(int64_t index);
 
+  // Checks whether first pending operation matches last committed op index + 1.
+  void CheckPendingOperationsHead() const;
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.

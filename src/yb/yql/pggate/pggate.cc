@@ -107,12 +107,12 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
   PgsqlExpressionPB* expr_pb = read_req->add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
   auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));
-  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
   // Postgres uses SELECT FOR KEY SHARE query for FK check.
   // Use same lock level.
   PgExecParameters exec_params = doc_op->ExecParameters();
   exec_params.rowmark = ROW_MARK_KEYSHARE;
-  doc_op->ExecuteInit(&exec_params);
+  RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
+  RETURN_NOT_OK(static_cast<PgDocOp*>(doc_op.get())->PopulateDmlByYbctidOps(&ybctids));
   RETURN_NOT_OK(doc_op->Execute());
   std::vector<std::string> result;
   result.reserve(ybctids.size());
@@ -378,6 +378,9 @@ Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateDatabase>(pg_session_, database_name, database_oid,
                                                  source_database_oid, next_oid, colocated);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -505,6 +508,9 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -994,6 +1000,15 @@ Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime w
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   RETURN_NOT_OK(down_cast<PgInsert*>(handle)->SetWriteTime(write_time));
+  return Status::OK();
+}
+
+Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgInsert*>(handle)->SetIsBackfill(is_backfill);
   return Status::OK();
 }
 

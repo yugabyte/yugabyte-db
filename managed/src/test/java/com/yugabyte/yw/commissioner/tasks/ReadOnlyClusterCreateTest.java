@@ -94,6 +94,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   }
 
   List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE = ImmutableList.of(
+      TaskType.PrecheckNode,
       TaskType.AnsibleSetupServer,
       TaskType.AnsibleUpdateNodeInfo,
       TaskType.AnsibleConfigureServers,

@@ -365,7 +365,6 @@ DefineIndex(Oid relationId,
 	LockRelId	heaprelid;
 	LOCKMODE	lockmode;
 	int			i;
-	YBIndexPermissions actual_index_permissions;
 	bool		is_indexed_table_colocated = false;
 
 	/*
@@ -452,17 +451,6 @@ DefineIndex(Oid relationId,
 	 * supported.  See issue #6215.
 	 */
 	if (is_indexed_table_colocated)
-		stmt->concurrent = false;
-	/*
-	 * Backfilling unique indexes is currently not supported.  This is desired
-	 * when there would be no concurrency issues (e.g. `CREATE TABLE ... (...
-	 * UNIQUE (...))`).  However, it is not desired in cases where there could
-	 * be concurrency issues (e.g. `CREATE UNIQUE INDEX ...`, `ALTER TABLE ...
-	 * ADD UNIQUE (...)`).  For now, just use the fast path in all cases.
-	 * TODO(jason): support backfill for unique indexes, and use the online
-	 * path for the appropriate statements (issue #4899).
-	 */
-	if (stmt->concurrent && stmt->unique)
 		stmt->concurrent = false;
 
 	/*
@@ -1346,15 +1334,6 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
-	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
-														 relationId,
-														 indexRelationId,
-														 YB_INDEX_PERM_READ_WRITE_AND_DELETE,
-														 &actual_index_permissions));
-	if (actual_index_permissions != YB_INDEX_PERM_READ_WRITE_AND_DELETE)
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("index backfill failed")));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry

@@ -406,6 +406,9 @@ message SysTablesEntryPB {
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
   optional IndexInfoPB fully_applied_index_info = 27;
+
+  // Optional: Table dependent upon transaction success (abort removes table). Used by YSQL.
+  optional TransactionMetadataPB transaction = 29;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -432,6 +435,9 @@ message SysNamespaceEntryPB {
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
+
+  // Optional: Namespace dependent upon transaction success (abort removes NS). Used by YSQL.
+  optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
 }
@@ -906,6 +912,9 @@ message CreateTableRequestPB {
 
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
+
+ // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 20;
 }
 
 message CreateTableResponsePB {
@@ -950,12 +959,15 @@ message IsTruncateTableDoneResponsePB {
 
 message BackfillIndexRequestPB {
   // The index to backfill.
-  optional TableIdentifierPB table_identifier = 1;
+  optional TableIdentifierPB index_identifier = 1;
 }
 
 message BackfillIndexResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+
+  // The indexed table to backfill.
+  optional TableIdentifierPB table_identifier = 2;
 }
 
 // Delete table request (including index table).
@@ -1392,6 +1404,8 @@ message CreateNamespaceRequestPB {
   optional bytes source_namespace_id = 5; // namespace id of the source database to copy from.
   optional uint32 next_pg_oid = 6; // Next oid to assign. Ignored when source_namespace_id is given
                                    // and the next_pg_oid from source namespace will be used.
+ // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 8;
 
   // True if the namespace is colocated.
   optional bool colocated = 7 [ default = false ];
@@ -1611,6 +1625,8 @@ message RolePermissionInfoPB {
   optional uint32 all_keyspaces_permissions = 2;
   optional uint32 all_roles_permissions = 3;
   repeated ResourcePermissionInfoPB resource_permissions = 4;
+  optional string salted_hash = 5;
+  optional bool can_login = 6;
 }
 
 message GetPermissionsResponsePB {

@@ -79,9 +79,9 @@ export default class NodeDetails extends Component {
 
     const nodesMetrics =
       getPromiseState(universePerNodeMetrics).isSuccess() &&
-      isNonEmptyObject(universePerNodeMetrics.data) &&
-      isNonEmptyObject(universePerNodeMetrics.data[Object.keys(universePerNodeMetrics.data)[0]]) &&
-      universePerNodeMetrics.data[Object.keys(universePerNodeMetrics.data)[0]];
+      isNonEmptyObject(universePerNodeMetrics.data) &&  
+      Object.assign({}, ...Object.values(universePerNodeMetrics.data));
+
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = '-';
       let nodeAlive = false;
@@ -185,6 +185,7 @@ export default class NodeDetails extends Component {
           providerUUID={primaryCluster.userIntent.provider}
           clusterType="primary"
           customer={customer}
+          currentUniverse={currentUniverse}
         />
         {readOnlyCluster && (
           <NodeDetailsTable

@@ -573,11 +573,12 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   for (const auto& column_value : request_.column_values()) {
     ColumnId column_id(column_value.column_id());
     if (key_column_ids.count(column_id) > 0) {
-      auto value = table_row.GetValue(column_id);
-      if (value && *value != column_value.expr().value()) {
+      boost::optional<const QLValuePB&> existing_value = table_row.GetValue(column_id);
+      const QLValuePB& new_value = column_value.expr().value();
+      if (existing_value && *existing_value != new_value) {
         VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
-                << "\nExisting: " << yb::ToString(*value)
-                << " vs New: " << yb::ToString(column_value.expr().value())
+                << "\nExisting: " << yb::ToString(*existing_value)
+                << " vs New: " << yb::ToString(new_value)
                 << "\nUsed read time as " << yb::ToString(data.read_time);
         DVLOG(3) << "DocDB is now:\n"
                  << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());

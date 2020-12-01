@@ -25,6 +25,7 @@ class LibPqTestBase : public PgWrapperTestBase {
   void SetUp() override;
   Result<PGConn> Connect();
   Result<PGConn> ConnectToDB(const string& db_name);
+  Result<PGConn> ConnectToDBAsUser(const string& db_name, const string& user);
   static bool TransactionalFailure(const Status& status);
 };
 

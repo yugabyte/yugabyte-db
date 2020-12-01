@@ -110,7 +110,7 @@ Default: Same value as `--fs_data_dirs`
 
 Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
-Default: `50000` (50,000 µs = 50ms)
+Default: `200000` (200,000 µs = 200ms)
 
 ##### --rpc_bind_addresses
 
@@ -556,6 +556,12 @@ Default: `true`
 Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
 
 Default: `false`
+
+##### --ycql_enable_audit_log
+
+Set this flag to `true` to enable audit logging for the universe.
+
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/ycql).
 
 ---
 

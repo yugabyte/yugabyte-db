@@ -98,6 +98,13 @@ const customStyles: Styles = {
     fontSize: '16px',
     fontWeight: 400,
     fontFamily: '"Source Sans Pro", sans-serif'
+  }),
+  groupHeading: (provided) => ({
+    ...provided,
+    color: '#546371',
+    fontSize: '16px',
+    fontWeight: 700,
+    fontFamily: '"Source Sans Pro", sans-serif'
   })
 };
 

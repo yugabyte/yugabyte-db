@@ -15,7 +15,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -171,7 +174,7 @@ public abstract class AbstractTaskBase implements ITask {
       CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
       Customer customer = Customer.get(task.getCustomerUUID());
       ObjectNode notificationData = Json.newObject()
-        .put("alertname", "Backup failure")
+        .put("alert_name", "Backup failure")
         .put("task_type", task.getType().name())
         .put("target_type", task.getTarget().name())
         .put("target_name", task.getNotificationTargetName())

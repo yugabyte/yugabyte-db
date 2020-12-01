@@ -656,7 +656,7 @@ class RocksDBPatcher::Impl {
           continue;
         }
         auto& consensus_frontier = down_cast<ConsensusFrontier&>(**user_frontier);
-        if (consensus_frontier.op_id()) {
+        if (!consensus_frontier.op_id().empty()) {
           consensus_frontier.set_op_id(OpId());
           modified = true;
         }

@@ -240,4 +240,33 @@ public class TestPgForeignKey extends BasePgSQLTest {
       statement.execute("COMMIT");
     }
   }
+
+  private void testRowLock(int pgIsolationLevel) throws Exception {
+    try (Connection extraConnection = getConnectionBuilder().connect();
+         Statement stmt = connection.createStatement();
+         Statement extraStmt = extraConnection.createStatement()) {
+      connection.setTransactionIsolation(pgIsolationLevel);
+      extraConnection.setTransactionIsolation(pgIsolationLevel);
+      stmt.execute("CREATE TABLE parent(k INT PRIMARY KEY)");
+      stmt.execute("CREATE TABLE child(k INT PRIMARY KEY, v INT REFERENCES parent(k))");
+      stmt.execute("INSERT INTO parent VALUES (1)");
+      stmt.execute("BEGIN");
+      stmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
+
+      extraStmt.execute("BEGIN");
+      runInvalidQuery(extraStmt,
+          "INSERT INTO child VALUES(1, 1)",
+          "Conflicts with higher priority transaction");
+    }
+  }
+
+  @Test
+  public void testRowLockSerializableIsolation() throws Exception {
+    testRowLock(Connection.TRANSACTION_SERIALIZABLE);
+  }
+
+  @Test
+  public void testRowLockSnapshotIsolation() throws Exception {
+    testRowLock(Connection.TRANSACTION_REPEATABLE_READ);
+  }
 }

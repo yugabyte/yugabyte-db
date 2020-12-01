@@ -2572,7 +2572,7 @@ ExecBRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 
 		if (newslot->tts_tupleDescriptor != tupdesc)
 			ExecSetSlotDescriptor(newslot, tupdesc);
-		ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+		ExecStoreHeapTuple(newtuple, newslot, false);
 		slot = newslot;
 	}
 	return slot;
@@ -2653,7 +2653,7 @@ ExecIRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 
 		if (newslot->tts_tupleDescriptor != tupdesc)
 			ExecSetSlotDescriptor(newslot, tupdesc);
-		ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+		ExecStoreHeapTuple(newtuple, newslot, false);
 		slot = newslot;
 	}
 	return slot;
@@ -3079,7 +3079,7 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 
 		if (newslot->tts_tupleDescriptor != tupdesc)
 			ExecSetSlotDescriptor(newslot, tupdesc);
-		ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+		ExecStoreHeapTuple(newtuple, newslot, false);
 		slot = newslot;
 	}
 	return slot;
@@ -3187,7 +3187,7 @@ ExecIRUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 
 		if (newslot->tts_tupleDescriptor != tupdesc)
 			ExecSetSlotDescriptor(newslot, tupdesc);
-		ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+		ExecStoreHeapTuple(newtuple, newslot, false);
 		slot = newslot;
 	}
 	return slot;
@@ -3521,7 +3521,7 @@ TriggerEnabled(EState *estate, ResultRelInfo *relinfo,
 			oldslot = estate->es_trig_oldtup_slot;
 			if (oldslot->tts_tupleDescriptor != tupdesc)
 				ExecSetSlotDescriptor(oldslot, tupdesc);
-			ExecStoreTuple(oldtup, oldslot, InvalidBuffer, false);
+			ExecStoreHeapTuple(oldtup, oldslot, false);
 		}
 		if (HeapTupleIsValid(newtup))
 		{
@@ -3535,7 +3535,7 @@ TriggerEnabled(EState *estate, ResultRelInfo *relinfo,
 			newslot = estate->es_trig_newtup_slot;
 			if (newslot->tts_tupleDescriptor != tupdesc)
 				ExecSetSlotDescriptor(newslot, tupdesc);
-			ExecStoreTuple(newtup, newslot, InvalidBuffer, false);
+			ExecStoreHeapTuple(newtup, newslot, false);
 		}
 
 		/*

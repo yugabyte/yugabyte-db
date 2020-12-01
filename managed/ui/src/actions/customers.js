@@ -420,7 +420,7 @@ export function fetchCustomerCount() {
 
 export function getAlerts() {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alerts`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alerts/active`);
   return {
     type: GET_ALERTS,
     payload: request

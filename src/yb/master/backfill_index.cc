@@ -381,6 +381,13 @@ Status MultiStageAlterTable::StartBackfillingData(
     auto l = indexed_table->LockForWrite();
     auto &indexed_table_data = *l->mutable_data();
     CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+    if (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE) {
+      auto& indexed_table_pb = indexed_table_data.pb;
+      indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
+                                   Substitute("Alter table version=$0 ts=$1",
+                                              indexed_table_pb.version(),
+                                              LocalTimeAsString()));
+    }
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
     RETURN_NOT_OK_PREPEND(
@@ -470,10 +477,9 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         indexes_to_backfill.emplace_back(idx_pb);
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
         indexes_to_delete.emplace_back(idx_pb);
-      // For YSQL, INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING is considered a terminal state.
-      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE &&
-                 !(is_ysql_table &&
-                   idx_pb.index_permissions() == INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING)) {
+      // For YSQL, there should never be indexes to update from master side because postgres drives
+      // permission changes.
+      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE && !is_ysql_table) {
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
@@ -496,8 +502,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   //
   // This changes how we treat indexes_to_foo:
   //
-  // - indexes_to_update shouldn't cause moving on to the next permission because we don't want
-  //   master to control that.  Do nothing when nonempty.
+  // - indexes_to_update should always be empty because we never want master to set index
+  //   permissions.
   // - indexes_to_delete is impossible to be nonempty, and, in the future, when we do use
   //   INDEX_PERM_INDEX_UNUSED, we want to use some other delete trigger that makes sure no
   //   transactions are left using the index.  Prepare for that by doing nothing when nonempty.
@@ -505,16 +511,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   //   INDEX_PERM_DO_BACKFILL so that backfill resumes on master leader changes.  Prepare for that
   //   by handling indexes_to_backfill like for YCQL.
   //
-  // We still need to know indexes_to_foo.empty for ClearAlteringState logic since we want to keep
-  // the table as ALTERING if the index is in a transient state.
   // TODO(jason): when using INDEX_PERM_DO_BACKFILL, update this comment (issue #6218).
-  if (is_ysql_table) {
-    if (indexes_to_backfill.empty()) {
-      return Status::OK();
-    }
-    indexes_to_update.clear();
-    indexes_to_delete.clear();
-  }
 
   if (!indexes_to_update.empty()) {
     Result<bool> permissions_updated =
@@ -756,6 +753,25 @@ void BackfillTable::Done(const Status& s) {
     // Move on to ABORTED permission.
     LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << s;
     if (!done_.exchange(true)) {
+      // Set error message.
+      {
+        auto l = indexed_table_->LockForWrite();
+        auto& indexed_table_data = *l->mutable_data();
+        auto& indexed_table_pb = indexed_table_data.pb;
+        for (int i = 0; i < indexed_table_pb.indexes_size(); i++) {
+          IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
+          // TODO(jason): fix this when we start batching indexes (issue #4785).
+          if (idx_pb->table_id() == indexes()[0].table_id()) {
+            idx_pb->set_backfill_error_message(s.message().ToBuffer());
+            break;
+          }
+        }
+        WARN_NOT_OK(master_->catalog_manager()->sys_catalog_->UpdateItem(
+                        indexed_table_.get(), leader_term()),
+                    "Could not add error message.");
+        l->Commit();
+      }
+      // Now start aborting.
       WARN_NOT_OK(AlterTableStateToAbort(),
                   "Failed to mark backfill as failed.");
     } else {

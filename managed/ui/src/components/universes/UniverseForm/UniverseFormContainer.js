@@ -458,6 +458,9 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
+    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
+      errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
+    }
   }
 
   if (isEmptyObject(currentProvider)) {

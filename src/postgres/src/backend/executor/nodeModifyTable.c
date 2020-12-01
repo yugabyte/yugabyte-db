@@ -988,7 +988,7 @@ ldelete:;
 
 			if (slot->tts_tupleDescriptor != RelationGetDescr(resultRelationDesc))
 				ExecSetSlotDescriptor(slot, RelationGetDescr(resultRelationDesc));
-			ExecStoreTuple(&deltuple, slot, InvalidBuffer, false);
+			ExecStoreHeapTuple(&deltuple, slot, false);
 		}
 
 		rslot = ExecProcessReturning(resultRelInfo, slot, planSlot);
@@ -1678,7 +1678,7 @@ yb_skip_transaction_control_check:
 	if (IsYugaByteEnabled())
 	{
 		oldtuple = ExecMaterializeSlot(estate->yb_conflict_slot);
-		ExecStoreTuple(oldtuple, mtstate->mt_existing, buffer, false);
+		ExecStoreBufferHeapTuple(oldtuple, mtstate->mt_existing, buffer);
 		planSlot->tts_tuple->t_ybctid = oldtuple->t_ybctid;
 	}
 	else
@@ -1699,7 +1699,7 @@ yb_skip_transaction_control_check:
 		ExecCheckHeapTupleVisible(estate, &tuple, buffer);
 
 		/* Store target's existing tuple in the state's dedicated slot */
-		ExecStoreTuple(&tuple, mtstate->mt_existing, buffer, false);
+		ExecStoreBufferHeapTuple(&tuple, mtstate->mt_existing, buffer);
 	}
 
 	/*
@@ -2698,7 +2698,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		mtstate->ps.plan->targetlist = (List *) linitial(node->returningLists);
 
 		/* Set up a slot for the output of the RETURNING projection(s) */
-		ExecInitResultTupleSlotTL(estate, &mtstate->ps);
+		ExecInitResultTupleSlotTL(&mtstate->ps);
 		slot = mtstate->ps.ps_ResultTupleSlot;
 
 		/* Need an econtext too */
@@ -2728,7 +2728,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * expects one (maybe should change that?).
 		 */
 		mtstate->ps.plan->targetlist = NIL;
-		ExecInitResultTupleSlotTL(estate, &mtstate->ps);
+		ExecInitResultTypeTL(&mtstate->ps);
 
 		mtstate->ps.ps_ExprContext = NULL;
 	}
@@ -3019,7 +3019,8 @@ ExecEndModifyTable(ModifyTableState *node)
 	/*
 	 * clean out the tuple table
 	 */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+	if (node->ps.ps_ResultTupleSlot)
+		ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
 	/*
 	 * Terminate EPQ execution if active

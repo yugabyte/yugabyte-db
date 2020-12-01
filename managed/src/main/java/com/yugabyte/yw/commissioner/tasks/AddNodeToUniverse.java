@@ -97,6 +97,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
         }
 
+        createPrecheckTasks(node)
+            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
         createSetupServerTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 

@@ -19,6 +19,7 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/intent_aware_iterator.h"
 
 namespace yb {
 
@@ -60,6 +61,18 @@ class PgsqlWriteOperation :
   bool result_is_single_empty_row() const {
     return result_rows_ == 1 && result_buffer_.size() == sizeof(int64_t);
   }
+
+  Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
+  Result<bool> HasDuplicateUniqueIndexValue(
+      const DocOperationApplyData& data,
+      yb::docdb::Direction direction);
+  Result<bool> HasDuplicateUniqueIndexValue(
+      const DocOperationApplyData& data,
+      ReadHybridTime read_time);
+  Result<HybridTime> FindOldestOverwrittenTimestamp(
+      IntentAwareIterator* iter,
+      const SubDocKey& sub_doc_key,
+      HybridTime min_hybrid_time);
 
   // Execute write.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
@@ -178,11 +191,6 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     bool unknown_ybctid_allowed,
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
-
-  CHECKED_STATUS GetPartitionIntent(
-      const Schema& schema,
-      const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-      KeyValueWriteBatchPB* out);
 
   CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row,
                                    faststring *result_buffer);

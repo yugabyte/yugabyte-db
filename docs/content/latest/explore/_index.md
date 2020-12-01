@@ -48,17 +48,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="global-distribution/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Global distribution</div>
-      </div>
-      <div class="body">
-        Multi-region deployments made easy.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="auto-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
@@ -69,6 +58,30 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="transactions/">
+      <div class="head">
+        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="title">Transactions</div>
+      </div>
+      <div class="body">
+        Explore distributed transactions support and other concurrency control features in YugabyteDB.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
+      <div class="head">
+        <div class="icon"><i class="far fa-file-code"></i></div>
+        <div class="title">JSON Support</div>
+      </div>
+      <div class="body">
+        JSON document data types and support for built-in functions, indexes and constraints.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="follower-reads/">
       <div class="head">
@@ -77,17 +90,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
       <div class="body">
         Reduce read latency by reading from follower replicas.
-      </div>
-    </a>
-  </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="observability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Observabililty</div>
-      </div>
-      <div class="body">
-        Observe metrics at every layer of the database using Prometheus.
       </div>
     </a>
   </div>
@@ -117,15 +119,28 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="two-data-centers/">
+    <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Two data center (2DC)</div>
+        <div class="title">Multi-Region Deployments</div>
       </div>
       <div class="body">
-        Replicate data changes between two geo-distributed data centers.
+        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="observability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Observabililty</div>
+      </div>
+      <div class="body">
+        Observe metrics at every layer of the database using Prometheus.
+      </div>
+    </a>
+  </div>
+
 
 </div>

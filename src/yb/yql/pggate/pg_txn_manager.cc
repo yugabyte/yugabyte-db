@@ -311,6 +311,10 @@ Result<client::YBSession*> PgTxnManager::GetTransactionalSession() {
   return session_.get();
 }
 
+std::shared_future<Result<TransactionMetadata>> PgTxnManager::GetDdlTxnMetadata() const {
+  return ddl_txn_->GetMetadata();
+}
+
 void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   session_ = nullptr;
@@ -334,7 +338,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
 }
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(bool is_success) {
-  VLOG(2) << __PRETTY_FUNCTION__ << ": ddl_txn_=" << ddl_txn_.get();
+  VLOG(2) << __PRETTY_FUNCTION__ << ": ddl_txn_=" << ddl_txn_.get() << ",is_success=" << is_success;
   RSTATUS_DCHECK(!!ddl_txn_,
           IllegalState, "ExitSeparateDdlTxnMode called when not in a DDL transaction");
   if (is_success) {
