@@ -1003,6 +1003,8 @@ Status ExternalMiniCluster::StartMasters() {
 Status ExternalMiniCluster::WaitForInitDb() {
   const auto start_time = std::chrono::steady_clock::now();
   const auto kTimeout = NonTsanVsTsan(900s, 1800s);
+  int num_timeouts = 0;
+  const int kMaxTimeouts = 10;
   while (true) {
     for (int i = 0; i < opts_.num_masters; i++) {
       auto elapsed_time = std::chrono::steady_clock::now() - start_time;
@@ -1017,7 +1019,16 @@ Status ExternalMiniCluster::WaitForInitDb() {
       rpc.set_timeout(opts_.timeout);
       IsInitDbDoneRequestPB req;
       IsInitDbDoneResponsePB resp;
-      RETURN_NOT_OK(proxy->IsInitDbDone(req, &resp, &rpc));
+      Status status = proxy->IsInitDbDone(req, &resp, &rpc);
+      if (status.IsTimedOut()) {
+        num_timeouts++;
+        LOG(WARNING) << status << " (seen " << num_timeouts << " timeouts so far)";
+        if (num_timeouts == kMaxTimeouts) {
+          LOG(ERROR) << "Reached " << kMaxTimeouts << " timeouts: " << status;
+          return status;
+        }
+        continue;
+      }
       if (resp.has_error() &&
           resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
 

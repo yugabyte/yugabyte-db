@@ -1008,9 +1008,13 @@ set_sanitizer_runtime_options() {
 
   local -r build_root_basename=${BUILD_ROOT##*/}
 
+  # TODO: is YB_COMPILER_TYPE defined here? We could use it to detect if we are using GCC instead of
+  # parsing the build root basename.
+
   # We don't add a hyphen in the end of the following regex, because there is a "tsan_slow" build
   # type.
-  if [[ $build_root_basename =~ ^(asan|tsan) ]]; then
+  if [[ $build_root_basename =~ ^(asan|tsan) &&
+        ! $build_root_basename =~ ^.*-gcc[0-9]*-.*$ ]]; then
     # Suppressions require symbolization. We'll default to using the symbolizer in thirdparty.
     # If ASAN_SYMBOLIZER_PATH is already set but that file does not exist, we'll report that and
     # still use the default way to find the symbolizer.
@@ -1905,6 +1909,40 @@ register_test_artifact_files() {
       done
     ) >>"$YB_TEST_ARTIFACT_LIST_PATH"
   fi
+}
+
+run_cmake_unit_tests() {
+  local old_dir=$PWD
+  cd "$YB_SRC_ROOT"
+
+  ( set -x; cmake -P cmake_modules/YugabyteCMakeUnitTest.cmake )
+
+  local cmake_files=( CMakeLists.txt )
+  local IFS=$'\n'
+  local src_subdir
+  for src_subdir in src ent/src; do
+    ensure_directory_exists "$YB_SRC_ROOT/$src_subdir"
+    cmake_files+=( $( find "$YB_SRC_ROOT/$src_subdir" -name "CMakeLists*.txt" ) )
+  done
+  cmake_files+=( $( find "$YB_SRC_ROOT/cmake_modules" -name "*.cmake" ) )
+
+  local error=false
+  for cmake_file in "${cmake_files[@]}"; do
+    ensure_file_exists "$cmake_file"
+    local disallowed_pattern
+    for disallowed_pattern in YB_USE_ASAN YB_USE_UBSAN YB_USE_TSAN; do
+      if grep -q "$disallowed_pattern" "$cmake_file"; then
+        log "Found disallowed pattern $disallowed_pattern in $cmake_file"
+        error=true
+      fi
+    done
+  done
+  if "$error"; then
+    fatal "Found some disallowed patterns in CMake files"
+  else
+    log "Validated ${#cmake_files[@]} CMake files using light-weight grep checks"
+  fi
+  cd "$old_dir"
 }
 
 # -------------------------------------------------------------------------------------------------
