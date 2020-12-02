@@ -11,6 +11,9 @@ env:
 
 language: C
 dist: xenial
+arch:
+     - amd64
+     - ppc64le
 sudo: required
 
 before_install:
