@@ -94,7 +94,7 @@ from covidcast_fb_survey_results;
 
 - The section [Daily values for regr_r2(), regr_slope(), regr_intercept() for symptoms vs mask-wearing](./daily-regression-analysis/) describes the actual linear regression analysis code.
 
-- The section [Select data for COVID-like symptoms vs mask-wearing by state scatter plot](./symptoms-vs-mask-wearing-by-state/) shows the SQL that lists out the _51_ individual _"(symptoms_pct, mask_wearing_pct)"_ tuples for the day that was arbitrarily chosen for drawing a scatter-plot on top of which the outcome of the regression analysis for that day is drawn.
+- The section [Select the data for COVID-like symptoms vs mask-wearing by state scatter plot](./symptoms-vs-mask-wearing-by-state/) shows the SQL that lists out the _51_ individual _"(symptoms_pct, mask_wearing_pct)"_ tuples for the day that was arbitrarily chosen for drawing a scatter-plot on top of which the outcome of the regression analysis for that day is drawn.
 
 
 

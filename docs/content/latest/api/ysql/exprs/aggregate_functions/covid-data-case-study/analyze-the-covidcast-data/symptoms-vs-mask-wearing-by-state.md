@@ -24,7 +24,7 @@ where survey_date = to_date('2020-10-21', 'yyyy-mm-dd')
 order by 1;
 ```
 
-selects out the data for 21-Oct-2020 so that it can be used to draw a scatter-plot. This is the result:
+selects out the data for 21-Oct-2020 so that they can be used to draw a scatter-plot. This is the result:
 
 ```
  % wearing mask | % with symptoms | state 

@@ -36,11 +36,13 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 </ul>
 
 
-There are two JSON data types supported in YSQL: `json` and `jsonb`. 
+See the section [JSON data types and functionality](../../../api/ysql/datatypes/type_json/) for the YSQL reference documentation on the topic. 
 
 {{< note title="Note" >}}
 The JSON functionality in YSQL is nearly identical to the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html). 
 {{< /note >}}
+
+There are two JSON data types supported in YSQL: `json` and `jsonb`.
 
 * **The `jsonb` type** does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
 
@@ -52,11 +54,10 @@ The JSON functionality in YSQL is nearly identical to the [JSON functionality in
 
 They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
 * The `json` data type stores an exact copy of the input text, which processing functions must reparse on each execution
-* THe `jsonb` data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, since no reparsing is needed. `jsonb` also supports indexing, which can be a significant advantage.
+* The `jsonb` data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, since no reparsing is needed. `jsonb` also supports indexing, which can be a significant advantage.
 {{< /tip >}}
 
-In this article, we will focus only on the `jsonb` type.
-
+This section will focus on only the `jsonb` type.
 
 ## 1. Prerequisites
 
@@ -72,15 +73,15 @@ Connect to the cluster using `ysqlsh` to run through the examples below.
 $ ./bin/ysqlsh
 ```
 
-Next, let us create a simple table `books` which has a primary key and one `jsonb` column `doc` which contains various details about that book.
+Next, create a simple table `books` which has a primary key and one `jsonb` column `doc` which contains various details about that book.
 
-```sql
+```plpgsql
 create table books(k int primary key, doc jsonb not null);
 ```
 
-Next, let us insert some rows which contain details about various books. These details are represented as JSON documents, as shown below.
+Next, insert some rows which contain details about various books. These details are represented as JSON documents, as shown below.
 
-```sql
+```plpgsql
 insert into books(k, doc) values
   (1,
   '{ "ISBN"    : 4582546494267,
@@ -126,7 +127,6 @@ insert into books(k, doc) values
     "title"    : "Joy Luck Club",
     "author"   : {"given_name": "Amy", "family_name": "Tan"},
     "editors"  : ["Ruilin", "Aiping"]}');
-
 ```
 
 {{< note title="Note" >}}
@@ -135,13 +135,13 @@ Some of the rows in the example have some of the keys missing (intentional). But
 
 ## 2. Query JSON documents
 
-Let us list all the rows we inserted using the command below.
+List all the rows thus:
 
-```sql
+```plpgsql
 select * from books;
 ```
 
-You should see the following output.
+This is the result:
 
 ```
 yugabyte=# select * from books;
@@ -158,18 +158,18 @@ yugabyte=# select * from books;
 
 ### Using `->` and `->>`
 
-YSQL has two native operators `->` and `->>` to query JSON documents. The first operator `->` returns a JSON object, while the operator `->>` returns text. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
+YSQL has two native operators, the `->` opertator (see [this section)](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator)) and the `->>` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators)), to query JSON documents. The first operator `->` returns a JSON object, while the operator `->>` returns text. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
 
 
 The example below shows how to select a few attributes from each document.
 
-```sql
+```plpgsql
 SELECT doc->'title' AS book_title, 
        CONCAT(doc->'author'->'family_name', 
               ', ', doc->'author'->'given_name') AS author
     FROM books;
 ```
-You should see the following output:
+This is the result:
 ```
 yugabyte=# SELECT doc->'title' AS book_title,
 yugabyte-#        CONCAT(doc->'author'->'family_name',
@@ -188,12 +188,12 @@ yugabyte-#     FROM books;
 
 Because the -> operator returns an object, you can chain it to inspect deep into a JSON document, as shown below.
 
-```sql
+```plpgsql
 select '{"title": "Macbeth", "author": {"given_name": "William"}}'::jsonb 
   -> 'author' -> 'given_name' as first_name;
 ```
 
-This should produce the following output.
+This is the result:
 
 ```
 yugabyte=# select '{"title": "Macbeth", "author": {"given_name": "William"}}'::jsonb
@@ -206,15 +206,15 @@ yugabyte=# select '{"title": "Macbeth", "author": {"given_name": "William"}}'::j
 
 ### Existence with `?`
 
-The `?` operator can be used to check if a JSON document contains a certain attribute. For example, let us say we want to find a count of the records where the `doc` column contains a property named *genre*. This can be accomplished by running the following statement.
+The `?` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/key-or-value-existence-operators/#the-160-160-160-160-operator)) can be used to check if a JSON document contains a certain attribute. For example, if you want to find a count of the records where the `doc` column contains a property named *genre*,  run the following statement.
 
-```sql
+```plpgsql
 SELECT doc->'title' AS book_title, 
        doc->'genre' as genre 
     FROM books WHERE doc ? 'genre';
 ```
 
-This should produce the following output.
+This is the result:
 
 ```
 yugabyte=# SELECT doc->'title' AS book_title,
@@ -231,9 +231,9 @@ yugabyte-#     FROM books WHERE doc ? 'genre';
 
 ### Containment with `@>`
 
-The containment operator `@>` tests whether one document contains another. For example, let us say we want to find all books that contain the document `{"author": {"given_name": "William"}}` in them (or in other words, the author of the book has the first name *William*). This can be done as shown below.
+The containment operator `@>` (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/containment-operators/)) tests whether one document contains another. If you want to find all books that contain the JSON value `{"author": {"given_name": "William"}}` (in other words, the author of the book has the given name *William*), do this:
 
-```sql
+```plpgsql
 SELECT doc->'title' AS book_title, 
        CONCAT(doc->'author'->'family_name', 
               ', ', doc->'author'->'given_name') AS author
@@ -241,7 +241,7 @@ SELECT doc->'title' AS book_title,
     WHERE doc @> '{"author": {"given_name": "William"}}'::jsonb;
 ```
 
-The output is shown below.
+This is the result:
 
 ```
 yugabyte=# SELECT doc->'title' AS book_title,
@@ -263,13 +263,13 @@ There are a number of ways to update a JSON document, as shown below.
 
 ### Add an attribute
 
-Use the `||` operator to either update or insert the attribute into the existing JSON document. For example, if we wanted to add a `stock` attribute to all the books:
+Use the `||` operator (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/concatenation-operator/)) to either update or insert the attribute into the existing JSON document. For example, if you want to add a `stock` attribute to all the books, do this:
 
-```sql
+```plpgsql
 UPDATE books SET doc = doc || '{"stock": "true"}';
 ```
 
-This would update all documents as shown below:
+This is the result:
 
 ```
 yugabyte=# SELECT doc->'title' AS title, doc->'stock' as stock FROM books;
@@ -282,19 +282,17 @@ yugabyte=# SELECT doc->'title' AS title, doc->'stock' as stock FROM books;
  "Hamlet"                  | "true"
  "Oliver Twist"            | "true"
 (6 rows)
-
-Time: 1.283 ms
 ```
 
 ### Remove an attribute
 
-To remove an attribute, the following SQL statement can be used:
+Use the `-` opertaor (see [this section](../../../api/ysql/datatypes/type_json/functions-operators/remove-operators/#the-160-160-160-160-operator)) to remove an attribute:
 
-```sql
+```plpgsql
 UPDATE books SET doc = doc - 'stock';
 ```
 
-This would remove the field from all the documents, as shown below.
+This will remove the field from all the documents, as shown below.
 
 ```
 yugabyte=# SELECT doc->'title' AS title, doc->'stock' as stock FROM books;
@@ -313,7 +311,7 @@ yugabyte=# SELECT doc->'title' AS title, doc->'stock' as stock FROM books;
 
 To replace an entire document, run the following SQL statement.
 
-```sql
+```plpgsql
 UPDATE books 
     SET doc = '{"ISBN": 4582546494267, "year": 1623, "title": "Macbeth", "author": {"given_name": "William", "family_name": "Shakespeare"}}' 
     WHERE k=1;
@@ -324,18 +322,18 @@ UPDATE books
 YSQL supports a large number of operators and built-in functions that operate on JSON documents. This section highlights a few of these built-in functions.
 
 {{< note title="Note" >}}
-Most of the built-in functions supported by PostgreSQL are supported in YSQL.
+All of the built-in functions supported by PostgreSQL are supported in YSQL.
 
-Check the documentation page for a complete [list of JSON functions and operators](../../../api/ysql/datatypes/type_json/functions-operators/).
+Check the reference documentation for a complete [list of JSON functions and operators](../../../api/ysql/datatypes/type_json/functions-operators/).
 {{< /note >}}
 
 
 ### Expand JSON - `jsonb_each`
 
-Expands the top-level JSON document into a set of key-value pairs, as shown below.
+The [`jsonb_each()`](../../../api/ysql/datatypes/type_json/functions-operators/jsonb-each/) function expands the top-level JSON document into a set of key-value pairs, as shown below.
 
 
-```sql
+```plpgsql
 SELECT jsonb_each(doc) FROM books WHERE k=1;
 ```
 
@@ -354,13 +352,13 @@ yugabyte=# SELECT jsonb_each(doc) FROM books WHERE k=1;
 
 ### Retrieve keys - `jsonb_object_keys`
 
-To retrieve the keys of the top-level JSON document, run the statement shown below.
+The [`jsonb_object_keys()`](../../../api/ysql/datatypes/type_json/functions-operators/jsonb-object-keys/) function retrieves the keys of the top-level JSON document thus:
 
-```sql
+```plpgsql
 SELECT jsonb_object_keys(doc) FROM books WHERE k=1;
 ```
 
-The output is shown below.
+This is the result:
 
 ```
 yugabyte=# SELECT jsonb_object_keys(doc) FROM books WHERE k=1;
@@ -375,13 +373,13 @@ yugabyte=# SELECT jsonb_object_keys(doc) FROM books WHERE k=1;
 
 ### Format JSON - `jsonb_pretty`
 
-By default, a compact representation of the JSON is returned, which is ideal for programmatic purposes. However, output the JSON documents in a more human-readable format, use this pretty print function:
+When you select a `jsonb` (or `json`) value in `ysqlsh`, you see the terse `text` typecast of the value. The  [`jsonb_pretty()`](../../../api/ysql/datatypes/type_json/functions-operators/jsonb-pretty/) function returns a more human-readable format:
 
-```sql
+```plpgsql
 SELECT jsonb_pretty(doc) FROM books WHERE k=1;
 ```
 
-This should produce the following output.
+This is the result:
 
 ```
 yugabyte=# SELECT jsonb_pretty(doc) FROM books WHERE k=1;
@@ -399,12 +397,9 @@ yugabyte=# SELECT jsonb_pretty(doc) FROM books WHERE k=1;
 (1 row)
 ```
 
-
-
-
-
-
 ## 5. Constraints
+
+See the [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/) section.
 
 You can create constraint on `jsonb` data types. Here are a couple of examples.
 
@@ -412,7 +407,7 @@ You can create constraint on `jsonb` data types. Here are a couple of examples.
 
 Here's how to insist that each JSON document is an object:
 
-```sql
+```plpgsql
 alter table books 
 add constraint books_doc_is_object
 check (jsonb_typeof(doc) = 'object');
@@ -422,7 +417,7 @@ check (jsonb_typeof(doc) = 'object');
 
 Here's how to insist that the ISBN is always defined and is a positive 13-digit number:
 
-```sql
+```plpgsql
 alter table books 
 add constraint books_isbn_is_positive_13_digit_number 
 check (
@@ -444,17 +439,17 @@ Indexes are essential to perform efficient lookups by document attributes. Witho
 
 ### Secondary index
 
-Let us say you want to support range queries that reference the value for the *year* attribute. This can be accomplished as shown below:
+If you want to support range queries that reference the value for the *year* attribute, do this:
 
-```sql
+```plpgsql
 CREATE INDEX books_year 
     ON books ((doc->>'year') ASC)
     WHERE doc->>'year' is not null;
 ```
 
-This would make the following query efficient:
+This will make the following query efficient:
 
-```sql
+```plpgsql
 select
   (doc->>'ISBN')::bigint as year,
   doc->>'title'          as title,
@@ -466,11 +461,11 @@ order by 3;
 
 ### Partial and expression indexes
 
-In many cases, we would want to index only those documents that contain the attribute (as opposed to indexing the rows that have a `NULL` value for that attribute). This is a common scenario because not all the documents would have all the attributes defined. This can be achieved using a *partial index*.
+You might want to index only those documents that contain the attribute (as opposed to indexing the rows that have a `NULL` value for that attribute). This is a common scenario because not all the documents would have all the attributes defined. This can be achieved using a *partial index*.
 
-In the previous section where we created a secondary index, not all the books may have the `year` attribute defined. Let us say we want to only index those documents that have a `year` attribute defined, or in other words, the `year` attribute is not `NULL`. This can be achieved using the following partial index.
+In the previous section where you created a secondary index, not all the books may have the `year` attribute defined. Suppose that you want to  index only those documents that have a `NOT NULL` `year` attribute create the following partial index:
 
-```sql
+```plpgsql
 CREATE INDEX books_year 
     ON books ((doc->>'year') ASC)
     WHERE doc->>'year' IS NOT NULL;
@@ -480,13 +475,13 @@ CREATE INDEX books_year
 
 You can create a unique index on the "ISBN" key for the books table as shown below.
 
-```sql
+```plpgsql
 create unique index books_isbn_unq on books((doc->>'ISBN'));
 ```
 
-Inserting a row with a duplicate value would fail as shown below, where we insert a book with a new primary key `k` but an existing ISBN number `4582546494267`.
+Inserting a row with a duplicate value would fail as shown below. The book has a new primary key `k` but an existing ISBN, `4582546494267`.
 
-```
+```plpgsql
 yugabyte=# insert into books values 
            (7, '{  "ISBN"    : 4582546494267, 
                    "title"   : "Fake Book with duplicate ISBN" }');
@@ -501,7 +496,3 @@ Optionally, you can shutdown the local cluster created in Step 1.
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-
-
-
-
