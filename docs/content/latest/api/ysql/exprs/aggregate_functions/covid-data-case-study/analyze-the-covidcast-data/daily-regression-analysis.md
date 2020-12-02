@@ -27,16 +27,9 @@ group by survey_date
 order by survey_date;
 ```
 
-It acts, in turn, on the data for all _51_ states for each day. The semantics of the average mask-wearing percentage and the average percentage of people who know someone in their local community with COVID-like symptoms are straightforward and are included as information that is interesting for revealing a general time-dependent trend. The trend is depressing:
+It acts, in turn, on the data for all _51_ states for each day to show the daily regression analysis. You can understand the results for a particular day by picturing a scatter-plot for that day with mask-wearing (the putative _independent_ variable) along the x-axis and incidence of COVID-like symptoms (the putative _dependent_ variable) along the y-axis. The plot will have _51_ points, one for each state. The values returned by [`regr_slope()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) and [`regr_intercept()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) allow the line that minimizes the [residuals](https://statisticsbyjim.com/glossary/residuals/) through the points to be drawn. And the value returned by [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) is a measure of the noisiness of the data. It's usefulness is somewhat analogous to the variance of these residuals—except that the maximum possible value, _1.0_, indicates a perfect fit (i.e. all the residuals are zero) and successively smaller values indicate larger variance over the set of residuals. A more careful account is given in the section [Functions for linear regression analysis](../../../function-syntax-semantics/linear-regression/). Here's the rule:
 
-- Mask-wearing edges up, in fact monotonically, over the observation period.
-- But the incidence of COVID-like symptoms climbs too, and again monotonically.
-
-The hope would be that increased mask-wearing would lead to reduced incidence of COVID-like symptoms. Indeed, this effect is substantiated, for each individual date, by the regression analysis results across the set of 51 states for that date. So there must be other factors at work that influence the long-term trend of the across-state avaerages over a period of days. But the data at hand cannot shed light on these.
-
-The main point, though, is the daily regression analysis. You can understand this by picturing a scatter-plot for a particular day with mask-wearing (the putative _independent_ variable) along the x-axis and incidence of COVID-like symptoms (the putative _dependent_ variable) along the y-axis. The plot will have _51_ points, one for each state. The values returned by [`regr_slope()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) and [`regr_intercept()`](../../../function-syntax-semantics/linear-regression/regr/#regr-slope-regr-intercept) allow the line that minimizes the [residuals](https://statisticsbyjim.com/glossary/residuals/) through the points to be drawn. And the value returned by [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) is a measure of the noisiness of the data. It's usefulness is somewhat analogous to the variance of these residuals—except that the maximum possible value, _1.0_, indicates a perfect fit (i.e. all the residuals are zero) and successively smaller values indicate larger variance over the set of residuals. A more careful account is given in the section [Functions for linear regression analysis](../../../function-syntax-semantics/linear-regression/). Here's the rule:
-
-- When [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) returns a value of _0.7_, it means that _70%_ of the relationship of the y-axis variable (the first actual in the function invocation) to the x-axis variable (the second actual in the function invocation) is explained by a simple _"y = m*x + c"_ linear dependence—and that the remaining _30%_ is unexplained. A value greater than about _60%_ is generally taken to indicate that the y-axis variable really does depend upon the x-axis variable.
+- When [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) returns a value of _0.6_, it means that _60%_ of the relationship of the y-axis variable (the first actual in the function invocation) to the x-axis variable (the second actual in the function invocation) is explained by a simple _"y = m*x + c"_ linear dependence—and that the remaining _40%_ is unexplained. A value greater than about _60%_ is generally taken to indicate that the y-axis variable really does depend upon the x-axis variable.
 
 Such a scatter-plot for a particular arbitrarily selected day in the middle of the observation period, with the fitted line drawn in, is shown in the section [Average COVID-like symptoms vs average mask-wearing by state scatter plot](../scatter-plot-for-2020-10-21/).
 
@@ -121,7 +114,14 @@ See the [`analysis-queries.sql`](./../analysis-scripts/analysis-queries-sql/) sc
  11/01       |  88              |  26          |  0.57 |  -1.3 |  141.2
 ```
 
-This query (also included in the [`analysis-queries.sql`](./../analysis-scripts/analysis-queries-sql/) script) calculates the average of the daily [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) result:
+The semantics of the average mask-wearing percentage and the average percentage of people who know someone in their local community with COVID-like symptoms are straightforward and are included as information that is interesting for revealing a general time-dependent trend. The trend is depressing:
+
+- Mask-wearing edges up, in fact monotonically, over the observation period.
+- But the incidence of COVID-like symptoms climbs too, and again monotonically.
+
+The hope would be that increased mask-wearing would lead to reduced incidence of COVID-like symptoms. Indeed, this effect is substantiated, for each individual date, by the regression analysis results across the set of 51 states for that date. So there must be other factors at work that influence the long-term trend of the across-state averages over a period of days. But the data at hand cannot shed light on these.
+
+This query (also included in the [`analysis-queries.sql`](./../analysis-scripts/analysis-queries-sql/) script) calculates the average of the daily regression analysis results:
 
 ```plpgsql
 with a as (
@@ -145,4 +145,4 @@ This is the result:
   0.63          | -0.97  |  105.59
 ```
 
-The outcome of the regression analysis, for any particular day, is best understood with the help of a picture: a so-called scatter-plot which shows the input data with the line that best fits the data superimposed. The following section, [Select data for COVID-like symptoms vs mask-wearing by state scatter plot](../symptoms-vs-mask-wearing-by-state/), shows the query that gets the data. And the section that follows that, [Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020](../scatter-plot-for-2020-10-21/), shows the picture.
+The outcome of the regression analysis, for any particular day, is best understood with the help of a picture: a so-called scatter-plot which shows the input data with the line that best fits the data superimposed. The following section, [Select the data for COVID-like symptoms vs mask-wearing by state scatter plot](../symptoms-vs-mask-wearing-by-state/), shows the query that gets the data. And the section that follows that, [Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020](../scatter-plot-for-2020-10-21/), shows the picture.

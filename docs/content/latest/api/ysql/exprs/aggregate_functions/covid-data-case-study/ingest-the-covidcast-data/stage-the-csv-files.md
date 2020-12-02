@@ -135,4 +135,4 @@ This is the result:
                2550 |           2550 |                 2550
 ```
 
-The value _2,550_ is the product of the _51_ states (including DC) and the _50_ days on which survey data was collected.
+The value _2,550_ is the product of the _51_ states (including DC) and the _50_ days on which survey data were collected.

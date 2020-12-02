@@ -20,7 +20,7 @@ Here are the steps:
 
 - [Manually inspect the .csv files](./inspect-the-csv-files).
 
-- [Copy the data from each `.csv` file  "as is" into its own staging table, with effective primary key _("state, survey_date)"_](./stage-the-csv-files). (The qualifier "effective" recognizes the fact that, as yet, these columns will have different names that reflect how they're named in the `.csv` files.)
+- [Copy the data from each `.csv` file  "as is" into a dedicated staging table, with effective primary key _("state, survey_date)"_](./stage-the-csv-files). (The qualifier "effective" recognizes the fact that, as yet, these columns will have different names that reflect how they're named in the `.csv` files.)
 
 - [Check that the values from the `.csv` files do indeed conform to the stated rules](./check-data-conforms-to-the-rules).
 
