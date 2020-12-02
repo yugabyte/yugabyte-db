@@ -8,7 +8,8 @@
     "yb_platform_virtualenv.tar.gz",
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
-    "yb-server-provision.yml"
+    "yb-server-provision.yml",
+    "test_connection.yml"
   ],
   "bin": [
     "bin/cluster_health.py",
