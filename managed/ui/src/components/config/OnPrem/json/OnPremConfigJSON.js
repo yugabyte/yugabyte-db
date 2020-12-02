@@ -9,7 +9,7 @@ import { YBButton } from '../../../common/forms/fields';
 import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 
 import 'ace-builds/src-noconflict/theme-github';
-import 'highlight.js/styles/github.css';
+import 'highlight.js/styles/github-gist.css';
 
 class ConfigFormTitle extends Component {
   render() {
