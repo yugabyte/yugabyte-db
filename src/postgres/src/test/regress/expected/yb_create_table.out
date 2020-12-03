@@ -670,7 +670,7 @@ DETAIL:  Valid values are between "16384" and "2147483647".
 create table with_invalid_table_oid (a int) with (table_oid = 123);
 ERROR:  User tables must have an OID >= 16384.
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
-ERROR:  table_oid requires an integer value
+ERROR:  User tables must have an OID >= 16384.
 create table with_table_oid (a int) with (table_oid = 1234567);
 select relname, oid from pg_class where relname = 'with_table_oid';
     relname     |   oid

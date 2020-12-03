@@ -18,7 +18,7 @@ import java.util.*;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
+import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonSanitizersOrMac;
@@ -50,7 +50,7 @@ public class TestYbBackup extends BaseCQLTest {
     return flagMap;
   }
 
-  public void setupTablesBeforeBackup(TableProperty tp) throws Exception {
+  public void setupTablesBeforeBackup(TableProperties tp) throws Exception {
     final String tableProp = (tp.isTransactional() ?
         "with transactions = { 'enabled' : true };" : ";");
     session.execute("create table test_tbl " +
@@ -120,7 +120,7 @@ public class TestYbBackup extends BaseCQLTest {
                     "values (1, '{\"a\":{\"b\":\"b4\"},\"c\":4}');");
   }
 
-  public void updateValuesInTables(String keyspace, TableProperty tp) throws Exception {
+  public void updateValuesInTables(String keyspace, TableProperties tp) throws Exception {
     session.execute("insert into " + keyspace + ".test_tbl (h, r1, r2, c) values (1, 2, 3, 99);");
     session.execute("insert into " + keyspace + ".test_types (c1, c2, c3, c4, c5, c6, c7, c8, " +
                     "c9, c10, c11, c12, c13, c14, c15, c16, fm, fs, fl) values " +
@@ -140,7 +140,7 @@ public class TestYbBackup extends BaseCQLTest {
   }
 
   public void checkValuesInTables(String keyspace,
-                                  TableProperty tp,
+                                  TableProperties tp,
                                   ValuesUpdateState state) throws Exception {
     SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     isoFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -249,7 +249,7 @@ public class TestYbBackup extends BaseCQLTest {
                 "Row[1, {\"a\":{\"b\":\"b" + value_c + "\"},\"c\":" + value_c + "}]");
   }
 
-  public void testYCQLRestoreIntoKeyspace(TableProperty tp,
+  public void testYCQLRestoreIntoKeyspace(TableProperties tp,
                                           String keyspace,
                                           String... createBackupArgs) throws Exception {
     setupTablesBeforeBackup(tp);
@@ -274,21 +274,21 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLKeyspaceBackup() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), "ks2",
+    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), "ks2",
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLKeyspaceBackup_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), "ks3",
+    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL), "ks3",
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLTablesWithIndexesBackup() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), "ks4",
+    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), "ks4",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -297,7 +297,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLTablesWithIndexesBackup_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-   testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), "ks5",
+   testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL), "ks5",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -306,21 +306,24 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -329,7 +332,8 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(new TableProperty(TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");

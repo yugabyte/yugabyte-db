@@ -33,6 +33,7 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.util.SanitizerUtil;
+import org.yb.util.TableProperties;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -1393,7 +1394,7 @@ public class TestIndex extends BaseCQLTest {
     return metrics;
   }
 
-  private void checkRocksDBMetricsChanges(TableProperty tp,
+  private void checkRocksDBMetricsChanges(TableProperties tp,
                                           Map<String, RocksDBMetrics> metrics,
                                           String query,
                                           String... notUpdatedTableNames) throws Exception {
@@ -1481,7 +1482,7 @@ public class TestIndex extends BaseCQLTest {
     session.execute(prepared.bind(bindValues.toArray()));
   }
 
-  private void assertIndexDataAndMetrics(TableProperty tp,
+  private void assertIndexDataAndMetrics(TableProperties tp,
                                          Map<String, String> tableColumnMap,
                                          Map<String, String> indexColumnMap,
                                          String query,
@@ -1492,7 +1493,7 @@ public class TestIndex extends BaseCQLTest {
     checkIndexColumns(tableColumnMap, indexColumnMap, query);
   }
 
-  public void doTestOptimizedIndexUpdate(TableProperty tp) throws Exception {
+  public void doTestOptimizedIndexUpdate(TableProperties tp) throws Exception {
     final String tableProp = (tp.isTransactional() ?
         " with transactions = { 'enabled' : true }" : "");
     final String indexTrans =
@@ -1660,25 +1661,27 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testOptimizedIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_NON_TRANSACTIONAL));
+    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
   }
 
   @Test
   public void testOptimizedIndexUpdate_Transactional() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_TRANSACTIONAL));
+    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_TRANSACTIONAL));
   }
 
   @Test
   public void testPreparedOptimizedIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_NON_TRANSACTIONAL | TP_PREPARED_QUERY));
+    doTestOptimizedIndexUpdate(new TableProperties(
+        TableProperties.TP_NON_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 
   @Test
   public void testPreparedOptimizedIndexUpdate_Transactional() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_TRANSACTIONAL | TP_PREPARED_QUERY));
+    doTestOptimizedIndexUpdate(new TableProperties(
+        TableProperties.TP_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 
-  public void doTestOptimizedJsonIndexUpdate(TableProperty tp) throws Exception {
+  public void doTestOptimizedJsonIndexUpdate(TableProperties tp) throws Exception {
     final String tableProp = (tp.isTransactional() ?
         " with transactions = { 'enabled' : true }" : "");
     final String indexTrans =
@@ -1819,21 +1822,23 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_NON_TRANSACTIONAL));
+    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
   }
 
   @Test
   public void testOptimizedJsonIndexUpdate_Transactional() throws Exception {
-    doTestOptimizedJsonIndexUpdate(new TableProperty(TP_TRANSACTIONAL));
+    doTestOptimizedJsonIndexUpdate(new TableProperties(TableProperties.TP_TRANSACTIONAL));
   }
 
   @Test
   public void testPreparedOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperty(TP_NON_TRANSACTIONAL | TP_PREPARED_QUERY));
+    doTestOptimizedIndexUpdate(new TableProperties(
+        TableProperties.TP_NON_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 
   @Test
   public void testPreparedOptimizedJsonIndexUpdate_Transactional() throws Exception {
-    doTestOptimizedJsonIndexUpdate(new TableProperty(TP_TRANSACTIONAL | TP_PREPARED_QUERY));
+    doTestOptimizedJsonIndexUpdate(new TableProperties(
+        TableProperties.TP_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 }
