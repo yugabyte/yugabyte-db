@@ -108,7 +108,7 @@ public class TestYsqlDump extends BasePgSQLTest {
 
       while ((actualLine = actualIn.readLine()) != null &&
              (expectedLine = expectedIn.readLine()) != null) {
-        assertEquals(postprocessOutputLine(actualLine), postprocessOutputLine(expectedLine));
+        assertEquals(postprocessOutputLine(expectedLine), postprocessOutputLine(actualLine));
       }
       expectOnlyEmptyLines(actualLine, actualIn);
       expectOnlyEmptyLines(expectedLine, expectedIn);

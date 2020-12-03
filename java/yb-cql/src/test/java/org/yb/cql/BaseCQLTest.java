@@ -52,22 +52,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
-  public static final int TP_NO_FLAGS          = 0;
-  public static final int TP_NON_TRANSACTIONAL = TP_NO_FLAGS;
-  public static final int TP_TRANSACTIONAL     = 1; // bit 0
-  public static final int TP_DIRECT_QUERY      = TP_NO_FLAGS;
-  public static final int TP_PREPARED_QUERY    = 2; // bit 1
-  public class TableProperty {
-    public int flags;
-    public TableProperty() { flags = TP_NO_FLAGS; }
-    public TableProperty(int f) { flags = f; }
-    public Boolean isTransactional() throws Exception {
-      return (flags & TP_TRANSACTIONAL) == TP_TRANSACTIONAL;
-    }
-    public Boolean usePreparedQueries() throws Exception {
-      return (flags & TP_PREPARED_QUERY) == TP_PREPARED_QUERY;
-    }
-  };
 
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 

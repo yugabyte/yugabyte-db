@@ -367,7 +367,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					errmsg("Create table with oid is not allowed."),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			Oid table_oid = defGetInt32(def);
+			Oid table_oid = strtol(defGetString(def), NULL, 10);
 			if (table_oid < FirstNormalObjectId)
 			{
 				elog(ERROR, "User tables must have an OID >= %d.",
@@ -2704,7 +2704,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 					errmsg("Create index with oid is not allowed."),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			Oid table_oid = defGetInt32(def);
+			Oid table_oid = strtol(defGetString(def), NULL, 10);
 			if (table_oid < FirstNormalObjectId)
 			{
 				elog(ERROR, "User tables must have an OID >= %d.",
