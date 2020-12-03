@@ -102,17 +102,17 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ##### Yugabyte Platform
 
-*   [Fix for updating user profile when SMTP username or password is empty](https://phabricator.dev.yugabyte.com/D9818) ([6257](https://github.com/yugabyte/yugabyte-db/issues/6257))
-*   [Fix for editing YugabyteDB Universe placement info logic](https://phabricator.dev.yugabyte.com/D9857) ([6250](https://github.com/yugabyte/yugabyte-db/issues/6250))
-*   [Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data](https://phabricator.dev.yugabyte.com/D9909) ([6175](https://github.com/yugabyte/yugabyte-db/issues/6175))
+*   Fix for updating user profile when SMTP username or password is empty ([6257](https://github.com/yugabyte/yugabyte-db/issues/6257))
+*   Fix for editing YugabyteDB Universe placement info logic ([6250](https://github.com/yugabyte/yugabyte-db/issues/6250))
+*   Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data ([6175](https://github.com/yugabyte/yugabyte-db/issues/6175))
 *   Fix for an issue where Client Certificates are not valid on download due to incorrect validity time ([6118](https://github.com/yugabyte/yugabyte-db/issues/6118))
 *   Safeguard extra migration for pre-provisioning ([6181](https://github.com/yugabyte/yugabyte-db/issues/6181))
 
 ##### Core Database
 
-*   [Fix handling SSL write errors and Replace retry counter with a check that data is ready](https://phabricator.dev.yugabyte.com/D9943) ([6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
-*   [Fix TServer crash with YEDIS workloads and snapshot restore](https://phabricator.dev.yugabyte.com/D9930) ([6338](https://github.com/yugabyte/yugabyte-db/issues/6338))
-*   [Disable Rocksdb flush on all DeleteTablet calls](https://phabricator.dev.yugabyte.com/D9887) ([6353](https://github.com/yugabyte/yugabyte-db/issues/6353))
+*   Fix handling SSL write errors and Replace retry counter with a check that data is ready ([6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
+*   Fix TServer crash with YEDIS workloads and snapshot restore ([6338](https://github.com/yugabyte/yugabyte-db/issues/6338))
+*   Disable Rocksdb flush on all DeleteTablet calls ([6353](https://github.com/yugabyte/yugabyte-db/issues/6353))
 *   Shutdown status resolver before destroying it in ResolveIntents ([6170](https://github.com/yugabyte/yugabyte-db/issues/6170))
 
 #### Known Issues
@@ -120,7 +120,14 @@ Most applications have a need to frequently evolve the database schema, while si
 ##### Yugabyte Platform
 
 * Tasks page reports incorrect status of failed backup ([6210](https://github.com/yugabyte/yugabyte-db/issues/6210))
-* It is required to pull the latest `platform-support-packages.tar.gz` for the fix related to [Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data (6175)](https://github.com/yugabyte/yugabyte-db/issues/6175)
+
+
+#### Platform Support Package Improvements
+
+**(Only applicable to Non-Replicated installations)**
+
+##### Yugabyte Platform
+* It is required to pull the latest `platform-support-packages.tar.gz` for the fix related to issue - [Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data (6175)](https://github.com/yugabyte/yugabyte-db/issues/6175)
 
 ### v2.2.4 - October 30, 2020
 
