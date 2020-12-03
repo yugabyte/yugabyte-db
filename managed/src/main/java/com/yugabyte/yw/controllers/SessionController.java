@@ -390,6 +390,7 @@ public class SessionController extends Controller {
     }
   }
 
+  @With(TokenAuthenticator.class)
   public Result proxyRequest(UUID universeUUID, String requestUrl) {
     try {
       // Validate that the request is of <ip/hostname>:<port> format
