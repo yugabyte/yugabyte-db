@@ -153,6 +153,10 @@ class FilterPolicy {
   // Filter policy can optionally return key transformer to be used before writing key to filter or
   // testing key against filter and building/reading filter index based on keys (used for fixed-size
   // bloom filter). This method is used by BlockBasedTable(Reader)/BlockBasedTableBuilder.
+  // If KeyTransformer returns empty filter key - this is treated as matching the filter by
+  // BlockBasedTableReader. This allows us to support disabling bloom filters for old versions
+  // of filter policies if they have bugs.
+  //
   // Requires: order of keys defined by BytewiseComparator shouldn't be broken by key transformer.
   //
   // Actually we can use ColumnFamilyOptions::prefix_extractor instead and switch off whole key

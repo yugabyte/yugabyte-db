@@ -96,13 +96,46 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ## Release notes
 
+### v2.2.5 - Dec 2, 2020
+
+#### Bug Fixes
+
+##### Yugabyte Platform
+
+*   Fix for updating user profile when SMTP username or password is empty ([6257](https://github.com/yugabyte/yugabyte-db/issues/6257))
+*   Fix for editing YugabyteDB Universe placement info logic ([6250](https://github.com/yugabyte/yugabyte-db/issues/6250))
+*   Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data ([6175](https://github.com/yugabyte/yugabyte-db/issues/6175))
+*   Fix for an issue where Client Certificates are not valid on download due to incorrect validity time ([6118](https://github.com/yugabyte/yugabyte-db/issues/6118))
+*   Safeguard extra migration for pre-provisioning ([6181](https://github.com/yugabyte/yugabyte-db/issues/6181))
+
+##### Core Database
+
+*   Fix handling SSL write errors and Replace retry counter with a check that data is ready ([6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
+*   Fix TServer crash with YEDIS workloads and snapshot restore ([6338](https://github.com/yugabyte/yugabyte-db/issues/6338))
+*   Disable Rocksdb flush on all DeleteTablet calls ([6353](https://github.com/yugabyte/yugabyte-db/issues/6353))
+*   Shutdown status resolver before destroying it in ResolveIntents ([6170](https://github.com/yugabyte/yugabyte-db/issues/6170))
+
+#### Known Issues
+
+##### Yugabyte Platform
+
+* Tasks page reports incorrect status of failed backup ([6210](https://github.com/yugabyte/yugabyte-db/issues/6210))
+
+
+#### Platform Support Package Improvements
+
+**(Only applicable to Non-Replicated installations)**
+
+##### Yugabyte Platform
+* It is required to pull the latest `platform-support-packages.tar.gz` for the fix related to issue - [Fixes to delete unnecessary Prometheus snapshot when backing up YB Platform data (6175)](https://github.com/yugabyte/yugabyte-db/issues/6175)
+
 ### v2.2.4 - October 30, 2020
 
 #### New features
 
 ##### Yugabyte Platform
 
-* Yugabyte Platform operations now allow promoting a Yugabyte TServer only node to run Yugabyte Master and TServer process (5831)
+* Yugabyte Platform operations now allow promoting a Yugabyte TServer only node to run Yugabyte Master and TServer process ([5831](https://github.com/yugabyte/yugabyte-db/issues/5831))
 
 #### Improvements
 
@@ -110,21 +143,22 @@ Most applications have a need to frequently evolve the database schema, while si
 
 *   Enhancements to on-prem Cloud Provider configuration
     *   When creating onprem universes, YW will automatically run provisioning if airgap is enabled now, instead of asking the users to run the pre-provision script. Users will need to run the script only when creating universes without passwordless sudo access.
-    *   Do not fail universe creation if cronjobs can't be created for on-prem (5939)
-    *   Remove pre-provision script requirement for air-gapped installations (5929)
+    *   Do not fail universe creation if cronjobs can't be created for on-prem ([5939](https://github.com/yugabyte/yugabyte-db/issues/5939))
+
+    *   Remove pre-provision script requirement for air-gapped installations ([5929](https://github.com/yugabyte/yugabyte-db/issues/5929))
     *   "Sudo passwordless" in on-prem cloud provider configuration toggle is renamed to “Manually Provision Node”
     *   Added a new "Advanced" section  in on-prem cloud provider configuration which includes
         *    Use hostnames
         *    Desired home directory
         *    Node exporter settings
-    *   Pre-provisioning of ‘yugabyte’ user is supported for on-prem Cloud Provider. (YB devops script won't run `create_user` if yugabyte user already exists) (#6086]
-    *   Improvements to installation of Prometheus Node Exporter utility workflow (5926)
+    *   Pre-provisioning of ‘yugabyte’ user is supported for on-prem Cloud Provider. (YB devops script won't run `create_user` if yugabyte user already exists) ([#6086](https://github.com/yugabyte/yugabyte-db/issues/6086))
+    *   Improvements to installation of Prometheus Node Exporter utility workflow ([5926](https://github.com/yugabyte/yugabyte-db/issues/5926))
         *   Prometheus Node exporter option is now available in the cloud configuration under advanced settings
         *   Supports bringing your own node exporter user
 *   UI/UX improvements for YB Platform
-    *   Add visual feedback when backup or restore is initiated from modal (5908)
-    *   Add new button for downloading root cert in Certificates page (#5521]
-*   Use the correct disk mount while calculating the disk usage of logs (#5983] 
+    *   Add visual feedback when backup or restore is initiated from modal ([5908](https://github.com/yugabyte/yugabyte-db/issues/5908))
+    *   Add new button for downloading root cert in Certificates page ([#5521](https://github.com/yugabyte/yugabyte-db/issues/5521))
+*   Use the correct disk mount while calculating the disk usage of logs ([#5983](https://github.com/yugabyte/yugabyte-db/issues/5983)) 
 
 ##### Core Database
 
@@ -135,17 +169,17 @@ Most applications have a need to frequently evolve the database schema, while si
 ##### Yugabyte Platform
 
 * [[Replicated](https://www.replicated.com/)] Fixed an issue that would leave Replicated in a bad state if the network connection drops while uploading an airgap bundle, preventing the installation from proceeding. ([https://release-notes.replicated.com/release-notes/2.49.0/](https://release-notes.replicated.com/release-notes/2.49.0/))
-* Fix for the check if changing node count by AZ affects master node placement and requires a full move (#5335]
-* Fix delete backup failure for TLS enabled universes (#5980]
-* Universe disk usage shows up empty on the universe page ([5548](https://github.com/yugabyte/yugabyte-db/issues/5548))
-* Fix for starting a YB TServer Node when another YB Master is down causes issues (5739)
-* Fix platform backup script for replicated installations (6130)
+* Fix for the check if changing node count by AZ affects master node placement and requires a full move ([#5335](https://github.com/yugabyte/yugabyte-db/issues/5335))
+* Fix delete backup failure for TLS enabled universes ([#5980](https://github.com/yugabyte/yugabyte-db/issues/5980))
+* Universe disk usage shows up empty on the universe page ([#5548](https://github.com/yugabyte/yugabyte-db/issues/5548))
+* Fix for starting a YB TServer Node when another YB Master is down causes issues ([#5739](https://github.com/yugabyte/yugabyte-db/issues/5739))
+* Fix platform backup script for replicated installations ([#6130](https://github.com/yugabyte/yugabyte-db/issues/6130))
 
 ##### Core Database
 
-*  [[docdb] Fix a rare bug on restore which could clear more metadata than necessary](https://github.com/yugabyte/yugabyte-db/commit/f5396e819c277e6ab2e04c63fe7d835673a2a883) (#5788]
-*  [[docdb] Fix a rare race condition between transactions and snapshots that could lead to a deadlock](https://github.com/yugabyte/yugabyte-db/commit/19c3c48484620d8b2dc3604062fe17c5e6308d5c) (#6170]
-*  [[YSQL] Fix an issue with setting bind address for YSQL metrics endpoint](https://github.com/yugabyte/yugabyte-db/commit/1876c43fe66b5230c3e3426af8f09e2647579936) for IPv6 scenarios  (#4901]
+*  [[docdb] Fix a rare bug on restore which could clear more metadata than necessary](https://github.com/yugabyte/yugabyte-db/commit/f5396e819c277e6ab2e04c63fe7d835673a2a883) [#5788](https://github.com/yugabyte/yugabyte-db/issues/5788)
+*  [[docdb] Fix a rare race condition between transactions and snapshots that could lead to a deadlock](https://github.com/yugabyte/yugabyte-db/commit/19c3c48484620d8b2dc3604062fe17c5e6308d5c) [#6170](https://github.com/yugabyte/yugabyte-db/issues/6170)
+*  [[YSQL] Fix an issue with setting bind address for YSQL metrics endpoint](https://github.com/yugabyte/yugabyte-db/commit/1876c43fe66b5230c3e3426af8f09e2647579936) for IPv6 scenarios  (#4901)
 *  [YCQL] Fix for bug with the duplicate row detection that allows a unique index to get created when the table is not unique on the index column(s) (5811)
 *  [[YCQL] Fix a bug with update and expression indexes, where an index row would get deleted if the column is updated without changing the indexed value (expression)](https://github.com/yugabyte/yugabyte-db/commit/d764a4e8e47b1da5c6a41f43a8a381df21143a8c) (5898)
 *  [[YSQL] Fix OOM with \copy or COPY FROM stdin for large files](https://github.com/yugabyte/yugabyte-db/commit/e1b1d0b1322dd8f820c9b33834063e2f9c2b3690) (5603)
@@ -155,7 +189,7 @@ Most applications have a need to frequently evolve the database schema, while si
 
 ##### Yugabyte Platform
 
-*   Client Certificates are not valid on download due to incorrect validity time (#6118]
+*   Client Certificates are not valid on download due to incorrect validity time (6118)
 *   Tasks page reports incorrect status of failed backup (6210)
 
 #### Platform Support Package Improvements

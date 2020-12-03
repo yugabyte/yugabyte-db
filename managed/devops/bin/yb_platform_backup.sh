@@ -63,7 +63,7 @@ create_backup() {
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     sudo cp -aR "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir" "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
-    rm -rf "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir"
+    sudo rm -rf "$PROMETHEUS_DATA_DIR/snapshots/$snapshot_dir"
   fi
   echo "Creating platform backup package"
   tar $exclude_prometheus_flag --exclude "postgresql" -czf $tarname -C $data_dir .

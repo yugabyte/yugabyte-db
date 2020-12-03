@@ -11,6 +11,7 @@
 . "${0%/*}/common.sh"
 should_create_package="0"
 should_use_package="0"
+use_dynamic_paths="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -39,6 +40,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --use_package)
       should_use_package=1
+    ;;
+    --use_dynamic_paths)
+      use_dynamic_paths="1"
     ;;
     *)
       fatal "Invalid option: $1"
@@ -70,7 +74,7 @@ else
   log "Installing ybops package"
   install_ybops_package
 
-  if [[ "$should_create_package" == "1" ]]; then
+  if [[ "$use_dynamic_paths" == "1" ]]; then
     log "Changing virtualenv absolute paths to dynamic paths"
     # Change shebangs to use local python instead of absolute python path - required for our Jenkins
     # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")

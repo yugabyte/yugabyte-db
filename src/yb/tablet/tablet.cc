@@ -1144,7 +1144,8 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
                                           const KeyValueWriteBatchPB& put_batch,
                                           const rocksdb::UserFrontiers* frontiers,
                                           const HybridTime hybrid_time) {
-  if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty()) {
+  if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
+      put_batch.apply_external_transactions().empty()) {
     return Status::OK();
   }
 
@@ -1152,14 +1153,25 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
   // For instance where aborted transaction intents are written.
   // In all other cases we should crash instead of skipping apply.
 
-  rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
+    rocksdb::WriteBatch write_batch;
     RequestScope request_scope(transaction_participant_.get());
     RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
-    PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
-    WriteToRocksDB(frontiers, &write_batch, StorageDbType::kRegular);
+    rocksdb::WriteBatch regular_write_batch;
+    // See comments for PrepareNonTransactionWriteBatch.
+    rocksdb::WriteBatch intents_write_batch;
+    PrepareNonTransactionWriteBatch(
+        put_batch, hybrid_time, intents_db_.get(), &regular_write_batch, &intents_write_batch);
+
+    if (regular_write_batch.Count() != 0) {
+      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+    }
+    if (intents_write_batch.Count() != 0) {
+      WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+    }
+
     if (snapshot_coordinator_) {
       for (const auto& pair : put_batch.write_pairs()) {
         WARN_NOT_OK(snapshot_coordinator_->ApplyWritePair(pair.key(), pair.value()),

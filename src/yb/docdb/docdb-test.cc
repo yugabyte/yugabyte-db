@@ -17,6 +17,7 @@
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/ql_value.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/rocksdb/db.h"
@@ -52,6 +53,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/yb_partition.h"
 
 using std::cout;
 using std::endl;
@@ -2840,6 +2842,75 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful, 2, &total_table_iterators));
 }
 
+TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
+  // Write batch and flush options.
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  // We need to write enough keys for fixed-size bloom filter to have more than one block.
+  constexpr auto kNumKeys = 100000;
+  const ColumnId kColumnId(11);
+  const HybridTime ht(1000);
+
+  const auto get_value = [](const int32_t i) {
+    return PrimitiveValue::Int32(i);
+  };
+
+  const auto get_doc_key = [&](const int32_t i, const bool is_range_key) {
+    if (is_range_key) {
+      return DocKey({ PrimitiveValue::Int32(i) });
+    }
+    const auto hash_component = PrimitiveValue::Int32(i);
+    auto doc_key = DocKey(i, { hash_component });
+    {
+      std::string hash_components_buf;
+      QLValuePB hash_component_pb;
+      PrimitiveValue::ToQLValuePB(
+          hash_component, QLType::Create(DataType::INT32), &hash_component_pb);
+      AppendToKey(hash_component_pb, &hash_components_buf);
+      doc_key.set_hash(YBPartition::HashColumnCompoundValue(hash_components_buf));
+    }
+    return doc_key;
+  };
+
+  const auto get_sub_doc_key = [&](const int32_t i, const bool is_range_key) {
+    return SubDocKey(get_doc_key(i, is_range_key), PrimitiveValue(kColumnId));
+  };
+
+  for (const auto is_range_key : { false, true }) {
+    for (int32_t i = 0; i < kNumKeys; ++i) {
+      const auto sub_doc_key = get_sub_doc_key(i, is_range_key);
+      const auto value = get_value(i);
+      dwb.Clear();
+      ASSERT_OK(
+          dwb.SetPrimitive(DocPath(sub_doc_key.doc_key().Encode(), sub_doc_key.subkeys()), value));
+      ASSERT_OK(WriteToRocksDB(dwb, ht));
+    }
+    ASSERT_OK(FlushRocksDbAndWait());
+
+    for (int32_t i = 0; i < kNumKeys; ++i) {
+      const auto sub_doc_key = get_sub_doc_key(i, is_range_key);
+      const auto value = get_value(i);
+      const auto encoded_subdoc_key = sub_doc_key.EncodeWithoutHt();
+      SubDocument sub_doc;
+      bool sub_doc_found;
+      GetSubDoc(encoded_subdoc_key, &sub_doc, &sub_doc_found);
+      ASSERT_TRUE(sub_doc_found) << "Entry for key #" << i
+                                 << " not found, is_range_key: " << is_range_key;
+      ASSERT_EQ(static_cast<PrimitiveValue>(sub_doc), value);
+    }
+  }
+
+  rocksdb::TablePropertiesCollection props;
+  rocksdb()->GetPropertiesOfAllTables(&props);
+  for (const auto& prop : props) {
+    ASSERT_GE(prop.second->num_filter_blocks, 2) << Format(
+        "To test rolling over filter block we need at least 2 filter blocks, but got $0 for $1. "
+        "Increase kNumKeys in this test.",
+        prop.second->num_filter_blocks, prop.first);
+  }
+}
+
 TEST_P(DocDBTestWrapper, MergingIterator) {
   // Test for the case described in https://yugabyte.atlassian.net/browse/ENG-1677.
 
@@ -3407,12 +3478,24 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), kTxn2HT));
 
+  ResetCurrentTransactionId();
+  TransactionId txn3 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000003"));
+  const auto kTxn3HT = 7000_usec_ht;
+  std::vector<ExternalIntent> intents = {
+    { DocPath(encoded_doc_key, "subkey3"), Value(PrimitiveValue("value6")) },
+    { DocPath(encoded_doc_key, "subkey4"), Value(PrimitiveValue("value7")) }
+  };
+  ASSERT_OK(AddExternalIntents(txn3, intents, kTxn3HT));
+
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \
@@ -3460,6 +3543,9 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 3 } -> \
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \

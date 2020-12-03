@@ -35,6 +35,11 @@ cmake_minimum_required(VERSION 3.7.0)
 
 project(YugabyteDB)
 
+message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
+message("-- CMAKE_SYSTEM_NAME:      ${CMAKE_SYSTEM_NAME}")
+message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+message("-- CMAKE_SYSTEM:           ${CMAKE_SYSTEM}")
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
 include(YugabyteFunctions)
@@ -67,10 +72,8 @@ else()
   set(BUILD_TESTS ON)
 endif()
 
-get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
-string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
-list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
 message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
+parse_build_root_basename()
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
@@ -208,10 +211,8 @@ if(INCLUDE_COMPILER_INFO_EARLY)
 endif()
 
 # This helps find the right third-party build directory.
-if (YB_USE_TSAN)
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
-elseif (YB_USE_ASAN)
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
   if(NOT APPLE AND
      NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
@@ -492,7 +493,7 @@ endif()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 
 # Flag to enable thread sanitizer (clang or gcc 4.8)
-if (${YB_USE_TSAN})
+if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
   YB_SETUP_SANITIZER("TSAN")
   ADD_CXX_FLAGS("-fsanitize=thread")
 
@@ -504,7 +505,7 @@ if (${YB_USE_TSAN})
 
   # Compile and link against the thirdparty TSAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
-elseif (${YB_USE_ASAN})
+elseif ("${YB_BUILD_TYPE}" STREQUAL "asan")
   YB_SETUP_SANITIZER("ASAN")
 
   ADD_CXX_FLAGS("-fsanitize=address")
@@ -512,6 +513,10 @@ elseif (${YB_USE_ASAN})
 
   # Compile and link against the thirdparty ASAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+  if("${COMPILER_FAMILY}" STREQUAL "gcc")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lubsan -ldl")
+    ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
+  endif()
 elseif (NOT APPLE AND IS_CLANG)
   # Special setup for Clang on Linux. This is not needed on macOS.
   if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
@@ -531,19 +536,14 @@ if (NOT IS_CLANG)
   ADD_LINKER_FLAGS("-latomic")
 endif()
 
-# Clang does not support using ASAN and TSAN simultaneously.
-if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
-  message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")
-endif()
-
 # Flag to enable clang undefined behavior sanitizer
 # We explicitly don't enable all of the sanitizer flags:
 # - disable 'vptr' because it currently crashes somewhere in boost::intrusive::list code
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
-if (${YB_USE_UBSAN})
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
-          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.9")))
+if ("${YB_BUILD_TYPE}" STREQUAL "asan")
+  if(NOT ("${COMPILER_FAMILY}" STREQUAL "clang" OR
+          "${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.9"))
     message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 4.9")
   endif()
   set(CXX_NO_SANITIZE_FLAG "alignment")
@@ -555,7 +555,7 @@ if (${YB_USE_UBSAN})
   ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
 endif ()
 
-if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   # GCC 4.8 and 4.9 (latest as of this writing) don't allow you to specify a
   # sanitizer blacklist.
   if("${COMPILER_FAMILY}" STREQUAL "clang")
@@ -696,8 +696,8 @@ set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # C++-only flags.
-if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
-    ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 7.0)
+if (("${COMPILER_FAMILY}" STREQUAL "gcc") AND
+    ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0"))
   # Used with GCC 7.
   ADD_CXX_FLAGS("-faligned-new")
 endif()

@@ -31,6 +31,7 @@
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/executor.h"
+#include "executor/tuptable.h"
 #include "foreign/fdwapi.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -2771,6 +2772,7 @@ CopyFrom(CopyState cstate)
 			if (cstate->partition_tuple_routing)
 			{
 				int			leaf_part_index;
+				TupleConversionMap *map;
 				PartitionTupleRouting *proute = cstate->partition_tuple_routing;
 
 				/*
@@ -2853,10 +2855,25 @@ CopyFrom(CopyState cstate)
 				 * We might need to convert from the parent rowtype to the
 				 * partition rowtype.
 				 */
-				tuple = ConvertPartitionTupleSlot(proute->parent_child_tupconv_maps[leaf_part_index],
-												  tuple,
-												  proute->partition_tuple_slot,
-												  &slot);
+           map = proute->parent_child_tupconv_maps[leaf_part_index];
+           if (map != NULL)
+           {
+               TupleTableSlot *new_slot;
+               MemoryContext oldcontext;
+
+               Assert(proute->partition_tuple_slots != NULL &&
+                      proute->partition_tuple_slots[leaf_part_index] != NULL);
+               new_slot = proute->partition_tuple_slots[leaf_part_index];
+               slot = execute_attr_map_slot(map->attrMap, slot, new_slot);
+
+               /*
+                * Get the tuple in the per-tuple context, so that it will be
+                * freed after each batch insert.
+                */
+               oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+               tuple = ExecCopySlotTuple(slot);
+               MemoryContextSwitchTo(oldcontext);
+           }
 				/*
 				 * Tuple memory will be allocated to per row memory context
 				 * which will be cleaned up after every row gets processed.

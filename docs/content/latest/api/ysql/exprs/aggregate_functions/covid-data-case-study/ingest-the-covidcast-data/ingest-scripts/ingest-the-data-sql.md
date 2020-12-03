@@ -55,7 +55,7 @@ select cr_copy_from_scripts(3);
 
 \t off
 --------------------------------------------------------------------------------
--- Check that the imported data is consistent with what was assumed about its
+-- Check that the imported data are consistent with what was assumed about its
 -- format and content. If the checks pass, then merge it into the single
 -- "covidcast_fb_survey_results" table.
 

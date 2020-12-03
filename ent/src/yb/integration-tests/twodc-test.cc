@@ -77,6 +77,8 @@ DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
 
+DECLARE_bool(cdc_enable_replicate_intents);
+
 namespace yb {
 
 using client::YBClient;
@@ -115,6 +117,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_cdc_max_apply_batch_num_records = GetParam();
+    FLAGS_cdc_enable_replicate_intents = true;
 
     YBTest::SetUp();
     MiniClusterOptions opts;
@@ -375,7 +378,7 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
 
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewDeleteOp();
+      auto op = table_handle.NewInsertOp();
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
