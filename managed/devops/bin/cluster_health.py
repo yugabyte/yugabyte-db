@@ -37,6 +37,7 @@ FATAL_TIME_THRESHOLD_MINUTES = 12
 DISK_UTILIZATION_THRESHOLD_PCT = 80
 FD_THRESHOLD_PCT = 50
 SSH_TIMEOUT_SEC = 10
+CMD_TIMEOUT_SEC = 20
 MAX_CONCURRENT_PROCESSES = 10
 MAX_TRIES = 2
 
@@ -219,7 +220,8 @@ class NodeChecker():
             ])
         else:
             cmd_to_run.extend(
-                ['ssh', 'yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
+                ['timeout', '{}'.format(CMD_TIMEOUT_SEC),
+                 'ssh', 'yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
                  '-o', 'StrictHostKeyChecking no',
                  '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
                  '-o', 'UserKnownHostsFile /dev/null',
