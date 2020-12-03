@@ -497,6 +497,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table id from a table created for colocated database?
+  bool IsColocatedParentTableId(const TableId& table_id) const;
+
   // Is the table a table created for colocated database?
   bool IsColocatedParentTable(const TableInfo& table) const;
 
@@ -723,7 +726,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   MonoDelta TimeSinceElectedLeader();
 
   Result<std::vector<TableDescription>> CollectTables(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes);
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table = false);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
