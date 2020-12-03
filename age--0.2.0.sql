@@ -700,7 +700,6 @@ AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';
 --
 
 -- agtype -> boolean (implicit)
-
 CREATE FUNCTION ag_catalog.agtype_to_bool(agtype)
 RETURNS boolean
 LANGUAGE c
@@ -714,7 +713,6 @@ WITH FUNCTION ag_catalog.agtype_to_bool(agtype)
 AS IMPLICIT;
 
 -- boolean -> agtype (explicit)
-
 CREATE FUNCTION ag_catalog.bool_to_agtype(boolean)
 RETURNS agtype
 LANGUAGE c
@@ -727,7 +725,6 @@ CREATE CAST (boolean AS agtype)
 WITH FUNCTION ag_catalog.bool_to_agtype(boolean);
 
 -- float8 -> agtype (explicit)
-
 CREATE FUNCTION ag_catalog.float8_to_agtype(float8)
 RETURNS agtype
 LANGUAGE c
@@ -740,7 +737,6 @@ CREATE CAST (float8 AS agtype)
 WITH FUNCTION ag_catalog.float8_to_agtype(float8);
 
 -- agtype -> float8 (implicit)
-
 CREATE FUNCTION ag_catalog.agtype_to_float8(agtype)
 RETURNS float8
 LANGUAGE c
@@ -752,6 +748,18 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (agtype AS float8)
 WITH FUNCTION ag_catalog.agtype_to_float8(agtype)
 AS IMPLICIT;
+
+-- int8 -> agtype (explicit)
+CREATE FUNCTION ag_catalog.int8_to_agtype(int8)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (int8 AS agtype)
+WITH FUNCTION ag_catalog.int8_to_agtype(int8);
 
 --
 -- agtype - access operators

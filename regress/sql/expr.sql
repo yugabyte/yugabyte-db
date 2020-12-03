@@ -1773,10 +1773,41 @@ SELECT * from cypher('expr', $$
     RETURN contains.age_sqrt(25)
 $$) as (result agtype);
 
+--
+-- aggregate functions avg(), sum(), count(), & count(*)
+--
+SELECT create_graph('UCSC');
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jack", gpa: 3.0, age: 21})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jill", gpa: 3.5, age: 27})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jim", gpa: 3.75, age: 32})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Rick", gpa: 2.5, age: 24})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Ann", gpa: 3.8, age: 23})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Derek", gpa: 4.0, age: 19})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jessica", gpa: 3.9, age: 20})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
+AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
+-- add in 2 null gpa records
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Dave", age: 24})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Mike", age: 18})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
+AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
+-- should return null
+SELECT * FROM cypher('UCSC', $$ RETURN avg(NULL) $$) AS (avg agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN sum(NULL) $$) AS (sum agtype);
+-- should return 0
+SELECT * FROM cypher('UCSC', $$ RETURN count(NULL) $$) AS (count agtype);
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN avg() $$) AS (avg agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN count() $$) AS (count agtype);
 
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);
 
 --

@@ -2223,6 +2223,16 @@ Datum float8_to_agtype(PG_FUNCTION_ARGS)
     return float_to_agtype(PG_GETARG_FLOAT8(0));
 }
 
+PG_FUNCTION_INFO_V1(int8_to_agtype);
+
+/*
+ * Cast float8 to agtype.
+ */
+Datum int8_to_agtype(PG_FUNCTION_ARGS)
+{
+    return integer_to_agtype(PG_GETARG_INT64(0));
+}
+
 /*
  * Helper function for agtype_access_operator map access.
  * Note: This function expects that a map and a scalar key are being passed.

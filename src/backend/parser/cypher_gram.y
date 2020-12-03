@@ -1111,6 +1111,23 @@ expr_func_norm:
         {
             $$ = make_function_expr($1, $3, @2);
         }
+    /* borrowed from PG's grammar */
+    | func_name '(' '*' ')'
+        {
+            /*
+             * We consider AGGREGATE(*) to invoke a parameterless
+             * aggregate.  This does the right thing for COUNT(*),
+             * and there are no other aggregates in SQL that accept
+             * '*' as parameter.
+             *
+             * The FuncCall node is also marked agg_star = true,
+             * so that later processing can detect what the argument
+             * really was.
+             */
+             FuncCall *n = (FuncCall *)make_function_expr($1, NIL, @1);
+             n->agg_star = true;
+             $$ = (Node *)n;
+         }
     ;
 
 expr_func_subexpr:
@@ -1566,12 +1583,19 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
 
         /*
          * Check for openCypher functions that are directly mapped to PG
-         * functions. Currently, we only map rand() and pi().
+         * functions. We may want to find a better way to do this, as there
+         * could be many.
          */
         if (pg_strcasecmp(name, "rand") == 0)
             funcname = SystemFuncName("random");
         else if (pg_strcasecmp(name, "pi") == 0)
             funcname = SystemFuncName("pi");
+        else if (pg_strcasecmp(name, "avg") == 0)
+            funcname = SystemFuncName("avg");
+        else if (pg_strcasecmp(name, "sum") == 0)
+            funcname = SystemFuncName("sum");
+        else if (pg_strcasecmp(name, "count") == 0)
+            funcname = SystemFuncName("count");
         else
             /*
              * We don't qualify AGE functions here. This is done in the

@@ -4152,8 +4152,150 @@ ERROR:  schema "contains" does not exist
 LINE 2:     RETURN contains.age_sqrt(25)
                                     ^
 --
+-- aggregate functions avg(), sum(), count(), & count(*)
+--
+SELECT create_graph('UCSC');
+NOTICE:  graph "UCSC" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jack", gpa: 3.0, age: 21})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jill", gpa: 3.5, age: 27})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jim", gpa: 3.75, age: 32})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Rick", gpa: 2.5, age: 24})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Ann", gpa: 3.8, age: 23})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Derek", gpa: 4.0, age: 19})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jessica", gpa: 3.9, age: 20})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+                                                     vertex                                                     
+----------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "name": "Jack"}}::vertex
+ {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "name": "Jill"}}::vertex
+ {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "name": "Jim"}}::vertex
+ {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "name": "Rick"}}::vertex
+ {"id": 844424930131973, "label": "students", "properties": {"age": 23, "gpa": 3.8, "name": "Ann"}}::vertex
+ {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "name": "Derek"}}::vertex
+ {"id": 844424930131975, "label": "students", "properties": {"age": 20, "gpa": 3.9, "name": "Jessica"}}::vertex
+(7 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
+AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
+       avg        |  sum  | sum_divided_by_count | count | count_star 
+------------------+-------+----------------------+-------+------------
+ 3.49285714285714 | 24.45 | 3.49285714285714     | 7     | 7
+(1 row)
+
+-- add in 2 null gpa records
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Dave", age: 24})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Mike", age: 18})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+                                                     vertex                                                     
+----------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "name": "Jack"}}::vertex
+ {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "name": "Jill"}}::vertex
+ {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "name": "Jim"}}::vertex
+ {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "name": "Rick"}}::vertex
+ {"id": 844424930131973, "label": "students", "properties": {"age": 23, "gpa": 3.8, "name": "Ann"}}::vertex
+ {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "name": "Derek"}}::vertex
+ {"id": 844424930131975, "label": "students", "properties": {"age": 20, "gpa": 3.9, "name": "Jessica"}}::vertex
+ {"id": 844424930131976, "label": "students", "properties": {"age": 24, "name": "Dave"}}::vertex
+ {"id": 844424930131977, "label": "students", "properties": {"age": 18, "name": "Mike"}}::vertex
+(9 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
+AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
+       avg        |  sum  | sum_divided_by_count | count | count_star 
+------------------+-------+----------------------+-------+------------
+ 3.49285714285714 | 24.45 | 3.49285714285714     | 7     | 9
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('UCSC', $$ RETURN avg(NULL) $$) AS (avg agtype);
+ avg 
+-----
+ 
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ RETURN sum(NULL) $$) AS (sum agtype);
+ sum 
+-----
+ 
+(1 row)
+
+-- should return 0
+SELECT * FROM cypher('UCSC', $$ RETURN count(NULL) $$) AS (count agtype);
+ count 
+-------
+ 0
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN avg() $$) AS (avg agtype);
+ERROR:  function pg_catalog.avg() does not exist
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN avg() $$) AS (avg agt...
+                                               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agtype);
+ERROR:  function pg_catalog.sum() does not exist
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agt...
+                                               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('UCSC', $$ RETURN count() $$) AS (count agtype);
+ERROR:  pg_catalog.count(*) must be used to call a parameterless aggregate function
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN count() $$) AS (count...
+                                               ^
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('UCSC', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table "UCSC"._ag_label_vertex
+drop cascades to table "UCSC"._ag_label_edge
+drop cascades to table "UCSC".students
+NOTICE:  graph "UCSC" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('expr', true);
 NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table expr._ag_label_vertex
