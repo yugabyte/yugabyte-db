@@ -1060,7 +1060,7 @@ DETAIL:  Valid values are between "16384" and "2147483647".
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 123);
 ERROR:  User tables must have an OID >= 16384.
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 'test');
-ERROR:  table_oid requires an integer value
+ERROR:  User tables must have an OID >= 16384.
 CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
 select relname, oid from pg_class where relname = 'index_with_table_oid';
        relname        |   oid

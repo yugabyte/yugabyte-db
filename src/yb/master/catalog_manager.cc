@@ -4603,8 +4603,12 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
 }
 
+bool CatalogManager::IsColocatedParentTableId(const TableId& table_id) const {
+  return table_id.find(kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
 bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
-  return table.id().find(kColocatedParentTableIdSuffix) != std::string::npos;
+  return IsColocatedParentTableId(table.id());
 }
 
 bool CatalogManager::IsTablegroupParentTable(const TableInfo& table) const {
@@ -8560,11 +8564,28 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
 }
 
 Result<vector<TableDescription>> CatalogManager::CollectTables(
-    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes) {
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+    bool add_indexes,
+    bool include_parent_colocated_table) {
   vector<TableDescription> all_tables;
+  unordered_set<NamespaceId> parent_colocated_table_ids;
 
   for (const auto& table_id_pb : tables) {
     TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
+    if (include_parent_colocated_table && table_description.table_info->colocated()) {
+      // If a table is colocated, add its parent colocated table as well.
+      const auto parent_table_id =
+          table_description.namespace_info->id() + kColocatedParentTableIdSuffix;
+      auto result = parent_colocated_table_ids.insert(parent_table_id);
+      if (result.second) {
+        // We have not processed this parent table id yet, so do that now.
+        TableIdentifierPB parent_table_pb;
+        parent_table_pb.set_table_id(parent_table_id);
+        parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+        TableDescription parent_table_description = VERIFY_RESULT(DescribeTable(parent_table_pb));
+        all_tables.push_back(parent_table_description);
+      }
+    }
     all_tables.push_back(table_description);
 
     if (add_indexes) {

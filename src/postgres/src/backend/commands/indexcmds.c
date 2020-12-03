@@ -1319,7 +1319,7 @@ DefineIndex(Oid relationId,
 	                           true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
-	
+
 	/*
 	 * Delay after committing pg_index update.  Although it is controlled by a
 	 * test flag, it currently helps (but does not guarantee) correctness
