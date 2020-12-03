@@ -1019,3 +1019,15 @@ INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100);
 SELECT * FROM trg_test;
 
 DROP TABLE trg_test;
+
+SELECT oracle.unistr('\0441\043B\043E\043D');
+SELECT oracle.unistr('d\u0061t\U00000061');
+
+-- run-time error
+SELECT oracle.unistr('wrong: \db99');
+SELECT oracle.unistr('wrong: \db99\0061');
+SELECT oracle.unistr('wrong: \+00db99\+000061');
+SELECT oracle.unistr('wrong: \+2FFFFF');
+SELECT oracle.unistr('wrong: \udb99\u0061');
+SELECT oracle.unistr('wrong: \U0000db99\U00000061');
+SELECT oracle.unistr('wrong: \U002FFFFF');

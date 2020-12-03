@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
+Version 3.14.0 - 
+* conversion function unistr
+
 Version 3.13.4 - 31. May 2020
 * enable utl_file on MS
 
