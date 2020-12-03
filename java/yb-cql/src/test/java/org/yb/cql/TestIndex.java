@@ -32,6 +32,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
+import org.yb.util.SanitizerUtil;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -1107,18 +1108,22 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testDropDuringWrite() throws Exception {
-    for (int i = 0; i != 5; ++i) {
-      String table_name = "index_test_" + i;
-      String index_name = "index_" + i;
+    int numTables = SanitizerUtil.nonTsanVsTsan(5, 2);
+    int numTablets = SanitizerUtil.nonTsanVsTsan(6, 3);
+    int numThreads = SanitizerUtil.nonTsanVsTsan(10, 4);
+    for (int i = 0; i != numTables; ++i) {
+      String tableName = "index_test_" + i;
+      String indexName = "index_" + i;
       session.execute(String.format(
           "create table %s (h int, c int, primary key ((h))) " +
-          "with transactions = { 'enabled' : true };", table_name));
-      session.execute(String.format("create index %s on %s (c);", index_name, table_name));
+          "with transactions = { 'enabled' : true } and tablets = %d;", tableName, numTablets));
+      session.execute(String.format(
+            "create index %s on %s (c) with tablets = %d;", indexName, tableName, numTablets));
       final PreparedStatement statement = session.prepare(String.format(
-          "insert into %s (h, c) values (?, ?);", table_name));
+          "insert into %s (h, c) values (?, ?);", tableName));
 
       List<Thread> threads = new ArrayList<Thread>();
-      while (threads.size() != 10) {
+      while (threads.size() != numThreads) {
         Thread thread = new Thread(() -> {
           int key = 0;
           while (!Thread.interrupted()) {
@@ -1131,7 +1136,7 @@ public class TestIndex extends BaseCQLTest {
       }
       try {
         Thread.sleep(5000);
-        session.execute(String.format("drop table %s;", table_name));
+        session.execute(String.format("drop table %s;", tableName));
       } finally {
         for (Thread thread : threads) {
           thread.interrupt();
