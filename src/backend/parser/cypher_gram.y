@@ -1596,6 +1596,10 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
             funcname = SystemFuncName("sum");
         else if (pg_strcasecmp(name, "count") == 0)
             funcname = SystemFuncName("count");
+        else if (pg_strcasecmp(name, "min") == 0)
+            funcname = SystemFuncName("min");
+        else if (pg_strcasecmp(name, "max") == 0)
+            funcname = SystemFuncName("max");
         else
             /*
              * We don't qualify AGE functions here. This is done in the

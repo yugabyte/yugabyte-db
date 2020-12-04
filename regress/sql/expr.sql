@@ -1805,6 +1805,18 @@ SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN count() $$) AS (count agtype);
 
 --
+-- aggregate functions min() & max()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.gpa), max(u.gpa), count(u.gpa), count(*) $$)
+AS (min agtype, max agtype, count agtype, count_star agtype);
+-- should return null
+SELECT * FROM cypher('UCSC', $$ RETURN min(NULL) $$) AS (min agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('UCSC', true);
