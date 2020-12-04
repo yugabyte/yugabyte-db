@@ -798,10 +798,11 @@ SELECT * FROM cypher('cypher_match', $$
 	MATCH (u:duplicate)-[]-(:other_v)
 	RETURN DISTINCT u
 $$) AS (i agtype);
-ERROR:  function ag_catalog.agtygpe_to_grapghid(agtype) does not exist
-LINE 1: SELECT * FROM cypher('cypher_match', $$
-                                              ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+                                    i                                     
+--------------------------------------------------------------------------
+ {"id": 3377699720527873, "label": "duplicate", "properties": {}}::vertex
+(1 row)
+
 SELECT * FROM cypher('cypher_match', $$
 	MATCH p=(:duplicate)-[]-(:other_v)
 	RETURN DISTINCT p

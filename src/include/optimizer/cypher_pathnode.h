@@ -22,5 +22,7 @@
 
 CustomPath *create_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
                                       List *custom_private);
+CustomPath *create_cypher_set_path(PlannerInfo *root, RelOptInfo *rel,
+                                   List *custom_private);
 
 #endif

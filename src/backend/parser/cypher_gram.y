@@ -554,12 +554,9 @@ set:
             n = make_ag_node(cypher_set);
             n->items = $2;
             n->is_remove = false;
+            n->location = @1;
 
             $$ = (Node *)n;
-
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("SET clause not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
@@ -583,6 +580,7 @@ set_item:
             n->prop = $1;
             n->expr = $3;
             n->is_add = false;
+            n->location = @1;
 
             $$ = (Node *)n;
         }
@@ -594,6 +592,7 @@ set_item:
             n->prop = $1;
             n->expr = $3;
             n->is_add = true;
+            n->location = @1;
 
             $$ = (Node *)n;
         }
@@ -607,6 +606,7 @@ remove:
             n = make_ag_node(cypher_set);
             n->items = $2;
             n->is_remove = true;
+             n->location = @1;
 
             $$ = (Node *)n;
 

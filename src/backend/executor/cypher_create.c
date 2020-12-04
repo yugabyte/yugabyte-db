@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "access/xact.h"
 #include "executor/tuptable.h"
 #include "nodes/execnodes.h"
 #include "nodes/extensible.h"
@@ -28,19 +29,10 @@
 
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
+#include "executor/cypher_utils.h"
 #include "nodes/cypher_nodes.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
-
-typedef struct cypher_create_custom_scan_state
-{
-    CustomScanState css;
-    CustomScan *cs;
-    List *pattern;
-    List *path_values;
-    uint32 flags;
-    TupleTableSlot *slot;
-} cypher_create_custom_scan_state;
 
 static void begin_cypher_create(CustomScanState *node, EState *estate,
                                 int eflags);
@@ -54,7 +46,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
 
 static Datum create_vertex(cypher_create_custom_scan_state *css,
                            cypher_target_node *node, ListCell *next);
-static void insert_entity_tuple(ResultRelInfo *resultRelInfo,
+static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
                                 TupleTableSlot *elemTupleSlot, EState *estate);
 static void process_pattern(cypher_create_custom_scan_state *css);
 static void process_all_tuples(CustomScanState *node, EState *estate);
@@ -91,7 +83,7 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     ExecInitScanTupleSlot(estate, &node->ss,
                           ExecGetResultType(node->ss.ps.lefttree));
 
-    if (!CYPHER_CREATE_CLAUSE_IS_TERMINAL(css->flags))
+    if (!CYPHER_CLAUSE_IS_TERMINAL(css->flags))
     {
         TupleDesc tupdesc = node->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
 
@@ -140,6 +132,8 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
             }
         }
     }
+
+    estate->es_output_cid++;
 }
 
 /*
@@ -148,6 +142,8 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
 static void process_pattern(cypher_create_custom_scan_state *css)
 {
     ListCell *lc2;
+
+    css->tuple_info = NIL;
 
     foreach (lc2, css->pattern)
     {
@@ -197,7 +193,9 @@ static void process_all_tuples(CustomScanState *node, EState *estate)
 
     do
     {
+        estate->es_output_cid++;
         process_pattern(css);
+        estate->es_output_cid--;
 
         slot = ExecProcNode(node->ss.ps.lefttree);
     } while (!TupIsNull(slot));
@@ -216,8 +214,10 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
     saved_resultRelInfo = estate->es_result_relation_info;
 
     //Process the subtree first
+    estate->es_output_cid--;
     slot = ExecProcNode(node->ss.ps.lefttree);
     css->slot = slot;
+    estate->es_output_cid++;
 
     econtext->ecxt_scantuple =
         node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
@@ -227,7 +227,7 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
 
     old_mcxt = MemoryContextSwitchTo(econtext->ecxt_scantuple->tts_mcxt);
 
-    if (CYPHER_CREATE_CLAUSE_IS_TERMINAL(css->flags))
+    if (CYPHER_CLAUSE_IS_TERMINAL(css->flags))
     {
         process_all_tuples(node, estate);
 
@@ -284,6 +284,8 @@ static void end_cypher_create(CustomScanState *node)
                        RowExclusiveLock);
         }
     }
+
+    GetCurrentCommandId(true);
 }
 
 static void rescan_cypher_create(CustomScanState *node)
@@ -304,6 +306,7 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
     target_nodes = linitial(cscan->custom_private);
     cypher_css->path_values = NIL;
     cypher_css->pattern = target_nodes->paths;
+    cypher_css->tuple_info = NIL;
     cypher_css->flags = target_nodes->flags;
 
     cypher_css->css.ss.ps.type = T_CustomScanState;
@@ -329,6 +332,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
     Datum id;
     Datum start_id, end_id, next_vertex_id;
     List *prev_path = css->path_values;
+    HeapTuple tuple;
 
     Assert(node->type == LABEL_KIND_EDGE);
     Assert(lfirst(next) != NULL);
@@ -387,7 +391,19 @@ static void create_edge(cypher_create_custom_scan_state *css,
         scanTupleSlot->tts_isnull[node->prop_var_no];
 
     // Insert the new edge
-    insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+    tuple = insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+
+    if (node->variable_name != NULL)
+    {
+        clause_tuple_information *tuple_info;
+
+        tuple_info = palloc(sizeof(clause_tuple_information));
+
+        tuple_info->tuple = tuple;
+        tuple_info->name = node->variable_name;
+
+        css->tuple_info = lappend(css->tuple_info, tuple_info);
+    }
 
     /*
      * When the edge is used by clauses higher in the execution tree
@@ -440,6 +456,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
         PlanState *ps = css->css.ss.ps.lefttree;
         TupleTableSlot *scantuple = ps->ps_ExprContext->ecxt_scantuple;
         ExprState *id_es = linitial(node->expr_states);
+        HeapTuple tuple;
 
         /*
          * Set estate's result relation to the vertex's result
@@ -464,7 +481,19 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
             scanTupleSlot->tts_isnull[node->prop_var_no];
 
         // Insert the new vertex
-        insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+        tuple = insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+
+        if (node->variable_name != NULL)
+        {
+            clause_tuple_information *tuple_info;
+
+            tuple_info = palloc(sizeof(clause_tuple_information));
+
+            tuple_info->tuple = tuple;
+            tuple_info->name = node->variable_name;
+
+            css->tuple_info = lappend(css->tuple_info, tuple_info);
+        }
 
         /*
          * When the vertex is used by clauses higher in the execution tree
@@ -543,8 +572,8 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
  * Insert the edge/vertex tuple into the table and indices. If the table's
  * constraints have not been violated.
  */
-static void insert_entity_tuple(ResultRelInfo *resultRelInfo,
-                                TupleTableSlot *elemTupleSlot, EState *estate)
+static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
+                                      TupleTableSlot *elemTupleSlot, EState *estate)
 {
     HeapTuple tuple;
 
@@ -564,4 +593,6 @@ static void insert_entity_tuple(ResultRelInfo *resultRelInfo,
     if (resultRelInfo->ri_NumIndices > 0)
         ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate, false,
                               NULL, NIL);
+
+    return tuple;
 }

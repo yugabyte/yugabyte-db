@@ -456,8 +456,10 @@ Datum integer_to_agtype(int64 i);
 Datum float_to_agtype(float8 f);
 Datum string_to_agtype(char *s);
 Datum boolean_to_agtype(bool b);
+void uniqueify_agtype_object(agtype_value *object);
 bool is_decimal_needed(char *numstr);
 int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
+agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property);
 
 Datum make_vertex(Datum id, Datum label, Datum properties);
 Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,

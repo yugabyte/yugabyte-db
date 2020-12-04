@@ -118,7 +118,6 @@ static bool is_object_edge(agtype_value *agtv);
 static bool is_array_path(agtype_value *agtv);
 /* helper functions */
 static bool is_agtype_null(agtype *agt);
-static agtype_value *string_to_agtype_value(char *s);
 static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
                                         int index);
 /* graph entity retrieval */
@@ -132,6 +131,7 @@ static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
 static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
                                        bool *is_null,
                                        enum agtype_value_type *ag_type);
+static agtype_value *string_to_agtype_value(char *s);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -1614,7 +1614,7 @@ static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
     datum_to_agtype(val, is_null, result, tcategory, outfuncoid, key_scalar);
 }
 
-agtype_value *string_to_agtype_value(char *s)
+static agtype_value *string_to_agtype_value(char *s)
 {
     agtype_value *agtv = palloc(sizeof(agtype_value));
 
@@ -4337,6 +4337,22 @@ Datum graphid_to_agtype(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(integer_to_agtype(AG_GETARG_GRAPHID(0)));
 }
 
+PG_FUNCTION_INFO_V1(agtype_to_graphid);
+
+Datum agtype_to_graphid(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+
+    if (!agtype_extract_scalar(&agtype_in->root, &agtv) ||
+        agtv.type != AGTV_INTEGER)
+        cannot_cast_agtype_value(agtv.type, "graphid");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    PG_RETURN_INT16(agtv.val.int_value);
+}
+
 PG_FUNCTION_INFO_V1(age_type);
 
 Datum age_type(PG_FUNCTION_ARGS)
@@ -6989,3 +7005,98 @@ Datum age_timestamp(PG_FUNCTION_ARGS)
 
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
+
+
+agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property)
+{
+    agtype_iterator *it;
+    agtype_iterator_token tok = WAGT_DONE;
+    agtype_parse_state *parse_state = NULL;
+    agtype_value *r;
+    agtype *prop_agtype;
+    agtype_value *parsed_agtype_value = NULL;
+    bool found;
+
+    if (properties == NULL)
+        return NULL;
+
+    if (properties->type != AGTV_OBJECT)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("can only update objects")));
+
+    r = palloc(sizeof(agtype_value));
+
+    prop_agtype = agtype_value_to_agtype(properties);
+    it = agtype_iterator_init(&prop_agtype->root);
+    tok = agtype_iterator_next(&it, r, true);
+
+    parsed_agtype_value = push_agtype_value(&parse_state, tok, tok < WAGT_BEGIN_ARRAY ? r : NULL);
+
+    if (new_v == NULL)
+        remove_property = true;
+
+    found = false;
+    while (true)
+    {
+        char *str;
+
+        tok = agtype_iterator_next(&it, r, true);
+
+        if (tok == WAGT_DONE || tok == WAGT_END_OBJECT)
+            break;
+
+        str = pnstrdup(r->val.string.val, r->val.string.len);
+        if (strcmp(str, var_name))
+        {
+            parsed_agtype_value = push_agtype_value(
+                &parse_state, tok, tok < WAGT_BEGIN_ARRAY ? r : NULL);
+
+            tok = agtype_iterator_next(&it, r, true);
+
+            parsed_agtype_value = push_agtype_value(&parse_state, tok, r);
+        }
+        else
+        {
+            agtype_value *new_agtype_value_v;
+
+            if(remove_property)
+            {
+                tok = agtype_iterator_next(&it, r, true);
+                continue;
+            }
+
+            parsed_agtype_value = push_agtype_value(
+                &parse_state, tok, tok < WAGT_BEGIN_ARRAY ? r : NULL);
+
+            new_agtype_value_v = get_ith_agtype_value_from_container(&new_v->root, 0);
+
+            tok = agtype_iterator_next(&it, r, true);
+
+            parsed_agtype_value = push_agtype_value(&parse_state, tok, new_agtype_value_v);
+            found = true;
+        }
+    }
+
+    /*
+     * If we have not found the property and we aren't trying to remove it,
+     * add the key/value pair now.
+     */
+    if (!found && !remove_property)
+    {
+        agtype_value *new_agtype_value_v;
+
+        parsed_agtype_value = push_agtype_value(
+            &parse_state, WAGT_KEY, string_to_agtype_value(var_name));
+
+        new_agtype_value_v = get_ith_agtype_value_from_container(&new_v->root, 0);
+
+        tok = agtype_iterator_next(&it, r, true);
+
+        parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE, new_agtype_value_v);
+    }
+
+    parsed_agtype_value = push_agtype_value(&parse_state, WAGT_END_OBJECT, NULL);
+
+    return parsed_agtype_value;
+}
+

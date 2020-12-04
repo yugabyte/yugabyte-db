@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "access/sysattr.h"
 #include "catalog/pg_type_d.h"
 #include "nodes/parsenodes.h"
 #include "nodes/primnodes.h"
@@ -30,7 +31,8 @@
 typedef enum cypher_clause_kind
 {
     CYPHER_CLAUSE_NONE,
-    CYPHER_CLAUSE_CREATE
+    CYPHER_CLAUSE_CREATE,
+    CYPHER_CLAUSE_SET
 } cypher_clause_kind;
 
 static set_rel_pathlist_hook_type prev_set_rel_pathlist_hook;
@@ -40,6 +42,8 @@ static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti,
 static cypher_clause_kind get_cypher_clause_kind(RangeTblEntry *rte);
 static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
                                         Index rti, RangeTblEntry *rte);
+static void handle_cypher_set_clause(PlannerInfo *root, RelOptInfo *rel,
+                                     Index rti, RangeTblEntry *rte);
 
 void set_rel_pathlist_init(void)
 {
@@ -63,6 +67,8 @@ static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti,
     case CYPHER_CLAUSE_CREATE:
         handle_cypher_create_clause(root, rel, rti, rte);
         break;
+    case CYPHER_CLAUSE_SET:
+        handle_cypher_set_clause(root, rel, rti, rte);
     case CYPHER_CLAUSE_NONE:
         break;
     default:
@@ -99,6 +105,8 @@ static cypher_clause_kind get_cypher_clause_kind(RangeTblEntry *rte)
 
     if (is_oid_ag_func(fe->funcid, "_cypher_create_clause"))
         return CYPHER_CLAUSE_CREATE;
+    if (is_oid_ag_func(fe->funcid, "_cypher_set_clause"))
+        return CYPHER_CLAUSE_SET;
     else
         return CYPHER_CLAUSE_NONE;
 }
@@ -120,6 +128,31 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
     custom_private = list_make1(DatumGetPointer(c->constvalue));
 
     cp = create_cypher_create_path(root, rel, custom_private);
+
+    // Discard any pre-existing paths
+    rel->pathlist = NIL;
+    rel->partial_pathlist = NIL;
+
+    add_path(rel, (Path *)cp);
+}
+
+// replace all possible paths with our CustomPath
+static void handle_cypher_set_clause(PlannerInfo *root, RelOptInfo *rel,
+                                     Index rti, RangeTblEntry *rte)
+{
+    TargetEntry *te;
+    FuncExpr *fe;
+    Const *c;
+    List *custom_private;
+    CustomPath *cp;
+
+    // Add the pattern to the CustomPath
+    te = (TargetEntry *)llast(rte->subquery->targetList);
+    fe = (FuncExpr *)te->expr;
+    c = linitial(fe->args);
+    custom_private = list_make1(DatumGetPointer(c->constvalue));
+
+    cp = create_cypher_set_path(root, rel, custom_private);
 
     // Discard any pre-existing paths
     rel->pathlist = NIL;

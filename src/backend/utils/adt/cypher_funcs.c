@@ -38,3 +38,10 @@ Datum _cypher_create_clause(PG_FUNCTION_ARGS)
 {
     PG_RETURN_NULL();
 }
+
+PG_FUNCTION_INFO_V1(_cypher_set_clause);
+
+Datum _cypher_set_clause(PG_FUNCTION_ARGS)
+{
+    PG_RETURN_NULL();
+}

@@ -24,4 +24,7 @@
 Node *create_cypher_create_plan_state(CustomScan *cscan);
 extern const CustomExecMethods cypher_create_exec_methods;
 
+Node *create_cypher_set_plan_state(CustomScan *cscan);
+extern const CustomExecMethods cypher_set_exec_methods;
+
 #endif

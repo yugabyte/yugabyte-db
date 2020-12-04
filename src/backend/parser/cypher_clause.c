@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "access/sysattr.h"
 #include "catalog/pg_type_d.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -201,6 +202,11 @@ static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
                                            cypher_clause *clause);
+// set clause
+static Query *transform_cypher_set(cypher_parsestate *cpstate,
+                                   cypher_clause *clause);
+cypher_update_information *transform_cypher_set_item_list(cypher_parsestate *cpstate, List *set_item_list, Query *query);
+
 
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
@@ -240,7 +246,7 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_create))
         result = transform_cypher_create(cpstate, clause);
     else if (is_ag_node(self, cypher_set))
-        return NULL;
+        return transform_cypher_set(cpstate, clause);
     else if (is_ag_node(self, cypher_delete))
         return NULL;
     else if (is_ag_node(self, cypher_sub_pattern))
@@ -252,6 +258,152 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     result->canSetTag = true;
 
     return result;
+}
+
+static Query *transform_cypher_set(cypher_parsestate *cpstate,
+                                   cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_set *self = (cypher_set *)clause->self;
+    Query *query;
+    cypher_update_information *set_items_target_list;
+    TargetEntry *tle;
+    Oid func_set_oid;
+    Const *pattern_const;
+    Expr *func_expr;
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+    query->targetList = NIL;
+
+    if (self->is_remove)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+            errmsg("REMOVE clause not yet implemented"),
+            parser_errposition(pstate, self->location)));
+
+    if (!clause->prev)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("SET cannot be the first clause in a Cypher query"),
+                        parser_errposition(pstate, self->location)));
+    }
+    else
+    {
+        RangeTblEntry *rte;
+        int rtindex;
+
+        rte = transform_prev_cypher_clause(cpstate, clause->prev);
+        rtindex = list_length(pstate->p_rtable);
+        Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+        query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+    }
+
+    func_set_oid = get_ag_func_oid("_cypher_set_clause", 1, INTERNALOID);
+
+    if (list_length(self->items) != 1)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+            errmsg("SET clause does not yet support updating more than one property"),
+            parser_errposition(pstate, self->location)));
+
+    set_items_target_list = transform_cypher_set_item_list(cpstate, self->items, query);
+    set_items_target_list->graph_name = cpstate->graph_name;
+
+    if (!clause->next)
+        set_items_target_list->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
+
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
+                              PointerGetDatum(set_items_target_list), false, true);
+
+    func_expr = (Expr *)makeFuncExpr(func_set_oid, AGTYPEOID,
+                                     list_make1(pattern_const), InvalidOid,
+                                     InvalidOid, COERCE_EXPLICIT_CALL);
+
+    // Create the target entry
+    tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
+                          "cypher_set_clause", false);
+    query->targetList = lappend(query->targetList, tle);
+
+    query->rtable = pstate->p_rtable;
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    return query;
+}
+
+cypher_update_information *transform_cypher_set_item_list(
+    cypher_parsestate *cpstate, List *set_item_list, Query *query)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ListCell *li;
+    cypher_update_information *info = palloc0(sizeof(cypher_update_information));
+
+    info->set_items = NIL;
+    info->flags = 0;
+
+    foreach (li, set_item_list)
+    {
+        cypher_set_item *set_item = lfirst(li);
+        TargetEntry *target_item;
+        cypher_update_item *item;
+        ColumnRef *ref;
+        A_Indirection *ind = (A_Indirection *)set_item->prop;
+        char *variable_name, *property_name;
+        Value *property_node, *variable_node;
+
+        item = palloc0(sizeof(cypher_update_item));
+
+        if (!is_ag_node(lfirst(li), cypher_set_item))
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("unexpected node in cypher update list")));
+
+        if (set_item->is_add)
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("SET clause does not yet support adding propereties from maps"),
+                parser_errposition(pstate, set_item->location)));
+
+        // extract variable name
+        ref = (ColumnRef *)ind->arg;
+
+        variable_node = linitial(ref->fields);
+        if (!IsA(variable_node, String))
+           ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("SET clause expects a variable name"),
+                parser_errposition(pstate, set_item->location)));
+
+        variable_name = variable_node->val.str;
+        item->var_name = variable_name;
+        item->entity_position = get_target_entry_resno(query->targetList, variable_name);
+
+        if (item->entity_position == -1)
+            ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("undefined reference to variable %s in SET clause", variable_name),
+                parser_errposition(pstate, set_item->location)));
+
+        // extract property name
+        if (list_length(ind->indirection) != 1)
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("SET clause doesnt not support updating maps or lists in a property"),
+                parser_errposition(pstate, set_item->location)));
+
+        property_node = linitial(ind->indirection);
+        if (!IsA(property_node, String))
+           ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("SET clause expects a property name"),
+                parser_errposition(pstate, set_item->location)));
+
+        property_name = property_node->val.str;
+        item->prop_name = property_name;
+
+        // create target entry for the new property value
+        item->prop_position = (AttrNumber)pstate->p_next_resno;
+        target_item = transform_cypher_item(cpstate, set_item->expr, NULL,
+                                            EXPR_KIND_SELECT_TARGET, NULL, false);
+        target_item->expr = add_volatile_wrapper(target_item->expr);
+
+        query->targetList = lappend(query->targetList, target_item);
+        info->set_items = lappend(info->set_items, item);
+    }
+
+    return info;
 }
 
 static Query *transform_cypher_return(cypher_parsestate *cpstate,
@@ -978,7 +1130,7 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 
     ag_catalog = makeString("ag_catalog");
     extract_label_id = makeString("_extract_label_id");
-    agtype_to_graphid = makeString("agtygpe_to_grapghid");
+    agtype_to_graphid = makeString("agtype_to_graphid");
 
     conversion_fc = makeFuncCall(list_make2(ag_catalog, agtype_to_graphid),
                                  list_make1(id_field), -1);
@@ -1715,7 +1867,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     TargetEntry *tle;
 
     target_nodes = palloc(sizeof(cypher_create_target_nodes));
-    target_nodes->flags = CYPHER_CREATE_CLAUSE_FLAG_NONE;
+    target_nodes->flags = CYPHER_CLAUSE_FLAG_NONE;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -1731,7 +1883,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
         Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
         query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
 
-        target_nodes->flags |= CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE;
+        target_nodes->flags |= CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE;
     }
 
     func_create_oid = get_ag_func_oid("_cypher_create_clause", 1, INTERNALOID);
@@ -1752,7 +1904,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     target_nodes->paths = transformed_pattern;
     if (!clause->next)
     {
-        target_nodes->flags |= CYPHER_CREATE_CLAUSE_FLAG_TERMINAL;
+        target_nodes->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
     }
 
     pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
@@ -1910,6 +2062,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("variable %s already exists", edge->name)));
 
+        rel->variable_name = edge->name;
         te = placeholder_target_entry(cpstate, edge->name);
         rel->tuple_position = te->resno;
         *target_list = lappend(*target_list, te);
@@ -1918,6 +2071,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     }
     else
     {
+        rel->variable_name = NULL;
         rel->tuple_position = 0;
     }
 
@@ -2096,6 +2250,7 @@ static cypher_target_node *transform_create_cypher_existing_node(
     rel->type = LABEL_KIND_VERTEX;
     rel->flags = CYPHER_TARGET_NODE_FLAG_NONE;
 
+    rel->variable_name = node->name;
     rel->tuple_position = 0;
 
     if (entity->type != ENT_VERTEX)
@@ -2237,6 +2392,7 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
 
     if (node->name)
     {
+        rel->variable_name = node->name;
         te = placeholder_target_entry(cpstate, node->name);
         rel->tuple_position = te->resno;
         *target_list = lappend(*target_list, te);
@@ -2244,6 +2400,7 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
     }
     else
     {
+        rel->variable_name = NULL;
         rel->tuple_position = 0;
     }
 

@@ -76,7 +76,6 @@ static void append_element(agtype_parse_state *pstate,
 static int length_compare_agtype_string_value(const void *a, const void *b);
 static int length_compare_agtype_pair(const void *a, const void *b,
                                       void *binequal);
-static void uniqueify_agtype_object(agtype_value *object);
 static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                               agtype_iterator_token seq,
                                               agtype_value *scalar_val);
@@ -2137,7 +2136,7 @@ static int length_compare_agtype_pair(const void *a, const void *b,
 /*
  * Sort and unique-ify pairs in agtype_value object
  */
-static void uniqueify_agtype_object(agtype_value *object)
+void uniqueify_agtype_object(agtype_value *object)
 {
     bool has_non_uniq = false;
 

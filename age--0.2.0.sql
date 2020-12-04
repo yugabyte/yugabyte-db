@@ -600,6 +600,22 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE CAST (graphid AS agtype)
+WITH FUNCTION ag_catalog.graphid_to_agtype(graphid);
+
+CREATE FUNCTION ag_catalog.agtype_to_graphid(agtype)
+RETURNS graphid
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS graphid)
+WITH FUNCTION ag_catalog.agtype_to_graphid(agtype)
+AS IMPLICIT;
+
+
 --
 -- agtype - path
 --
@@ -823,6 +839,11 @@ AS 'MODULE_PATHNAME';
 -- This function is defined as a VOLATILE function to prevent the optimizer
 -- from pulling up Query's for CREATE clauses.
 CREATE FUNCTION ag_catalog._cypher_create_clause(internal)
+RETURNS void
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog._cypher_set_clause(internal)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';

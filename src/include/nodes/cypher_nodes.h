@@ -83,6 +83,7 @@ typedef struct cypher_set
     ExtensibleNode extensible;
     List *items; // a list of cypher_set_items
     bool is_remove; // true if this is REMOVE clause
+    int location;
 } cypher_set;
 
 typedef struct cypher_set_item
@@ -91,6 +92,7 @@ typedef struct cypher_set_item
     Node *prop; // LHS
     Node *expr; // RHS
     bool is_add; // true if this is +=
+    int location;
 } cypher_set_item;
 
 typedef struct cypher_delete
@@ -207,15 +209,15 @@ typedef struct cypher_create_path
     AttrNumber tuple_position;
 } cypher_create_path;
 
-#define CYPHER_CREATE_CLAUSE_FLAG_NONE 0x0000
-#define CYPHER_CREATE_CLAUSE_FLAG_TERMINAL 0x0001
-#define CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE 0x0002
+#define CYPHER_CLAUSE_FLAG_NONE 0x0000
+#define CYPHER_CLAUSE_FLAG_TERMINAL 0x0001
+#define CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE 0x0002
 
-#define CYPHER_CREATE_CLAUSE_IS_TERMINAL(flags) \
-    (flags & CYPHER_CREATE_CLAUSE_FLAG_TERMINAL)
+#define CYPHER_CLAUSE_IS_TERMINAL(flags) \
+    (flags & CYPHER_CLAUSE_FLAG_TERMINAL)
 
-#define CYPHER_CREATE_CLAUSE_HAS_PREVIOUS_CLAUSE(flags) \
-    (flags & CYPHER_CREATE_CLAUSE_FLAG_PREVIOUS_CLAUSE)
+#define CYPHER_CLAUSE_HAS_PREVIOUS_CLAUSE(flags) \
+    (flags & CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE)
 
  typedef struct cypher_target_node
  {
@@ -231,6 +233,7 @@ typedef struct cypher_create_path
      TupleTableSlot *elemTupleSlot;
      Oid relid;
      char *label_name;
+     char *variable_name;
      AttrNumber tuple_position;
 } cypher_target_node;
 
@@ -264,6 +267,24 @@ typedef struct cypher_create_path
 
 #define CYPHER_TARGET_NODE_INSERT_ENTITY(flags) \
     (flags & CYPHER_TARGET_NODE_FLAG_INSERT)
+
+/* Data Structures that contain information about a vertices and edges the need to be updated */
+typedef struct cypher_update_information
+{
+    List *set_items;
+    int flags;
+    AttrNumber tuple_position;
+    char *graph_name;
+} cypher_update_information;
+
+typedef struct cypher_update_item
+{
+    AttrNumber prop_position;
+    AttrNumber entity_position;
+    char *var_name;
+    char *prop_name;
+    List *qualified_name;
+} cypher_update_item;
 
 /* grammar node for typecasts */
 typedef struct cypher_typecast
