@@ -91,8 +91,6 @@ class AnsibleProcess(object):
         if ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
-            # Ansible automatically uses /usr/local/bin/python when "-i localhost," is specified.
-            process_args.extend(["-e", "ansible_python_interpreter='/usr/bin/env python'"])
         elif self.can_ssh:
             process_args.extend([
                 "--private-key", ssh_key_file,
@@ -111,10 +109,11 @@ class AnsibleProcess(object):
             inventory_target = self.build_connection_target(
                 host_info.get("name", self.connection_target))
 
-        # Set inventory and connection type.
+        # Set inventory, connection type, and pythonpath.
         process_args.extend([
             "-i", inventory_target,
-            "-c", connection_type
+            "-c", connection_type,
+            "-e", "ansible_python_interpreter='/usr/bin/env python'"
         ])
 
         # Setup the full list of extra-vars needed for ansible plays.
