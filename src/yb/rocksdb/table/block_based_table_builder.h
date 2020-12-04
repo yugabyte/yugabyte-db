@@ -133,7 +133,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Flush the current filter block into disk. next_block_first_filter_key should be nullptr if this
   // is the last block written to disk.
   // REQUIRES: Finish(), Abandon() have not been called.
-  void FlushFilterBlock(const Slice& next_block_first_filter_key);
+  void FlushFilterBlock(const Slice* const next_block_first_filter_key);
 
   // Some compression libraries fail when the raw size is bigger than int. If
   // uncompressed size is bigger than kCompressionSizeLimit, don't compress it
