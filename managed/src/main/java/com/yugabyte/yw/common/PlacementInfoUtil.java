@@ -1619,45 +1619,41 @@ public class PlacementInfoUtil {
     }
   }
 
-  // Select the number of AZs for each deployment.
+  // Select the number of masters per AZ (Used in kubernetes).
   public static void selectNumMastersAZ(PlacementInfo pi, int numTotalMasters) {
-    int totalAZs = 0;
-    for (PlacementCloud pc : pi.cloudList) {
+    Queue<PlacementAZ> zones = new LinkedList<>();
+    int numRegionsCompleted = 0;
+    int idx = 0;
+    // We currently only support one cloud per deployment.
+    assert pi.cloudList.size() == 1;
+    PlacementCloud pc = pi.cloudList.get(0);
+    // Create a queue of zones for placing masters.
+    while(numRegionsCompleted != pc.regionList.size() && zones.size() < numTotalMasters) {
       for (PlacementRegion pr : pc.regionList) {
-        totalAZs += pr.azList.size();
-      }
-    }
-
-    for (PlacementCloud pc : pi.cloudList) {
-      int remainingMasters = numTotalMasters;
-      int azsRemaining = totalAZs;
-
-      for (PlacementRegion pr : pc.regionList) {
-        int numAzsInRegion = pr.azList.size();
-        // Distribute masters in each region according to the number of AZs in each region.
-        int mastersInRegion = (int) Math.round(remainingMasters * ((double) numAzsInRegion / azsRemaining));
-        int mastersAdded = 0;
-        int saturated = 0;
-        int count = 0;
-        while (mastersInRegion != mastersAdded && saturated != numAzsInRegion ) {
-          saturated = 0;
-          for (PlacementAZ pa : pr.azList) {
-            // The number of masters in an AZ cannot exceed the number of tservers.
-            if ((count + 1) <= pa.numNodesInAZ) {
-              pa.replicationFactor = count + 1;
-              mastersAdded++;
-            } else {
-              saturated++;
-            }
-            if (mastersInRegion == 0) {
-              break;
-            }
-          }
-          count++;
+        if (idx == pr.azList.size()) {
+          numRegionsCompleted++;
+          continue;
+        } else if (idx > pr.azList.size()) {
+          continue;
         }
-
-        remainingMasters -= mastersAdded;
-        azsRemaining -= numAzsInRegion;
+        // Ensure RF is first set to 0.
+        pr.azList.get(idx).replicationFactor = 0;
+        zones.add(pr.azList.get(idx));
+      }
+      idx++;
+    }
+    // Now place the masters.
+    while (numTotalMasters > 0) {
+      if (zones.isEmpty()) {
+        throw new IllegalStateException("No zones left to place masters. " +
+                                        "Not enough tserver nodes selected");
+      }
+      PlacementAZ az = zones.remove();
+      az.replicationFactor++;
+      numTotalMasters--;
+      // If there are more tservers in the zone, this can take more masters if needed.
+      if (az.replicationFactor < az.numNodesInAZ) {
+        zones.add(az);
       }
     }
   }
