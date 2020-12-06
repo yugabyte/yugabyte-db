@@ -99,8 +99,12 @@ CREATE VIEW pg_stat_monitor AS SELECT
     queryid,
     query,
 	application_name,
-	(string_to_array(relations, ',')) relations,
-	(string_to_array(cmd_type, ',')) cmd_type,
+	(string_to_array(relations, ',')) AS relations,
+	CASE
+			WHEN query like 'BEGIN' THEN  ''
+            WHEN query like 'END' THEN ''
+            ELSE (string_to_array(cmd_type, ','))[1]
+    END AS cmd_type,
 	elevel,
 	sqlcode,
 	message,

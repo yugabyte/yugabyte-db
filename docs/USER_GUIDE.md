@@ -341,23 +341,20 @@ SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
 **`cmd_type`**: List the command type of the query.
 
 ```sql
-SELECT substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
-                       query                       |    cmd_type     
----------------------------------------------------+-----------------
- BEGIN                                             | {INSERT}
- vacuum pgbench_branches                           | {}
- UPDATE pgbench_branches SET bbalance = bbalance + | {UPDATE,SELECT}
- select substr(query,$1, $2) as query, cmd_type fr | {SELECT}
- select count(*) from pgbench_branches             | {SELECT}
- select substr(query,$1, $2) as query, cmd_type fr | {}
- UPDATE pgbench_accounts SET abalance = abalance + | {UPDATE,SELECT}
- update test SET a = $1                            | {UPDATE}
- END                                               | {INSERT}
- INSERT INTO pgbench_history (tid, bid, aid, delta | {INSERT}
- vacuum pgbench_tellers                            | {}
- SELECT a from test for update                     | {UPDATE,SELECT}
- SELECT abalance FROM pgbench_accounts WHERE aid = | {SELECT}
- UPDATE pgbench_tellers SET tbalance = tbalance +  | {UPDATE,SELECT}
- truncate pgbench_history                          | {}
-(15 rows)
+postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
+ bucket |                       query                       | cmd_type
+--------+---------------------------------------------------+----------
+      1 | vacuum analyze pgbench_history                    |
+      1 | alter table pgbench_tellers add primary key (tid) |
+      1 | insert into pgbench_tellers(tid,bid,tbalance) val | INSERT
+      1 | select * from tt for update                       | UPDATE
+      1 | update tt set a = $1                              | UPDATE
+      1 | delete from tt                                    | DELETE
+      1 | insert into pgbench_branches(bid,bbalance) values | INSERT
+      1 | begin                                             |
+      1 | drop table if exists pgbench_accounts, pgbench_br |
+      1 | copy pgbench_accounts from stdin                  | INSERT
+      1 | create table pgbench_history(tid int,bid int,aid  |
+      1 | SELECT bucket, substr(query,$1, $2) AS query, cmd | SELECT
+(12 rows)
 ```

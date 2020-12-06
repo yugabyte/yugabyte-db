@@ -176,14 +176,12 @@ hash_query_entry_dealloc(int bucket)
 	HASH_SEQ_STATUS 	hash_seq;
 	pgssQueryEntry      *entry;
 
-	printf ("--%d--", hash_get_num_entries(pgss_hash));
 	hash_seq_init(&hash_seq, pgss_query_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
 		if (entry->key.bucket_id == bucket)
 			entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
 	}
-	printf ("--%d", hash_get_num_entries(pgss_hash));
 }
 
 /*

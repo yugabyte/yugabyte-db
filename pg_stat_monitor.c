@@ -465,14 +465,14 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 				pgss->relations[i++] = rte->relid;
 		}
 		if (rte->requiredPerms & ACL_INSERT) snprintf(pgss->cmdTag[0],CMD_LEN,"%s", "INSERT");
-        if (rte->requiredPerms & ACL_UPDATE) snprintf(pgss->cmdTag[1],CMD_LEN,"%s", "UPDATE");
-        if (rte->requiredPerms & ACL_DELETE) snprintf(pgss->cmdTag[2],CMD_LEN,"%s", "DELETE");
-        if (rte->requiredPerms & ACL_SELECT) snprintf(pgss->cmdTag[3],CMD_LEN,"%s", "SELECT");
-        if (rte->requiredPerms & ACL_TRUNCATE) snprintf(pgss->cmdTag[4],CMD_LEN,"%s", "TRUNCATE");
-        if (rte->requiredPerms & ACL_REFERENCES) snprintf(pgss->cmdTag[5],CMD_LEN,"%s", "REFERENCES");
-        if (rte->requiredPerms & ACL_TRIGGER) snprintf(pgss->cmdTag[6],CMD_LEN,"%s", "TRIGGER");
-        if (rte->requiredPerms & ACL_EXECUTE) snprintf(pgss->cmdTag[7],CMD_LEN,"%s", "EXECUTE");
-        if (rte->requiredPerms & ACL_CREATE) snprintf(pgss->cmdTag[8],CMD_LEN,"%s", "CREATE");
+        else if (rte->requiredPerms & ACL_UPDATE) snprintf(pgss->cmdTag[1],CMD_LEN,"%s", "UPDATE");
+        else if (rte->requiredPerms & ACL_DELETE) snprintf(pgss->cmdTag[2],CMD_LEN,"%s", "DELETE");
+        else if (rte->requiredPerms & ACL_SELECT) snprintf(pgss->cmdTag[3],CMD_LEN,"%s", "SELECT");
+        else if (rte->requiredPerms & ACL_TRUNCATE) snprintf(pgss->cmdTag[4],CMD_LEN,"%s", "TRUNCATE");
+        else if (rte->requiredPerms & ACL_REFERENCES) snprintf(pgss->cmdTag[5],CMD_LEN,"%s", "REFERENCES");
+        else if (rte->requiredPerms & ACL_TRIGGER) snprintf(pgss->cmdTag[6],CMD_LEN,"%s", "TRIGGER");
+        else if (rte->requiredPerms & ACL_EXECUTE) snprintf(pgss->cmdTag[7],CMD_LEN,"%s", "EXECUTE");
+        else if (rte->requiredPerms & ACL_CREATE) snprintf(pgss->cmdTag[8],CMD_LEN,"%s", "CREATE");
 	}
 	LWLockRelease(pgss->lock);
 
@@ -1255,7 +1255,6 @@ get_next_wbucket(pgssSharedState *pgss)
 		hash_query_entry_dealloc(bucket_id);
 		sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
 		unlink(file_name);
-		printf("\nRemove file %s\n", file_name);
 
 		/* reset the query buffer */
 		memset(buf, 0, sizeof (uint64));
@@ -2530,7 +2529,6 @@ dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len)
 	char file_name[1024];
 
 	sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, bucket_id);
-	printf("\nWriting to %s\n", file_name);
 	fd = OpenTransientFile(file_name, O_RDWR | O_CREAT | O_APPEND | PG_BINARY);
     if (fd < 0)
 		ereport(LOG,
