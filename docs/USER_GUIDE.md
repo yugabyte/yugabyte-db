@@ -341,7 +341,7 @@ SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
 **`cmd_type`**: List the command type of the query.
 
 ```sql
-postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
+SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
  bucket |                       query                       | cmd_type
 --------+---------------------------------------------------+----------
       1 | vacuum analyze pgbench_history                    |
