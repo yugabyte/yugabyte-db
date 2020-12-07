@@ -283,7 +283,7 @@ Using these IDs, you can restore the previous `.snapshot` folders to the new pat
 
 {{< note title="Tip" >}}
 
-For each tablet, you need to copy the snapshots folder on all replicas.
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
 {{< /note >}}
 
