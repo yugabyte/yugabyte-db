@@ -197,7 +197,7 @@ class RaftConsensusQuorumTest : public YBTest {
           Bind(&DoNothing),
           DEFAULT_TABLE_TYPE,
           nullptr /* retryable_requests */,
-          yb::OpId() /* split_op_id */));
+          SplitOpInfo()));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);

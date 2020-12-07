@@ -1477,7 +1477,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         raft_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
-        yb::OpId::FromPB(bootstrap_info.split_op_id));
+        bootstrap_info.split_op_info);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "

@@ -711,6 +711,19 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
   }
 }
 
+namespace {
+
+CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
+  return resp.errors_size() > 0 ? StatusFromPB(resp.errors(0).status()) : Status::OK();
+}
+
+CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
+  // There are no per-tablet lookup errors inside GetTableLocationsResponsePB.
+  return Status::OK();
+}
+
+} // namespace
+
 template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
@@ -779,6 +792,10 @@ void LookupRpc::DoFinished(
   }
 
   // Prefer response failures over no tablets found.
+  if (new_status.ok()) {
+    new_status = GetFirstErrorForTabletById(resp);
+  }
+
   if (new_status.ok() && resp.tablet_locations_size() == 0) {
     new_status = STATUS(NotFound, "No such tablet found");
   }
