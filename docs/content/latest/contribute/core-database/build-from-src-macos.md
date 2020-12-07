@@ -60,8 +60,8 @@ First, install [Homebrew](https://brew.sh/), if you do not already have it. Home
 Install the following packages using Homebrew:
 
 ```sh
-brew install autoconf automake bash ccache cmake  coreutils gnu-tar icu4c libtool \
-             maven ninja pkg-config pstree wget zlib python
+brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
+             maven ninja pkg-config pstree wget python
 ```
 
 {{< note title="Note" >}}
