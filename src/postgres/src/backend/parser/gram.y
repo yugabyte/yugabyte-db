@@ -11940,9 +11940,6 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->whereClause = $6;
 					n->returningList = $7;
 					n->withClause = $1;
-					if (n->withClause != NULL) {
-						parser_ybc_not_support(@1, "WITH clause");
-					}
 					$$ = (Node *)n;
 				}
 		;
