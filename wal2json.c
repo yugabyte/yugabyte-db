@@ -870,14 +870,6 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
 
-#if PG_VERSION_NUM >= 130000
-	if (rbtxn_has_catalog_changes(txn))
-#else
-	if (txn->has_catalog_changes)
-#endif
-		elog(DEBUG2, "txn has catalog changes: yes");
-	else
-		elog(DEBUG2, "txn has catalog changes: no");
 	elog(DEBUG2, "my change counter: " UINT64_FORMAT " ; # of changes: " UINT64_FORMAT " ; # of changes in memory: " UINT64_FORMAT, data->nr_changes, txn->nentries, txn->nentries_mem);
 	elog(DEBUG2, "# of subxacts: %d", txn->nsubtxns);
 
