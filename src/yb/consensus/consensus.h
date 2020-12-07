@@ -101,9 +101,11 @@ struct ConsensusBootstrapInfo {
   // The id of the last committed operation in the log.
   OpIdPB last_committed_id;
 
-  // The id of the split operation designated for this tablet added to Raft log.
-  // See comments for ReplicateState::split_op_id_.
-  OpIdPB split_op_id;
+  // Parameters of the split operation added to Raft log and designated for this tablet (in general
+  // case Raft log the tablet could contain old split operations designated for it ancestor tablets,
+  // those are not reflected here).
+  // See comments for ReplicateState::split_op_with_tablet_ids_.
+  SplitOpInfo split_op_info;
 
   // REPLICATE messages which were in the log with no accompanying
   // COMMIT. These need to be passed along to consensus init in order
@@ -337,6 +339,10 @@ class Consensus {
   // Return the ID of the split operation requesting to split this Raft group if it has been added
   // to Raft log and uninitialized OpId otherwise.
   virtual yb::OpId GetSplitOpId() = 0;
+
+  // Return split child tablet IDs if split operation has been added to Raft log and array of empty
+  // tablet IDs otherwise.
+  virtual std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
