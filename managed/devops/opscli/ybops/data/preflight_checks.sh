@@ -37,8 +37,11 @@ preflight_provision_check() {
 
   if [[ $install_node_exporter = true ]]; then
     # Check node exporter isn't already installed.
-    num_proc=$(ps -ef | grep "node_exporter" | grep -v "grep" | wc -l)
-    update_result_json_with_rc "(Prometheus) No Pre-existing Node Exporter Running" "$num_proc"
+    no_node_exporter=false
+    if ! ps -ef | grep -v "grep" | grep "node_exporter"; then
+      no_node_exporter=true
+    fi
+    update_result_json "(Prometheus) No Pre-existing Node Exporter Running" "$no_node_exporter"
 
     # Check prometheus files are writable.
     filepaths="/opt/prometheus /etc/prometheus /var/log/prometheus /var/run/prometheus \
