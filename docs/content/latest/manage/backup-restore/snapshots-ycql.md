@@ -35,6 +35,14 @@ showAsideToc: true
 
 You can create a transactional backup for a YCQL table (including associated secondary indexes) using snapshots.
 
+- Implementation notes:
+  - Massively parallel, efficient for very large data sets.
+  - Once the snapshot command is issued, the db will “buffer” newly incoming writes to that tablet without writing them immediately.
+  - The existing data will be flushed to disk and hardlinks of the files will be created in a `.snapshots` directory on each tablet.
+  - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
+  - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
+  - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
+
 ## Step 1: Create a local cluster
 
 To create a local cluster, see [Create a local cluster](../../../quick-start/create-local-cluster).
@@ -281,9 +289,7 @@ After importing the `metadata file`, you see the following changes:
 
 Using these IDs, you can restore the previous `.snapshot` folders to the new paths.
 
-# todo add sample!
-
-{{< note title="Tip" >}}
+{{< note title="Note" >}}
 
 For each tablet, you need to copy the snapshots folder on all replicas.
 
