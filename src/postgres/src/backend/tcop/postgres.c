@@ -3983,28 +3983,59 @@ yb_is_restart_possible(const ErrorData* edata,
 					   const YBQueryRestartData* restart_data)
 {
 	if (!IsYugaByteEnabled())
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, YB is not enabled");
 		return false;
+	}
 
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
-	bool is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
+	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	if (!is_read_restart_error && !is_conflict_error)
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, code %d isn't a restart/conflict error",
+			          edata->yb_txn_errcode);
 		return false;
+	}
 
-	 if (is_conflict_error && attempt >= YBCGetMaxWriteRestartAttempts())
-		 return false;
+	if (is_conflict_error && attempt >= YBCGetMaxWriteRestartAttempts())
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, we're out of write restart attempts (%d)",
+			          attempt);
+		return false;
+	}
 
 	if (is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts())
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",
+			          attempt);
 		return false;
+	}
 
 	if (YBIsDataSent())
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, data was already sent");
 		return false;
+	}
 
 	if (!restart_data)
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, restart data is missing");
 		return false;
+	}
 
 	/* can only restart SELECT queries */
 	if (!restart_data->query_string)
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, query string is missing");
 		return false;
+	}
 
 	const char* command_tag = restart_data->command_tag;
 
@@ -4027,8 +4058,21 @@ yb_is_restart_possible(const ErrorData* edata,
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
-	return (is_read_restart_error && strncmp(command_tag, "SELECT", 6) == 0) ||
-		   (is_conflict_error && YBIsDmlCommandTag(command_tag));
+	bool is_read = strncmp(command_tag, "SELECT", 6) == 0;
+	bool is_dml  = YBIsDmlCommandTag(command_tag);
+
+	if (!(is_read_restart_error && is_read) && !(is_conflict_error && is_dml))
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, is read?: %d, is dml? %d, "
+			          "is read restart error? %d, is conflict error? %d",
+			          is_read, is_dml, is_read_restart_error, is_conflict_error);
+		return false;
+	}
+
+	if (yb_debug_log_internal_restarts)
+		elog(LOG, "Restart is possible");
+	return true;
 }
 
 /*
