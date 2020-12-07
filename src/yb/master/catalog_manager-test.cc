@@ -318,7 +318,7 @@ const std::string GetSplitKey(const std::string& start_key, const std::string& e
   return split_key;
 }
 
-std::array<scoped_refptr<TabletInfo>, 2> SplitTablet(
+std::array<scoped_refptr<TabletInfo>, kNumSplitParts> SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet) {
   const auto partition = source_tablet->LockForRead()->data().pb.partition();
 

@@ -48,6 +48,8 @@
 #include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/constants.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -101,7 +103,8 @@ typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 struct TabletCreationMetaData;
-typedef boost::container::static_vector<TabletCreationMetaData, 2> SplitTabletsCreationMetaData;
+typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
+    SplitTabletsCreationMetaData;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.

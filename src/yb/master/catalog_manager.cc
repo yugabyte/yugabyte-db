@@ -1750,7 +1750,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
 namespace {
 
-Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
+Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   const auto& source_partition = tablet_info.LockForRead()->data().pb.partition();
 
@@ -1764,12 +1764,13 @@ Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
         source_partition.partition_key_end(), split_partition_key);
   }
 
-  std::array<PartitionPB, 2> new_tablets_partition;
+  std::array<PartitionPB, kNumSplitParts> new_tablets_partition;
 
   new_tablets_partition.fill(source_partition);
 
   new_tablets_partition[0].set_partition_key_end(split_partition_key);
   new_tablets_partition[1].set_partition_key_start(split_partition_key);
+  static_assert(kNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
 
   return new_tablets_partition;
 }
@@ -1801,17 +1802,25 @@ Status CatalogManager::DoSplitTablet(
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
-  constexpr auto kNumSplitParts = 2;
+  const auto source_tablet_lock = source_tablet_info->LockForWrite();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
   std::array<TabletId, kNumSplitParts> new_tablet_ids;
   for (int i = 0; i < kNumSplitParts; ++i) {
-    auto* new_tablet_info = VERIFY_RESULT(
-        RegisterNewTabletForSplit(*source_tablet_info, new_tablets_partition[i]));
-    new_tablet_ids[i] = new_tablet_info->id();
+    if (i < source_tablet_lock->data().pb.split_tablet_ids_size()) {
+      // Post-split tablet `i` has been already registered.
+      new_tablet_ids[i] = source_tablet_lock->data().pb.split_tablet_ids(i);
+    } else {
+      auto* new_tablet_info = VERIFY_RESULT(
+          RegisterNewTabletForSplit(*source_tablet_info, new_tablets_partition[i]));
+
+      new_tablet_ids[i] = new_tablet_info->id();
+      source_tablet_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet_info->id());
+    }
   }
+  source_tablet_lock->Commit();
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -6901,7 +6910,7 @@ void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo
 }
 
 void CatalogManager::SendSplitTabletRequest(
-    const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+    const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key) {
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
@@ -7794,7 +7803,13 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   {
     auto l_tablet = tablet->LockForRead();
     if (PREDICT_FALSE(l_tablet->data().is_deleted())) {
-      return STATUS(NotFound, "Tablet deleted", l_tablet->data().pb.state_msg());
+      std::vector<TabletId> split_tablet_ids;
+      for (const auto& split_tablet_id : l_tablet->data().pb.split_tablet_ids()) {
+        split_tablet_ids.push_back(split_tablet_id);
+      }
+      return STATUS(
+          NotFound, "Tablet deleted", l_tablet->data().pb.state_msg(),
+          SplitChildTabletIdsData(split_tablet_ids));
     }
 
     if (PREDICT_FALSE(!l_tablet->data().is_running())) {
@@ -7810,6 +7825,9 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
     locs_pb->mutable_partition()->CopyFrom(metadata.partition());
     locs_pb->set_split_depth(metadata.split_depth());
     locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
+    for (const auto& split_tablet_id : metadata.split_tablet_ids()) {
+      *locs_pb->add_split_tablet_ids() = split_tablet_id;
+    }
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());

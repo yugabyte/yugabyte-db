@@ -18,6 +18,7 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -662,8 +663,8 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  public:
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const std::array<TabletId, 2>& new_tablet_ids, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+      const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
+      const std::string& split_encoded_key, const std::string& split_partition_key);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
