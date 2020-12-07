@@ -1022,7 +1022,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   void SendSplitTabletRequest(
-      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
   // Send the "truncate table request" to all tablets of the specified table.

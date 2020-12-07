@@ -95,7 +95,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   class ConsensusFaultHooks;
 
   // Creates RaftConsensus.
-  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
+  // split_op_info is the parameters of split tablet Raft operation requesting split of this
+  // tablet or unset.
   static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -112,10 +113,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id);
+    const SplitOpInfo& split_op_info);
 
   // Creates RaftConsensus.
-  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
+  // split_op_info is the parameters of split tablet Raft operation requesting split of this
+  // tablet or unset.
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -132,7 +134,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id);
+    const SplitOpInfo& split_op_info);
 
   virtual ~RaftConsensus();
 
@@ -218,6 +220,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   yb::OpId GetAllAppliedOpId();
 
   yb::OpId GetSplitOpId() override;
+
+  std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
 
   // Resets split operation ID, to be used only from SplitOperation::DoAbort.
   CHECKED_STATUS ResetSplitOpId();

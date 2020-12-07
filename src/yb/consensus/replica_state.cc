@@ -75,14 +75,14 @@ using strings::SubstituteAndAppend;
 ReplicaState::ReplicaState(
     ConsensusOptions options, string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
     ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-    RetryableRequests* retryable_requests, const yb::OpId& split_op_id,
+    RetryableRequests* retryable_requests, const SplitOpInfo& split_op_info,
     std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       context_(consensus_context),
       safe_op_id_waiter_(safe_op_id_waiter),
-      split_op_id_(split_op_id),
+      split_op_info_(split_op_info),
       applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   if (retryable_requests) {
@@ -641,8 +641,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
   DCHECK(IsLocked());
 
   SCHECK_GT(
-      yb::OpId::FromPB(round->replicate_msg()->id()), split_op_id_, InvalidArgument,
-      "Received op id should be grater than split_op_id.");
+      yb::OpId::FromPB(round->replicate_msg()->id()), split_op_info_.op_id, InvalidArgument,
+      "Received op id should be grater than split OP ID.");
 
   auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -654,16 +654,18 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     }
   }
 
-  if (PREDICT_FALSE(!split_op_id_.empty() && !ShouldAllowOpAfterSplitTablet(op_type))) {
+  if (PREDICT_FALSE(!split_op_info_.op_id.empty() && !ShouldAllowOpAfterSplitTablet(op_type))) {
     // TODO(tsplit): for optimization - include new tablet IDs into response, so client knows
     // earlier where to retry.
     // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
     // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
     return STATUS_EC_FORMAT(
-        IllegalState, ConsensusError(ConsensusErrorPB::TABLET_SPLIT),
-        "Tablet split has been added to Raft log, operation $0 $1 should be retried to new "
-        "tablets.",
-        op_type, round->replicate_msg()->id());
+               IllegalState, ConsensusError(ConsensusErrorPB::TABLET_SPLIT),
+               "Tablet split has been added to Raft log, operation $0 $1 should be retried to new "
+               "tablets.",
+               op_type, round->replicate_msg()->id())
+        .CloneAndAddErrorCode(SplitChildTabletIdsData(std::vector<TabletId>(
+            split_op_info_.child_tablet_ids.begin(), split_op_info_.child_tablet_ids.end())));
   }
 
   // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
@@ -727,10 +729,14 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       return STATUS(AlreadyPresent, "Duplicate request");
     }
   } else if (op_type == SPLIT_OP) {
+    const auto& split_request = round->replicate_msg()->split_request();
     SCHECK_EQ(
-        round->replicate_msg()->split_request().tablet_id(), cmeta_->tablet_id(), InvalidArgument,
+        split_request.tablet_id(), cmeta_->tablet_id(), InvalidArgument,
         "Received split op for a different tablet.");
-    split_op_id_ = yb::OpId::FromPB(round->replicate_msg()->id());
+    split_op_info_ = {
+        .op_id = yb::OpId::FromPB(round->replicate_msg()->id()),
+        .child_tablet_ids = {split_request.new_tablet1_id(), split_request.new_tablet2_id()}
+    };
     // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
     // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
@@ -1018,12 +1024,20 @@ const yb::OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
 
 const yb::OpId& ReplicaState::GetSplitOpIdUnlocked() const {
   DCHECK(IsLocked());
-  return split_op_id_;
+  return split_op_info_.op_id;
+}
+
+std::array<TabletId, kNumSplitParts> ReplicaState::GetSplitChildTabletIdsUnlocked() const {
+  DCHECK(IsLocked());
+  return split_op_info_.child_tablet_ids;
 }
 
 void ReplicaState::ResetSplitOpIdUnlocked() {
   DCHECK(IsLocked());
-  split_op_id_ = yb::OpId();
+  split_op_info_.op_id = yb::OpId();
+  for (auto& split_child_tablet_id : split_op_info_.child_tablet_ids) {
+    split_child_tablet_id.clear();
+  }
 }
 
 RestartSafeCoarseMonoClock& ReplicaState::Clock() {

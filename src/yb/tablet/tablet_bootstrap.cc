@@ -211,9 +211,9 @@ struct ReplayState {
   // committed.
   OpId committed_op_id;
 
-  // The id of the split operation designated for this tablet added to Raft log.
-  // See comments for ReplicateState::split_op_id_.
-  OpId split_op_id;
+  // Parameters of the split operation added to Raft log and designated for this tablet .
+  // See comments for ReplicateState::split_op_info_.
+  consensus::SplitOpInfo split_op_info;
 
   // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
   // safe to apply and delete from this map based on the commit index included into each REPLICATE
@@ -297,26 +297,30 @@ Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tab
       Format("Unexpected operation $0 instead of SPLIT_OP", msg));
   const auto tablet_id_to_split = msg.split_request().tablet_id();
 
-  if (!split_op_id.empty()) {
+  if (!split_op_info.op_id.empty()) {
     if (tablet_id_to_split == tablet_id) {
       return STATUS_FORMAT(
           IllegalState,
           "There should be at most one SPLIT_OP designated for tablet $0 but we got two: "
           "$1, $2",
-          tablet_id, split_op_id, msg.id());
+          tablet_id, split_op_info.op_id, msg.id());
     }
 
     return STATUS_FORMAT(
         IllegalState,
         "Unexpected SPLIT_OP $0 designated for another tablet $1 after we've already "
         "replayed SPLIT_OP $2 for this tablet $3",
-        msg.id(), tablet_id_to_split, split_op_id, tablet_id);
+        msg.id(), tablet_id_to_split, split_op_info.op_id, tablet_id);
   }
 
   if (tablet_id_to_split == tablet_id) {
     // We might be asked to replay SPLIT_OP designated for a different (ancestor) tablet, will
     // just ignore it in this case.
-    split_op_id = OpId::FromPB(msg.id());
+    const auto& split_request = msg.split_request();
+    split_op_info = {
+      .op_id = OpId::FromPB(msg.id()),
+      .child_tablet_ids = { split_request.new_tablet1_id(), split_request.new_tablet2_id() }
+    };
   }
   return Status::OK();
 }
@@ -1320,7 +1324,7 @@ class TabletBootstrap {
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
-    consensus_info->split_op_id = MakeOpIdPB(replay_state_->split_op_id);
+    consensus_info->split_op_info = replay_state_->split_op_info;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);

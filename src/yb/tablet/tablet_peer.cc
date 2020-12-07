@@ -188,7 +188,7 @@ Status TabletPeer::InitTabletPeer(
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id) {
+    const consensus::SplitOpInfo& split_op_info) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -269,7 +269,7 @@ Status TabletPeer::InitTabletPeer(
         tablet_->table_type(),
         raft_pool,
         retryable_requests,
-        split_op_id);
+        split_op_info);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
@@ -877,6 +877,9 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     auto split_op_id = consensus()->GetSplitOpId();
     if (!split_op_id.empty()) {
       min_index = std::min(min_index, split_op_id.index);
+      if (details) {
+        *details += Format("split_op_id: $0\n", split_op_id.index);
+      }
     }
   }
 

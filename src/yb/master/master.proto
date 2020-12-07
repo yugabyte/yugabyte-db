@@ -326,6 +326,9 @@ message SysTabletsEntryPB {
   // Key corresponds to the table_id for the index table. Value is encoded as
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
+
+  // Tablet IDs for this tablet split if they have been registered in master.
+  repeated bytes split_tablet_ids = 14;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -824,6 +827,7 @@ message TabletLocationsPB {
   // See SysTabletsEntryPB for fields with the same name.
   optional uint64 split_depth = 9;
   optional bytes split_parent_tablet_id = 12;
+  repeated bytes split_tablet_ids = 13;
 
   // Number of expected live replicas.
   optional int32 expected_live_replicas = 10;
