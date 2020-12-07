@@ -14,6 +14,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/sysattr.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_type.h"
@@ -135,8 +136,9 @@ static void pg_decode_truncate(LogicalDecodingContext *ctx,
 #endif
 
 static void columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Oid reloid);
-static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, TupleDesc indexdesc, bool replident, bool addcomma, Oid reloid);
-static void pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, TupleDesc indexdesc, bool addcomma);
+static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Oid reloid);
+static void pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma);
+static void identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs);
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
 static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
 static bool split_string_to_list(char *rawstring, char separator, List **sl);
@@ -943,7 +945,7 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
  * replident: is this tuple a replica identity?
  */
 static void
-tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, TupleDesc indexdesc, bool replident, bool addcomma, Oid reloid)
+tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Oid reloid)
 {
 	JsonDecodingData	*data;
 	int					natt;
@@ -1041,32 +1043,9 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		if (attr->attisdropped || attr->attnum < 0)
 			continue;
 
-		/* Search indexed columns in whole heap tuple */
-		if (indexdesc != NULL)
-		{
-			int		j;
-			bool	found_col = false;
-
-			for (j = 0; j < indexdesc->natts; j++)
-			{
-				Form_pg_attribute	iattr;
-
-				/* See explanation a few lines above. */
-#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
-				iattr = indexdesc->attrs[j];
-#else
-				iattr = TupleDescAttr(indexdesc, j);
-#endif
-
-				if (strcmp(NameStr(attr->attname), NameStr(iattr->attname)) == 0)
-					found_col = true;
-
-			}
-
-			/* Print only indexed columns */
-			if (!found_col)
-				continue;
-		}
+		/* Replica identity column? */
+		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
+			continue;
 
 		/* Get Datum from tuple */
 		origval = heap_getattr(tuple, natt + 1, tupdesc, &isnull);
@@ -1362,15 +1341,15 @@ columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple 
 
 /* Print replica identity information */
 static void
-identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, TupleDesc indexdesc)
+identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs)
 {
 	/* Last parameter does not matter */
-	tuple_to_stringinfo(ctx, tupdesc, tuple, indexdesc, true, false, InvalidOid);
+	tuple_to_stringinfo(ctx, tupdesc, tuple, bs, true, false, InvalidOid);
 }
 
 /* Print primary key information */
 static void
-pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, TupleDesc indexdesc, bool addcomma)
+pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma)
 {
 	JsonDecodingData	*data;
 	int					natt;
@@ -1380,10 +1359,6 @@ pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple
 	StringInfoData		pktypes;
 
 	data = ctx->output_plugin_private;
-
-	/* no primary key */
-	if (indexdesc == NULL)
-		return;
 
 	initStringInfo(&pknames);
 	initStringInfo(&pktypes);
@@ -1414,31 +1389,9 @@ pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple
 		if (attr->attisdropped || attr->attnum < 0)
 			continue;
 
-		/* Search pk columns in whole heap tuple */
-		if (indexdesc != NULL)
-		{
-			int		j;
-			bool	found_col = false;
-
-			for (j = 0; j < indexdesc->natts; j++)
-			{
-				Form_pg_attribute	iattr;
-
-				/* See explanation a few lines above. */
-#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
-				iattr = indexdesc->attrs[j];
-#else
-				iattr = TupleDescAttr(indexdesc, j);
-#endif
-
-				if (strcmp(NameStr(attr->attname), NameStr(iattr->attname)) == 0)
-					found_col = true;
-			}
-
-			/* Print only indexed columns */
-			if (!found_col)
-				continue;
-		}
+		/* Primary key column? */
+		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
+			continue;
 
 		typid = attr->atttypid;
 
@@ -1539,11 +1492,8 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	TupleDesc	tupdesc;
 	MemoryContext old;
 
-	Relation	indexrel;
-	TupleDesc	indexdesc;
-
-	Relation	pkrel = NULL;
-	TupleDesc	pkdesc = NULL;
+	Bitmapset	*pkbs = NULL;
+	Bitmapset	*ribs = NULL;
 
 	char		*schemaname;
 	char		*tablename;
@@ -1751,30 +1701,21 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	appendStringInfo(ctx->out, ",%s", data->nl);
 
 	if (data->include_pk)
-	{
 #if	PG_VERSION_NUM >= 100000
-		if (OidIsValid(relation->rd_pkindex))	/* 10+ */
-		{
-			pkrel = RelationIdGetRelation(relation->rd_pkindex);
-			pkdesc = RelationGetDescr(pkrel);
-		}
+		pkbs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PRIMARY_KEY);
 #else
-		if (OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
-		{
-			pkrel = RelationIdGetRelation(relation->rd_replidindex);
-			pkdesc = RelationGetDescr(pkrel);
-		}
+		pkbs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_KEY);
 #endif
-	}
 
 	switch (change->action)
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
 			/* Print the new tuple */
-			if (data->include_pk && pkrel != NULL)
+			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
+					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 			{
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, change->data.tp.relnode.relNode);
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkdesc, false);
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false);
 			}
 			else
 			{
@@ -1784,8 +1725,9 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
 			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, change->data.tp.relnode.relNode);
-			if (data->include_pk && pkrel != NULL)
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkdesc, true);
+			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
+					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
 
 			/*
 			 * The old tuple is available when:
@@ -1800,17 +1742,8 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			{
 				elog(DEBUG1, "old tuple is null");
 
-				indexrel = RelationIdGetRelation(relation->rd_replidindex);
-				if (indexrel != NULL)
-				{
-					indexdesc = RelationGetDescr(indexrel);
-					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, indexdesc);
-					RelationClose(indexrel);
-				}
-				else
-				{
-					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, NULL);
-				}
+				ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs);
 			}
 			else
 			{
@@ -1819,21 +1752,12 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
-			if (data->include_pk && pkrel != NULL)
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkdesc, true);
+			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
+					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
 
-			/* Print the replica identity */
-			indexrel = RelationIdGetRelation(relation->rd_replidindex);
-			if (indexrel != NULL)
-			{
-				indexdesc = RelationGetDescr(indexrel);
-				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, indexdesc);
-				RelationClose(indexrel);
-			}
-			else
-			{
-				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL);
-			}
+			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
+			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs);
 
 			if (change->data.tp.oldtuple == NULL)
 				elog(DEBUG1, "old tuple is null");
@@ -1844,8 +1768,8 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			Assert(false);
 	}
 
-	if (data->include_pk && pkrel != NULL)
-		RelationClose(pkrel);
+	bms_free(pkbs);
+	bms_free(ribs);
 
 	appendStringInfo(ctx->out, "%s%s}", data->ht, data->ht);
 
@@ -1944,8 +1868,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 	JsonDecodingData	*data;
 	TupleDesc			tupdesc;
 	Relation			defrel = NULL;
-	Relation			idxrel;
-	TupleDesc			idxdesc = NULL;
+	Bitmapset			*bs = NULL;
 	int					i;
 	Datum				*values;
 	bool				*nulls;
@@ -1963,41 +1886,14 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 	/* figure out replica identity columns */
 	if (kind == PGOUTPUTJSON_IDENTITY)
 	{
-		if (OidIsValid(relation->rd_replidindex))		/* REPLICA IDENTITY INDEX */
-		{
-			idxrel = RelationIdGetRelation(relation->rd_replidindex);
-			idxdesc = RelationGetDescr(idxrel);
-		}
-#if	PG_VERSION_NUM >= 100000
-		else if (OidIsValid(relation->rd_pkindex))	/* REPLICA IDENTITY DEFAULT + PK (10+) */
-		{
-			idxrel = RelationIdGetRelation(relation->rd_pkindex);
-			idxdesc = RelationGetDescr(idxrel);
-		}
-#else
-		else if (relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT && OidIsValid(relation->rd_replidindex))	/* 9.4, 9.5 and 9.6 */
-		{
-			idxrel = RelationIdGetRelation(relation->rd_replidindex);
-			idxdesc = RelationGetDescr(idxrel);
-		}
-#endif
-		else if (relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL)
-			elog(ERROR, "table does not have primary key or replica identity");
+		bs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 	}
 	else if (kind == PGOUTPUTJSON_PK)
 	{
 #if	PG_VERSION_NUM >= 100000
-		if (OidIsValid(relation->rd_pkindex))	/* 10+ */
-		{
-			idxrel = RelationIdGetRelation(relation->rd_pkindex);
-			idxdesc = RelationGetDescr(idxrel);
-		}
+		bs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PRIMARY_KEY);
 #else
-		if (OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
-		{
-			idxrel = RelationIdGetRelation(relation->rd_replidindex);
-			idxdesc = RelationGetDescr(idxrel);
-		}
+		bs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_KEY);
 #endif
 	}
 
@@ -2014,9 +1910,6 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 	for (i = 0; i < tupdesc->natts; i++)
 	{
 		Form_pg_attribute	attr;
-		int					j;
-		bool				found = false;
-		char				*type_str;
 
 #if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
 		attr = tupdesc->attrs[i];
@@ -2028,39 +1921,12 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		if (attr->attisdropped || attr->attnum < 0)
 			continue;
 
-		/*
-		 * oldtuple contains NULL on those values that are not defined by
-		 * REPLICA IDENTITY. In this case, print only non-null values.
-		 */
-		if (nulls[i] && (kind == PGOUTPUTJSON_PK || kind == PGOUTPUTJSON_IDENTITY))
+		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
 			continue;
 
 		/* don't send unchanged TOAST Datum */
 		if (!nulls[i] && attr->attlen == -1 && VARATT_IS_EXTERNAL_ONDISK(values[i]))
 			continue;
-
-		/*
-		 * Is it replica identity column? Print only those columns or all
-		 * columns if REPLICA IDENTITY FULL is set.
-		 */
-		if (kind == PGOUTPUTJSON_PK || (kind == PGOUTPUTJSON_IDENTITY && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL))
-		{
-			for (j = 0; j < idxdesc->natts; j++)
-			{
-				Form_pg_attribute	iattr;
-
-#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
-				iattr = idxdesc->attrs[j];
-#else
-				iattr = TupleDescAttr(idxdesc, j);
-#endif
-				if (strcmp(NameStr(attr->attname), NameStr(iattr->attname)) == 0)
-					found = true;
-			}
-
-			if (!found)
-				continue;
-		}
 
 		if (need_sep)
 			appendStringInfoChar(ctx->out, ',');
@@ -2075,6 +1941,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		{
 			HeapTuple		type_tuple;
 			Form_pg_type	type_form;
+			char			*type_str;
 
 			type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(attr->atttypid));
 			type_form = (Form_pg_type) GETSTRUCT(type_tuple);
@@ -2201,6 +2068,8 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		heap_close(defrel, AccessShareLock);
 #endif
 	}
+
+	bms_free(bs);
 
 	pfree(values);
 	pfree(nulls);
