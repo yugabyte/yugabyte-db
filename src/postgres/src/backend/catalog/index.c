@@ -1725,9 +1725,10 @@ index_drop(Oid indexId, bool concurrent)
 
 	/*
 	 * Schedule physical removal of the files (if any)
-	 * If YugaByte is enabled, there aren't any physical files to remove.
+	 * If the relation is a Yugabyte relation, there aren't any physical files to
+	 * remove.
 	 */
-	if (!IsYugaByteEnabled() &&
+	if (!IsYBRelation(userIndexRelation) &&
 		userIndexRelation->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
 		RelationDropStorage(userIndexRelation);
 
@@ -2239,7 +2240,7 @@ index_update_stats(Relation rel,
 
 	if (reltuples >= 0)
 	{
-		BlockNumber relpages = IsYugaByteEnabled() ? 0 : RelationGetNumberOfBlocks(rel);
+		BlockNumber relpages = IsYBRelation(rel) ? 0 : RelationGetNumberOfBlocks(rel);
 		BlockNumber relallvisible;
 
 		if (rd_rel->relkind != RELKIND_INDEX)
@@ -2811,7 +2812,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		 * Skip handling of HOT-chained tuples which does not apply to YugaByte-based
 		 * tables.
 		 */
-		if (!IsYugaByteEnabled())
+		if (!IsYBRelation(heapRelation))
 		{
 			/*
 			 * When dealing with a HOT-chain of updated tuples, we want to index
@@ -3570,7 +3571,7 @@ validate_index_heapscan(Relation heapRelation,
 		 * For YugaByte tables, there is no need to find the root tuple. Just
 		 * insert the fetched tuple.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYBRelation(heapRelation))
 		{
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
