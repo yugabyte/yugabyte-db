@@ -155,10 +155,6 @@ components:
         image_name: yugabyte/yugaware
         version: "YUGABYTE_RELEASE_VERSION"
         volumes:
-          - host_path: /var/run/docker.sock
-            container_path: /var/run/docker.sock:rw
-          - host_path: /usr/bin/docker
-            container_path: /usr/bin/docker
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
