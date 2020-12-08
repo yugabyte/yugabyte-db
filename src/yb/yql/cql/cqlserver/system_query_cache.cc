@@ -216,7 +216,7 @@ void SystemQueryCache::RefreshCache() {
         LOG(INFO) << "Skipping empty result for statement: " << query;
       }
     } else {
-      LOG(WARNING) << "Could not execute statement: " << query;
+      LOG(WARNING) << "Could not execute statement: " << query << "; status: " << status.ToString();
       // We don't want to update the cache with no data; instead we'll let the
       // stale cache persist.
       ScheduleRefreshCache(false /* now */);
