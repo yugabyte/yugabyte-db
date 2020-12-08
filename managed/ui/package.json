@@ -8,7 +8,7 @@
     "start": "EXTEND_ESLINT=true react-scripts start",
     "start:prod": "pushstate-server build",
     "cleanup": "rimraf build && rimraf ../src/main/public",
-    "fetch-map": "aws s3 cp s3://$YB_MAP_URL/yb_map.tar.gz build/static && tar -xvf build/static/yb_map.tar.gz -C build/static && rm build/static/yb_map.tar.gz",
+    "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zxv -C build/static",
     "build": "npm run cleanup && REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) react-scripts build && npm run fetch-map",
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
