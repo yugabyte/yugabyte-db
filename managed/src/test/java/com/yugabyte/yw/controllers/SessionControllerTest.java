@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -484,11 +485,14 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidFormat() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result = route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/www.test.com"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/www.test.com",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -496,11 +500,14 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidIP() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result = route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -508,6 +515,8 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidPort() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);;
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
@@ -522,15 +531,49 @@ public class SessionControllerTest {
     universe = Universe.get(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     System.out.println("PRIVATE IP: " + node.cloudInfo.private_ip);
-    Result result =route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/" + node.cloudInfo.private_ip + ":7001/"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/" + node.cloudInfo.private_ip + ":7001/",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
   @Test
   public void testProxyRequestValid() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
+    Provider provider = ModelFactory.awsProvider(customer);;
+    Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
+    InstanceType i = InstanceType.upsert(provider.code, "c3.xlarge",
+      10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
+    Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
+    Universe.saveDetails(universe.universeUUID,
+      ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
+    universe = Universe.get(universe.universeUUID);
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
+    String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
+    Result result = doRequestWithAuthToken(
+      "GET",
+      "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/",
+      authToken
+    );
+    // Expect the request to fail since the hostname isn't real.
+    // This shows that it got past validation though
+    assertInternalServerError(
+      result,
+      "\"java.net.UnknownHostException: " + node.cloudInfo.private_ip + ":"
+    );
+  }
+
+  @Test
+  public void testProxyRequestUnAuthenticated() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Provider provider = ModelFactory.awsProvider(customer);;
@@ -553,9 +596,9 @@ public class SessionControllerTest {
     ));
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
-    assertInternalServerError(
+    assertForbidden(
       result,
-      "\"java.net.UnknownHostException: " + node.cloudInfo.private_ip + ":"
+      "Unable To Authenticate User"
     );
   }
 }

@@ -347,7 +347,7 @@ public class ImportController extends AuthenticatedController {
          universe.setUniverseDetails(universeDetails);
       }
     };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.universeUUID, updater, false);
   }
 
   /**
@@ -645,7 +645,8 @@ public class ImportController extends AuthenticatedController {
       }
     };
     // Save the updated universe object and return the updated universe.
-    return Universe.saveDetails(taskParams.universeUUID, updater);
+    // saveUniverseDetails(taskParams.universeUUID);
+    return Universe.saveDetails(taskParams.universeUUID, updater, false);
   }
 
   /**

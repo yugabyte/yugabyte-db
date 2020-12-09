@@ -26,6 +26,8 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.HashMap;
@@ -90,6 +92,11 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     ShellResponse responsePod = new ShellResponse();
     when(mockKubernetesManager.helmUpgrade(any(), any(), any())).thenReturn(responseEmpty);
 
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+
     responsePod.message =
         "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
     when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
@@ -98,6 +105,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {}
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);

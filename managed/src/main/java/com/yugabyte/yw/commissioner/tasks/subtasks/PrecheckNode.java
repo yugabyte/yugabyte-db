@@ -51,7 +51,7 @@ public class PrecheckNode extends NodeTaskBase {
           universe.setUniverseDetails(universeDetails);
             }
       };
-      Universe.saveDetails(taskParams().universeUUID, updater);
+      saveUniverseDetails(updater);
 
       for (JsonNode node: responseJson) {
         if (!node.isBoolean() || !node.asBoolean()) {

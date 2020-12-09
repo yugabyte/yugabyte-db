@@ -63,7 +63,7 @@ resolvers += {
 }
 
 lazy val groupId = "org.yb"
-libraryDependencies += groupId % "yb-client" % "0.8.1-SNAPSHOT"
+libraryDependencies += groupId % "yb-client" % "0.8.2-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
