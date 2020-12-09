@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
+import org.yb.util.SanitizerUtil;
 import org.yb.util.Timeouts;
 
 import java.net.MalformedURLException;
@@ -105,6 +106,11 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     Preconditions.checkNotNull(builder);
+    // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
+    // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
+    if (SanitizerUtil.isSanitizerBuild()) {
+      builder.addMasterArgs("--leader_failure_max_missed_heartbeat_periods=10");
+    }
   }
 
   /**
