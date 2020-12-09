@@ -1782,9 +1782,9 @@ SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jack", gpa: 3.0, age: 2
 SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jill", gpa: 3.5, age: 27})$$) AS (a agtype);
 SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jim", gpa: 3.75, age: 32})$$) AS (a agtype);
 SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Rick", gpa: 2.5, age: 24})$$) AS (a agtype);
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Ann", gpa: 3.8, age: 23})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Ann", gpa: 3.8::numeric, age: 23})$$) AS (a agtype);
 SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Derek", gpa: 4.0, age: 19})$$) AS (a agtype);
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jessica", gpa: 3.9, age: 20})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jessica", gpa: 3.9::numeric, age: 20})$$) AS (a agtype);
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
 AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
@@ -1815,6 +1815,18 @@ SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
+
+--
+-- aggregate functions stdev() & stdevp()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN stdev(u.gpa), stdevp(u.gpa) $$)
+AS (stdev agtype, stdevp agtype);
+-- should return 0
+SELECT * FROM cypher('UCSC', $$ RETURN stdev(NULL) $$) AS (stdev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stdevp(NULL) $$) AS (stdevp agtype);
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN stdev() $$) AS (stdev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stdevp() $$) AS (stdevp agtype);
 
 --
 -- Cleanup

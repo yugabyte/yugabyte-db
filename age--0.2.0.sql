@@ -1242,6 +1242,47 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
+-- aggregate functions components for stdev & stdevp
+--
+
+-- wrapper for the stdev final function to pass 0 instead of null
+CREATE FUNCTION ag_catalog.age_float8_stddev_samp_aggfinalfn(_float8)
+RETURNS float8
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+-- aggregate for stdev
+CREATE AGGREGATE ag_catalog.age_stdev(float8)
+(
+   stype = _float8,
+   sfunc = float8_accum,
+   finalfunc = age_float8_stddev_samp_aggfinalfn,
+   combinefunc = float8_combine,
+   finalfunc_modify = read_only,
+   initcond = '{0,0,0}',
+   parallel = safe
+);
+-- wrapper for the stdevp final function to pass 0 instead of null
+CREATE FUNCTION ag_catalog.age_float8_stddev_pop_aggfinalfn(_float8)
+RETURNS float8
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+-- aggregate for stdevp
+CREATE AGGREGATE ag_catalog.age_stdevp (float8)
+(
+   stype = _float8,
+   sfunc = float8_accum,
+   finalfunc = age_float8_stddev_pop_aggfinalfn,
+   combinefunc = float8_combine,
+   finalfunc_modify = read_only,
+   initcond = '{0,0,0}',
+   parallel = safe
+);
+
+--
 -- function for typecasting an agtype value to another agtype value
 --
 CREATE FUNCTION ag_catalog.agtype_typecast_numeric(agtype)

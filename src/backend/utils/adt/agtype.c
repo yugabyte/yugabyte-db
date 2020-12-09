@@ -46,6 +46,7 @@
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "utils/graphid.h"
+#include "utils/numeric.h"
 
 typedef struct agtype_in_state
 {
@@ -2172,15 +2173,16 @@ Datum agtype_to_float8(PG_FUNCTION_ARGS)
     float8 result;
 
     if (!agtype_extract_scalar(&agtype_in->root, &agtv) ||
-        (agtv.type != AGTV_FLOAT && agtv.type != AGTV_INTEGER))
+        (agtv.type != AGTV_FLOAT &&
+         agtv.type != AGTV_INTEGER &&
+         agtv.type != AGTV_NUMERIC))
         cannot_cast_agtype_value(agtv.type, "float");
 
     PG_FREE_IF_COPY(agtype_in, 0);
 
     if (agtv.type == AGTV_FLOAT)
         result = agtv.val.float_value;
-
-    if (agtv.type == AGTV_INTEGER)
+    else if (agtv.type == AGTV_INTEGER)
     {
         /*
          * Get the string representation of the integer because it could be
@@ -2199,6 +2201,9 @@ Datum agtype_to_float8(PG_FUNCTION_ARGS)
             ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
                             errmsg("cannot cast to float8, integer value out of range")));
     }
+    else if (agtv.type == AGTV_NUMERIC)
+        result = DatumGetFloat8(DirectFunctionCall1(numeric_float8,
+                     NumericGetDatum(agtv.val.numeric)));
 
     PG_RETURN_FLOAT8(result);
 }
@@ -7006,7 +7011,6 @@ Datum age_timestamp(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
-
 agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property)
 {
     agtype_iterator *it;
@@ -7100,3 +7104,52 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name, agt
     return parsed_agtype_value;
 }
 
+PG_FUNCTION_INFO_V1(age_float8_stddev_samp_aggfinalfn);
+
+Datum age_float8_stddev_samp_aggfinalfn(PG_FUNCTION_ARGS)
+{
+    Datum result;
+    PGFunction func;
+
+    /* we can't use DirectFunctionCall1 as it errors for NULL values */
+    func = float8_stddev_samp;
+    result = (*func) (fcinfo);
+
+    /*
+     * Check to see if float8_stddev_samp returned null. If so, we need to
+     * return a float8 0.
+     */
+    if (fcinfo->isnull)
+    {
+        fcinfo->isnull = false;
+
+        PG_RETURN_FLOAT8(0.0);
+    }
+
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(age_float8_stddev_pop_aggfinalfn);
+
+Datum age_float8_stddev_pop_aggfinalfn(PG_FUNCTION_ARGS)
+{
+    Datum result;
+    PGFunction func;
+
+    /* we can't use DirectFunctionCall1 as it errors for NULL values */
+    func = float8_stddev_pop;
+    result = (*func) (fcinfo);
+
+    /*
+     * Check to see if float8_stddev_pop returned null. If so, we need to
+     * return a float8 0.
+     */
+    if (fcinfo->isnull)
+    {
+        fcinfo->isnull = false;
+
+        PG_RETURN_FLOAT8(0.0);
+    }
+
+    return result;
+}
