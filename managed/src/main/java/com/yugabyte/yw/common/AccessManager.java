@@ -103,12 +103,14 @@ public class AccessManager extends DevopsBase {
                                  boolean airGapInstall, boolean skipProvisioning) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+    // Removing paths from keyCode.
+    keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
       throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
-    Path destination = Paths.get(keyFilePath, Util.getFileName(keyCode) + keyType.getExtension());
+    Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
       throw new RuntimeException("Key file " + source.getFileName() + " not found.");
     }
