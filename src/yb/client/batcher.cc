@@ -609,6 +609,9 @@ void Batcher::ExecuteOperations(Initial initial) {
   ops_queue_.clear();
 
   for (const auto& rpc : rpcs) {
+    if (transaction) {
+      transaction->trace()->AddChildTrace(rpc->trace());
+    }
     rpc->SendRpc();
   }
 }
