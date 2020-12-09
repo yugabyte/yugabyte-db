@@ -29,7 +29,6 @@
 using std::unique_ptr;
 using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
-using yb::FormatBytesAsStr;
 using yb::FormatSliceAsStr;
 using rocksdb::FilterBitsBuilder;
 using rocksdb::FilterBitsReader;

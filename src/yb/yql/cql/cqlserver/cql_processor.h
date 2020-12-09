@@ -80,6 +80,8 @@ class CQLProcessor : public ql::QLProcessor {
   void Reschedule(rpc::ThreadPoolTask* task) override;
 
  private:
+  bool CheckAuthentication(const CQLRequest& req) const;
+
   // Process a CQL request.
   std::unique_ptr<CQLResponse> ProcessRequest(const CQLRequest& req);
 
