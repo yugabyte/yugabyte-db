@@ -96,7 +96,9 @@ The backfill process is a background job that runs on each of the tablets of the
 
 ### Index backfill on a single tablet
 
-The index build on a single tablet does the following:
+For YCQL, index backfill for a tablet is handled in the tserver of that tablet (leader).  For YSQL, since we currently don't have sufficient context in tservers, a connection is opened up from tserver to postgres.  Postgres then takes the responsibility of reading the tablet and writing to the index table.
+
+The following apply to both YCQL and YSQL:
 
 * The index build requires a scan of the entire tablet data. However, there could be new updates happening on the dataset which would affect the values read by this scan. In order to prevent this, the scan is performed at a fixed timestamp. This hybrid logical timestamp `t_read` is picked by the YB-Master and sent to all the tablets. The data is scanned using this timestamp `t_read` as the read point so that subsequent writes do not affect the values read by this scan.
 
