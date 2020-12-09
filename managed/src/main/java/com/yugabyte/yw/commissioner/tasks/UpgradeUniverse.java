@@ -134,6 +134,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
+      checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
@@ -435,6 +436,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Create the Ansible task to get the server info.
     AnsibleConfigureServers task = new AnsibleConfigureServers();
     task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
 
     return task;
   }

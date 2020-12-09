@@ -21,6 +21,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.YBClient;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.*;
@@ -39,10 +42,20 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     Commissioner commissioner;
     Universe defaultUniverse;
     ShellResponse dummyShellResponse;
+    YBClient mockClient;
 
     @Before
     public void setUp() {
         super.setUp();
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+        GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        mockClient = mock(YBClient.class);
+        try {
+          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+        } catch (Exception e) {}
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
         Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
         AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
         // create default universe

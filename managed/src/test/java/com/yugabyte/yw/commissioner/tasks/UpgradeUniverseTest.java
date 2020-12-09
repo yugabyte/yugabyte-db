@@ -31,6 +31,8 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.client.SetFlagResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.Arrays;
@@ -83,6 +85,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     // Setup mocks
     mockClient = mock(YBClient.class);
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {}
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
     when(mockClient.getLeaderMasterHostAndPort())
@@ -501,7 +510,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(4, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -513,7 +522,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(4, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -703,13 +712,21 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(4, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
   @Test
   public void testGFlagsUpgradeWithSameMasterFlags() {
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {}
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -745,6 +762,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testGFlagsUpgradeWithSameTserverFlags() {
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {}
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -779,6 +804,26 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRemoveFlags() {
     for (ServerType serverType : ImmutableList.of(MASTER, TSERVER)) {
+      if (serverType.equals(MASTER)) {
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+        GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        try {
+          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+        } catch (Exception e) {}
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      } else if (serverType.equals(TSERVER)) {
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
+        GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        try {
+          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+        } catch (Exception e) {}
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      }
+      System.out.println("SERVER TYPE: " + serverType.toString());
       // Simulate universe created with master flags and tserver flags.
       final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
       final Map<String, String> masterGFlags = ImmutableMap.of("master-flag", "m1");
@@ -803,7 +848,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         taskParams.tserverGFlags = new HashMap<>();
       }
 
-      int expectedVersion = serverType == MASTER ? 3 : 14;
+      int expectedVersion = serverType == MASTER ? 3 : 4;
       TaskInfo taskInfo = submitTask(taskParams,
               UpgradeUniverse.UpgradeTaskType.GFlags,
               expectedVersion);

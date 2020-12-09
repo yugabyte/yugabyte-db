@@ -52,6 +52,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
              taskParams().nodeName, taskParams().universeUUID);
     NodeDetails currentNode = null;
     try {
+      checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 

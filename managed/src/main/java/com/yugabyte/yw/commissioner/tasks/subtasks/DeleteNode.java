@@ -64,7 +64,7 @@ public class DeleteNode extends NodeTaskBase {
       };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
-      Universe.saveDetails(taskParams().universeUUID, updater);
+      saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception "  + e.getMessage();
       LOG.warn(msg, e.getMessage());

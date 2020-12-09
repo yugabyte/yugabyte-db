@@ -106,7 +106,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    mockWaits(mockClient);
+    mockWaits(mockClient, 3);
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {

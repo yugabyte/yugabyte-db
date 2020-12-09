@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -55,7 +57,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class KubernetesCommandExecutor extends AbstractTaskBase {
+public class KubernetesCommandExecutor extends UniverseTaskBase {
   public enum CommandType {
     CREATE_NAMESPACE,
     APPLY_SECRET,
@@ -121,15 +123,13 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     super.initialize(params);
   }
 
-  public static class Params extends AbstractTaskParams {
+  public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
     public CommandType commandType;
-    public UUID universeUUID;
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String ybSoftwareVersion = null;
-    public String encryptionKeyFilePath = null;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
     public UUID rootCA = null;
@@ -364,7 +364,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       universeDetails.nodeDetailsSet = nodeDetailsSet;
       universe.setUniverseDetails(universeDetails);
     };
-    Universe.saveDetails(taskParams().universeUUID, updater);
+    saveUniverseDetails(updater);
   }
 
   private String nodeNameToPodName(String nodeName, boolean isMaster) {

@@ -95,7 +95,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                 + taskParams().universeUUID);
           }
         };
-        Universe.saveDetails(taskParams().universeUUID, updater);
+        saveUniverseDetails(updater);
 
         // Create new alert or update existing alert with current node name if alert already exists.
         if (Alert.exists(alertErrCode, universe.universeUUID)) {

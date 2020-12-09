@@ -33,6 +33,7 @@ public class BackupUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
+      checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 

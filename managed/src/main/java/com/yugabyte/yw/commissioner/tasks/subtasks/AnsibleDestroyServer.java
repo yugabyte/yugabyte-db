@@ -59,7 +59,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     };
 
-    Universe.saveDetails(taskParams().universeUUID, updater);
+    saveUniverseDetails(updater);
   }
 
   @Override

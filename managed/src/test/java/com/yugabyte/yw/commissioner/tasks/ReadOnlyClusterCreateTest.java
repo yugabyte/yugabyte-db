@@ -30,6 +30,7 @@ import org.yb.client.YBClient;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.*;
@@ -72,9 +73,21 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+    // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
+    // anything..
+    modifyUC = mock(ModifyUniverseConfig.class);
+    amuc = mock(AbstractModifyMasterClusterConfig.class);
+
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+      new ChangeMasterClusterConfigResponse(1111, "", null);
+
     try {
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
     // WaitForServer mock.
     mockWaits(mockClient);

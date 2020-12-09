@@ -17,6 +17,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import static org.mockito.Mockito.mock;
+import org.yb.client.YBClient;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 
 import java.util.UUID;
 import java.util.HashMap;
@@ -41,8 +46,22 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   Universe defaultUniverse;
 
+  private YBClient mockClient;
+
   @Before
   public void setUp() {
+    mockClient = mock(YBClient.class);
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+      new ChangeMasterClusterConfigResponse(0, "", null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
+    } catch (Exception e) {}
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();

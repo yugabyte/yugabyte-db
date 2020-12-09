@@ -48,6 +48,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
     NodeDetails currentNode = null;
     boolean hitException = false;
     try {
+      checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 

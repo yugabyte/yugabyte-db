@@ -111,7 +111,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {}
-    mockWaits(mockClient);
+    mockWaits(mockClient, 3);
     GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
     try {
       when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
