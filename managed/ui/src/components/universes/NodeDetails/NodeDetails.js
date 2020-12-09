@@ -195,6 +195,7 @@ export default class NodeDetails extends Component {
             providerUUID={readOnlyCluster.userIntent.provider}
             clusterType="readonly"
             customer={customer}
+            currentUniverse={currentUniverse}
           />
         )}
       </Fragment>
