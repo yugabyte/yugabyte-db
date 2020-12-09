@@ -242,7 +242,21 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   Release();
 }
 
+bool CQLProcessor::CheckAuthentication(const CQLRequest& req) const {
+  return call_->ql_session()->is_user_authenticated() ||
+      // CQL requests which do not need authorization.
+      req.opcode() == CQLMessage::Opcode::STARTUP ||
+      req.opcode() == CQLMessage::Opcode::AUTH_RESPONSE;
+}
+
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const CQLRequest& req) {
+  if (FLAGS_use_cassandra_authentication && !CheckAuthentication(req)) {
+    LOG(ERROR) << "Could not execute statement by not authenticated user!";
+    return make_unique<ErrorResponse>(
+        req, ErrorResponse::Code::SERVER_ERROR,
+        "Could not execute statement by not authenticated user");
+  }
+
   switch (req.opcode()) {
     case CQLMessage::Opcode::OPTIONS:
       return ProcessRequest(static_cast<const OptionsRequest&>(req));
@@ -560,6 +574,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
   const auto& req = down_cast<const AuthResponseRequest&>(*request_);
   const auto& params = req.params();
   unique_ptr<CQLResponse> response = nullptr;
+  bool authenticated = false;
   // Username doesn't have a password, but one is required for authentication. Return an error.
   if (saved_hash.empty()) {
     response = make_unique<ErrorResponse>(*request_,
@@ -578,8 +593,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
       call_->ql_session()->set_current_role_name(params.username);
       response = make_unique<AuthSuccessResponse>(*request_,
                                                   "" /* this does not matter */);
+      authenticated = true;
     }
   }
+  call_->ql_session()->set_user_authenticated(authenticated);
   return response;
 }
 
@@ -614,8 +631,9 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
           const auto row_block = rows_result->GetRowBlock();
           unique_ptr<CQLResponse> response = nullptr;
           if (row_block->row_count() != 1) {
-            response = make_unique<ErrorResponse>(*request_, ErrorResponse::Code::SERVER_ERROR,
-                                              "Could not get data for " + params.username);
+            response = make_unique<ErrorResponse>(*request_,
+                ErrorResponse::Code::BAD_CREDENTIALS,
+                "Provided username " + params.username + " and/or password are incorrect");
           } else {
             const auto& row = row_block->row(0);
             const auto& schema = row_block->schema();
