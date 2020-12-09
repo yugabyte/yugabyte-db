@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Tab, Row, Col, Alert } from 'react-bootstrap';
+import { Tab, Row, Col } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
-import { YBTextInput, YBButton } from '../../common/forms/fields';
+import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field } from 'redux-form';
+import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -119,15 +119,31 @@ class StorageConfiguration extends Component {
         dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
       }
     }
-    this.props.addCustomerConfig({
-      type: 'STORAGE',
-      name: type,
-      data: dataPayload
-    });
+
+    return this.props
+      .addCustomerConfig({
+        type: 'STORAGE',
+        name: type,
+        data: dataPayload
+      })
+      .then((resp) => {
+        if (getPromiseState(this.props.addConfig).isSuccess()) {
+          // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+          this.props.reset();
+          this.props.fetchCustomerConfigs();
+        } else if (getPromiseState(this.props.addConfig).isError()) {
+          // show server-side validation errors under form inputs
+          throw new SubmissionError(this.props.addConfig.error);
+        }
+      });
   };
 
   deleteStorageConfig = (configUUID) => {
-    this.props.deleteCustomerConfig(configUUID);
+    this.props.deleteCustomerConfig(configUUID)
+      .then(() => {
+        this.props.reset(); // reset form to initial values
+        this.props.fetchCustomerConfigs();
+      });
   };
 
   showDeleteConfirmModal = (configName) => {
@@ -138,20 +154,11 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
-  componentDidUpdate(prevProps) {
-    const { addConfig, deleteConfig } = this.props;
-    if (getPromiseState(addConfig).isLoading()) {
-      this.props.fetchCustomerConfigs();
-    } else if (getPromiseState(deleteConfig).isLoading()) {
-      this.props.fetchCustomerConfigs();
-    }
-  }
-
   render() {
     const {
       handleSubmit,
       submitting,
-      addConfig: { loading, error },
+      addConfig: { loading },
       customerConfigs
     } = this.props;
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -164,7 +171,7 @@ class StorageConfiguration extends Component {
     ) {
       const configs = [
         <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
-          <AwsStorageConfiguration {...this.props} />
+          <AwsStorageConfiguration {...this.props} deleteStorageConfig={this.deleteStorageConfig} />
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
@@ -197,8 +204,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     input={{ value: value, disabled: isDefinedNotNull(value) }}
-                    component={YBTextInput}
-                    className={'data-cell-input'}
+                    component={YBTextInputWithLabel}
                   />
                 </Col>
               </Row>
@@ -246,8 +252,7 @@ class StorageConfiguration extends Component {
                   <Field
                     name={field.id}
                     placeHolder={field.placeHolder}
-                    component={YBTextInput}
-                    className={'data-cell-input'}
+                    component={YBTextInputWithLabel}
                   />
                 </Col>
               </Row>
@@ -264,8 +269,6 @@ class StorageConfiguration extends Component {
       return (
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
-            {error && <Alert bsStyle="danger">Operation has failed:<br />
-              {JSON.stringify(error)}</Alert>}
             <YBTabsPanel
               defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
               activeTab={activeTab}
