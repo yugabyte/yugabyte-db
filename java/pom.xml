@@ -341,7 +341,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.1-SNAPSHOT</version>
+        <version>0.8.2-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -488,7 +488,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.1-SNAPSHOT</version>
+        <version>0.8.2-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

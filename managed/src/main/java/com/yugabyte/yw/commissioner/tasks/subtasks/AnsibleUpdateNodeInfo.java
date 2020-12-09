@@ -102,6 +102,6 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
       }
     };
     // Save the updated universe object.
-    Universe.saveDetails(taskParams.universeUUID, updater);
+    saveUniverseDetails(updater);
   }
 }

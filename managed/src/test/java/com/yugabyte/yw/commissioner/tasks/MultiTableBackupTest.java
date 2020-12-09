@@ -24,6 +24,8 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.Common.TableType;
 
 import java.util.ArrayList;
@@ -115,6 +117,16 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse4 = mock(GetTableSchemaResponse.class);
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+    mockClient = mock(YBClient.class);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+    } catch (Exception e) {}
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
@@ -276,7 +288,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "false");
     defaultUniverse.setConfig(config);
-    TaskInfo taskInfo = submitTask(null, new ArrayList<UUID>());
+    TaskInfo taskInfo = submitTask(null, new ArrayList<>());
     verify(mockTableManager, times(0)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
