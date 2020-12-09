@@ -68,6 +68,8 @@ extern uint64_t yb_catalog_cache_version;
  */
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
+extern void YBResetCatalogVersion();
+
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
