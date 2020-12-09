@@ -52,8 +52,8 @@ yugabyte=# SHOW hba_file;
 ```
 
 ```
-                      hba_file
--------------------------------------------------------
+                             hba_file
+-------------------------------------------------------------------
  /Users/yugabyte/yugabyte-data/node-1/disk-1/pg_data/ysql_hba.conf
 (1 row)
 ```
