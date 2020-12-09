@@ -38,7 +38,8 @@ preflight_provision_check() {
   if [[ $install_node_exporter = true ]]; then
     # Check node exporter isn't already installed.
     no_node_exporter=false
-    if ! ps -ef | grep -v "grep" | grep "node_exporter"; then
+    if [[ "$(ps -ef | grep "node_exporter" | grep -v "grep" | grep -v "preflight" |
+             wc -l | tr -d ' ')" = '0' ]]; then
       no_node_exporter=true
     fi
     update_result_json "(Prometheus) No Pre-existing Node Exporter Running" "$no_node_exporter"
