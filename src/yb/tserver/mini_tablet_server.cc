@@ -59,6 +59,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
@@ -77,6 +78,10 @@ using yb::tablet::TabletPeer;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(TEST_nodes_per_cloud);
+
+DEFINE_test_flag(bool, private_broadcast_address, false,
+                 "Use private address for broadcast address in tests.");
 
 namespace yb {
 namespace tserver {
@@ -93,12 +98,14 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
-  opts_.broadcast_addresses = {
-      HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
+  opts_.broadcast_addresses = { HostPort(
+      server::TEST_RpcAddress(index_, server::Private(FLAGS_TEST_private_broadcast_address)),
+      rpc_port) };
   opts_.webserver_opts.port = 0;
   opts_.webserver_opts.bind_interface = opts_.broadcast_addresses.front().host();
   if (!opts_.has_placement_cloud()) {
-    opts_.SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
+    opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
+                       Format("rack$0", index_), "zone");
   }
   opts_.fs_opts.wal_paths = { fs_root };
   opts_.fs_opts.data_paths = { fs_root };
@@ -137,6 +144,10 @@ void MiniTabletServer::Isolate() {
 
 Status MiniTabletServer::Reconnect() {
   server::TEST_SetupConnectivity(server_->messenger(), index_);
+
+  if (FLAGS_TEST_private_broadcast_address) {
+    return Status::OK();
+  }
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
   auto started_tunnel = false;
