@@ -102,6 +102,9 @@ DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for pub
 DEFINE_test_flag(bool, simulate_port_conflict_error, false,
                  "Simulate a port conflict error during initialization.");
 
+DEFINE_test_flag(int32, nodes_per_cloud, 2,
+                 "Number of nodes per cloud to test private and public addresses.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -648,7 +651,7 @@ constexpr int kMinServerIdx = 1;
 // We group servers by two. Servers in the same group communciate via private connection. Servers in
 // different groups communicate via public connection.
 int ServerGroupNum(int server_idx) {
-  return (server_idx - 1) / 2;
+  return (server_idx - 1) / FLAGS_TEST_nodes_per_cloud;
 }
 
 void TEST_SetupConnectivity(rpc::Messenger* messenger, int index) {
