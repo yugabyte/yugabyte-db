@@ -55,6 +55,10 @@ DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the co
 TAG_FLAG(enable_tracing, advanced);
 TAG_FLAG(enable_tracing, runtime);
 
+DEFINE_int32(tracing_level, 0, "verbosity levels (like --v) up to which tracing is enabled.");
+TAG_FLAG(tracing_level, advanced);
+TAG_FLAG(tracing_level, runtime);
+
 namespace yb {
 
 using strings::internal::SubstituteArg;
@@ -71,19 +75,23 @@ const char* const_basename(const char* filepath) {
   return base ? (base + 1) : filepath;
 }
 
-template<class Children>
-void DumpChildren(std::ostream* out, bool include_time_deltas, const Children* children) {
+template <class Children>
+void DumpChildren(
+    std::ostream* out, const std::string& prefix, bool include_time_deltas,
+    const Children* children) {
   for (auto &child_trace : *children) {
-    *out << "Related trace:" << std::endl;
-    *out << child_trace->DumpToString(include_time_deltas);
+    *out << prefix << "Related trace:" << std::endl;
+    *out << child_trace->DumpToString(prefix, include_time_deltas);
   }
 }
 
-void DumpChildren(std::ostream* out, bool include_time_deltas, std::nullptr_t children) {
+void DumpChildren(std::ostream* out, const std::string& prefix,
+                  bool include_time_deltas, std::nullptr_t children) {
 }
 
 template<class Entries>
 void DumpEntries(std::ostream* out,
+                 const std::string& prefix,
                  bool include_time_deltas,
                  int64_t start,
                  const Entries& entries) {
@@ -105,6 +113,7 @@ void DumpEntries(std::ostream* out,
     struct tm tm_time;
     localtime_r(&secs_since_epoch, &tm_time);
 
+    *out << prefix;
     // Log format borrowed from glog/logging.cc
     using std::setw;
     out->fill('0');
@@ -127,6 +136,7 @@ void DumpEntries(std::ostream* out,
 
 template<class Entries, class Children>
 void DoDump(std::ostream* out,
+            const std::string& prefix,
             bool include_time_deltas,
             int64_t start,
             const Entries& entries,
@@ -134,8 +144,8 @@ void DoDump(std::ostream* out,
   // Save original flags.
   std::ios::fmtflags save_flags(out->flags());
 
-  DumpEntries(out, include_time_deltas, start, entries);
-  DumpChildren(out, include_time_deltas, children);
+  DumpEntries(out, prefix, include_time_deltas, start, entries);
+  DumpChildren(out, prefix + "..  ", include_time_deltas, children);
 
   // Restore stream flags.
   out->flags(save_flags);
@@ -311,6 +321,10 @@ void Trace::AddEntry(TraceEntry* entry) {
 }
 
 void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
+  Dump(out, "", include_time_deltas);
+}
+
+void Trace::Dump(std::ostream* out, const std::string& prefix, bool include_time_deltas) const {
   // Gather a copy of the list of entries under the lock. This is fast
   // enough that we aren't worried about stalling concurrent tracers
   // (whereas doing the logging itself while holding the lock might be
@@ -330,16 +344,16 @@ void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
     trace_start_time_usec = trace_start_time_usec_;
   }
 
-  DoDump(out,
+  DoDump(out, prefix,
          include_time_deltas,
          trace_start_time_usec,
          entries | boost::adaptors::indirected,
          &child_traces);
 }
 
-string Trace::DumpToString(bool include_time_deltas) const {
+string Trace::DumpToString(const std::string& prefix, bool include_time_deltas) const {
   std::stringstream s;
-  Dump(&s, include_time_deltas);
+  Dump(&s, prefix, include_time_deltas);
   return s.str();
 }
 
@@ -385,6 +399,11 @@ void PlainTrace::Trace(const char *file_path, int line_number, const char *messa
 }
 
 void PlainTrace::Dump(std::ostream *out, bool include_time_deltas) const {
+  Dump(out, "", include_time_deltas);
+}
+
+void PlainTrace::Dump(
+    std::ostream* out, const std::string& prefix, bool include_time_deltas) const {
   size_t size;
   decltype(trace_start_time_usec_) trace_start_time_usec;
   {
@@ -393,12 +412,12 @@ void PlainTrace::Dump(std::ostream *out, bool include_time_deltas) const {
     trace_start_time_usec = trace_start_time_usec_;
   }
   auto entries = boost::make_iterator_range(entries_, entries_ + size);
-  DoDump(out, include_time_deltas, trace_start_time_usec, entries, /* children */ nullptr);
+  DoDump(out, prefix, include_time_deltas, trace_start_time_usec, entries, /* children */ nullptr);
 }
 
-std::string PlainTrace::DumpToString(bool include_time_deltas) const {
+std::string PlainTrace::DumpToString(const std::string& prefix, bool include_time_deltas) const {
   std::stringstream s;
-  Dump(&s, include_time_deltas);
+  Dump(&s, prefix, include_time_deltas);
   return s.str();
 }
 

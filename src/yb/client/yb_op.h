@@ -54,6 +54,8 @@ class QLReadRequestPB;
 class QLResponsePB;
 class QLRowBlock;
 
+class Trace;
+
 namespace client {
 
 namespace internal {
@@ -146,10 +148,16 @@ class YBOperation {
     return reinterpret_cast<int64_t>(this);
   }
 
+  Trace *trace() {
+    return trace_.get();
+  }
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
   std::shared_ptr<YBTable> table_;
+
+  scoped_refptr<Trace> trace_;
 
  private:
   friend class internal::AsyncRpc;

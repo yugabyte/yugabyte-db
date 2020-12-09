@@ -270,8 +270,8 @@ TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
 DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
-    "A kill switch to disable multi-stage backfill for user encorced YCQL indexes. "
-    "Note that setting this to true may cause the create index flow to be slow. "
+    "A kill switch to disable multi-stage backfill for user enforced YCQL indexes. "
+    "Note that enabling this feature may cause the create index flow to be slow. "
     "This is needed to ensure the safety of the index backfill process. See also "
     "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
