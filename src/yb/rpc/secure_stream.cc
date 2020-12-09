@@ -488,7 +488,7 @@ const Endpoint& SecureStream::Local() {
 }
 
 std::string SecureStream::ToString() {
-  return Format("SECURE $0 $1", state_, lower_stream_->ToString());
+  return Format("SECURE[$0] $1 $2", need_connect_ ? "C" : "S", state_, lower_stream_->ToString());
 }
 
 void SecureStream::UpdateLastActivity() {
@@ -705,7 +705,7 @@ Status SecureStream::Init() {
     SSL_set_mode(ssl_.get(), SSL_MODE_RELEASE_BUFFERS);
     SSL_set_app_data(ssl_.get(), this);
 
-    if (!need_connect_) {
+    if (!need_connect_ || secure_context_.use_client_certificate()) {
       auto res = SSL_use_PrivateKey(ssl_.get(), secure_context_.private_key());
       if (res != 1) {
         return SSL_STATUS(InvalidArgument, "Failed to use private key: $0");
@@ -722,7 +722,11 @@ Status SecureStream::Init() {
     SSL_set_bio(ssl_.get(), int_bio, int_bio);
     bio_.reset(temp_bio);
 
-    SSL_set_verify(ssl_.get(), SSL_VERIFY_PEER, &VerifyCallback);
+    int verify_mode = SSL_VERIFY_PEER;
+    if (secure_context_.require_client_certificate()) {
+      verify_mode |= SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_CLIENT_ONCE;
+    }
+    SSL_set_verify(ssl_.get(), verify_mode, &VerifyCallback);
   }
 
   return Status::OK();
