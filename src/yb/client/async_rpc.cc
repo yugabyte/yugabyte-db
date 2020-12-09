@@ -30,6 +30,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -62,8 +63,13 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
-DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(collect_end_to_end_traces);
+
+DEFINE_int32(ybclient_print_trace_every_n, 0,
+             "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
+             "disables printing the collected traces.");
+TAG_FLAG(ybclient_print_trace_every_n, advanced);
+TAG_FLAG(ybclient_print_trace_every_n, runtime);
 
 DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be served if it's not "
             "a local request. The op response will be set to the redis error "
@@ -134,7 +140,7 @@ AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
                       table(),
                       mutable_retrier(),
                       trace_.get()),
-      start_(MonoTime::Now()),
+      start_(CoarseMonoClock::Now()),
       async_rpc_metrics_(data->batcher->async_rpc_metrics()) {
 
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
@@ -142,15 +148,20 @@ AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
+  for (auto& op : ops_) {
+    if (op->yb_op->trace()) {
+      op->yb_op->trace()->AddChildTrace(trace_.get());
+    }
+  }
 }
 
 AsyncRpc::~AsyncRpc() {
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
-    LOG(INFO) << ToString() << " took "
-              << MonoTime::Now().GetDeltaSince(start_).ToMicroseconds()
-              << "us. Trace:";
-    trace_->Dump(&LOG(INFO), true);
-  }
+  const auto end_time = CoarseMonoClock::Now();
+  const auto kPrintTraceEveryN = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
+  YB_LOG_IF_EVERY_N(INFO, kPrintTraceEveryN > 0, kPrintTraceEveryN)
+      << ToString() << " took "
+      << ToMicroseconds(end_time - start_)
+      << "us. Trace:\n" << trace_->DumpToString(true);
 }
 
 void AsyncRpc::SendRpc() {
@@ -291,9 +302,9 @@ void SetTransactionMetadata(const TransactionMetadata& metadata,
 } // namespace
 
 void AsyncRpc::SendRpcToTserver(int attempt_num) {
-  MonoTime end_time = MonoTime::Now();
+  const auto end_time = CoarseMonoClock::Now();
   if (async_rpc_metrics_) {
-    async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    async_rpc_metrics_->time_to_send->Increment(ToMicroseconds(end_time - start_));
   }
 
   CallRemoteMethod();
@@ -455,12 +466,12 @@ WriteRpc::~WriteRpc() {
     batcher_->RequestFinished(tablet().tablet_id(), req_.request_id());
   }
 
-  MonoTime end_time = MonoTime::Now();
+  const auto end_time = CoarseMonoClock::Now();
   if (async_rpc_metrics_) {
     scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
                                               async_rpc_metrics_->local_write_rpc_time :
                                               async_rpc_metrics_->remote_write_rpc_time;
-    write_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    write_rpc_time->Increment(ToMicroseconds(end_time - start_));
   }
 }
 
@@ -672,7 +683,7 @@ ReadRpc::ReadRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
 }
 
 ReadRpc::~ReadRpc() {
-  MonoTime end_time = MonoTime::Now();
+  const auto end_time = CoarseMonoClock::Now();
 
   // Get locality metrics if enabled, but skip for system tables as those go to the master.
   if (async_rpc_metrics_ && !table()->name().is_system()) {
@@ -680,7 +691,7 @@ ReadRpc::~ReadRpc() {
                                              async_rpc_metrics_->local_read_rpc_time :
                                              async_rpc_metrics_->remote_read_rpc_time;
 
-    read_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    read_rpc_time->Increment(ToMicroseconds(end_time - start_));
   }
 }
 
