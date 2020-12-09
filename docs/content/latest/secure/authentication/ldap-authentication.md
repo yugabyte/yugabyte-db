@@ -95,7 +95,7 @@ Here is an example for search + bind mode
 
 
 ```
---ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn="dc=yugabyte, dc=com" ldapsearchattribute=uid"'
+--ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host   all         all      0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
 ```
 
 
