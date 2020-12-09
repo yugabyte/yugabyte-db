@@ -294,6 +294,7 @@ import static org.mockito.Mockito.when;
         UUID.fromString(idKey.get("providerUUID").asText()),
         idKey.get("keyCode").asText());
     assertNotNull(accessKey);
+    assertEquals(accessKey.getKeyCode() + ".pem", expectedFilename);
     String expectedPath = String.join("/", TMP_KEYS_PATH, idKey.get("providerUUID").asText(),
         expectedFilename);
     assertEquals(expectedPath, accessKey.getKeyInfo().privateKey);
