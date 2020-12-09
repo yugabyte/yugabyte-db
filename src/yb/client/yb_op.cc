@@ -59,6 +59,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -80,7 +81,7 @@ using common::QLScanRange;
 //--------------------------------------------------------------------------------------------------
 
 YBOperation::YBOperation(const shared_ptr<YBTable>& table)
-  : table_(table) {
+  : table_(table), trace_(new Trace) {
 }
 
 YBOperation::~YBOperation() {}
