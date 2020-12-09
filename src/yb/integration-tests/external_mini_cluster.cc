@@ -71,10 +71,11 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;  // NOLINT
@@ -967,6 +968,11 @@ Status ExternalMiniCluster::StartMasters() {
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
   flags.push_back("--enable_leader_failure_detection=true");
+  // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
+  // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
+  if (IsSanitizer()) {
+    flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
+  }
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
