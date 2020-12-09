@@ -151,7 +151,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
+    Universe universe = saveUniverseDetails(updater);
     LOG.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
     updateOnPremNodeUuids(universe);
@@ -173,7 +173,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universe.setUniverseDetails(universeDetails);
       }
     };
-    Universe.saveDetails(taskParams().universeUUID, updater);
+    saveUniverseDetails(updater);
     LOG.info("Universe {} : Delete cluster {} done.", taskParams().universeUUID, clusterUUID);
   }
 
@@ -425,6 +425,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.gflags = gflags;
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
       subTaskGroup.addTask(task);
     }
 
@@ -710,6 +711,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
       subTaskGroup.addTask(task);
     }
@@ -742,6 +744,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
       ansibleFindCloudHost.initialize(params);
+      ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
       subTaskGroup.addTask(ansibleFindCloudHost);
     }

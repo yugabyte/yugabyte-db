@@ -67,6 +67,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     BackupTableParams tableBackupParams = new BackupTableParams();
     Set<String> tablesToBackup = new HashSet<>();
     try {
+      checkUniverseVersion();
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag

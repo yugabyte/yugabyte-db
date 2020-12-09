@@ -54,6 +54,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   @Override
   public void run() {
     try {
+      checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
 

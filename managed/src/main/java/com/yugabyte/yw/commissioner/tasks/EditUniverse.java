@@ -45,6 +45,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
+      checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
 
