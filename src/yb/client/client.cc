@@ -73,6 +73,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/crypt.h"
 
@@ -432,7 +433,14 @@ Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(rpc::Messenger* messeng
 Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
     std::unique_ptr<rpc::Messenger>&& messenger) {
   std::unique_ptr<YBClient> client;
+  auto ok = false;
+  auto scope_exit = ScopeExit([&ok, &messenger] {
+    if (!ok) {
+      messenger->Shutdown();
+    }
+  });
   RETURN_NOT_OK(DoBuild(messenger.get(), &client));
+  ok = true;
   client->data_->messenger_holder_ = std::move(messenger);
   return client;
 }
