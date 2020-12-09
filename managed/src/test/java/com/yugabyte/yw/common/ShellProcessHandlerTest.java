@@ -50,6 +50,7 @@ public class ShellProcessHandlerTest {
         ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(0, response.code);
         assertThat(response.message, allOf(notNullValue(), containsString(TMP_STORAGE_PATH)));
+        assertEquals(response.message.trim(), response.message);
     }
 
     @Test
