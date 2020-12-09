@@ -110,7 +110,7 @@ Default: Same value as `--fs_data_dirs`
 
 Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
-Default: `200000` (200,000 µs = 200ms)
+Default: `500000` (500,000 µs = 500ms)
 
 ##### --rpc_bind_addresses
 
