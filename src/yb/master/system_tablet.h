@@ -85,7 +85,7 @@ class SystemTablet : public tablet::AbstractTablet {
   bool IsTransactionalRequest(bool is_ysql_request) const override { return false; }
 
  private:
-  HybridTime DoGetSafeTime(
+  Result<HybridTime> DoGetSafeTime(
       tablet::RequireLease require_lease, HybridTime min_allowed,
       CoarseTimePoint deadline) const override;
 

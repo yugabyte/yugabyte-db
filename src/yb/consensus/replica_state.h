@@ -414,7 +414,7 @@ class ReplicaState {
   //                      at least this microsecond timestamp.
   // @param deadline - won't wait past this deadline.
   // @return leader lease or 0 if timed out.
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
+  Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const;
 
   // The on-disk size of the consensus metadata.
