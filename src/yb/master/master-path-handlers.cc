@@ -750,10 +750,9 @@ void MasterPathHandlers::HandleHealthCheck(
       table->GetAllTablets(&tablets);
 
       for (const auto& tablet : tablets) {
-        TabletInfo::ReplicaMap replication_locations;
-        tablet->GetReplicaLocations(&replication_locations);
+        auto replication_locations = tablet->GetReplicaLocations();
 
-        if (replication_locations.size() < replication_factor) {
+        if (replication_locations->size() < replication_factor) {
           // These tablets don't have the required replication locations needed.
           jw.String(tablet->tablet_id());
           continue;
@@ -764,7 +763,7 @@ void MasterPathHandlers::HandleHealthCheck(
           continue;
         }
         int recent_replica_count = 0;
-        for (const auto& iter : replication_locations) {
+        for (const auto& iter : *replication_locations) {
           if (std::find_if(dead_nodes.begin(),
                            dead_nodes.end(),
                            [iter, death_interval_msecs] (const auto& ts) {
@@ -1067,10 +1066,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>State</th>"
       "<th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    TabletInfo::ReplicaMap locations;
-    tablet->GetReplicaLocations(&locations);
+    auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
-    AppendValuesFromMap(locations, &sorted_locations);
+    AppendValuesFromMap(*locations, &sorted_locations);
     std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
 
     auto l = tablet->LockForRead();
@@ -1176,11 +1174,10 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
   auto nonsystem_tablets = GetNonSystemTablets();
 
   for (TabletInfoPtr t : nonsystem_tablets) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     auto has_leader = std::any_of(
-      rm.begin(), rm.end(),
+      rm->begin(), rm->end(),
       [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
 
     if (!has_leader) {
@@ -1203,11 +1200,10 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets
                         "Unable to find replication factor");
 
   for (TabletInfoPtr t : nonsystem_tablets) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     // Find out the tablets which have been replicated less than the replication factor
-    if(rm.size() < cluster_rf) {
+    if(rm->size() < cluster_rf) {
       underreplicated_tablets.push_back(t);
     }
   }
@@ -1248,8 +1244,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
           << "<th>Tablet Replication Count</th></tr>\n";
 
   for (TabletInfoPtr t : *underreplicated_ts) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     *output << Substitute(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
@@ -1258,7 +1253,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
         EscapeForHtmlToString(t->table()->name()),
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t.get()->tablet_id()),
-        EscapeForHtmlToString(std::to_string(rm.size())));
+        EscapeForHtmlToString(std::to_string(rm->size())));
   }
 
   *output << "</table>\n";
@@ -1919,10 +1914,9 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
-      TabletInfo::ReplicaMap replication_locations;
-      tablet->GetReplicaLocations(&replication_locations);
+      auto replication_locations = tablet->GetReplicaLocations();
 
-      for (const auto& replica : replication_locations) {
+      for (const auto& replica : *replication_locations) {
         if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
                           || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
