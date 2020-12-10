@@ -1463,7 +1463,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
                           master_proxy_.get(), req_new_cluster_config,
                           "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
 
-  LOG(INFO)<< "Created read replica placement with uuid: " << uuid_str;
+  LOG(INFO) << "Created read replica placement with uuid: " << uuid_str;
   return Status::OK();
 }
 
@@ -1505,7 +1505,7 @@ CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
                           master_proxy_.get(), req_new_cluster_config,
                           "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
 
-  LOG(INFO)<< "Changed read replica placement.";
+  LOG(INFO) << "Changed read replica placement.";
   return Status::OK();
 }
 
@@ -1530,7 +1530,7 @@ CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
                           master_proxy_.get(), req_new_cluster_config,
                           "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
 
-  LOG(INFO)<< "Deleted read replica placement.";
+  LOG(INFO) << "Deleted read replica placement.";
   return Status::OK();
 }
 
@@ -1695,7 +1695,29 @@ Status ClusterAdminClient::ModifyPlacementInfo(
       master_proxy_.get(), req_new_cluster_config,
       "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
 
-  LOG(INFO)<< "Changed master cluster config.";
+  LOG(INFO) << "Changed master cluster config.";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ClearPlacementInfo() {
+  // Wait to make sure that master leader is ready.
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  // Get the cluster config from the master leader.
+  auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+
+  master::SysClusterConfigEntryPB* sys_cluster_config_entry =
+      resp_cluster_config.mutable_cluster_config();
+  sys_cluster_config_entry->clear_replication_info();
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+  req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+      master_proxy_.get(), req_new_cluster_config,
+      "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO) << "Cleared master placement info config";
   return Status::OK();
 }
 

@@ -397,6 +397,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "clear_placement_info", "",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->ClearPlacementInfo(),
+                              Substitute("Unable to clear placement info."));
+        return Status::OK();
+      });
+
+  Register(
       "add_read_replica_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4 && args.size() != 5) {
