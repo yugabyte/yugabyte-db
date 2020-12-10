@@ -359,7 +359,7 @@ class Consensus {
   // it tries to wait until ht lease reaches this value or `deadline` happens.
   //
   // Returns 0 if timeout happened.
-  virtual MicrosTime MajorityReplicatedHtLeaseExpiration(
+  virtual Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
   // Read majority replicated messages for CDC producer.

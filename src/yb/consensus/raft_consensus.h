@@ -226,7 +226,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Resets split operation ID, to be used only from SplitOperation::DoAbort.
   CHECKED_STATUS ResetSplitOpId();
 
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
+  Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
   // The on-disk size of the consensus metadata.

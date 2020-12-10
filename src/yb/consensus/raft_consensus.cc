@@ -2641,7 +2641,7 @@ Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {
   return state_->CheckIsActiveLeaderAndHasLease();
 }
 
-MicrosTime RaftConsensus::MajorityReplicatedHtLeaseExpiration(
+Result<MicrosTime> RaftConsensus::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, CoarseTimePoint deadline) const {
   return state_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
 }

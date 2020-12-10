@@ -609,17 +609,17 @@ void TabletServiceAdminImpl::GetSafeTime(
     }
   }
 
-  HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+  auto safe_time = tablet.peer->tablet()->SafeTime(
       tablet::RequireLease::kTrue, min_hybrid_time, deadline);
-  if (!safe_time.is_valid()) {
+  if (!safe_time.ok()) {
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS(TimedOut, "Timed out waiting for safe time."),
+        safe_time.status(),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
 
-  resp->set_safe_time(safe_time.ToUint64());
+  resp->set_safe_time(safe_time->ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   VLOG(1) << "Tablet " << tablet.peer->tablet_id()
           << " returning safe time " << yb::ToString(safe_time);
@@ -677,14 +677,12 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_at_hybrid_time());
-  const HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+  const auto safe_time = tablet.peer->tablet()->SafeTime(
       tablet::RequireLease::kTrue, read_at, deadline);
-  if (!safe_time.is_valid()) {
+  if (!safe_time.ok()) {
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS_SUBSTITUTE(TimedOut,
-                          "TimedOut waiting for safe time to get past $0",
-                          read_at.ToString()),
+        safe_time.status(),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
@@ -1646,10 +1644,19 @@ struct ReadContext {
     return tablet->IsTransactionalRequest(req->pgsql_batch_size() > 0);
   }
 
-  // Picks read based for specified read context.
   CHECKED_STATUS PickReadTime(server::Clock* clock) {
+    auto result = DoPickReadTime(clock);
+    if (!result.ok()) {
+      TRACE(result.ToString());
+    }
+    return result;
+  }
+
+ private:
+  // Picks read based for specified read context.
+  CHECKED_STATUS DoPickReadTime(server::Clock* clock) {
     if (!read_time) {
-      safe_ht_to_read = tablet->SafeTime(require_lease);
+      safe_ht_to_read = VERIFY_RESULT(tablet->SafeTime(require_lease));
       // If the read time is not specified, then it is a single-shard read.
       // So we should restart it in server in case of failure.
       read_time.read = safe_ht_to_read;
@@ -1663,13 +1670,8 @@ struct ReadContext {
         read_time.global_limit = read_time.read;
       }
     } else {
-      safe_ht_to_read = tablet->SafeTime(
-          require_lease, read_time.read, context->GetClientDeadline());
-      if (!safe_ht_to_read.is_valid()) { // Timed out
-        const char* error_message = "Timed out waiting for read time";
-        TRACE(error_message);
-        return STATUS(TimedOut, error_message);
-      }
+      safe_ht_to_read = VERIFY_RESULT(tablet->SafeTime(
+          require_lease, read_time.read, context->GetClientDeadline()));
     }
     return Status::OK();
   }

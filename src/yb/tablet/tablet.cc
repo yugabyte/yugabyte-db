@@ -1038,9 +1038,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   auto txn_op_ctx = CreateTransactionOperationContext(
       transaction_id, schema.table_properties().is_ysql_catalog_table());
-  const auto read_time =
-      (read_hybrid_time ? read_hybrid_time
-                        : ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse)));
+  const auto read_time = read_hybrid_time
+      ? read_hybrid_time
+      : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_op_counter_);
@@ -2010,7 +2010,7 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
   return RemoveIntentsImpl(data, transactions);
 }
 
-HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
+Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
@@ -2873,22 +2873,28 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
   }
 
   void TransactionalConflictsResolved() {
+    auto status = DoTransactionalConflictsResolved();
+    if (!status.ok()) {
+      LOG(DFATAL) << status;
+      InvokeCallback(status);
+    }
+  }
+
+  CHECKED_STATUS DoTransactionalConflictsResolved() {
     if (!read_time_) {
-      auto safe_time = tablet_.SafeTime(RequireLease::kTrue);
+      auto safe_time = VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue));
       read_time_ = ReadHybridTime::FromHybridTimeRange(
           {safe_time, tablet_.clock()->NowRange().second});
     } else if (prepare_result_.need_read_snapshot &&
                isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
-      auto status = STATUS_FORMAT(
+      return STATUS_FORMAT(
           InvalidArgument,
           "Read time should NOT be specified for serializable isolation level: $0",
           read_time_);
-      LOG(DFATAL) << status;
-      InvokeCallback(status);
-      return;
     }
 
     Complete();
+    return Status::OK();
   }
 
   bool allow_immediate_read_restart() const {
@@ -2936,8 +2942,8 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
       real_read_time.read = restart_read_ht;
       if (!local_limit_updated) {
         local_limit_updated = true;
-        real_read_time.local_limit =
-            std::min(real_read_time.local_limit, tablet_.SafeTime(RequireLease::kTrue));
+        real_read_time.local_limit = std::min(
+            real_read_time.local_limit, VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue)));
       }
 
       restart_read_ht = HybridTime();
@@ -2988,30 +2994,27 @@ void Tablet::StartDocWriteOperation(
   doc_write_operation->Start();
 }
 
-HybridTime Tablet::DoGetSafeTime(
+Result<HybridTime> Tablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   if (!require_lease) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (require_lease && ht_lease_provider_) {
-    // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
-    // the resulting ht_lease is at least min_allowed.
-    auto min_allowed_lease = min_allowed.GetPhysicalValueMicros();
-    if (min_allowed.GetLogicalValue()) {
-      ++min_allowed_lease;
-    }
     // This will block until a leader lease reaches the given value or a timeout occurs.
-    ht_lease = ht_lease_provider_(min_allowed_lease, deadline);
-    if (!ht_lease.lease.is_valid()) {
-      // This could happen in case of timeout.
-      return HybridTime::kInvalid;
+    ht_lease = VERIFY_RESULT(ht_lease_provider_(min_allowed, deadline));
+    if (min_allowed > ht_lease.time) {
+      return STATUS_FORMAT(
+          InternalError, "Read request hybrid time after current time: $0, lease: $1",
+          min_allowed, ht_lease);
     }
+  } else if (min_allowed) {
+    RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {
-    LOG_WITH_PREFIX(DFATAL)
-        << "Read request hybrid time after leader lease: " << min_allowed << ", " << ht_lease;
-    return HybridTime::kInvalid;
+    return STATUS_FORMAT(
+        InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
+        min_allowed, ht_lease);
   }
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
@@ -3329,7 +3332,7 @@ Result<ScopedReadOperation> ScopedReadOperation::Create(
     RequireLease require_lease,
     ReadHybridTime read_time) {
   if (!read_time) {
-    read_time = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
+    read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(tablet->SafeTime(require_lease)));
   }
   auto* retention_policy = tablet->RetentionPolicy();
   if (retention_policy) {

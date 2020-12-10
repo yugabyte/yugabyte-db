@@ -440,7 +440,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
   // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
   if (context_) {
-    propagated_safe_time = context_->PreparePeerRequest();
+    propagated_safe_time = VERIFY_RESULT(context_->PreparePeerRequest());
   }
 
   {

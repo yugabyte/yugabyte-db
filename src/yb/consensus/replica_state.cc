@@ -1315,7 +1315,7 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) co
   return result;
 }
 
-MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
+Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, CoarseTimePoint deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {
     return kMaxHybridTimePhysicalMicros;
@@ -1335,7 +1335,7 @@ MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
   if (deadline == CoarseTimePoint::max()) {
     cond_.wait(l, predicate);
   } else if (!cond_.wait_until(l, deadline, predicate)) {
-    return 0;
+    return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
   }
   return result;
 }
