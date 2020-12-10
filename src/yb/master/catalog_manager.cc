@@ -4755,13 +4755,12 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
 
 bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
                                                          const ConsensusStatePB& cstate) {
-  TabletInfo::ReplicaMap locs;
-  tablet->GetReplicaLocations(&locs);
-  if (locs.size() != cstate.config().peers_size()) {
+  auto locs = tablet->GetReplicaLocations();
+  if (locs->size() != cstate.config().peers_size()) {
     return true;
   }
   for (auto iter = cstate.config().peers().begin(); iter != cstate.config().peers().end(); iter++) {
-      if (locs.find(iter->permanent_uuid()) == locs.end()) {
+      if (locs->find(iter->permanent_uuid()) == locs->end()) {
         return true;
       }
   }
@@ -6705,9 +6704,8 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
     const RaftGroupStatePB& replica_state) {
-  TabletInfo::ReplicaMap replica_locations;
-  TabletInfo::ReplicaMap prev_rl;
-  tablet->GetReplicaLocations(&prev_rl);
+  auto replica_locations = std::make_shared<TabletInfo::ReplicaMap>();
+  auto prev_rl = tablet->GetReplicaLocations();
 
   for (const consensus::RaftPeerPB& peer : consensus_state.config().peers()) {
     shared_ptr<TSDescriptor> ts_desc;
@@ -6745,27 +6743,27 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
 
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
     bool use_existing = false;
-    TabletReplica* existing_replica;
+    const TabletReplica* existing_replica;
     if (peer.permanent_uuid() != sender_uuid) {
-      auto it = prev_rl.find(ts_desc->permanent_uuid());
-      if (it != prev_rl.end()) {
+      auto it = prev_rl->find(ts_desc->permanent_uuid());
+      if (it != prev_rl->end()) {
         existing_replica = &it->second;
         // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
         use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
       }
     }
     if (use_existing) {
-      InsertOrDie(&replica_locations, existing_replica->ts_desc->permanent_uuid(),
+      InsertOrDie(replica_locations.get(), existing_replica->ts_desc->permanent_uuid(),
           *existing_replica);
     } else {
       TabletReplica replica;
       CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, replica_state, &replica);
-      InsertOrDie(&replica_locations, replica.ts_desc->permanent_uuid(), replica);
+      InsertOrDie(replica_locations.get(), replica.ts_desc->permanent_uuid(), replica);
     }
   }
 
   // Update the local tablet replica set. This deviates from persistent state during bootstrapping.
-  tablet->SetReplicaLocations(std::move(replica_locations));
+  tablet->SetReplicaLocations(replica_locations);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
@@ -7030,11 +7028,10 @@ void CatalogManager::SendSplitTabletRequest(
 void CatalogManager::DeleteTabletReplicas(
     const TabletInfo* tablet,
     const std::string& msg) {
-  TabletInfo::ReplicaMap locations;
-  tablet->GetReplicaLocations(&locations);
-  LOG(INFO) << "Sending DeleteTablet for " << locations.size()
+  auto locations = tablet->GetReplicaLocations();
+  LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
-  for (const TabletInfo::ReplicaMap::value_type& r : locations) {
+  for (const TabletInfo::ReplicaMap::value_type& r : *locations) {
     SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED,
                             boost::none, tablet->table(), r.second.ts_desc, msg);
   }
@@ -7666,8 +7663,7 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
 // pick proposed leader and start election.
 void CatalogManager::StartElectionIfReady(
     const consensus::ConsensusStatePB& cstate, TabletInfo* tablet) {
-  TabletInfo::ReplicaMap replicas;
-  tablet->GetReplicaLocations(&replicas);
+  auto replicas = tablet->GetReplicaLocations();
   int num_voters = 0;
   for (const auto& peer : cstate.config().peers()) {
     if (peer.member_type() == RaftPeerPB::VOTER) {
@@ -7676,14 +7672,14 @@ void CatalogManager::StartElectionIfReady(
   }
   int majority_size = num_voters / 2 + 1;
   int running_voters = 0;
-  for (const auto& replica : replicas) {
+  for (const auto& replica : *replicas) {
     if (replica.second.member_type == RaftPeerPB::VOTER) {
       ++running_voters;
     }
   }
 
   VLOG_WITH_PREFIX(4)
-      << __func__ << ": T " << tablet->tablet_id() << ": " << AsString(replicas) << ", voters: "
+      << __func__ << ": T " << tablet->tablet_id() << ": " << AsString(*replicas) << ", voters: "
       << running_voters << "/" << majority_size;
 
   if (running_voters < majority_size) {
@@ -7705,7 +7701,7 @@ void CatalogManager::StartElectionIfReady(
   }
 
   std::vector<std::string> possible_leaders;
-  for (const auto& replica : replicas) {
+  for (const auto& replica : *replicas) {
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
         if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
@@ -7725,7 +7721,7 @@ void CatalogManager::StartElectionIfReady(
         }
       }
     }
-    if (min_lexicographic.empty() || !replicas.count(min_lexicographic)) {
+    if (min_lexicographic.empty() || !replicas->count(min_lexicographic)) {
       LOG_WITH_PREFIX(INFO)
           << __func__ << ": Min lexicographic is not yet ready: " << min_lexicographic;
       return;
@@ -7903,7 +7899,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   TSRegistrationPB reg;
 
-  TabletInfo::ReplicaMap locs;
+  std::shared_ptr<const TabletInfo::ReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
@@ -7921,8 +7917,8 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       return STATUS(ServiceUnavailable, "Tablet not running");
     }
 
-    tablet->GetReplicaLocations(&locs);
-    if (locs.empty() && l_tablet->data().pb.has_committed_consensus_state()) {
+    locs = tablet->GetReplicaLocations();
+    if (locs->empty() && l_tablet->data().pb.has_committed_consensus_state()) {
       cstate = l_tablet->data().pb.committed_consensus_state();
     }
 
@@ -7936,16 +7932,16 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());
-  locs_pb->set_stale(locs.empty());
+  locs_pb->set_stale(locs->empty());
 
   // If the locations are cached.
-  if (!locs.empty()) {
-    if (cstate.IsInitialized() && locs.size() != cstate.config().peers_size()) {
-      LOG(WARNING) << "Cached tablet replicas " << locs.size() << " does not match consensus "
+  if (!locs->empty()) {
+    if (cstate.IsInitialized() && locs->size() != cstate.config().peers_size()) {
+      LOG(WARNING) << "Cached tablet replicas " << locs->size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
 
-    for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
@@ -8547,9 +8543,8 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool
       continue;
     }
 
-    TabletInfo::ReplicaMap locs;
-    tablet->GetReplicaLocations(&locs);
-    for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+    auto locs = tablet->GetReplicaLocations();
+    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
       if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
         continue;
       }
