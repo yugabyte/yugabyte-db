@@ -178,6 +178,12 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     // Add the tablet to the Table.
     if (!tablet_deleted) {
+      // Any table listed under the sys catalog tablet, is by definition a system table.
+      // This is the easiest place to mark these as system tables, as we'll only go over
+      // sys_catalog tablet once and can mark in memory all the relevant tables.
+      if (tablet_id == kSysCatalogTabletId) {
+        table->set_is_system();
+      }
       table->AddTablet(tablet);
     }
 

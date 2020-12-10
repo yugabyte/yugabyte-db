@@ -357,6 +357,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_local_index() const;
   bool is_unique_index() const;
 
+  void set_is_system() { is_system_ = true; }
+  bool is_system() const { return is_system_; }
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -456,6 +459,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
