@@ -35,7 +35,7 @@ Configuration flag                   | Process    | Description                 
 To enable access control, follow these steps, start the `yb-tserver` services with the following flag (described above):
   
 ```
---use_client_to_server_encryption=true`
+--use_client_to_server_encryption=true
 ```
 
 This flag enables both encrypted and unencrypted clients to connect to the cluster.
@@ -43,7 +43,7 @@ This flag enables both encrypted and unencrypted clients to connect to the clust
 To prevent clients without the appropriate encryption from connecting, you must add the following flag:
 
 ```
---allow_insecure_connections=false`
+--allow_insecure_connections=false
 ```
 
 Your command should look similar to this:
