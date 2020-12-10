@@ -161,6 +161,14 @@ Since all nodes of the cluster can process transactions by becoming transaction 
 
 Each update performed as a part of the transaction is replicated across multiple nodes for resilience and persisted on disk. This ensures that the updates made as a part of a transaction that has been acknowledged as successful to the end user is resilient even if failures occur.
 
+### Concurrency control 
+
+[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*. 
+
+{{< note title="Note" >}}
+YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
+{{</note >}}
+
 
 ## Transaction Options
 
