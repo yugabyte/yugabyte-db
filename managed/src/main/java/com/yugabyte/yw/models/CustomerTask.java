@@ -63,6 +63,9 @@ public class CustomerTask extends Model {
     @EnumValue("Start")
     Start,
 
+    @EnumValue("Restart")
+    Restart,
+
     @EnumValue("Remove")
     Remove,
 
@@ -123,6 +126,8 @@ public class CustomerTask extends Model {
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
           return completed ? "Restored " : "Restoring ";
+        case Restart:
+          return completed ? "Restarted " : "Restarting ";
         case Backup:
           return completed ? "Backed up " : "Backing up ";
         case SetEncryptionKey:
