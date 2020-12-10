@@ -225,7 +225,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
 
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
+  Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
   // The on-disk size of the consensus metadata.

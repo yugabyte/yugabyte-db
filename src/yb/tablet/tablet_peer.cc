@@ -305,27 +305,25 @@ Status TabletPeer::InitTabletPeer(
   return Status::OK();
 }
 
-FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline) {
-  auto time = clock_->Now();
-  MicrosTime lease_micros {
-      consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
-  if (!lease_micros) {
-    return {
-      .time = HybridTime::kInvalid,
-      .lease = HybridTime::kInvalid,
-    };
-  }
+Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
+    HybridTime min_allowed, CoarseTimePoint deadline) {
+  auto time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
+  // the resulting ht_lease is at least min_allowed.
+  auto min_allowed_micros = min_allowed.CeilPhysicalValueMicros();
+  MicrosTime lease_micros = VERIFY_RESULT(consensus_->MajorityReplicatedHtLeaseExpiration(
+      min_allowed_micros, deadline));
   if (lease_micros >= kMaxHybridTimePhysicalMicros) {
     // This could happen when leader leases are disabled.
     return FixedHybridTimeLease();
   }
-  return {
+  return FixedHybridTimeLease {
     .time = time,
     .lease = HybridTime(lease_micros, /* logical */ 0)
   };
 }
 
-HybridTime TabletPeer::PreparePeerRequest() {
+Result<HybridTime> TabletPeer::PreparePeerRequest() {
   auto leader_term = consensus_->GetLeaderState(/* allow_stale= */ true).term;
   if (leader_term >= 0) {
     auto last_write_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
@@ -349,18 +347,20 @@ HybridTime TabletPeer::PreparePeerRequest() {
   }
 
   // Get the current majority-replicated HT leader lease without any waiting.
-  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-  if (!ht_lease.lease) {
-    return HybridTime::kInvalid;
-  }
+  auto ht_lease = VERIFY_RESULT(HybridTimeLease(
+      /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
 }
 
 void TabletPeer::MajorityReplicated() {
-  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-  if (ht_lease.lease) {
-    tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+  auto ht_lease = HybridTimeLease(
+      /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max());
+  if (!ht_lease.ok()) {
+    LOG_WITH_PREFIX(DFATAL) << "Failed to get current lease: " << ht_lease.status();
+    return;
   }
+
+  tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(*ht_lease);
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -603,7 +603,7 @@ void TabletPeer::WriteAsync(
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 }
 
-HybridTime TabletPeer::ReportReadRestart() {
+Result<HybridTime> TabletPeer::ReportReadRestart() {
   tablet_->metrics()->restart_read_requests->Increment();
   return tablet_->SafeTime(RequireLease::kTrue);
 }
@@ -1176,7 +1176,8 @@ consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {
-  HybridTime result(consensus_->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max()), 0);
+  HybridTime result(
+      CHECK_RESULT(consensus_->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max())), 0);
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 

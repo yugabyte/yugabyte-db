@@ -82,9 +82,9 @@ class AbstractTablet {
   //
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, e.g. because of
   // a timeout.
-  HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
-                      HybridTime min_allowed = HybridTime::kMin,
-                      CoarseTimePoint deadline = CoarseTimePoint::max()) const {
+  Result<HybridTime> SafeTime(RequireLease require_lease = RequireLease::kTrue,
+                              HybridTime min_allowed = HybridTime::kMin,
+                              CoarseTimePoint deadline = CoarseTimePoint::max()) const {
     return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
@@ -133,7 +133,7 @@ class AbstractTablet {
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 
  private:
-  virtual HybridTime DoGetSafeTime(
+  virtual Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const = 0;
 };
 
