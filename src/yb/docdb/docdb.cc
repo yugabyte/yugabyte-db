@@ -511,6 +511,23 @@ ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchP
 
 } // namespace
 
+// Usually put_batch contains only records that should be applied to regular DB.
+// So apply_external_transactions will be empty and regular_entry will be true.
+//
+// But in general case on consumer side of CDC put_batch could contain various kinds of records,
+// that should be applied into regular and intents db.
+// They are:
+// apply_external_transactions
+//   The list of external transactions that should be applied.
+//   For each such transaction we should lookup for existing external intents (stored in intents DB)
+//   and convert them to Put command in regular_write_batch plus SingleDelete command in
+//   intents_write_batch.
+// write_pairs
+//   Could contain regular entries, that should be stored into regular DB as is.
+//   Also pair could contain external intents, that should be stored into intents DB.
+//   But if apply_external_transactions contains transaction for those external intents, then
+//   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
+//   This case is very common for short running transactions.
 void PrepareNonTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,

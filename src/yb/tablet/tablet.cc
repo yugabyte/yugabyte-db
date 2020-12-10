@@ -1069,7 +1069,8 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
   }
 }
 
-Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
+Status Tablet::ApplyRowOperations(
+    WriteOperationState* operation_state, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   const auto& write_request =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
@@ -1081,12 +1082,14 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
     metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
   }
 
-  return ApplyOperationState(*operation_state, write_request.batch_idx(), put_batch);
+  return ApplyOperationState(
+      *operation_state, write_request.batch_idx(), put_batch, already_applied_to_regular_db);
 }
 
 Status Tablet::ApplyOperationState(
     const OperationState& operation_state, int64_t batch_idx,
-    const docdb::KeyValueWriteBatchPB& write_batch) {
+    const docdb::KeyValueWriteBatchPB& write_batch,
+    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   docdb::ConsensusFrontiers frontiers;
   set_op_id(yb::OpId::FromPB(operation_state.op_id()), &frontiers);
 
@@ -1096,7 +1099,7 @@ Status Tablet::ApplyOperationState(
   // frontier.
   set_hybrid_time(operation_state.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, &frontiers, hybrid_time);
+      batch_idx, write_batch, &frontiers, hybrid_time, already_applied_to_regular_db);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1140,10 +1143,12 @@ Status Tablet::PrepareTransactionWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
-                                          const KeyValueWriteBatchPB& put_batch,
-                                          const rocksdb::UserFrontiers* frontiers,
-                                          const HybridTime hybrid_time) {
+Status Tablet::ApplyKeyValueRowOperations(
+    int64_t batch_idx,
+    const KeyValueWriteBatchPB& put_batch,
+    const rocksdb::UserFrontiers* frontiers,
+    const HybridTime hybrid_time,
+    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -1160,13 +1165,14 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
     rocksdb::WriteBatch regular_write_batch;
+    auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
     // See comments for PrepareNonTransactionWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     PrepareNonTransactionWriteBatch(
-        put_batch, hybrid_time, intents_db_.get(), &regular_write_batch, &intents_write_batch);
+        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
 
     if (regular_write_batch.Count() != 0) {
-      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+      WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
     }
     if (intents_write_batch.Count() != 0) {
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
