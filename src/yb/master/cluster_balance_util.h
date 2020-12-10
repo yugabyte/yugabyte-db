@@ -318,10 +318,9 @@ class PerTableLoadState {
     const auto& placement = placement_by_table_[tablet->table()->id()];
 
     // Get replicas for this tablet.
-    TabletInfo::ReplicaMap replica_map;
-    GetReplicaLocations(tablet, &replica_map);
+    auto replica_map = GetReplicaLocations(tablet);
     // Set state information for both the tablet and the tablet server replicas.
-    for (const auto& replica : replica_map) {
+    for (const auto& replica : *replica_map) {
       const auto& ts_uuid = replica.first;
       // If we do not have ts_meta information for this particular replica, then we are in the
       // rare case where we just became the master leader and started doing load balancing, but we
@@ -376,8 +375,8 @@ class PerTableLoadState {
     // Only set the over-replication section if we need to.
     int placement_num_replicas = placement.num_replicas() > 0 ?
         placement.num_replicas() : FLAGS_replication_factor;
-    tablet_meta.is_over_replicated = placement_num_replicas < replica_map.size();
-    tablet_meta.is_under_replicated = placement_num_replicas > replica_map.size();
+    tablet_meta.is_over_replicated = placement_num_replicas < replica_map->size();
+    tablet_meta.is_under_replicated = placement_num_replicas > replica_map->size();
 
     // If no placement information, we will have already set the over and under replication flags.
     // For under-replication, we cannot use any placement_id, so we just leave the set empty and
@@ -386,7 +385,7 @@ class PerTableLoadState {
     // For over-replication, we just add all the ts_uuids as candidates.
     if (placement.placement_blocks().empty()) {
       if (tablet_meta.is_over_replicated) {
-        for (auto& replica_entry : replica_map) {
+        for (auto& replica_entry : *replica_map) {
           tablet_meta.over_replicated_tablet_servers.insert(std::move(replica_entry.first));
         }
       }
@@ -403,7 +402,7 @@ class PerTableLoadState {
         placement_to_min_replicas[placement_id] = pb.min_num_replicas();
       }
       // Now actually fill the structures with matching TSs.
-      for (auto& replica_entry : replica_map) {
+      for (auto& replica_entry : *replica_map) {
         if (VERIFY_RESULT(HasValidPlacement(replica_entry.first, &placement))) {
           const auto& placement_id = per_ts_meta_[replica_entry.first].descriptor->placement_id();
           placement_to_replicas[placement_id].push_back(std::move(replica_entry.second));
@@ -703,8 +702,8 @@ class PerTableLoadState {
     }
   }
 
-  virtual void GetReplicaLocations(TabletInfo* tablet, TabletInfo::ReplicaMap* replica_locations) {
-    tablet->GetReplicaLocations(replica_locations);
+  virtual std::shared_ptr<const TabletInfo::ReplicaMap> GetReplicaLocations(TabletInfo* tablet) {
+    return tablet->GetReplicaLocations();
   }
 
   Status AddRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
