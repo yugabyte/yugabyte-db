@@ -439,6 +439,26 @@ ReplayDecision ShouldReplayOperation(
   return {index > regular_flushed_index};
 }
 
+bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
+  if (!replicate.has_write_request()) {
+    return false;
+  }
+  const auto& write_request = replicate.write_request();
+  if (!write_request.has_write_batch()) {
+    return false;
+  }
+  const auto& write_batch = write_request.write_batch();
+  if (write_batch.has_transaction()) {
+    return true;
+  }
+  for (const auto& pair : write_batch.write_pairs()) {
+    if (!pair.key().empty() && pair.key()[0] == docdb::ValueTypeAsChar::kExternalTransactionId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // anonymous namespace
 
 YB_STRONGLY_TYPED_BOOL(NeedsRecovery);
@@ -869,7 +889,7 @@ class TabletBootstrap {
     }
     switch (op_type) {
       case consensus::WRITE_OP:
-        return PlayWriteRequest(replicate);
+        return PlayWriteRequest(replicate, already_applied_to_regular_db);
 
       case consensus::CHANGE_METADATA_OP:
         return PlayChangeMetadataRequest(replicate);
@@ -982,9 +1002,7 @@ class TabletBootstrap {
             ? replicate->transaction_state().status()
             : TransactionStatus::ABORTED,  // should not be used
         // write_op_has_transaction
-        replicate->has_write_request() &&
-            replicate->write_request().has_write_batch() &&
-            replicate->write_request().write_batch().has_transaction());
+        WriteOpHasTransaction(*replicate));
 
     HandleRetryableRequest(*replicate, entry_time);
 
@@ -1333,7 +1351,8 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayWriteRequest(ReplicateMsg* replicate_msg) {
+  CHECKED_STATUS PlayWriteRequest(
+      ReplicateMsg* replicate_msg, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
@@ -1363,7 +1382,8 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    auto apply_status = tablet_->ApplyRowOperations(&operation_state);
+    auto apply_status = tablet_->ApplyRowOperations(
+        &operation_state, already_applied_to_regular_db);
     // Failure is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
