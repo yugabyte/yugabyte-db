@@ -295,6 +295,7 @@ if (1) \
 
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
+int yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 
 /* non-export function prototypes */
 static CopyState BeginCopy(ParseState *pstate, bool is_from, Relation rel,
@@ -1057,6 +1058,8 @@ ProcessCopyOptions(ParseState *pstate,
 
 	cstate->file_encoding = -1;
 
+	cstate->batch_size = -1;
+
 	/* Extract options from the statement node tree */
 	foreach(option, options)
 	{
@@ -1114,7 +1117,7 @@ ProcessCopyOptions(ParseState *pstate,
 		else if (strcmp(defel->defname, "rows_per_transaction") == 0)
 		{
 			int rows = defGetInt32(defel);
-			if (rows > 0)
+			if (rows >= 0)
 				cstate->batch_size = rows;
 			else
 				ereport(ERROR,
@@ -2391,7 +2394,17 @@ CopyFrom(CopyState cstate)
 	int			nBufferedTuples = 0;
 	int			prev_leaf_part_index = -1;
 	bool		useNonTxnInsert;
-	bool		isBatchTxnCopy = cstate->batch_size > 0;
+	bool		isBatchTxnCopy;
+
+	/*
+	 * If the batch size is not explicitly set in the query by the user,
+	 * use the session variable value.
+	 */
+	if (cstate->batch_size < 0)
+	{
+		cstate->batch_size = yb_default_copy_from_rows_per_transaction;
+	}
+	isBatchTxnCopy = cstate->batch_size > 0;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2623,17 +2636,37 @@ CopyFrom(CopyState cstate)
 			ExecSetupChildParentMapForLeaf(proute);
 	}
 
-	if (isBatchTxnCopy &&
-		(!IsYBRelation(cstate->rel) ||
-		 !YBTransactionsEnabled() ||
-		 YBIsDataSent() ||
-		 (resultRelInfo->ri_TrigDesc != NULL &&
-		  (resultRelInfo->ri_TrigDesc->trig_insert_before_statement ||
-		   resultRelInfo->ri_TrigDesc->trig_insert_after_statement))))
-		ereport(ERROR,
+	if (isBatchTxnCopy)
+	{
+		/*
+		 * Batched copy is not supported
+		 * under the following use cases in which case
+		 * all rows will be copied over in a single transaction.
+		 */
+		int batch_size = 0;
+
+		if (!IsYBRelation(cstate->rel))
+			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("ROWS_PER_TRANSACTION option is not supported for nested transactions or "
-						"temporary tables or tables with statement-level triggers.")));
+			 	 errmsg("Batched COPY is not supported on temporary tables. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
+						 "option to `0` to disable batching and remove this warning.")));
+		else if (YBIsDataSent())
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Batched COPY is not supported in transaction blocks. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Either run this COPY outside of a transaction block or set "
+						 "rows_per_transaction option to `0` to disable batching and "
+						 "remove this warning.")));
+
+		else
+		{
+			batch_size = cstate->batch_size;
+		}
+		cstate->batch_size = batch_size;
+	}
 
 	/*
 	 * It's more efficient to prepare a bunch of tuples for insertion, and
