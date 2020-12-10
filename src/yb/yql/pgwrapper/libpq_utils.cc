@@ -181,6 +181,9 @@ Status PGConn::Execute(const std::string& command) {
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
+    if (status == ExecStatusType::PGRES_TUPLES_OK) {
+      return STATUS(IllegalState, "Tuples received in Execute");
+    }
     return STATUS(NetworkError,
                   Format("Execute '$0' failed: $1, message: $2",
                          command, status, PQresultErrorMessage(res.get())),

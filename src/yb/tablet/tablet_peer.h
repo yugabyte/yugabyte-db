@@ -482,10 +482,10 @@ class TabletPeer : public consensus::ConsensusContext,
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
  private:
-  HybridTime ReportReadRestart() override;
+  Result<HybridTime> ReportReadRestart() override;
 
-  FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
-  HybridTime PreparePeerRequest() override;
+  Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+  Result<HybridTime> PreparePeerRequest() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
