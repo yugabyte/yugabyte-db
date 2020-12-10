@@ -36,6 +36,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
+#include "commands/copy.h"
 #include "commands/prepare.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
@@ -3167,6 +3168,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gin_pending_list_limit,
 		4096, 64, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_default_copy_from_rows_per_transaction", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the batch number of rows to copy from the source to table."),
+			NULL,
+			0
+		},
+		&yb_default_copy_from_rows_per_transaction,
+		DEFAULT_BATCH_ROWS_PER_TRANSACTION, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
