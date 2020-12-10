@@ -19,11 +19,12 @@ Follow these steps if this is the first time you are setting up the YugabyteDB d
 1. Fork this repository on GitHub and create a local clone of your fork. This should look something like below:
 ```
 git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
+cd ./yugabyte-db
 ```
 
 Add the master as a remote branch by running the following:
 ```
-$ git remote add --track master upstream https://github.com/yugabyte/docs.git
+$ git remote add --track master upstream https://github.com/yugabyte/yugabyte-db.git
 ```
 
 2. Install Hugo. For example, on a Mac, you can run the following commands:
@@ -33,13 +34,9 @@ brew install hugo
 brew install npm
 ```
 
-3. Copy the config.yaml.sample to config.yaml.
-```
-cp config.yaml.sample config.yaml
-```
-
 4. Install node modules as shown below:
 ```
+$ cd docs
 $ npm ci
 ```
 
@@ -95,7 +92,10 @@ If you run into any issues, please let us know by posting in our [the community 
 
 ## Step 4. Make changes
 
-Make the changes locally and test them on the browser.
+Make the changes locally and test them on the browser. You can make the changes on a branch with
+```
+$ git checkout -b <short_description_of_branch>
+```
 
 Once you are satisfied with your changes, commit them to your local branch. You can do this by running the following command:
 ```
