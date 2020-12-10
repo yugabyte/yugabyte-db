@@ -110,8 +110,7 @@ set(MASTER_SRCS
   ysql_transaction_ddl.cc
   ${MASTER_SRCS_EXTENSIONS})
 
-add_library(master ${MASTER_SRCS})
-target_link_libraries(master
+set(MASTER_DEPS
   yb_common
   tablet
   server_common
@@ -126,6 +125,11 @@ target_link_libraries(master
   master_util
   version_info_proto
   yb_pggate_flags)
+
+ADD_YB_LIBRARY(master
+  SRCS ${MASTER_SRCS}
+  DEPS ${MASTER_DEPS}
+  NONLINK_DEPS postgres)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)

@@ -30,10 +30,6 @@
 # under the License.
 #
 
-# TODO: find a way to add this only to the top-level CMakeLists.txt file.
-# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
-allow_using_postgres_libraries()
-
 set(TABLET_SRCS
   abstract_tablet.cc
   apply_intents_task.cc

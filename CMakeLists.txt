@@ -743,6 +743,13 @@ set(YB_PGBACKEND_SHARED_LIB
 # Subdirectories
 # -------------------------------------------------------------------------------------------------
 
+# PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
+add_subdirectory(src/postgres)
+
+include_directories(${YB_BUILD_ROOT}/postgres/include)
+add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
+add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
+
 add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
@@ -764,9 +771,6 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
-
-# PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
-add_subdirectory(src/postgres)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
