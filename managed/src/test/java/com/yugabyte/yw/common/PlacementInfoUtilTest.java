@@ -10,12 +10,18 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.InstanceType;
+
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
@@ -61,6 +67,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import play.libs.Json;
 
+@RunWith(JUnitParamsRunner.class)
 public class PlacementInfoUtilTest extends FakeDBApplication {
   private static final int REPLICATION_FACTOR = 3;
   private static final int INITIAL_NUM_NODES = REPLICATION_FACTOR * 3;
@@ -1177,42 +1184,71 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testK8sSelectMastersMultiRegion() {
+  @Parameters({
+                "1, 1, 1, 3, 1, 1, 1",
+                "2, 2, 3, 3, 1, 1, 1",
+                "5, 5, 5, 5, 2, 2, 1",
+                "3, 3, 3, 7, 3, 2, 2"
+              })
+  public void testK8sSelectMastersMultiRegion(int numNodesInAZ0, int numNodesInAZ1,
+                                              int numNodesInAZ2, int numRF, int expectValAZ0,
+                                              int expectValAZ1, int expectValAZ2) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
             String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
-    AvailabilityZone az2 = AvailabilityZone.create(r2, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1,
+                                                   "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r2, "PlacementAZ " + 2, "az-" + 2,
+                                                   "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.create(r2, "PlacementAZ " + 3, "az-" + 3,
+                                                   "subnet-" + 3);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
-    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
-    pi.cloudList.get(0).regionList.get(1).azList.get(0).numNodesInAZ = 2;
-    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
-    assertEquals(1, pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
-    assertEquals(2, pi.cloudList.get(0).regionList.get(1).azList.get(0).replicationFactor);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numNodesInAZ0;
+    pi.cloudList.get(0).regionList.get(1).azList.get(0).numNodesInAZ = numNodesInAZ1;
+    pi.cloudList.get(0).regionList.get(1).azList.get(1).numNodesInAZ = numNodesInAZ2;
+    PlacementInfoUtil.selectNumMastersAZ(pi, numRF);
+    assertEquals(expectValAZ0,
+                 pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
+    assertEquals(expectValAZ1,
+                 pi.cloudList.get(0).regionList.get(1).azList.get(0).replicationFactor);
+    assertEquals(expectValAZ2,
+                 pi.cloudList.get(0).regionList.get(1).azList.get(1).replicationFactor);
   }
 
   @Test
-  public void testK8sSelectMastersMultiZone() {
+  @Parameters({
+                "1, 2, 3, 1, 2",
+                "2, 2, 3, 2, 1",
+                "5, 5, 5, 3, 2",
+                "3, 3, 3, 2, 1"
+              })
+  public void testK8sSelectMastersMultiZone(int numNodesInAZ0, int numNodesInAZ1,
+                                            int numRF, int expectValAZ0, int expectValAZ1) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
             String.format("Test Customer %s", customerCode));
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
-    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1,
+                                                   "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2,
+                                                   "subnet-" + 2);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
-    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
-    pi.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = 2;
-    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
-    assertEquals(1, pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
-    assertEquals(2, pi.cloudList.get(0).regionList.get(0).azList.get(1).replicationFactor);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numNodesInAZ0;
+    pi.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = numNodesInAZ1;
+    PlacementInfoUtil.selectNumMastersAZ(pi, numRF);
+    assertEquals(expectValAZ0,
+                 pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
+    assertEquals(expectValAZ1,
+                 pi.cloudList.get(0).regionList.get(0).azList.get(1).replicationFactor);
   }
 
   @Test
