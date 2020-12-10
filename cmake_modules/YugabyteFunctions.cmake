@@ -429,12 +429,6 @@ function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
           "${SHARED_LIB_PATH} (invoked from ${CMAKE_CURRENT_LIST_FILE})")
 endfunction()
 
-function(allow_using_postgres_libraries)
-  include_directories(${YB_BUILD_ROOT}/postgres/include)
-  add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
-  add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
-endfunction()
-
 function(parse_build_root_basename)
   get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
   string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})

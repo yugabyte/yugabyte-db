@@ -43,10 +43,6 @@ ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
 
-# TODO: find a way to add this only to the top-level CMakeLists.txt file.
-# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
-allow_using_postgres_libraries()
-
 target_link_libraries(pg_wrapper_test_base integration-tests)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
