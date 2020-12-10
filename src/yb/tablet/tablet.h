@@ -178,10 +178,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   class FlushFaultHooks;
 
   // A function that returns the current majority-replicated hybrid time leader lease, or waits
-  // until a hybrid time leader lease with at least the given microsecond component is acquired
+  // until a hybrid time leader lease with at least the given hybrid time is acquired
   // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
   // in case of a timeout.
-  using HybridTimeLeaseProvider = std::function<FixedHybridTimeLease(MicrosTime, CoarseTimePoint)>;
+  using HybridTimeLeaseProvider = std::function<Result<FixedHybridTimeLease>(
+      HybridTime, CoarseTimePoint)>;
   using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
   // Create a new tablet.
@@ -818,7 +819,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTimeLeaseProvider ht_lease_provider_;
 
-  HybridTime DoGetSafeTime(
+  Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
   using IndexOps = std::vector<std::pair<
@@ -841,7 +842,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void RegularDbFilesChanged();
 
-  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
+  Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   void MinRunningHybridTimeSatisfied() override {
     CleanupIntentFiles();
