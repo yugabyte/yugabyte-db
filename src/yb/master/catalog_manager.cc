@@ -1140,6 +1140,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     auto table_ids_map_checkout = table_ids_map_.CheckOut();
     sys_catalog_table_iter = table_ids_map_checkout->emplace(table->id(), table).first;
     table_names_map_[{kSystemSchemaNamespaceId, kSysCatalogTableName}] = table;
+    table->set_is_system();
 
     RETURN_NOT_OK(sys_catalog_->AddItem(table.get(), term));
     table->mutable_metadata()->CommitMutation();
@@ -1164,6 +1165,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_table_id(table->id());
     metadata.add_table_ids(table->id());
 
+    table->set_is_system();
     table->AddTablet(tablet.get());
 
     auto tablet_map_checkout = tablet_map_.CheckOut();
@@ -1202,6 +1204,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   if (table != nullptr) {
     LOG_WITH_PREFIX(INFO) << "Table " << namespace_name << "." << table_name << " already created";
 
+    // Mark the table as a system table.
+    table->set_is_system();
+
     Schema persisted_schema;
     RETURN_NOT_OK(table->GetSchema(&persisted_schema));
     if (!persisted_schema.Equals(schema)) {
@@ -1223,8 +1228,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     if (!tablets.empty()) {
       // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
-      system_tablets_[tablets[0]->tablet_id()] =
-          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+      auto tablet = tablets[0];
+      system_tablets_[tablet->tablet_id()] =
+          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablet->tablet_id());
       return Status::OK();
     } else {
       // Table is already created, only need to create tablets now.
@@ -1253,6 +1259,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, true /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr, &tablets, nullptr, &table));
+    // Mark the table as a system table.
     LOG_WITH_PREFIX(INFO) << "Inserted new " << namespace_name << "." << table_name
                           << " table info into CatalogManager maps";
     // Update the on-disk table state to "running".
@@ -1285,10 +1292,13 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
+  // Mark the table as a system table.
+  table->set_is_system();
 
   // Finally create the appropriate tablet object.
-  system_tablets_[tablets[0]->tablet_id()] =
-      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+  auto tablet = tablets[0];
+  system_tablets_[tablet->tablet_id()] =
+      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablet->tablet_id());
   return Status::OK();
 }
 
@@ -2008,6 +2018,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
       return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
         "An error occurred while inserting to sys-tablets: "), resp);
     }
+    table->set_is_system();
     table->AddTablet(sys_catalog_tablet.get());
     tablet_lock->Commit();
   }
@@ -4630,14 +4641,7 @@ NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& t
 }
 
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  TabletInfos tablets;
-  table.GetAllTablets(&tablets);
-  for (const auto& tablet : tablets) {
-    if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
-      return true;
-    }
-  }
-  return false;
+  return table.is_system();
 }
 
 // True if table is created by user.
