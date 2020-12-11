@@ -60,6 +60,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
+                                        bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionMetadataPB& transaction_metadata,
                                         tablet::PgsqlReadRequestResult* result,
