@@ -1673,6 +1673,15 @@ struct ReadContext {
     }
     return Status::OK();
   }
+
+  ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time)  const {
+    DCHECK_GT(restart_time, read_time.read);
+    VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
+    auto result = read_time;
+    result.read = restart_time;
+    result.local_limit = safe_ht_to_read;
+    return result;
+  }
 };
 
 // Used when we write intents during read, i.e. for serializable isolation.
@@ -2142,13 +2151,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
           read_context->req->transaction(), &result));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
-        DCHECK_GT(result.restart_read_ht, read_context->read_time.read);
-        VLOG(1) << "Restart read required at: " << result.restart_read_ht
-                << ", original: " << read_context->read_time;
-        auto read_time = read_context->read_time;
-        read_time.read = result.restart_read_ht;
-        read_time.local_limit = read_context->safe_ht_to_read;
-        return read_time;
+        return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);
@@ -2164,17 +2167,15 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       TRACE("Start HandlePgsqlReadRequest");
       size_t num_rows_read;
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
-          read_context->context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req,
+          read_context->context->GetClientDeadline(), read_tx.read_time(),
+          !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
           read_context->req->transaction(), &result, &num_rows_read));
 
       total_num_rows_read += num_rows_read;
 
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
-        VLOG(1) << "Restart read required at: " << result.restart_read_ht;
-        read_context->read_time.read = result.restart_read_ht;
-        read_context->read_time.local_limit = read_context->safe_ht_to_read;
-        return read_context->read_time;
+        return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
