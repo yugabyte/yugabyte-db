@@ -34,6 +34,7 @@
 
 #include <cmath>
 #include <memory>
+#include <rapidjson/document.h>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -54,19 +55,20 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/operations/write_operation.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -75,6 +77,7 @@
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/string_util.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals; // NOLINT
@@ -788,6 +791,245 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
   }
 
   return Status::OK();
+}
+
+Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
+  TRACE_EVENT0("master", "ReadPgTablespaceInfo");
+
+  const auto* tablet = tablet_peer()->tablet();
+
+  const auto& pg_tablespace_info =
+      VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
+  const Schema& schema = pg_tablespace_info->schema;
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
+                                                   boost::none /* transaction_id */,
+                                                   {} /* read_hybrid_time */,
+                                                   kPgTablespaceTableId));
+  QLTableRow source_row;
+  ColumnId oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid"));
+  ColumnId options_id =
+      VERIFY_RESULT(schema.ColumnIdByName("spcoptions"));
+
+  // Loop through the pg_tablespace catalog table. Each row in this table represents
+  // a tablespace. Populate 'tablespace_map' with the tablespace id and corresponding
+  // placement info for each tablespace encountered in this catalog table.
+  auto tablespace_map = std::make_shared<TablespaceIdToReplicationInfoMap>();
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    // Fetch the oid.
+    auto oid = source_row.GetValue(oid_col_id);
+    if (!oid) {
+      return STATUS(Corruption, "Could not read oid column from pg_tablespace");
+    }
+
+    // Get the tablespace id.
+    const TablespaceId tablespace_id = GetPgsqlTablespaceId(oid->uint32_value());
+
+    // Fetch the options specified for the tablespace.
+    const auto& options = source_row.GetValue(options_id);
+    if (!options) {
+      return STATUS(Corruption, "Could not read spcoptions column from pg_tablespace");
+    }
+
+    VLOG(2) << "Tablespace " << tablespace_id << " -> " << options.value().DebugString();
+
+    // If no spcoptions found, then this tablespace has no placement info
+    // associated with it. Tables associated with this tablespace will not
+    // have any custom placement policy.
+    if (options->binary_value().empty()) {
+      // Storing boost::none lets the client know that the tables associated with
+      // this tablespace will not have any custom placement policy for them.
+      const auto& ret = tablespace_map->emplace(tablespace_id, boost::none);
+      // This map should not have already had an element associated with this
+      // tablespace.
+      DCHECK(ret.second);
+      continue;
+    }
+
+    // Parse the reloptions array associated with this tablespace and construct
+    // the ReplicationInfoPB. The ql_value is just the raw value read from the pg_tablespace
+    // catalog table. This was stored in postgres as a text array, but processed by DocDB as
+    // a binary value. So first process this binary value and convert it to text array of options.
+    vector<QLValuePB> placement_options;
+    RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(
+          options.value(), &placement_options));
+
+    // Fetch the status and print the tablespace option along with the status.
+    const auto& replication_info = VERIFY_RESULT(ParseReplicationInfo(
+          tablespace_id, placement_options));
+    const auto& ret = tablespace_map->emplace(tablespace_id, replication_info);
+    // This map should not have already had an element associated with this
+    // tablespace.
+    DCHECK(ret.second);
+  }
+
+  return tablespace_map;
+}
+
+Status SysCatalogTable::ReadPgClassInfo(
+    const uint32_t database_oid,
+    TableToTablespaceIdMap *const table_to_tablespace_map) {
+
+  TRACE_EVENT0("master", "ReadPgClass");
+
+  if (!table_to_tablespace_map) {
+    return STATUS(InternalError, "table_to_tablespace_map not initialized");
+  }
+
+  const auto* tablet = tablet_peer()->tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+  const auto& table_info = VERIFY_RESULT(
+      tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema;
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "reltablespace", "relkind"}, &projection,
+                schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
+  const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+    projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
+    {} /* read_hybrid_time */, pg_table_id));
+
+  QLTableRow row;
+  // Pg_class table contains a row for every database object (tables/indexes/
+  // composite types etc). Each such row contains a lot of information about the
+  // database object itself. But here, we are trying to fetch table->tablespace
+  // information. We iterate through every row in the catalog table and try to build
+  // the table/index->placement info.
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    // First process the oid of the object corresponding to the current row.
+    const auto& oid_col = row.GetValue(oid_col_id);
+    if (!oid_col) {
+      return STATUS(Corruption, "Could not read oid column from pg_class");
+    }
+
+    const uint32_t oid = oid_col->uint32_value();
+    if (oid < kPgFirstNormalObjectId) {
+      // This is some system level object. We are interested only in user created
+      // tables and indexes whose oids are always higher than kPgFirstNormalObjectId.
+      // Skip this row and move onto the next row in pg_class table.
+      continue;
+    }
+
+    // Now look at the relkind of the database object.
+    const auto& relkind_col = row.GetValue(relkind_col_id);
+    if (!relkind_col) {
+      return STATUS(Corruption, "Could not read relkind column from pg_class for oid " +
+          std::to_string(oid));
+    }
+
+    const char relkind = relkind_col->int8_value();
+    // From PostgreSQL docs: r = ordinary table, i = index, S = sequence, t = TOAST table,
+    // v = view, m = materialized view, c = composite type, f = foreign table,
+    // p = partitioned table, I = partitioned index
+    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
+      // This database object is not a table/index/partitioned table/partitioned index.
+      // Skip this.
+      continue;
+    }
+
+    // Now process the tablespace oid for this database object.
+    const auto& tablespace_oid_col = row.GetValue(tablespace_col_id);
+    if (!tablespace_oid_col) {
+      return STATUS(Corruption, "Could not read tablespace column from pg_class");
+    }
+
+    const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
+    VLOG(5) << "Table oid: " << oid << " Tablespace oid: " << tablespace_oid;
+
+    boost::optional<TablespaceId> tablespace_id = boost::none;
+    // If the tablespace oid is kInvalidOid then it means this table was created
+    // without a custom tablespace and its properties just default to cluster level
+    // policies.
+    if (tablespace_oid != kInvalidOid) {
+      tablespace_id = GetPgsqlTablespaceId(tablespace_oid);
+    }
+    const auto& ret = table_to_tablespace_map->emplace(
+        GetPgsqlTableId(database_oid, oid), tablespace_id);
+    // The map should not have a duplicate entry with the same oid.
+    DCHECK(ret.second);
+  }
+  return Status::OK();
+
+}
+
+Result<boost::optional<ReplicationInfoPB>> SysCatalogTable::ParseReplicationInfo(
+  const TablespaceId& tablespace_id,
+  const vector<QLValuePB>& options) {
+
+  // Today only one option is supported, so this array should have only one option.
+  if (options.size() != 1) {
+    return STATUS(Corruption, "Unexpected number of options: " + std::to_string(options.size()) +
+        " for tablespace with ID:" + tablespace_id);
+  }
+
+  const string& option = options[0].string_value();
+  // The only option supported today is "replica_placement" that allows specification
+  // of placement policies encoded as a JSON array. Example value:
+  // replica_placement='[{"cloud":"c1", "region":"r1", "zone":"z1", "min_number_of_replicas":1},
+  //                     {"cloud":"c2", "region":"r2", "zone":"z2", "min_number_of_replicas":1}]'
+  if (option.find("replica_placement") == string::npos) {
+    return STATUS(Corruption, "Invalid option found in spcoptions for tablespace with ID:" +
+        tablespace_id);
+  }
+
+  // First split the string and get only the json value in a string.
+  vector<string> split;
+  split = strings::Split(option, "replica_placement=", strings::SkipEmpty());
+  if (split.size() != 1) {
+    return STATUS(Corruption, "replica_placement option illformed: " + option +
+        " for tablespace with ID:" + tablespace_id);
+  }
+  const string& placement_json_array = split[0];
+
+  // Parse the given placement json.
+  rapidjson::Document document;
+  if (document.Parse(placement_json_array.c_str()).HasParseError()) {
+    return STATUS(Corruption, "Json parsing of replica placement option failed: " +
+          placement_json_array + " for tablespace with ID:" + tablespace_id);
+  }
+
+  // The expected value as shown above is a JSON array.
+  if (!document.IsArray()) {
+    return STATUS(Corruption, "Json parsing of replica placement option failed: " +
+        placement_json_array + " for tablespace with ID:" + tablespace_id);
+  }
+
+  if (document.Size() < 1) {
+    return STATUS(Corruption, "Empty Json array found in replica placement option: " +
+        placement_json_array + " for tablespace with ID:" + tablespace_id);
+  }
+
+  ReplicationInfoPB replication_info_pb;
+  master::PlacementInfoPB* live_replicas = replication_info_pb.mutable_live_replicas();
+  int64 replication_factor = 0;
+  for (int64 ii = 0; ii < document.Size(); ++ii) {
+    const rapidjson::Value& placement = document[ii];
+    auto pb = live_replicas->add_placement_blocks();
+    if (!placement.HasMember("cloud") || !placement.HasMember("region") ||
+        !placement.HasMember("zone") || !placement.HasMember("min_number_of_replicas")) {
+      return STATUS(Corruption, "Missing keys in replica placement option: " +
+          placement_json_array + " for tablespace with ID:" + tablespace_id);
+    }
+    if (!placement["cloud"].IsString() || !placement["region"].IsString() ||
+        !placement["zone"].IsString() || !placement["min_number_of_replicas"].IsInt()) {
+      return STATUS(Corruption, "Invalid value for replica_placement option: " +
+          placement_json_array + " for tablespace with ID:" + tablespace_id);
+    }
+    pb->mutable_cloud_info()->set_placement_cloud(placement["cloud"].GetString());
+    pb->mutable_cloud_info()->set_placement_region(placement["region"].GetString());
+    pb->mutable_cloud_info()->set_placement_zone(placement["zone"].GetString());
+    const int min_rf = placement["min_number_of_replicas"].GetInt();
+    pb->set_min_num_replicas(min_rf);
+    replication_factor += min_rf;
+  }
+  live_replicas->set_num_replicas(replication_factor);
+  return replication_info_pb;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(

@@ -935,8 +935,11 @@ message CreateTableRequestPB {
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
 
- // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
   optional TransactionMetadataPB transaction = 20;
+
+  // For YSQL tables, this denotes the tablespace that this table is associated with.
+  optional bytes tablespace_id = 21;
 }
 
 message CreateTableResponsePB {
