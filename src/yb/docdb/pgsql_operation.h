@@ -150,6 +150,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<size_t> Execute(const common::YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
+                         bool is_explicit_request_read_time,
                          const Schema& schema,
                          const Schema *index_schema,
                          faststring *result_buffer,
@@ -164,24 +165,12 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<size_t> ExecuteScalar(const common::YQLStorageIf& ql_storage,
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
+                               bool is_explicit_request_read_time,
                                const Schema& schema,
                                const Schema *index_schema,
-                               int64_t batch_arg_index,
                                faststring *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
-
-  // Execute a READ operator for a given batch of arguments.
-  // - Currently, batch argument is used for only ybctid, a virtual columns.
-  // - We haven't used batch of actual columns yet (hash, range, regular).
-  Result<size_t> ExecuteBatch(const common::YQLStorageIf& ql_storage,
-                              CoarseTimePoint deadline,
-                              const ReadHybridTime& read_time,
-                              const Schema& schema,
-                              const Schema *index_schema,
-                              faststring *result_buffer,
-                              HybridTime *restart_read_ht,
-                              bool *has_paging_state);
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const common::YQLStorageIf& ql_storage,
@@ -207,7 +196,6 @@ class PgsqlReadOperation : public DocExprExecutor {
                                            const size_t row_count_limit,
                                            const bool scan_time_exceeded,
                                            const Schema* schema,
-                                           int64_t batch_arg_index,
                                            const ReadHybridTime& read_time,
                                            bool *has_paging_state);
 

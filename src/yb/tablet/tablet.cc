@@ -1631,6 +1631,7 @@ void Tablet::UpdateQLIndexesFlushed(
 Status Tablet::HandlePgsqlReadRequest(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
+    bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     PgsqlReadRequestResult* result,
@@ -1660,7 +1661,8 @@ Status Tablet::HandlePgsqlReadRequest(
           table_info->schema.table_properties().is_ysql_catalog_table());
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
-      deadline, read_time, pgsql_read_request, *txn_op_ctx, result, num_rows_read);
+      deadline, read_time, is_explicit_request_read_time,
+      pgsql_read_request, *txn_op_ctx, result, num_rows_read);
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.
