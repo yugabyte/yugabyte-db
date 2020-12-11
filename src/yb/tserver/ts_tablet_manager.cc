@@ -33,9 +33,11 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <boost/optional/optional.hpp>
@@ -178,6 +180,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
+DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+                 "Pause before triggering post split compaction.");
+
 namespace {
 
 constexpr int kDbCacheSizeUsePercentage = -1;
@@ -217,6 +222,17 @@ DEFINE_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
+
+
+DEFINE_int32(post_split_trigger_compaction_pool_max_threads, 1,
+             "The maximum number of threads allowed for post_split_trigger_compaction_pool_. This "
+             "pool is used to run compactions on tablets after they have been split and still "
+             "contain irrelevant data from the tablet they were sourced from.");
+DEFINE_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
+             "The maximum number of tasks that can be held in the pool for "
+             "post_split_trigger_compaction_pool_. This pool is used to run compactions on tablets "
+             "after they have been split and still contain irrelevant data from the tablet they "
+             "were sourced from.");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
@@ -279,6 +295,9 @@ METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
                         "Time that the tablet server takes to bootstrap all of its tablets.",
                         10000000, 2);
+
+THREAD_POOL_METRICS_DEFINE(
+    server, post_split_trigger_compaction_pool, "Thread pool for tablet compaction jobs.");
 
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
@@ -453,6 +472,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_max_queue_size(FLAGS_read_pool_max_queue_size)
                .set_metrics(std::move(read_metrics))
                .Build(&read_pool_));
+  CHECK_OK(ThreadPoolBuilder("compaction")
+              .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
+              .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), post_split_trigger_compaction_pool))
+              .Build(&post_split_trigger_compaction_pool_));
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
@@ -1511,8 +1536,15 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   if (tablet->MightHaveNonRelevantData()) {
     WARN_NOT_OK(
-        tablet->ForceFullRocksDBCompactAsync(), "Failed to submit compaction for split tablet");
+      post_split_trigger_compaction_pool_->SubmitFunc(
+          std::bind(&TSTabletManager::CompactPostSplitTablet, this, tablet)),
+      "Failed to submit compaction for post-split tablet.");
   }
+}
+
+void TSTabletManager::CompactPostSplitTablet(tablet::TabletPtr tablet) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
 }
 
 void TSTabletManager::StartShutdown() {
@@ -1599,6 +1631,9 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (append_pool_) {
     append_pool_->Shutdown();
+  }
+  if (post_split_trigger_compaction_pool_) {
+    post_split_trigger_compaction_pool_->Shutdown();
   }
 
   {

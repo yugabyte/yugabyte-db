@@ -3037,23 +3037,17 @@ bool Tablet::MightHaveNonRelevantData() {
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
-  if (regular_db_) {
-    docdb::ForceRocksDBCompact(regular_db_.get());
-  }
-  if (intents_db_) {
-    CHECK_OK(intents_db_->Flush(rocksdb::FlushOptions()));
-    docdb::ForceRocksDBCompact(intents_db_.get());
-  }
+  CHECK_OK(ForceFullRocksDBCompact());
 }
 
-Status Tablet::ForceFullRocksDBCompactAsync() {
+Status Tablet::ForceFullRocksDBCompact() {
   if (regular_db_) {
-    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(regular_db_.get()));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get()));
   }
   if (intents_db_) {
     RETURN_NOT_OK_PREPEND(
         intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
-    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(intents_db_.get()));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get()));
   }
   return Status::OK();
 }
