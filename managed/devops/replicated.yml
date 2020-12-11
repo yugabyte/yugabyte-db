@@ -216,6 +216,14 @@ components:
                     name = "Csrf-Token"
                   }
                 }
+                # CORS config
+                cors {
+                  pathPrefixes = ["/"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  supportsCredentials=true
+                  allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
+                  allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
+                }
               }
 
               yb {
