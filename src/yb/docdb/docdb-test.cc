@@ -3703,7 +3703,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
     if (j == 0) {
       ASSERT_OK(FlushRocksDbAndWait());
     } else if (j == 1) {
-      ForceRocksDBCompact(rocksdb());
+      ASSERT_OK(ForceRocksDBCompact(rocksdb()));
     }
   }
 
