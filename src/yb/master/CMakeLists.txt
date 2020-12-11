@@ -56,6 +56,8 @@ set(MASTER_PROTO_LIBS
   master_proto
   ${MASTER_PROTO_LIBS_EXTENSIONS})
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
@@ -124,7 +126,9 @@ set(MASTER_DEPS
   rpc_header_proto
   master_util
   version_info_proto
-  yb_pggate_flags)
+  yb_pggate_flags
+  yb_pggate
+)
 
 ADD_YB_LIBRARY(master
   SRCS ${MASTER_SRCS}

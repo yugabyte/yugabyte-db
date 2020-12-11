@@ -576,6 +576,21 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   return IndexInfo();
 }
 
+bool TableInfo::UsesTablespacesForPlacement() const {
+  auto l = LockForRead();
+  return l->data().pb.table_type() == PGSQL_TABLE_TYPE && !l->data().pb.colocated();
+}
+
+TablespaceId TableInfo::TablespaceIdForTableCreation() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  return tablespace_id_for_table_creation_;
+}
+
+void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  tablespace_id_for_table_creation_ = tablespace_id;
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG(2) << __PRETTY_FUNCTION__ << " setting state for " << name() << " to "
           << SysTablesEntryPB::State_Name(state) << " reason: " << msg;

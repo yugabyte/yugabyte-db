@@ -18,15 +18,17 @@
 
 #include "ybgate/ybgate_api.h"
 
-#include "nodes/primnodes.h"
-#include "nodes/makefuncs.h"
-#include "utils/numeric.h"
-#include "utils/memutils.h"
+#include "catalog/pg_type.h"
+#include "catalog/pg_type_d.h"
 #include "catalog/ybctype.h"
 #include "common/int.h"
-#include "nodes/execnodes.h"
-#include "executor/executor.h"
 #include "executor/execExpr.h"
+#include "executor/executor.h"
+#include "nodes/execnodes.h"
+#include "nodes/makefuncs.h"
+#include "nodes/primnodes.h"
+#include "utils/memutils.h"
+#include "utils/numeric.h"
 
 //-----------------------------------------------------------------------------
 // Memory Context
@@ -222,3 +224,37 @@ YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *dat
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
 	return PG_STATUS_OK;
 }
+
+YbgStatus YbgSplitArrayDatum(uint64_t datum,
+			     const int type,
+			     uint64_t **result_datum_array,
+			     int *const nelems)
+{
+	PG_SETUP_ERROR_REPORTING();
+	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
+
+	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
+		return PG_STATUS(ERROR, "Type of given datum array does not match the given type");
+
+	int elmlen;
+	bool elmbyval;
+	char elmalign;
+	/*
+	 * Ideally this information should come from pg_type or from caller instead of hardcoding
+	 * here. However this could be okay as PG also has this harcoded in few places.
+	 */
+	switch (type) {
+		case TEXTOID:
+			elmlen = -1;
+			elmbyval = false;
+			elmalign = 'i';
+			break;
+		/* TODO: Extend support to other types as well. */
+		default:
+			return PG_STATUS(ERROR, "Only Text type supported for split of datum of array types");
+	}
+	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
+			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
+	return PG_STATUS_OK;
+}
+

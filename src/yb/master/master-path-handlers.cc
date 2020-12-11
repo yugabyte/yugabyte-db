@@ -1088,8 +1088,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << EscapeForHtmlToString(l->data().pb.state_msg())
             << "</td></tr>\n";
 
+    // TODO(deepthi.srinivasan): For now, pass empty tablespace_id as tablespaces feature
+    // is disabled anyway. Later when tablespaces are enabled, create and call the
+    // appropriate API to display placement information pertaining to tablespaces.
     auto replication_info = CHECK_RESULT(
-      master_->catalog_manager()->ResolveReplicationInfo(l->data().pb.replication_info()));
+      master_->catalog_manager()->GetTableReplicationInfo(
+        l->data().pb.replication_info(), "" /* tablespace_id */));
     *output << "  <tr><td>Replication Info:</td><td>"
             << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
             << "  </td></tr>\n";
