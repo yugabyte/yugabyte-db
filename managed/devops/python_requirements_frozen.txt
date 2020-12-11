@@ -29,7 +29,7 @@ cffi==1.14.0
 chardet==3.0.4
 click==7.1.2
 colorama==0.3.7
-cryptography==3.2.1
+cryptography==1.7.2
 docker-compose==1.9.0
 docker-py==1.7.0
 dockerpty==0.4.1
