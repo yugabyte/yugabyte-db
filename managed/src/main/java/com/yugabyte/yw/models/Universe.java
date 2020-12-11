@@ -330,10 +330,8 @@ public class Universe extends Model {
   // updated version to disk.
   private static synchronized Universe readModifyWrite(UUID universeUUID,
                                                        UniverseUpdater updater,
-                                                       boolean incrementVersion)
-      throws Exception {
+                                                       boolean incrementVersion) {
     Universe universe = Universe.get(universeUUID);
-    Exception updaterException = null;
     // Update the universe object which is supplied as a lambda function.
     boolean updateSucceeded = false;
     try {
@@ -341,13 +339,10 @@ public class Universe extends Model {
       updateSucceeded = true;
     } catch(Exception e) {
       LOG.debug("Error running universe updater", e);
-      updaterException = e;
-    }
-
-    // Save the universe object by doing a compare and swap.
-    universe.compareAndSwap(updateSucceeded /* updateDetails */ , incrementVersion);
-    if (updaterException != null) {
-      throw updaterException;
+      throw e;
+    } finally {
+      // Save the universe object by doing a compare and swap.
+      universe.compareAndSwap(updateSucceeded /* updateDetails */ , incrementVersion);
     }
 
     return universe;
@@ -390,9 +385,6 @@ public class Universe extends Model {
         } catch (InterruptedException e1) {
           LOG.error("Error while sleeping", e1);
         }
-      } catch (Exception e) {
-        numRetriesLeft = 0;
-        LOG.error("Unexpected error saving universe details", e);
       }
     }
 
@@ -519,7 +511,10 @@ public class Universe extends Model {
   public List<NodeDetails> getServers(ServerType type) {
     List<NodeDetails> servers = new ArrayList<NodeDetails>();
     UniverseDefinitionTaskParams details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
+    Set<NodeDetails> filteredNodeDetails = details.nodeDetailsSet.stream()
+      .filter(n -> n.cloudInfo.private_ip != null)
+      .collect(Collectors.toSet());
+    for (NodeDetails nodeDetails : filteredNodeDetails) {
       switch(type) {
       case YQLSERVER:
         if (nodeDetails.isYqlServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
