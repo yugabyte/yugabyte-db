@@ -5443,3 +5443,49 @@ transform_string_values_scalar(void *state, char *token, JsonTokenType tokentype
 	else
 		appendStringInfoString(_state->strval, token);
 }
+
+// Simple JSON text manipulation functions to be used as utility to parse json strings.
+bool
+json_key_exists(text *json, char *key)
+{
+	text *result = get_worker(json, &key, NULL, 1, false);
+	return result != NULL;
+}
+
+text*
+json_get_value(text *json, char *key)
+{
+	return get_worker(json, &key, NULL, 1, false);
+}
+
+text*
+get_json_array_element(text *json, int index)
+{
+	return get_worker(json, NULL, &index, 1, true);
+}
+
+int get_json_array_length(text *json)
+{
+	AlenState  *state;
+	JsonLexContext *lex;
+	JsonSemAction *sem;
+
+	lex = makeJsonLexContext(json, false);
+	state = palloc0(sizeof(AlenState));
+	sem = palloc0(sizeof(JsonSemAction));
+
+	/* palloc0 does this for us */
+	#if 0
+		state->count = 0;
+	#endif
+	state->lex = lex;
+
+	sem->semstate = (void *) state;
+	sem->object_start = alen_object_start;
+	sem->scalar = alen_scalar;
+	sem->array_element_start = alen_array_element_start;
+
+	pg_parse_json_or_ereport(lex, sem);
+
+	return state->count;
+}
