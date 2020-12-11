@@ -350,7 +350,17 @@ class ControlScript(object):
         tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tarpath))
+
+        if self.configs.temp_data.get("collect_logs_stdout"):
+            Output.log("Logs are packaged into {}".format(tarpath))
+            if tarfile.is_tarfile(tarpath):
+                with open(tarpath, 'rb') as tar_fd:
+                    if sys.version_info[0] == 3:
+                        sys.stdout.buffer.write(tar_fd.read())
+                    else:
+                        sys.stdout.write(tar_fd.read())
+        else:
+            Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -1134,6 +1144,9 @@ class ControlScript(object):
             if path:
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
+        if args.parser == "collect_logs":
+            self.configs.temp_data["collect_logs_stdout"] = args.stdout
+
         if args.parser == "start":
             if args.data_dir is not None:
                 config_data_dir = self.configs.saved_data.get("data_dir")
@@ -1265,6 +1278,14 @@ class ControlScript(object):
             func = getattr(self, parser_name, None)
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
+
+        # Docker: Redirect the logs.tar.gz to stdout
+        for cmd in ("collect_logs",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
+                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                action="store_true", default=False)
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -1440,6 +1461,7 @@ class Configs(object):
             "daemon": True,
             "ui": False,
             "initial_scripts_dir": "",
+            "collect_logs_stdout": False,
         }
         self.config_file = config_file
 
