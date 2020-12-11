@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/gutil/strings/join.h"
+#include "yb/util/barrier.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pg_quote.h"
 #include "yb/util/random_util.h"
@@ -3050,6 +3051,91 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+namespace {
+
+class CoordinatedRunner {
+ public:
+  using RepeatableCommand = std::function<Status()>;
+
+  explicit CoordinatedRunner(std::vector<RepeatableCommand> commands)
+      : barrier_(commands.size()) {
+    threads_.reserve(commands.size());
+    for (auto& c : commands) {
+      threads_.emplace_back([this, cmd = std::move(c)] () {
+        while (!(stop_.load(std::memory_order_acquire) ||
+            error_detected_.load(std::memory_order_acquire))) {
+          barrier_.Wait();
+          const auto status = cmd();
+          if (!status.ok()) {
+            LOG(ERROR) << "Error detected: " << status;
+            error_detected_.store(true, std::memory_order_release);
+          }
+        }
+        barrier_.Detach();
+      });
+    }
+  }
+
+  void Stop() {
+    stop_.store(true, std::memory_order_release);
+    for (auto& thread : threads_) {
+      thread.join();
+    }
+  }
+
+  bool HasError() {
+    return error_detected_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::vector<std::thread> threads_;
+  Barrier barrier_;
+  std::atomic<bool> stop_{false};
+  std::atomic<bool> error_detected_{false};
+};
+
+bool RetryableError(const Status& status) {
+  const auto msg = status.message().ToBuffer();
+  const std::string expected_errors[] = {"Try Again",
+                                         "Catalog Version Mismatch",
+                                         "Restart read required at",
+                                         "schema version mismatch for table"};
+  for (const auto& expected : expected_errors) {
+    if (msg.find(expected) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
+  const size_t reader_count = 20;
+  std::vector<CoordinatedRunner::RepeatableCommand> commands;
+  commands.reserve(reader_count + 1);
+  commands.emplace_back(
+      [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+        RETURN_NOT_OK(connection->Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100"));
+        RETURN_NOT_OK(connection->Execute("ALTER TABLE t DROP COLUMN v"));
+        return Status::OK();
+  });
+  for (size_t i = 0; i < reader_count; ++i) {
+    commands.emplace_back(
+        [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+          const auto res = connection->Fetch("SELECT key FROM t");
+          return (res.ok() || RetryableError(res.status())) ? Status::OK() : res.status();
+    });
+  }
+  CoordinatedRunner runner(std::move(commands));
+  std::this_thread::sleep_for(10s);
+  runner.Stop();
+  ASSERT_FALSE(runner.HasError());
 }
 
 } // namespace pgwrapper

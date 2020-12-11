@@ -660,7 +660,9 @@ Status PgDocReadOp::ProcessResponsePagingState() {
         innermost_req = innermost_req->mutable_index_request();
       }
       *innermost_req->mutable_paging_state() = std::move(*res.mutable_paging_state());
-
+      if (innermost_req->paging_state().has_read_time()) {
+        read_op->SetReadTime(ReadHybridTime::FromPB(innermost_req->paging_state().read_time()));
+      }
       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
       // The docdb layer will check the target table's schema version is compatible.
       // This allows long-running queries to continue in the presence of other DDL statements

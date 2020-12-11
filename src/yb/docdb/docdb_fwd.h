@@ -21,12 +21,14 @@ namespace docdb {
 
 class ConsensusFrontier;
 class DeadlineInfo;
+class DocKey;
 class DocPath;
 class DocWriteBatch;
 class IntentAwareIterator;
 class KeyValueWriteBatchPB;
-class QLWriteOperation;
 class PgsqlWriteOperation;
+class QLWriteOperation;
+class SubDocKey;
 
 struct ApplyTransactionState;
 struct DocDB;
