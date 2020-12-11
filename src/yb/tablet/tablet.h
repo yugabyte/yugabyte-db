@@ -527,7 +527,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void ForceRocksDBCompactInTest();
 
-  CHECKED_STATUS ForceFullRocksDBCompactAsync();
+  CHECKED_STATUS ForceFullRocksDBCompact();
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 

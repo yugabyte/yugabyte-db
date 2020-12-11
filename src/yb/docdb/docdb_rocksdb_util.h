@@ -109,9 +109,9 @@ bool HasPendingCompaction(rocksdb::DB* db);
 bool HasRunningCompaction(rocksdb::DB* db);
 
 // Request RocksDB compaction and wait until it completes.
-void ForceRocksDBCompact(rocksdb::DB* db);
-// Request RocksDB compaction and return immediately.
-CHECKED_STATUS ForceFullRocksDBCompactAsync(rocksdb::DB* db);
+CHECKED_STATUS ForceRocksDBCompact(
+    rocksdb::DB* db,
+    const MonoDelta timeout = MonoDelta::FromMilliseconds(50));
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for

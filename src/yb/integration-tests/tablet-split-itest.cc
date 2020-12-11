@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <chrono>
+#include <thread>
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -27,6 +29,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
@@ -67,6 +70,7 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tablet_split_limit_per_table);
+DECLARE_bool(TEST_pause_before_post_split_compation);
 
 namespace yb {
 
@@ -222,7 +226,7 @@ class TabletSplitITest : public client::TransactionTestBase<MiniCluster> {
       size_t num_replicas_online = 0);
 
   // Wait for all peers to complete post-split compaction.
-  void WaitForTestTableTabletsCompactionFinish();
+  void WaitForTestTableTabletsCompactionFinish(MonoDelta timeout);
 
   // Returns all tablet peers in the cluster which are marked as being in
   // TABLET_DATA_SPLIT_COMPLETED state. In most of the test cases below, this corresponds to the
@@ -420,11 +424,11 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
   DumpTableLocations(catalog_manager(), client::kTableName);
 }
 
-void TabletSplitITest::WaitForTestTableTabletsCompactionFinish() {
+void TabletSplitITest::WaitForTestTableTabletsCompactionFinish(MonoDelta timeout) {
   for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
     ASSERT_OK(WaitFor([&peer] {
       return peer->tablet()->metadata()->has_been_fully_compacted();
-    }, 20s * kTimeMultiplier, "Wait for post tablet split compaction to be completed"));
+    }, timeout * kTimeMultiplier, "Wait for post tablet split compaction to be completed"));
   }
 }
 
@@ -645,6 +649,24 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
   ASSERT_OK(cluster_->RestartSync());
 
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
+}
+
+TEST_F(TabletSplitITest, SplitTabletIsAsync) {
+  constexpr auto kNumRows = 500;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = true;
+
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
+    EXPECT_FALSE(peer->tablet()->metadata()->has_been_fully_compacted());
+  }
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
+  for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
+    EXPECT_FALSE(peer->tablet()->metadata()->has_been_fully_compacted());
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = false;
+  ASSERT_NO_FATALS(WaitForTestTableTabletsCompactionFinish(5s * kTimeMultiplier));
 }
 
 TEST_F(TabletSplitITest, ParentTabletCleanup) {
