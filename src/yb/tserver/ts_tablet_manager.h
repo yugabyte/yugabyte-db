@@ -491,6 +491,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
+  void CompactPostSplitTablet(tablet::TabletPtr tablet);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -560,6 +562,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
+
+  // Thread pool for manually triggering compactions for tablets created from a split.
+  std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 

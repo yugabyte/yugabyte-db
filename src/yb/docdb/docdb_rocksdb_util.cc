@@ -719,21 +719,17 @@ bool HasRunningCompaction(rocksdb::DB* db) {
   return running_compactions > 0;
 }
 
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  auto s = ForceFullRocksDBCompactAsync(db);
-  if (s.ok()) {
-    while (HasPendingCompaction(db) || HasRunningCompaction(db)) {
-      std::this_thread::sleep_for(10ms);
-    }
-  } else {
-    LOG(WARNING) << s;
-  }
-}
-
-Status ForceFullRocksDBCompactAsync(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db, const MonoDelta timeout) {
+  auto expiration = MonoTime::Now() + timeout;
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");
+  while ((HasPendingCompaction(db) || HasRunningCompaction(db)) && MonoTime::Now() < expiration) {
+    if (MonoTime::Now() > expiration) {
+      return STATUS(TimedOut, "Timed out waiting for manual compaction to complete");
+    }
+    std::this_thread::sleep_for(10ms);
+  }
   return Status::OK();
 }
 
