@@ -1740,7 +1740,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   SharedLock<RWMutex> shared_lock(mutex_);
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
-    for (const auto peer : *tablet_peers) {
+    for (const auto& peer : *tablet_peers) {
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);
