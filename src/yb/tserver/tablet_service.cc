@@ -1644,6 +1644,15 @@ struct ReadContext {
     return tablet->IsTransactionalRequest(req->pgsql_batch_size() > 0);
   }
 
+  ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time)  const {
+    DCHECK_GT(restart_time, read_time.read);
+    VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
+    auto result = read_time;
+    result.read = restart_time;
+    result.local_limit = safe_ht_to_read;
+    return result;
+  }
+
   CHECKED_STATUS PickReadTime(server::Clock* clock) {
     auto result = DoPickReadTime(clock);
     if (!result.ok()) {
@@ -1674,15 +1683,6 @@ struct ReadContext {
           require_lease, read_time.read, context->GetClientDeadline()));
     }
     return Status::OK();
-  }
-
-  ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time)  const {
-    DCHECK_GT(restart_time, read_time.read);
-    VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
-    auto result = read_time;
-    result.read = restart_time;
-    result.local_limit = safe_ht_to_read;
-    return result;
   }
 };
 
