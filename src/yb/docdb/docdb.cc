@@ -106,6 +106,14 @@ struct FixedSliceParts {
   const Slice* parts;
 };
 
+Slice InvertedDocHt(const Slice& input, size_t* buffer) {
+  memcpy(buffer, input.data(), input.size());
+  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
+    buffer[i] = ~buffer[i];
+  }
+  return {pointer_cast<char*>(buffer), input.size()};
+}
+
 // Main intent data::
 // Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
 // Reverse index by txn id:
@@ -121,12 +129,7 @@ void AddIntent(
     Slice reverse_value_prefix = Slice()) {
   char reverse_key_prefix[1] = { ValueTypeAsChar::kTransactionId };
   size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  auto doc_ht_slice = key.parts[N - 1];
-  memcpy(doc_ht_buffer, doc_ht_slice.data(), doc_ht_slice.size());
-  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-    doc_ht_buffer[i] = ~doc_ht_buffer[i];
-  }
-  doc_ht_slice = Slice(pointer_cast<char*>(doc_ht_buffer), doc_ht_slice.size());
+  auto doc_ht_slice = InvertedDocHt(key.parts[N - 1], doc_ht_buffer);
 
   std::array<Slice, 3> reverse_key = {{
       Slice(reverse_key_prefix, sizeof(reverse_key_prefix)),
@@ -542,6 +545,7 @@ void PrepareNonTransactionWriteBatch(
       &apply_external_transactions, regular_write_batch, intents_db, intents_write_batch));
 
   DocHybridTimeBuffer doc_ht_buffer;
+  size_t inverted_doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
   for (int write_id = 0; write_id < put_batch.write_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.write_pairs(write_id);
     CHECK(!kv_pair.key().empty());
@@ -595,6 +599,7 @@ void PrepareNonTransactionWriteBatch(
         continue;
       }
       batch = intents_write_batch;
+      key_parts[1] = InvertedDocHt(key_parts[1], inverted_doc_ht_buffer);
     }
     constexpr size_t kNumValueParts = 1;
     batch->Put(key_parts, { &key_value, kNumValueParts });
