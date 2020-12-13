@@ -37,15 +37,15 @@
 
 #include <mutex>
 
-#include "yb/master/ts_descriptor.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/tasks_tracker.h"
-#include "yb/util/cow_object.h"
-#include "yb/common/entity_ids.h"
-#include "yb/util/monotime.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
-#include "yb/common/schema.h"
-#include "yb/common/index.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace master {
@@ -160,6 +160,7 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
 };
 
 class TableInfo;
+typedef scoped_refptr<TableInfo> TableInfoPtr;
 
 typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 
