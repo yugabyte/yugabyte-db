@@ -1045,6 +1045,52 @@ TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   Destroy();
 }
 
+TEST_P(TwoDCTest, UpdateWithinTransaction) {
+  constexpr int kNumTablets = 1;
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNumTablets));
+
+  client::TableHandle table_handle;
+  EXPECT_OK(table_handle.Open(tables[0]->name(), producer_client()));
+
+  auto session = producer_client()->NewSession();
+
+  auto transaction = CreateTransaction(producer_txn_mgr());
+  session->SetTransaction(transaction);
+  for (bool del : {false, true}) {
+    auto op = del ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+    auto req = op->mutable_request();
+    QLAddInt32HashValue(req, 1);
+    ASSERT_OK(session->ApplyAndFlush(op));
+  }
+  ASSERT_OK(transaction->CommitFuture().get());
+
+  session->SetTransaction(nullptr);
+  auto op = table_handle.NewInsertOp();
+  auto req = op->mutable_request();
+  QLAddInt32HashValue(req, 0);
+  ASSERT_OK(session->ApplyAndFlush(op));
+
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Check that all tablets continue to be polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNumTablets));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
 TEST_P(TwoDCTest, TransactionsWithRestart) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 3));
 
