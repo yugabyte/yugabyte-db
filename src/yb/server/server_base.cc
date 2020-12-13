@@ -588,7 +588,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Metrics.
   DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
   // Threads.
-  DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
+  DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {

@@ -47,8 +47,10 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
@@ -1144,12 +1146,12 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
-void MasterPathHandlers::GetLeaderlessTablets(TabletInfos* leaderless_tablets) {
-  leaderless_tablets->clear();
+std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
+  std::vector<TabletInfoPtr> nonsystem_tablets;
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  vector<scoped_refptr<TableInfo>> tables;
+  std::vector<TableInfoPtr> tables;
   master_->catalog_manager()->GetAllTables(&tables, /* includeOnlyRunningTables */ true);
 
   for (const auto& table : tables) {
@@ -1160,37 +1162,101 @@ void MasterPathHandlers::GetLeaderlessTablets(TabletInfos* leaderless_tablets) {
     table->GetAllTablets(&ts);
 
     for (TabletInfoPtr t : ts) {
-      TabletInfo::ReplicaMap rm;
-      t.get()->GetReplicaLocations(&rm);
-
-      auto has_leader = std::any_of(
-        rm.begin(), rm.end(),
-        [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
-
-      if (!has_leader) {
-        leaderless_tablets->push_back(t);
-      }
+      nonsystem_tablets.push_back(t);
     }
   }
+  return nonsystem_tablets;
+}
+
+std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
+  std::vector<TabletInfoPtr> leaderless_tablets;
+
+  auto nonsystem_tablets = GetNonSystemTablets();
+
+  for (TabletInfoPtr t : nonsystem_tablets) {
+    TabletInfo::ReplicaMap rm;
+    t.get()->GetReplicaLocations(&rm);
+
+    auto has_leader = std::any_of(
+      rm.begin(), rm.end(),
+      [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
+
+    if (!has_leader) {
+      leaderless_tablets.push_back(t);
+    }
+  }
+  return leaderless_tablets;
+}
+
+Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets() {
+  std::vector<TabletInfoPtr> underreplicated_tablets;
+
+  auto nonsystem_tablets = GetNonSystemTablets();
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  int cluster_rf;
+
+  RETURN_NOT_OK_PREPEND(master_->catalog_manager()->GetReplicationFactor(&cluster_rf),
+                        "Unable to find replication factor");
+
+  for (TabletInfoPtr t : nonsystem_tablets) {
+    TabletInfo::ReplicaMap rm;
+    t.get()->GetReplicaLocations(&rm);
+
+    // Find out the tablets which have been replicated less than the replication factor
+    if(rm.size() < cluster_rf) {
+      underreplicated_tablets.push_back(t);
+    }
+  }
+  return underreplicated_tablets;
 }
 
 void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& req,
                                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  TabletInfos ts;
-  GetLeaderlessTablets(&ts);
+
+  auto leaderless_ts = GetLeaderlessTablets();
+  auto underreplicated_ts = GetUnderReplicatedTablets();
 
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
 
-  for (TabletInfoPtr t : ts) {
+  for (TabletInfoPtr t : leaderless_ts) {
     *output << Substitute(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t->table()->name()),
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t.get()->tablet_id()));
+  }
+
+  *output << "</table>\n";
+
+  if(!underreplicated_ts.ok()) {
+    LOG(WARNING) << underreplicated_ts.ToString();
+    *output << "<h2>Call to get the cluster replication factor failed</h2>\n";
+    return;
+  }
+
+  *output << "<h3>Underreplicated Tablets</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
+          << "<th>Tablet Replication Count</th></tr>\n";
+
+  for (TabletInfoPtr t : *underreplicated_ts) {
+    TabletInfo::ReplicaMap rm;
+    t.get()->GetReplicaLocations(&rm);
+
+    *output << Substitute(
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
+        "<td>$3</td><td>$4</td></tr>\n",
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t->table()->name()),
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t.get()->tablet_id()),
+        EscapeForHtmlToString(std::to_string(rm.size())));
   }
 
   *output << "</table>\n";
@@ -1201,14 +1267,37 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  TabletInfos ts;
-  GetLeaderlessTablets(&ts);
+  auto leaderless_ts = GetLeaderlessTablets();
 
   jw.StartObject();
   jw.String("leaderless_tablets");
   jw.StartArray();
 
-  for (TabletInfoPtr t : ts) {
+  for (TabletInfoPtr t : leaderless_ts) {
+    jw.StartObject();
+    jw.String("table_uuid");
+    jw.String(t->table()->id());
+    jw.String("tablet_uuid");
+    jw.String(t.get()->tablet_id());
+    jw.EndObject();
+  }
+
+  jw.EndArray();
+  jw.EndObject();
+}
+
+void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebRequest& req,
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  auto underreplicated_ts = GetUnderReplicatedTablets();
+
+  jw.StartObject();
+  jw.String("underreplicated_tablets");
+  jw.StartArray();
+
+  for(TabletInfoPtr t : *underreplicated_ts) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(t->table()->id());
@@ -1729,6 +1818,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleGetReplicationStatus, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/tablet-replication", "Tablet Replication Health",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleGetUnderReplicationStatus, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(

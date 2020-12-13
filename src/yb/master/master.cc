@@ -247,8 +247,8 @@ Status Master::RegisterServices() {
 void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   server::RpcAndWebServerBase::DisplayGeneralInfoIcons(output);
   // Tasks.
-  DisplayIconTile(output, "fa-list-ul", "Tasks", "/tasks");
-  DisplayIconTile(output, "fa-list-ul", "Replica Info", "/tablet-replication");
+  DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
+  DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
 }
 
 Status Master::StartAsync() {
