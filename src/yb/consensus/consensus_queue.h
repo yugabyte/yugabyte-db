@@ -132,6 +132,8 @@ class PeerMessageQueue {
 
     void ResetLeaderLeases();
 
+    void ResetLastRequest();
+
     // UUID of the peer.
     const std::string uuid;
 
@@ -293,6 +295,8 @@ class PeerMessageQueue {
   // more requests pending.
   virtual bool ResponseFromPeer(const std::string& peer_uuid,
                                 const ConsensusResponsePB& response);
+
+  void RequestWasNotSent(const std::string& peer_uuid);
 
   // Closes the queue, peers are still allowed to call UntrackPeer() and ResponseFromPeer() but no
   // additional peers can be tracked or messages queued.

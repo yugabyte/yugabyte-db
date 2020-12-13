@@ -117,6 +117,9 @@ DEFINE_int32(consensus_lagging_follower_threshold, 10,
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
 TAG_FLAG(consensus_lagging_follower_threshold, runtime);
 
+DEFINE_test_flag(bool, disallow_lmp_failures, false,
+                 "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -180,6 +183,12 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
   leader_lease_expiration.Reset();
   leader_ht_lease_expiration.Reset();
+}
+
+void PeerMessageQueue::TrackedPeer::ResetLastRequest() {
+  // Reset so that next transmission is not considered a re-transmission.
+  last_num_messages_sent = -1;
+  current_retransmissions = -1;
 }
 
 #define INSTANTIATE_METRIC(x) \
@@ -479,19 +488,21 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       peer->leader_lease_expiration.last_sent =
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->leader_ht_lease_expiration.last_sent = ht_lease_expiration_micros;
+      preceding_id = peer->last_received;
     } else {
       now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
       peer->leader_lease_expiration.Reset();
       peer->leader_ht_lease_expiration.Reset();
+
+      // This is initialized to the queue's last appended op but gets set to the id of the
+      // log entry preceding the first one in 'messages' if messages are found for the peer.
+      // Just because we don't know actual state of a new peer.
+      preceding_id = queue_state_.last_appended;
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
-
-    // This is initialized to the queue's last appended op but gets set to the id of the
-    // log entry preceding the first one in 'messages' if messages are found for the peer.
-    preceding_id = queue_state_.last_appended;
 
     // NOTE: committed_op_id may be overwritten later.
     queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
@@ -1026,6 +1037,20 @@ void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& pee
   peer->last_successful_communication_time = MonoTime::Now();
 }
 
+void PeerMessageQueue::RequestWasNotSent(const std::string& peer_uuid) {
+  LockGuard scoped_lock(queue_lock_);
+  DCHECK_NE(State::kQueueConstructed, queue_state_.state);
+
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  if (PREDICT_FALSE(queue_state_.state != State::kQueueOpen || peer == nullptr)) {
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Queue is closed or peer was untracked.";
+    return;
+  }
+
+  peer->ResetLastRequest();
+}
+
+
 bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
                                         const ConsensusResponsePB& response) {
   DCHECK(response.IsInitialized()) << "Error: Uninitialized: "
@@ -1082,9 +1107,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     peer->is_new = false;
     peer->last_successful_communication_time = MonoTime::Now();
 
-    // Reset so that next transmission is not considered a re-transmission.
-    peer->last_num_messages_sent = -1;
-    peer->current_retransmissions = -1;
+    peer->ResetLastRequest();
 
     if (response.has_status()) {
       const auto& status = response.status();
@@ -1138,6 +1161,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
             } else {
               LOG_WITH_PREFIX_UNLOCKED(INFO) << "Got LMP mismatch error from peer: "
                                              << peer->ToString();
+              CHECK(!FLAGS_TEST_disallow_lmp_failures);
             }
             return true;
           }

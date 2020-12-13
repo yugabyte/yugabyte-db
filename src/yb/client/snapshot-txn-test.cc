@@ -44,6 +44,7 @@ DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_uint64(max_transactions_in_status_request);
+DECLARE_bool(TEST_disallow_lmp_failures);
 
 namespace yb {
 namespace client {
@@ -295,6 +296,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 }
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
+  FLAGS_TEST_disallow_lmp_failures = true;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
