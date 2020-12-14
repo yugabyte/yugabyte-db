@@ -19,7 +19,10 @@ import time
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from exceptions import RuntimeError
+try:
+    from builtins import RuntimeError
+except Exception as e:
+    from exceptions import RuntimeError
 from datetime import datetime
 from dateutil import tz
 from multiprocessing import Pool
@@ -164,6 +167,17 @@ def has_errors(str):
     return str.startswith('Error')
 
 
+def get_timeout_cmd(timeout):
+    env_conf = os.environ.copy()
+    timeout_location = check_output(['which', 'timeout'], env_conf).strip()
+    timeout_realpath = os.path.realpath(timeout_location)
+    cmd = "timeout"
+    if "busybox" in timeout_realpath:
+        return [cmd, "-t", str(timeout)]
+    else:
+        return [cmd, str(timeout)]
+
+
 class KubernetesDetails():
 
     def __init__(self, node_fqdn, config_map):
@@ -221,9 +235,10 @@ class NodeChecker():
                 command
             ])
         else:
+            timeout_cmd = get_timeout_cmd(CMD_TIMEOUT_SEC)
+            cmd_to_run.extend(timeout_cmd)
             cmd_to_run.extend(
-                ['timeout', '{}'.format(CMD_TIMEOUT_SEC),
-                 'ssh', 'yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
+                ['ssh', 'yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
                  '-o', 'StrictHostKeyChecking no',
                  '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
                  '-o', 'UserKnownHostsFile /dev/null',
@@ -678,9 +693,9 @@ class CheckCoordinator:
         def __init__(self, instance, func_name, yb_process):
             self.instance = instance
             if PY3:
-                self.func_name = func_name
-            else:
                 self.__name__ = func_name
+            else:
+                self.func_name = func_name
             self.yb_process = yb_process
             self.result = None
             self.entry = None
