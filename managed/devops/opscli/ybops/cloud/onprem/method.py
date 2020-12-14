@@ -9,7 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 from jinja2 import Environment, FileSystemLoader
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.common.method import AbstractMethod
 from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
@@ -17,7 +17,7 @@ from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
 from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
                         get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp
-from ybops.utils.remote_shell import RemoteShell
+
 
 import json
 import logging
@@ -25,6 +25,8 @@ import os
 import subprocess
 import stat
 import ybops.utils as ybutils
+
+from six import iteritems
 
 
 class OnPremCreateInstancesMethod(CreateInstancesMethod):
@@ -119,7 +121,7 @@ class OnPremListInstancesMethod(ListInstancesMethod):
         if args.as_json:
             print(json.dumps(host_infos))
         else:
-            print('\n'.join(["{}={}".format(k, v) for k, v in host_infos.iteritems()]))
+            print('\n'.join(["{}={}".format(k, v) for k, v in iteritems(host_infos)]))
 
 
 class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
@@ -301,4 +303,5 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
             print(json.dumps({'script_path': f.name}))
         except Exception as e:
             logging.error(e)
-            print(json.dumps({"error": "Unable to create script: {}".format(e.message)}))
+            print(json.dumps(
+                {"error": "Unable to create script: {}".format(get_exception_message(e))}))
