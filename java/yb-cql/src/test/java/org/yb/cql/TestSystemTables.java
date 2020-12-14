@@ -122,6 +122,7 @@ public class TestSystemTables extends BaseCQLTest {
         String.format("--placement_region=%s", PLACEMENT_REGION));
     BaseMiniClusterTest.tserverArgs.add(
         String.format("--placement_zone=%s", PLACEMENT_ZONE));
+    BaseMiniClusterTest.tserverArgs.add("--cql_update_system_query_cache_msecs=0");
   }
 
   @Test
