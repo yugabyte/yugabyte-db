@@ -24,6 +24,14 @@ Installation
 - `sudo make install`
 - In every needed database: `CREATE EXTENSION hypopg;`
 
+
+Updating the extension
+----------------------
+
+Note that hypopg doesn't provide extension upgrade scripts, as there's no
+data saved in any of the objects created.  Therefore, you need to first drop
+the extension then create it again to get the new version.
+
 Usage
 -----
 
