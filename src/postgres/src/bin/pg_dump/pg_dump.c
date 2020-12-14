@@ -69,7 +69,7 @@
 
 /* Temporary disable YB calls in ASAN build due to linking issues. */
 #ifdef ADDRESS_SANITIZER
-#define DISABLE_YB_EXTENTIONS
+#define DISABLE_YB_EXTENSIONS
 #endif
 
 typedef struct
@@ -718,7 +718,7 @@ main(int argc, char **argv)
 	if (dopt.pghost == NULL || dopt.pghost[0] == '\0')
 		dopt.pghost = DefaultHost;
 
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 	if (dopt.include_yb_metadata)
 	{
 		if (dopt.master_hosts)
@@ -729,7 +729,7 @@ main(int argc, char **argv)
 		HandleYBStatus(YBCInit(progname, palloc, /* cstring_to_text_with_len_fn */ NULL));
 		HandleYBStatus(YBCInitPgGateBackend());
 	}
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -976,10 +976,10 @@ main(int argc, char **argv)
 
 	CloseArchive(fout);
 
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 	if (dopt.include_yb_metadata)
 		YBCShutdownPgGateBackend();
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 	exit_nicely(0);
 }
@@ -2716,9 +2716,9 @@ dumpDatabase(Archive *fout)
 				minmxid;
 	char	   *qdatname;
 
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 	bool		isColocated;
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 	if (g_verbose)
 		write_msg(NULL, "saving database definition\n");
@@ -2782,7 +2782,7 @@ dumpDatabase(Archive *fout)
 		appendStringLiteralAH(creaQry, ctype, fout);
 	}
 
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 
 	HandleYBStatus(YBCPgIsDatabaseColocated(dopt->db_oid, &isColocated));
 	if (isColocated)
@@ -2790,7 +2790,7 @@ dumpDatabase(Archive *fout)
 		appendPQExpBufferStr(creaQry, " colocated = true");
 	}
 
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 	/*
 	 * Note: looking at dopt->outputNoTablespaces here is completely the wrong
@@ -15524,10 +15524,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	int			j,
 				k;
 	PQExpBuffer yb_reloptions = createPQExpBuffer();
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 	YBCPgTableDesc ybc_tabledesc = NULL;
 	YBCPgTableProperties yb_table_properties;
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 	qrelname = pg_strdup(fmtId(tbinfo->dobj.name));
 	qualrelname = pg_strdup(fmtQualifiedDumpable(tbinfo));
@@ -15877,7 +15877,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 * disabled, then the array will be empty ('{}').
 		 */
 		appendPQExpBuffer(yb_reloptions, "{");
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
@@ -15926,7 +15926,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 * table reloptions.
 			 */
 		}
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 		appendPQExpBuffer(yb_reloptions, "}");
 
 		if (nonemptyReloptions(tbinfo->reloptions) ||
@@ -15960,7 +15960,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		destroyPQExpBuffer(yb_reloptions);
 
-#ifndef DISABLE_YB_EXTENTIONS
+#ifndef DISABLE_YB_EXTENSIONS
 		/* Additional properties for YB table or index. */
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
@@ -15968,7 +15968,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			if (yb_table_properties.num_hash_key_columns > 0)
 				/* For hash-table. */
 				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
-			else if(yb_table_properties.num_tablets > 1)
+			else if (yb_table_properties.num_tablets > 1)
 			{
 				/* For range-table. */
 				fprintf(stderr, "Pre-split range tables are not supported yet.\n");
@@ -15976,7 +15976,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			/* else - single shard table - supported, no need to add anything */
 		}
-#endif  /* DISABLE_YB_EXTENTIONS */
+#endif  /* DISABLE_YB_EXTENSIONS */
 
 		/* Dump generic options if any */
 		if (ftoptions && ftoptions[0])
@@ -16517,7 +16517,32 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 											 indxinfo->dobj.catId.oid, true);
 
 		/* Plain secondary index */
-		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
+		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
+
+#ifndef DISABLE_YB_EXTENSIONS
+		YBCPgTableDesc ybc_tabledesc = NULL;
+		YBCPgTableProperties yb_table_properties;
+
+		if (dopt->include_yb_metadata)
+		{
+			/* Get the table properties from YugaByte. */
+			HandleYBStatus(YBCPgGetTableDesc(dopt->db_oid, indxinfo->dobj.catId.oid, &ybc_tabledesc));
+			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+
+			if (yb_table_properties.num_hash_key_columns > 0)
+				/* For hash-table. */
+				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
+			else if(yb_table_properties.num_tablets > 1)
+			{
+				/* For range-table. */
+				fprintf(stderr, "Pre-split range tables are not supported yet.\n");
+				exit_nicely(1);
+			}
+			/* else - single shard table - supported, no need to add anything */
+		}
+#endif  /* DISABLE_YB_EXTENSIONS */
+
+		appendPQExpBuffer(q, ";\n");
 
 		/*
 		 * Append ALTER TABLE commands as needed to set properties that we
