@@ -39,14 +39,18 @@ class ProviderConfiguration extends Component {
   componentDidMount() {
     const {
       configuredProviders,
-      tasks: { providerTasks },
+      tasks: { customerTaskList },
       providerType,
       getCurrentTaskData,
       fetchHostInfo,
-      fetchLatestProviderTask
+      fetchCustomerTasksList
     } = this.props;
+    const currentProvider = configuredProviders.data.find(
+      (provider) => provider.code === providerType
+    );
 
     fetchHostInfo();
+    fetchCustomerTasksList();
 
     if (
       getPromiseState(configuredProviders).isLoading() ||
@@ -54,20 +58,16 @@ class ProviderConfiguration extends Component {
     ) {
       this.setState({ currentView: 'loading' });
     } else {
-      const currentProvider = configuredProviders.data.find(
-        (provider) => provider.code === providerType
-      );
-      if (currentProvider) {
-        fetchLatestProviderTask(currentProvider.uuid);
-      }
-      
       this.setState({ currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init' });
+      let currentProviderTask = null;
       if (
-        providerTasks &&
-        isNonEmptyArray(providerTasks.data) &&
+        customerTaskList &&
+        isNonEmptyArray(customerTaskList.data) &&
         isDefinedNotNull(currentProvider)
       ) {
-        const currentProviderTask = providerTasks.data[0];
+        currentProviderTask = customerTaskList.data.find(
+          (task) => task.targetUUID === currentProvider.uuid
+        );
         if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== 'Success') {
           getCurrentTaskData(currentProviderTask.id);
           this.setState({ currentTaskUUID: currentProviderTask.id, currentView: 'bootstrap' });
@@ -85,25 +85,18 @@ class ProviderConfiguration extends Component {
         data: { type },
         promiseState
       },
-      tasks: { providerTasks },
-      fetchLatestProviderTask,
+      tasks: { customerTaskList },
       providerType
     } = this.props;
     const { refreshing } = this.state;
     if (refreshing && type === 'initialize' && !promiseState.isLoading()) {
       this.setState({ refreshing: false });
     }
-
-    const currentProvider = configuredProviders.data ?
-      configuredProviders.data.find((provider) => provider.code === providerType) :
-      null;
-    if (
-      (getPromiseState(prevProps.configuredProviders).isLoading() ||
-      getPromiseState(prevProps.configuredProviders).isInit()) &&
-      getPromiseState(configuredProviders).isSuccess()
-    ) {
-      fetchLatestProviderTask(currentProvider.uuid);
+    let currentProvider = null;
+    if (configuredProviders.data) {
+      currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
     }
+    let currentProviderTask = null;
     if (!_.isEqual(configuredProviders.data, prevProps.configuredProviders.data)) {
       this.setState({ currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init' });
     }
@@ -115,19 +108,20 @@ class ProviderConfiguration extends Component {
       this.setState({ currentView: 'init' });
     }
 
-    // Get first pending tasks for this provider
     if (
+      customerTaskList &&
+      isNonEmptyArray(customerTaskList.data) &&
       isNonEmptyObject(currentProvider) &&
-      getPromiseState(providerTasks).isSuccess()
+      isNonEmptyArray(prevProps.tasks.customerTaskList.data) &&
+      prevProps.tasks.customerTaskList.data.length === 0
     ) {
-      const currProviderTasks = providerTasks.data[currentProvider.uuid];
-      const prevProviderTasks = prevProps.tasks.providerTasks.data[currentProvider.uuid];
-
-      if (currProviderTasks && currProviderTasks.length &&
-        (!prevProviderTasks || !prevProviderTasks.length)) {        
-        this.props.getCurrentTaskData(currProviderTasks[0].id);
-        if (currProviderTasks[0].status !== 'Success') {
-          this.setState({ currentTaskUUID: currProviderTasks[0].id, currentView: 'bootstrap' });
+      currentProviderTask = customerTaskList.data.find(
+        (task) => task.targetUUID === currentProvider.uuid
+      );
+      if (currentProviderTask) {
+        this.props.getCurrentTaskData(currentProviderTask.id);
+        if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== 'Success') {
+          this.setState({ currentTaskUUID: currentProviderTask.id, currentView: 'bootstrap' });
         }
       }
     }

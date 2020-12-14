@@ -3,9 +3,9 @@
 import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
 import {
-  fetchUniversesPendingTasks,
-  fetchUniversesPendingTasksSuccess,
-  fetchUniversesPendingTasksFailure
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
 } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import {
@@ -80,29 +80,26 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getAllUniversePendingTasks: () => {
-      dispatch(fetchUniversesPendingTasks()).then((response) => {
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
         if (!response.error) {
-          dispatch(fetchUniversesPendingTasksSuccess(response.payload));
+          dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(fetchUniversesPendingTasksFailure(response.payload));
+          dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },
 
-    submitEditUniverse: async (values, universeUUID) => {
-      const response = await dispatch(editUniverse(values, universeUUID));
-      return dispatch(editUniverseResponse(response.payload));
+    submitAddUniverseReadReplica: (values, universeUUID) => {
+      dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
+        dispatch(addUniverseReadReplicaResponse(response.payload));
+      });
     },
 
-    submitAddUniverseReadReplica: async (values, universeUUID) => {
-      const response = await dispatch(addUniverseReadReplica(values, universeUUID));
-      return dispatch(addUniverseReadReplicaResponse(response.payload));
-    },
-
-    submitEditUniverseReadReplica: async (values, universeUUID) => {
-      const response = await dispatch(editUniverseReadReplica(values, universeUUID));
-      return dispatch(editUniverseReadReplicaResponse(response.payload));
+    submitEditUniverseReadReplica: (values, universeUUID) => {
+      dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
+        dispatch(editUniverseReadReplicaResponse(response.payload));
+      });
     },
 
     fetchUniverseMetadata: () => {
@@ -118,6 +115,12 @@ const mapDispatchToProps = (dispatch) => {
     closeUniverseDialog: () => {
       dispatch(closeDialog());
       dispatch(closeUniverseDialog());
+    },
+
+    submitEditUniverse: (values, universeUUID) => {
+      dispatch(editUniverse(values, universeUUID)).then((response) => {
+        dispatch(editUniverseResponse(response.payload));
+      });
     },
 
     getInstanceTypeListItems: (provider) => {
@@ -455,10 +458,7 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
-    if (
-      values[clusterType].enableEncryptionAtRest &&
-      !values[clusterType].selectEncryptionAtRestConfig
-    ) {
+    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
   }

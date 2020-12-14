@@ -517,7 +517,7 @@ export default class AZSelectorTable extends Component {
       });
 
       if (unusedAZList.length) {
-        const count = type === 'Edit' ? 1 : 0;
+        const count = type === "Edit" ? 1 : 0;
         const newAZState = [
           ...this.state.azItemState,
           {
@@ -599,17 +599,17 @@ export default class AZSelectorTable extends Component {
           {isNonEmptyArray(azListForSelectedRegions) &&
             azList.length < replicationFactor &&
             azList.length < azListForSelectedRegions.length && (
-              <Row>
-                <Col xs={4}>
-                  <YBButton
-                    btnText="Add Zone"
-                    btnIcon="fa fa-plus"
-                    btnClass={'btn btn-orange universe-form-add-az-btn'}
-                    onClick={addNewAZField}
-                  ></YBButton>
-                </Col>
-              </Row>
-            )}
+            <Row>
+              <Col xs={4}>
+                <YBButton
+                  btnText="Add Zone"
+                  btnIcon="fa fa-plus"
+                  btnClass={'btn btn-orange universe-form-add-az-btn'}
+                  onClick={addNewAZField}
+                ></YBButton>
+              </Col>
+            </Row>
+          )}
         </div>
       );
     }

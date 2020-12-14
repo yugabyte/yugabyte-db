@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { TasksList } from '../../tasks';
+import { TaskAlerts } from '../../tasks';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
@@ -26,12 +26,11 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-function mapStateToProps(state) {
+function mapStateToProps(state, ownProps) {
   return {
     universe: state.universe,
-    customer: state.customer,
     tasks: state.tasks
   };
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(TasksList);
+export default connect(mapStateToProps, mapDispatchToProps)(TaskAlerts);
