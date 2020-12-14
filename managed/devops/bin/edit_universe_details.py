@@ -13,9 +13,9 @@ def msg_exit(msg):
 
 def run_psql(psql_cmd):
     psql_path = "docker exec postgres psql".split(" ") if docker_based else ["psql"]
-    return subprocess.check_output(
+    return str(subprocess.check_output(
         psql_path +
-        ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t', '-c', psql_cmd])
+        ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t', '-c', psql_cmd]).decode('utf-8'))
 
 
 if os.path.exists("/.dockerenv"):

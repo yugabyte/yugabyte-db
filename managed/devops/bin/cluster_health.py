@@ -23,6 +23,8 @@ from exceptions import RuntimeError
 from datetime import datetime
 from dateutil import tz
 from multiprocessing import Pool
+from six import string_types, PY2, PY3
+
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
@@ -148,10 +150,10 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        bytes = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=env)
-        return bytes.decode('utf-8')
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=env)
+        return output.decode('utf-8')
     except subprocess.CalledProcessError as e:
-        return 'Error executing command {}: {}'.format(cmd, e.output)
+        return 'Error executing command {}: {}'.format(cmd, e.output.decode('utf-8'))
 
 
 def safe_pipe(command_str):
@@ -201,7 +203,7 @@ class NodeChecker():
 
     def _remote_check_output(self, command):
         cmd_to_run = []
-        command = safe_pipe(command) if isinstance(command, basestring) else command
+        command = safe_pipe(command) if isinstance(command, string_types) else command
         env_conf = os.environ.copy()
         if self.is_k8s:
             env_conf["KUBECONFIG"] = self.k8s_details.config
@@ -675,7 +677,10 @@ class CheckCoordinator:
     class CheckRunInfo:
         def __init__(self, instance, func_name, yb_process):
             self.instance = instance
-            self.func_name = func_name
+            if PY3:
+                self.func_name = func_name
+            else:
+                self.__name__ = func_name
             self.yb_process = yb_process
             self.result = None
             self.entry = None
@@ -706,15 +711,16 @@ class CheckCoordinator:
                         logging.info("Retry # " + str(check.tries) +
                                      " for check " + check.func_name)
 
+                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.yb_process is None:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
-                                            (check.instance, check.func_name, sleep_interval))
+                                            (check.instance, check_func_name, sleep_interval))
                     else:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
                                             (check.instance,
-                                                check.func_name,
+                                                check_func_name,
                                                 sleep_interval,
                                                 (check.yb_process,)))
 

@@ -50,8 +50,12 @@ regex_from_list() {
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
+DEFAULT_USE_PY3_VALUE="1"
+if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
+  DEFAULT_USE_PY3_VALUE="0"
+fi
 
-readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-0}
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
       $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
   fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
