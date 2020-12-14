@@ -7,15 +7,34 @@ import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../ut
 import { YBLoadingCircleIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
+  hasPendingTasksForUniverse = (customerTaskList) => {
+    const {
+      currentUniverse: { universeUUID }
+    } = this.props;
+    return isNonEmptyArray(customerTaskList)
+      ? customerTaskList.some(function (taskItem) {
+        return (
+          taskItem.targetUUID === universeUUID &&
+          (taskItem.status === 'Running' || taskItem.status === 'Initializing') &&
+          Number(taskItem.percentComplete) !== 100 &&
+          taskItem.target.toLowerCase() !== 'backup'
+        );
+      })
+      : false;
+  };
+
   componentDidUpdate(prevProps) {
     const {
       currentUniverse: { universeDetails },
-      pendingTasks,
+      tasks: { customerTaskList },
       refreshUniverseData
     } = this.props;
-    const hasPendingTasks = pendingTasks && pendingTasks.length;
-    const prevHasPendingTasks = prevProps.pendingTasks && prevProps.pendingTasks.length;
-    if (!universeDetails.updateInProgress && !hasPendingTasks && prevHasPendingTasks) {
+
+    if (
+      !universeDetails.updateInProgress &&
+      !this.hasPendingTasksForUniverse(customerTaskList) &&
+      this.hasPendingTasksForUniverse(prevProps.tasks.customerTaskList)
+    ) {
       refreshUniverseData();
     }
   }
@@ -24,22 +43,22 @@ export default class UniverseStatus extends Component {
     const {
       currentUniverse: { universeDetails, universeUUID },
       showLabelText,
-      pendingTasks
+      tasks: { customerTaskList }
     } = this.props;
     const updateInProgress = universeDetails.updateInProgress;
     const updateSucceeded = universeDetails.updateSucceeded;
     let statusClassName = 'unknown';
     let statusText = '';
-    const universePendingTask =
-      isNonEmptyArray(pendingTasks) &&
-      pendingTasks.find((taskItem) => {
+    const universePendingTask = isNonEmptyArray(customerTaskList)
+      ? customerTaskList.find(function (taskItem) {
         return (
           taskItem.targetUUID === universeUUID &&
           (taskItem.status === 'Running' || taskItem.status === 'Initializing') &&
           Number(taskItem.percentComplete) !== 100 &&
           taskItem.target.toLowerCase() !== 'backup'
         );
-      });
+      })
+      : null;
 
     if (showLabelText) {
       statusText = 'Loading';
@@ -50,7 +69,7 @@ export default class UniverseStatus extends Component {
         <span className="status-pending-name">{statusText}</span>
       </div>
     );
-    if (!universePendingTask && updateSucceeded) {
+    if (!isDefinedNotNull(universePendingTask) && updateSucceeded) {
       statusClassName = 'good';
       if (showLabelText) {
         statusText = 'Ready';

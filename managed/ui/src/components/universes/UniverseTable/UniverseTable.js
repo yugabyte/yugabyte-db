@@ -5,7 +5,6 @@ import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import { UniverseReadWriteMetrics } from '../../metrics';
@@ -26,7 +25,7 @@ import moment from 'moment';
 export default class UniverseTable extends Component {
   componentDidMount() {
     this.props.fetchUniverseMetadata();
-    this.props.fetchAllUniversesTasks();
+    this.props.fetchUniverseTasks();
   }
 
   componentWillUnmount() {
@@ -38,7 +37,7 @@ export default class UniverseTable extends Component {
     const {
       universe: { universeList },
       universeReadWriteData,
-      universesPendingTasks,
+      tasks,
       customer: { currentCustomer }
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.universes');
@@ -52,17 +51,19 @@ export default class UniverseTable extends Component {
       })
       .map(function (item, idx) {
         let universeTaskUUIDs = [];
-        if (
-          getPromiseState(universesPendingTasks).isSuccess() &&
-          item.universeUUID in universesPendingTasks.data
-        ) {
-          universeTaskUUIDs = universesPendingTasks.data[item.universeUUID]
-            .map((taskItem) => ({
-              id: taskItem.id,
-              data: taskItem,
-              universe: item.universeUUID
-            }))
-            .sort((a, b) => a.data.createTime < b.data.createTime);
+        if (isNonEmptyArray(tasks.customerTaskList)) {
+          universeTaskUUIDs = tasks.customerTaskList
+            .map(function (taskItem) {
+              if (taskItem.targetUUID === item.universeUUID) {
+                return { id: taskItem.id, data: taskItem, universe: item.universeUUID };
+              } else {
+                return null;
+              }
+            })
+            .filter(Boolean)
+            .sort(function (a, b) {
+              return a.data.createTime < b.data.createTime;
+            });
         }
         return (
           <YBUniverseItem
@@ -70,7 +71,7 @@ export default class UniverseTable extends Component {
             key={idx}
             universe={item}
             idx={idx}
-            pendingTasks={universeTaskUUIDs}
+            taskId={universeTaskUUIDs}
             universeReadWriteData={universeReadWriteData}
           />
         );
@@ -83,8 +84,7 @@ class YBUniverseItem extends Component {
   render() {
     const {
       universe,
-      customer: { currentCustomer },
-      pendingTasks
+      customer: { currentCustomer }
     } = this.props;
 
     return (
@@ -105,7 +105,6 @@ class YBUniverseItem extends Component {
                 <UniverseStatusContainer
                   currentUniverse={universe}
                   showLabelText={true}
-                  pendingTasks={pendingTasks}
                   refreshUniverseData={this.props.fetchUniverseMetadata}
                 />
               </div>

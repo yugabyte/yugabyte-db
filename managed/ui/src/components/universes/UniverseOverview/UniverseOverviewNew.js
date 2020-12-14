@@ -570,11 +570,11 @@ export default class UniverseOverviewNew extends Component {
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
       ? [
-          {
-            metric: 'container_volume_max_usage',
-            name: 'size'
-          }
-        ]
+        {
+          metric: 'container_volume_max_usage',
+          name: 'size'
+        }
+      ]
       : null;
     return (
       <StandaloneMetricsPanelContainer
@@ -706,13 +706,10 @@ export default class UniverseOverviewNew extends Component {
         headerLeft={'Info'}
         headerRight={
           showUpdate ? (
-            <a
-              onClick={(e) => {
-                this.props.showSoftwareUpgradesModal(e);
-                e.preventDefault();
-              }}
-              href="/"
-            >
+            <a onClick={(e) => {
+              this.props.showSoftwareUpgradesModal(e);
+              e.preventDefault();
+            }} href="/">
               Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
             </a>
           ) : null
@@ -754,7 +751,7 @@ export default class UniverseOverviewNew extends Component {
       universe: { currentUniverse },
       alerts,
       tasks,
-      currentCustomer
+      currentCustomer,
     } = this.props;
 
     const universeInfo = currentUniverse.data;
