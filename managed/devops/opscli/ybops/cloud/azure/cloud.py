@@ -122,7 +122,7 @@ class AzureCloud(AbstractCloud):
         return self.metadata["regions"][region]["image"]
 
     def get_regions(self):
-        return self.metadata.get("regions", {}).keys()
+        return list(self.metadata.get("regions", {}).keys())
 
     def get_zones(self, args):
         result = {}

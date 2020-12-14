@@ -425,7 +425,7 @@ class ListInstancesMethod(AbstractInstancesMethod):
         if args.as_json:
             print(json.dumps(host_info))
         else:
-            print('\n'.join(["{}={}".format(k, v) for k, v in host_info.iteritems()]))
+            print('\n'.join(["{}={}".format(k, v) for k, v in host_info.items()]))
 
 
 class UpdateDiskMethod(AbstractInstancesMethod):

@@ -349,7 +349,7 @@ class AbstractCloud(AbstractCommandParser):
         if args.mount_points:
             return args.mount_points
         else:
-            return ",".join(["/mnt/d{}".format(i) for i in xrange(args.num_volumes)])
+            return ",".join(["/mnt/d{}".format(i) for i in range(args.num_volumes)])
 
     def expand_file_system(self, args, ssh_options):
         remote_shell = RemoteShell(ssh_options)
