@@ -85,15 +85,14 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | [Support `GIN` indexes](https://github.com/yugabyte/yugabyte-db/issues/1337) | PROGRESS | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) | |
 | [Support `ALTER TABLE` add primary key](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 | [Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) |  |
-| Incorporate PostgreSQL 12 features | PLANNING  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) |  |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
 | Support WSO2 API Gateway and Identity Manager | PROGRESS | v2.6, v2.7           |                 |               |
-| Support Spark 3 on YCQL | PROGRESS | v2.6, v2.7           |                 |               |
+| Support Spark 3 on YCQL | PROGRESS | v2.6, v2.7           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |               |
+| Incorporate PostgreSQL 12 features | PLANNING  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) |  |
 | Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
-| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
-| Improve TPC-C benchmarking | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
-| Identity and access management in YSQL | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
-| Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | This should decrease the incidence of transaction restart errors seen in various scenarios |
+| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | Enhance YSQL language support |
+| Improve TPC-C benchmarking | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
+| Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
 
 
 ## Planned additions to roadmap
@@ -111,6 +110,7 @@ The following items are being planned as additions to the roadmap
 
 | Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
+| Identity and access management in YSQL | ✅ *DONE*  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
 | Follower reads in YSQL | ✅ *BETA* | v2.5 | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
 | YSQL cluster administration features - Node-Level statistics | ✅ *DONE*  | v2.5  | [Issue](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
 | Support loading large data sets into YSQL using `COPY` | ✅ *DONE*  | v2.5  | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5241) | Improving transactions which have a very large number of operations, as well as provide various options to batch load data more efficiently
