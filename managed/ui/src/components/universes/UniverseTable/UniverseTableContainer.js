@@ -5,9 +5,9 @@ import { connect } from 'react-redux';
 import UniverseTable from './UniverseTable';
 import { fetchUniverseMetadata, resetUniverseTasks } from '../../../actions/universe';
 import {
-  fetchUniversesPendingTasks,
-  fetchUniversesPendingTasksSuccess,
-  fetchUniversesPendingTasksFailure
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
 } from '../../../actions/tasks';
 
 const mapDispatchToProps = (dispatch) => {
@@ -16,12 +16,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUniverseMetadata());
     },
 
-    fetchAllUniversesTasks: () => {
-      dispatch(fetchUniversesPendingTasks()).then((response) => {
+    fetchUniverseTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
         if (!response.error) {
-          dispatch(fetchUniversesPendingTasksSuccess(response.payload));
+          dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(fetchUniversesPendingTasksFailure(response.payload));
+          dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },
@@ -35,7 +35,8 @@ function mapStateToProps(state) {
   return {
     universe: state.universe,
     customer: state.customer,
-    universesPendingTasks: state.tasks.universesPendingTasks,
+    graph: state.graph,
+    tasks: state.tasks,
     providers: state.cloud.providers
   };
 }

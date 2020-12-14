@@ -6,12 +6,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.ebean.Finder;
-import io.ebean.FutureRowCount;
 import io.ebean.Model;
-import io.ebean.RawSql;
-import io.ebean.Ebean;
-import io.ebean.RawSqlBuilder;
-import io.ebean.Query;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
 import org.slf4j.Logger;
@@ -27,9 +22,6 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @Entity
@@ -351,60 +343,10 @@ public class CustomerTask extends Model {
   }
 
   public static List<CustomerTask> findIncompleteByTargetUUID(UUID targetUUID) {
-    return findIncompleteCustomerTargetTasks(null, targetUUID);
-  }
-
-  public static List<CustomerTask> findIncompleteCustomerTargetTasks(UUID customerUUID,
-                                                                     UUID targetUUID) {
-    Query<CustomerTask> query = find.query().where()
-      .isNull("completion_time")
-      .orderBy("create_time desc");
-    if (customerUUID != null) {
-      query.where().eq("customer_uuid", customerUUID);
-    }
-    if (targetUUID != null) {
-      query.where().eq("target_uuid", customerUUID);
-    }
-    return query.findList();
-  }
-
-  public static List<CustomerTask> findCustomerTasks(UUID customerUUID, UUID targetUUID,
-                                                     int offset, int limit) {
-    Query<CustomerTask> customerTaskQuery = find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc")
-      .setFirstRow(offset)
-      .setMaxRows(limit);
-
-    if (targetUUID != null) {
-      customerTaskQuery.where().eq("target_uuid", targetUUID);
-    }
-    return customerTaskQuery.findList();
-  }
-
-  public static int countCustomerTasks(UUID customerUUID) {
     return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .findCount();
-  }
-
-  public static List<CustomerTask> findCustomerAllUniversesIncompleteTasks(UUID customerUUID) {
-    String sql = String.format("SELECT customer_uuid, task_uuid, target_type, target_name,"
-        + " type, target_uuid, completion_time"
-        + " FROM customer_task INNER JOIN universe"
-        + " ON universe_uuid= target_uuid"
-        + " WHERE customer_uuid = '%s' and completion_time IS NULL"
-        + " order by create_time desc",
-      customerUUID.toString());
-    RawSql rawSql = RawSqlBuilder.parse(sql)
-      .columnMapping("customer_uuid", "customerUUID")
-      .columnMapping("task_uuid", "taskUUID")
-      .columnMapping("target_uuid", "targetUUID")
-      .create();
-
-    Query<CustomerTask> query = Ebean.find(CustomerTask.class);
-    query.setRawSql(rawSql);
-    return query.findList();
+      .eq("target_uuid", targetUUID)
+      .isNull("completion_time")
+      .findList();
   }
 
   public static CustomerTask getLatestByUniverseUuid(UUID universeUUID) {

@@ -7,8 +7,6 @@ import { getPromiseState } from '../../utils/PromiseUtils';
 import { isHidden } from '../../utils/LayoutUtils';
 import PropTypes from 'prop-types';
 
-const FETCH_TASKS_RETRY_MS = 6000;
-
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
@@ -31,6 +29,7 @@ class AuthenticatedComponent extends Component {
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
     this.props.getYugaWareVersion();
+    this.props.fetchCustomerTasks();
     this.props.fetchCustomerCertificates();
     this.props.fetchCustomerConfigs();
     this.props.fetchInsecureLogin();
@@ -40,17 +39,13 @@ class AuthenticatedComponent extends Component {
     this.props.resetUniverseList();
   }
 
-  checkForPendingTasks = (obj) => {
-    return Object.values(obj).some((val) => Array.isArray(val) && val.length);
-  };
-
   hasPendingCustomerTasks = (taskList) => {
     return isNonEmptyArray(taskList)
       ? taskList.some(
-          (task) =>
-            (task.status === 'Running' || task.status === 'Initializing') &&
-            Number(task.percentComplete) !== 100
-        )
+        (task) =>
+          (task.status === 'Running' || task.status === 'Initializing') &&
+          Number(task.percentComplete) !== 100
+      )
       : false;
   };
 
@@ -70,8 +65,8 @@ class AuthenticatedComponent extends Component {
     if (prevProps.location !== this.props.location) {
       this.setState({ prevPath: prevProps.location.pathname });
     }
-    // Check if there are pending universe tasks and no existing recursive fetch calls
-    if (this.checkForPendingTasks(tasks.universesPendingTasks.data) && !this.state.fetchScheduled) {
+    // Check if there are pending customer tasks and no existing recursive fetch calls
+    if (this.hasPendingCustomerTasks(tasks.customerTaskList) && !this.state.fetchScheduled) {
       this.scheduleFetch();
     }
   }
@@ -87,7 +82,7 @@ class AuthenticatedComponent extends Component {
         self.setState({ fetchScheduled: false });
       } else {
         self.props.fetchCustomerTasks().then(() => {
-          setTimeout(queryTasks, FETCH_TASKS_RETRY_MS);
+          setTimeout(queryTasks, 6000);
         });
       }
     }

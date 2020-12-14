@@ -6,14 +6,13 @@ import { showOrRedirect } from '../../../utils/LayoutUtils';
 
 export default class TasksList extends Component {
   componentDidMount() {
-    this.props.fetchCustomerTasks(1, 10);
+    this.props.fetchCustomerTasks();
   }
 
   render() {
     const {
-      tasks: { customerTaskList, taskPagination },
-      customer: { currentCustomer, INSECURE_apiToken },
-      fetchCustomerTasks
+      tasks: { customerTaskList },
+      customer: { currentCustomer, INSECURE_apiToken }
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.tasks');
     const errorPlatformMessage = (
@@ -24,8 +23,6 @@ export default class TasksList extends Component {
       <TaskListTable
         taskList={customerTaskList || []}
         overrideContent={INSECURE_apiToken && errorPlatformMessage}
-        queryCustomerTasks={fetchCustomerTasks}
-        pagination={taskPagination}
       />
     );
   }

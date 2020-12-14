@@ -10,14 +10,6 @@ export const FETCH_CUSTOMER_TASKS_SUCCESS = 'FETCH_CUSTOMER_TASKS_SUCCESS';
 export const FETCH_CUSTOMER_TASKS_FAILURE = 'FETCH_CUSTOMER_TASKS_FAILURE';
 export const RESET_CUSTOMER_TASKS = 'RESET_CUSTOMER_TASKS';
 
-export const FETCH_UNIVERSES_PENDING_TASKS = 'FETCH_UNIVERSES_PENDING_TASKS';
-export const FETCH_UNIVERSES_PENDING_TASKS_SUCCESS = 'FETCH_UNIVERSES_PENDING_TASKS_SUCCESS';
-export const FETCH_UNIVERSES_PENDING_TASKS_FAILURE = 'FETCH_UNIVERSES_PENDING_TASKS_FAILURE';
-
-export const FETCH_PROVIDER_TASKS = 'FETCH_PROVIDER_TASKS';
-export const FETCH_PROVIDER_TASKS_SUCCESS = 'FETCH_PROVIDER_TASKS_SUCCESS';
-export const FETCH_PROVIDER_TASKS_FAILURE = 'FETCH_PROVIDER_TASKS_FAILURE';
-
 export const FETCH_FAILED_TASK_DETAIL = 'FETCH_TASK_DETAIL';
 export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 
@@ -45,12 +37,8 @@ export function resetTaskProgress(error) {
   };
 }
 
-export function fetchCustomerTasks(page, limit) {
-  let endpoint = `${getCustomerEndpoint()}/tasks`;
-  if (page && limit) {
-    endpoint += `?page=${page}&limit=${limit}`;
-  }
-  const request = axios.get(endpoint);
+export function fetchCustomerTasks() {
+  const request = axios.get(`${getCustomerEndpoint()}/tasks`);
   return {
     type: FETCH_CUSTOMER_TASKS,
     payload: request
@@ -74,34 +62,6 @@ export function fetchCustomerTasksFailure(error) {
 export function resetCustomerTasks() {
   return {
     type: RESET_CUSTOMER_TASKS
-  };
-}
-
-/**
- * Fetches pending tasks for all universes of this customer.
- * Query parameters:
- *  `status` [Optional] Can only be "pending"
- *  `target` [Optional] Can be either "universes", or "provider"
- **/
-export function fetchUniversesPendingTasks() {
-  const request = axios.get(`${getCustomerEndpoint()}/tasks?status=pending&target=universes`);
-  return {
-    type: FETCH_UNIVERSES_PENDING_TASKS,
-    payload: request
-  };
-}
-
-export function fetchUniversesPendingTasksSuccess(result) {
-  return {
-    type: FETCH_UNIVERSES_PENDING_TASKS_SUCCESS,
-    payload: result
-  };
-}
-
-export function fetchUniversesPendingTasksFailure(error) {
-  return {
-    type: FETCH_UNIVERSES_PENDING_TASKS_FAILURE,
-    payload: error
   };
 }
 
@@ -132,27 +92,5 @@ export function retryTaskResponse(response) {
   return {
     type: RETRY_TASK_RESPONSE,
     payload: response.payload
-  };
-}
-
-export function fetchProviderTasks(providerUUID) {
-  const request = axios.get(`${getCustomerEndpoint()}/providers/${providerUUID}/tasks?limit=1`);
-  return {
-    type: FETCH_PROVIDER_TASKS,
-    payload: request
-  };
-}
-
-export function fetchProviderTasksSuccess(response) {
-  return {
-    type: FETCH_PROVIDER_TASKS_SUCCESS,
-    payload: response
-  };
-}
-
-export function fetchProviderTasksFailure(response) {
-  return {
-    type: FETCH_PROVIDER_TASKS_FAILURE,
-    payload: response
   };
 }

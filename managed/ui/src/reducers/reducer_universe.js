@@ -200,6 +200,7 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'universeTasks', action);
     case RESET_UNIVERSE_TASKS:
       return { ...state, universeTasks: getInitialState([]) };
+
     // Universe Configure Operations
     case CONFIGURE_UNIVERSE_TEMPLATE:
       return setLoadingState(state, 'universeConfigTemplate', {});

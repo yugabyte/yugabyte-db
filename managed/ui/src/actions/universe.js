@@ -48,9 +48,6 @@ export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
 export const FETCH_UNIVERSE_TASKS_RESPONSE = 'FETCH_UNIVERSE_TASKS_RESPONSE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
-export const FETCH_UNIVERSE_PENDING_TASKS = 'FETCH_UNIVERSE_PENDING_TASKS';
-export const FETCH_UNIVERSE_PENDING_TASKS_RESPONSE = 'FETCH_UNIVERSE_PENDING_TASKS_RESPONSE';
-
 // Universe Co-Modal Tasks
 export const CLOSE_UNIVERSE_DIALOG = 'CLOSE_UNIVERSE_DIALOG';
 
@@ -120,8 +117,8 @@ export const CREATE_ALERT_DEFINITION = 'CREATE_ALERT_DEFINITION';
 export const CREATE_ALERT_DEFINITION_RESPONSE = 'CREATE_ALERT_DEFINITION_RESPONSE';
 export const GET_ALERT_DEFINITION = 'GET_ALERT_DEFINITION';
 export const GET_ALERT_DEFINITION_RESPONSE = 'GET_ALERT_DEFINITION_RESPONSE';
-export const UPDATE_ALERT_DEFINITION = 'UPDATE_ALERT_DEFINITION';
-export const UPDATE_ALERT_DEFINITION_RESPONSE = 'UPDATE_ALERT_DEFINITION_RESPONSE';
+export const UPDATE_ALERT_DEFINITION = "UPDATE_ALERT_DEFINITION";
+export const UPDATE_ALERT_DEFINITION_RESPONSE = "UPDATE_ALERT_DEFINITION_RESPONSE";
 
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem('customerId');
@@ -316,24 +313,6 @@ export function fetchUniverseTasks(universeUUID) {
 export function fetchUniverseTasksResponse(response) {
   return {
     type: FETCH_UNIVERSE_TASKS_RESPONSE,
-    payload: response
-  };
-}
-
-export function fetchUniversePendingTasks(universeUUID) {
-  const customerUUID = localStorage.getItem('customerId');
-  const request = axios.get(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks?status=pending`
-  );
-  return {
-    type: FETCH_UNIVERSE_PENDING_TASKS,
-    payload: request
-  };
-}
-
-export function fetchUniversePendingTasksResponse(response) {
-  return {
-    type: FETCH_UNIVERSE_PENDING_TASKS_RESPONSE,
     payload: response
   };
 }
@@ -665,7 +644,7 @@ export function updateBackupStateResponse(response) {
 }
 
 export function fetchLiveQueries(universeUUID, cancelFn) {
-  const customerUUID = localStorage.getItem('customerId');
+  const customerUUID = localStorage.getItem("customerId");
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
   let request;
   if (cancelFn) {
