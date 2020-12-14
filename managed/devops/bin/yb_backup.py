@@ -21,6 +21,7 @@ import string
 import subprocess
 import time
 import json
+
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
 from multiprocessing.pool import ThreadPool
@@ -525,7 +526,7 @@ def get_instance_profile_credentials():
     iam_credentials_endpoint = 'meta-data/iam/security-credentials/'
     metadata = get_instance_metadata(timeout=1, num_retries=1, data=iam_credentials_endpoint)
     if metadata:
-        instance_credentials = metadata.values()[0]
+        instance_credentials = next(iter(metadata.values()))
         if isinstance(instance_credentials, dict):
             try:
                 access_key = instance_credentials['AccessKeyId']
@@ -571,10 +572,8 @@ class YBBackup:
             try:
                 if env is None:
                     env = os.environ.copy()
-                subprocess_result = subprocess.check_output(args, stderr=subprocess.STDOUT,
-                                                            env=env, **kwargs)
-                if not isinstance(subprocess_result, str):
-                    subprocess_result = subprocess_result.decode('utf-8')
+                subprocess_result = str(subprocess.check_output(args, stderr=subprocess.STDOUT,
+                                                                env=env, **kwargs).decode('utf-8'))
 
                 if self.args.verbose:
                     logging.info(
@@ -583,7 +582,7 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, e.output))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8'))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -690,7 +689,7 @@ class YBBackup:
                  'This also affects the amount of outgoing s3cmd sync traffic when copying a '
                  'backup to S3.')
         parser.add_argument(
-            '--storage_type', choices=BACKUP_STORAGE_ABSTRACTIONS.keys(),
+            '--storage_type', choices=list(BACKUP_STORAGE_ABSTRACTIONS.keys()),
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
@@ -2006,7 +2005,7 @@ class YBBackup:
                                       snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
 
-        tserver_ips = tablets_by_tserver_to_download.keys()
+        tserver_ips = list(tablets_by_tserver_to_download.keys())
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
         if self.args.verbose:
@@ -2055,7 +2054,7 @@ class YBBackup:
 
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
-        table_ids = snapshot_metadata['table'].keys()
+        table_ids = list(snapshot_metadata['table'].keys())
 
         self.wait_for_snapshot(snapshot_id, 'importing', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
 

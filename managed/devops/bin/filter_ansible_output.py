@@ -11,11 +11,11 @@
 # Make Ansible failure output more readable.
 # TODO: do not require stderr to be piped to stdout.
 
-from __future__ import print_function
-
 import re
 import json
 import sys
+
+from __future__ import print_function
 
 FATAL_JSON_RE = re.compile(r'^(.*(?:: FAILED!|changed: \[.*\]) .*=> )({.*})([^}]+)$')
 
