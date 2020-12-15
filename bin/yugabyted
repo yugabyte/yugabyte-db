@@ -2487,11 +2487,11 @@ class PrettyHelpFormatter(argparse.HelpFormatter):
 
 
 # Returns key-value pairs of input dict. Independent of python version.
-def get_kv(map):
+def get_kv(map_obj):
     if PY_VERSION < 3:
-        return map.iteritems()
+        return map_obj.iteritems()
     else:
-        return map.items()
+        return map_obj.items()
 
 
 def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
