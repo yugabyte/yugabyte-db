@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES } from '../config';
+import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -152,3 +152,13 @@ export const readUploadedFile = (inputFile, isRequired) => {
     }
   });
 };
+
+export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) => {
+  let href = '';
+  if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
+    href = `http://${nodeIp}:${nodePort}`;
+  } else {
+    href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
+  }
+  return href;
+}
