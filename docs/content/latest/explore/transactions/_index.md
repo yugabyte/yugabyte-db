@@ -4,6 +4,7 @@ headerTitle: Transactions
 linkTitle: Transactions
 description: Transactions in YugabyteDB.
 headcontent: Transactions in YugabyteDB.
+image: /images/section_icons/explore/transactional.png
 menu:
   latest:
     identifier: explore-transactions
