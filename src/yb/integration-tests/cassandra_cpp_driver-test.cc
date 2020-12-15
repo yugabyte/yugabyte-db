@@ -2190,8 +2190,16 @@ std::ostream& operator <<(std::ostream& s, const IOMetrics& m) {
 }
 
 //------------------------------------------------------------------------------
+class CppCassandraDriverTestNoPartitionBgRefresh : public CppCassandraDriverTest {
+ private:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTest::ExtraMasterFlags();
+    flags.push_back("--partitions_vtable_cache_refresh_secs=0");
+    return flags;
+  }
+};
 
-TEST_F(CppCassandraDriverTest, TestInsertLocality) {
+TEST_F_EX(CppCassandraDriverTest, TestInsertLocality, CppCassandraDriverTestNoPartitionBgRefresh) {
   typedef TestTable<string, string> MyTable;
   typedef typename MyTable::ColumnsTuple ColumnsTuple;
 
@@ -2372,7 +2380,7 @@ TEST_F_EX(CppCassandraDriverTest, TransactionalWrite, CppCassandraDriverTransact
   }
 }
 
-class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTest {
+class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartitionBgRefresh {
  private:
   int NumMasters() override {
     return 3;
@@ -2452,6 +2460,95 @@ TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters
   if (!IsSanitizer()) {
     ASSERT_LE(read_times.front() * 2, read_times.back()); // Check that cache works
   }
+}
+
+class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTest {
+ public:
+  static constexpr int kCacheRefreshSecs = 30;
+
+  vector<string> ResultsToList(const CassandraResult& result) {
+    vector<string> out;
+    auto iterator = result.CreateIterator();
+    while (iterator.Next()) {
+      auto row = iterator.Row();
+      auto row_iterator = row.CreateIterator();
+      while (row_iterator.Next()) {
+        out.push_back(row_iterator.Value().ToString());
+      }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+  }
+
+  Status AddTable() {
+    auto session = VERIFY_RESULT(EstablishSession());
+    TestTable<int32_t, int32_t>  table;
+    return table.CreateTable(
+        &session, Format("test.key_value_$0", ++table_idx_), {"key", "value"}, {"(key)"});
+  }
+
+ private:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTest::ExtraMasterFlags();
+    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
+    return flags;
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // TODO: Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+
+  int table_idx_ = 0;
+};
+
+TEST_F_EX(CppCassandraDriverTest,
+          YQLPartitionsVtableCacheRefresh,
+          CppCassandraDriverTestPartitionsVtableCache) {
+  // Get the initial system.partitions and store the result.
+  CassandraStatement statement("SELECT * FROM system.partitions");
+  auto old_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
+  auto old_results = ResultsToList(old_result);
+
+  // Add a table to update system.partitions.
+  ASSERT_OK(AddTable());
+
+  // Since we don't know when the bg task started, let's wait for a cache update.
+  AssertLoggedWaitFor(
+      [this, &old_results]() {
+        CassandraStatement statement("SELECT * FROM system.partitions");
+        auto new_result = session_.ExecuteWithResult(statement);
+        if (!new_result.ok()) {
+          return false;
+        }
+        auto new_results = ResultsToList(*new_result);
+        if (old_results != new_results) {
+          // Update the old_results.
+          old_results = new_results;
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(kCacheRefreshSecs), "Waiting for cache to refresh");
+
+  // We are now just after a cache update, so we should expect that we only get the cached value
+  // for the next kCacheRefreshSecs seconds.
+
+  // Add another table to update system.partitions again.
+  ASSERT_OK(AddTable());
+
+  // Check that we still get the same cached version.
+  auto new_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
+  auto new_results = ResultsToList(new_result);
+  ASSERT_EQ(old_results, new_results);
+
+  // Wait for the cache to update.
+  SleepFor(MonoDelta::FromSeconds(kCacheRefreshSecs));
+  // Verify that we get the new cached value.
+  new_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
+  new_results = ResultsToList(new_result);
+  ASSERT_NE(old_results, new_results);
 }
 
 class CppCassandraDriverRejectionTest : public CppCassandraDriverTest {

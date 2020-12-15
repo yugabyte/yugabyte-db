@@ -25,6 +25,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
  public:
   explicit YQLPartitionsVTable(const Master* const master);
   Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
+  Status GenerateAndCacheData() const;
  protected:
   Schema CreateSchema() const;
 

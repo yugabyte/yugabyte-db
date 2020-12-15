@@ -47,8 +47,13 @@ public class MiniYBClusterParameters {
   public boolean startPgSqlProxy = false;
   public boolean pgTransactionsEnabled = false;
   public Optional<Integer> tserverHeartbeatTimeoutMsOpt = Optional.empty();
+  public Optional<Integer> yqlSystemPartitionsVtableRefreshSecsOpt = Optional.empty();
 
   public int getTServerHeartbeatTimeoutMs() {
     return tserverHeartbeatTimeoutMsOpt.get();
+  }
+
+  public int getYQLSystemPartitionsVtableRefreshSecs() {
+    return yqlSystemPartitionsVtableRefreshSecsOpt.get();
   }
 }

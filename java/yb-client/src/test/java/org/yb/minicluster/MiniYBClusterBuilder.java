@@ -167,6 +167,13 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  public MiniYBClusterBuilder yqlSystemPartitionsVtableRefreshSecs(
+      final int yqlSystemPartitionsVtableRefreshSecs) {
+    this.clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt =
+        Optional.of(yqlSystemPartitionsVtableRefreshSecs);
+    return this;
+  }
+
   /**
    * Add environment variables.
    */
