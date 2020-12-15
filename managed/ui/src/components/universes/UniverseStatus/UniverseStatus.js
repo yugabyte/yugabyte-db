@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
 import { ProgressBar } from 'react-bootstrap';
-import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
