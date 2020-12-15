@@ -42,6 +42,8 @@ CREATE TABLESPACE y WITH (replica_placement='[{"cloud":"cloud1","region":"r1","z
  y          | yugabyte |
 (4 rows)
 
+DROP TABLESPACE x;
+DROP TABLESPACE y;
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
 ERROR:  unrecognized parameter "some_nonexistent_parameter"
@@ -54,10 +56,6 @@ SELECT spcoptions FROM pg_tablespace WHERE spcname = 'regress_tblspacewith';
 (1 row)
 
 DROP TABLESPACE regress_tblspacewith;
-ERROR:  DROP TABLESPACE not supported yet
-LINE 1: DROP TABLESPACE regress_tblspacewith;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1153. Click '+' on the description to raise its priority
 -- create a tablespace we can use
 CREATE TABLESPACE regress_tblspace LOCATION '/data';
 WARNING:  LOCATION not supported yet and will be ignored
@@ -292,11 +290,10 @@ SELECT COUNT(*) FROM testschema.atable;
 CREATE TABLE bar (i int) TABLESPACE regress_nosuchspace;
 ERROR:  tablespace "regress_nosuchspace" does not exist
 -- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLESPACE regress_tblspace;
-ERROR:  DROP TABLESPACE not supported yet
-LINE 1: DROP TABLESPACE regress_tblspace;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1153. Click '+' on the description to raise its priority
+ERROR:  tablespace "regress_tblspace" cannot be dropped because some objects depend on it
+\set VERBOSITY default
 CREATE ROLE regress_tablespace_user1 login;
 CREATE ROLE regress_tablespace_user2 login;
 GRANT USAGE ON SCHEMA testschema TO regress_tablespace_user2;
@@ -333,4 +330,6 @@ NOTICE:  drop cascades to 5 other objects
 DROP ROLE regress_tablespace_user1;
 ERROR:  role "regress_tablespace_user1" cannot be dropped because some objects depend on it
 DETAIL:  owner of tablespace regress_tblspace
+DROP TABLESPACE regress_tblspace;
+DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;

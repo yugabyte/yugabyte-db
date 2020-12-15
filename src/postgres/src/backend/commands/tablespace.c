@@ -519,6 +519,19 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE,
 					   tablespacename);
 
+	/* Check for pg_shdepend entries depending on this tablespace */
+	char	  *detail;
+	char	  *detail_log;
+	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
+								&detail, &detail_log))
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				 errmsg("tablespace \"%s\" cannot be dropped "
+						"because some objects depend on it",
+						tablespacename),
+				 errdetail_internal("%s", detail),
+				 errdetail_log("%s", detail_log)));
+
 	/* DROP hook for the tablespace being removed */
 	InvokeObjectDropHook(TableSpaceRelationId, tablespaceoid, 0);
 
@@ -547,49 +560,55 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
 	/*
-	 * Try to remove the physical infrastructure.
+	 * For YB clusters there are no directories associated with a tablespace.
+	 * Hence no need to clean up any physical infrastructure.
 	 */
-	if (!destroy_tablespace_directories(tablespaceoid, false))
+	if (IsYugaByteEnabled())
 	{
 		/*
-		 * Not all files deleted?  However, there can be lingering empty files
-		 * in the directories, left behind by for example DROP TABLE, that
-		 * have been scheduled for deletion at next checkpoint (see comments
-		 * in mdunlink() for details).  We could just delete them immediately,
-		 * but we can't tell them apart from important data files that we
-		 * mustn't delete.  So instead, we force a checkpoint which will clean
-		 * out any lingering files, and try again.
-		 *
-		 * XXX On Windows, an unlinked file persists in the directory listing
-		 * until no process retains an open handle for the file.  The DDL
-		 * commands that schedule files for unlink send invalidation messages
-		 * directing other PostgreSQL processes to close the files.  DROP
-		 * TABLESPACE should not give up on the tablespace becoming empty
-		 * until all relevant invalidation processing is complete.
+		 * Try to remove the physical infrastructure.
 		 */
-		RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 		if (!destroy_tablespace_directories(tablespaceoid, false))
 		{
-			/* Still not empty, the files must be important then */
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("tablespace \"%s\" is not empty",
-							tablespacename)));
+			/*
+			 * Not all files deleted?  However, there can be lingering empty files
+			 * in the directories, left behind by for example DROP TABLE, that
+			 * have been scheduled for deletion at next checkpoint (see comments
+			 * in mdunlink() for details).  We could just delete them immediately,
+			 * but we can't tell them apart from important data files that we
+			 * mustn't delete.  So instead, we force a checkpoint which will clean
+			 * out any lingering files, and try again.
+			 *
+			 * XXX On Windows, an unlinked file persists in the directory listing
+			 * until no process retains an open handle for the file.  The DDL
+			 * commands that schedule files for unlink send invalidation messages
+			 * directing other PostgreSQL processes to close the files.  DROP
+			 * TABLESPACE should not give up on the tablespace becoming empty
+			 * until all relevant invalidation processing is complete.
+			 */
+			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
+			if (!destroy_tablespace_directories(tablespaceoid, false))
+			{
+				/* Still not empty, the files must be important then */
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("tablespace \"%s\" is not empty",
+								tablespacename)));
+			}
+		}
+
+		/* Record the filesystem change in XLOG */
+		{
+			xl_tblspc_drop_rec xlrec;
+
+			xlrec.ts_id = tablespaceoid;
+
+			XLogBeginInsert();
+			XLogRegisterData((char *) &xlrec, sizeof(xl_tblspc_drop_rec));
+
+			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP);
 		}
 	}
-
-	/* Record the filesystem change in XLOG */
-	{
-		xl_tblspc_drop_rec xlrec;
-
-		xlrec.ts_id = tablespaceoid;
-
-		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xl_tblspc_drop_rec));
-
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP);
-	}
-
 	/*
 	 * Note: because we checked that the tablespace was empty, there should be
 	 * no need to worry about flushing shared buffers or free space map
@@ -726,6 +745,16 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 static bool
 destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 {
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * For Yugabyte clusters, tablespaces are not directories.
+		 * They are logical groupings of tables to specify options
+		 * like geo-placement. Thus destroying directories is not
+		 * applicable for YB clusters.
+		 */
+		return true;
+	}
 	char	   *linkloc;
 	char	   *linkloc_with_version_dir;
 	DIR		   *dirdesc;

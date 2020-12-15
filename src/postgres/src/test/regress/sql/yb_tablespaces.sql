@@ -23,6 +23,9 @@ CREATE TABLESPACE y WITH (replica_placement='[{"cloud":"cloud1","region":"r1","z
 -- describe command
 \db
 
+DROP TABLESPACE x;
+DROP TABLESPACE y;
+
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
 CREATE TABLESPACE regress_tblspacewith WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3}]'); -- ok
@@ -143,7 +146,9 @@ SELECT COUNT(*) FROM testschema.atable;
 CREATE TABLE bar (i int) TABLESPACE regress_nosuchspace;
 
 -- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLESPACE regress_tblspace;
+\set VERBOSITY default
 
 CREATE ROLE regress_tablespace_user1 login;
 CREATE ROLE regress_tablespace_user2 login;
@@ -175,5 +180,7 @@ DROP TABLESPACE regress_tblspace_renamed;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA testschema CASCADE;
 \set VERBOSITY default
+DROP ROLE regress_tablespace_user1;
+DROP TABLESPACE regress_tblspace;
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
