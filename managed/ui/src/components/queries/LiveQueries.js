@@ -11,6 +11,7 @@ import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
 import { useApiQueriesFetch, filterBySearchTokens } from './queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
+import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 
 import './LiveQueries.scss';
 
@@ -70,6 +71,7 @@ const LiveQueriesComponent = ({ location }) => {
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
   const searchInput = useRef(null);
+  const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useApiQueriesFetch({
@@ -133,8 +135,11 @@ const LiveQueriesComponent = ({ location }) => {
   }, [searchInput, searchTokens]);
 
   const getTserverLink = (cell, row) => {
+    const tserverPort = currentUniverse?.data?.universeDetails.communicationPorts.tserverHttpPort;
+    const href = getProxyNodeAddress(universeUUID, customer, row.privateIp, tserverPort);
+
     return (
-      <a href={`http://${row.privateIp}/`}
+      <a href={href}
         title={cell}
         target="_blank"
         rel="noopener noreferrer"
