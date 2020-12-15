@@ -215,6 +215,7 @@ class PgApiImpl {
                                 bool add_primary_key,
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
+                                const PgObjectId& tablespace_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -278,6 +279,7 @@ class PgApiImpl {
                                 const bool skip_index_backfill,
                                 bool if_not_exist,
                                 const PgObjectId& tablegroup_oid,
+                                const PgObjectId& tablespace_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

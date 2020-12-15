@@ -4314,7 +4314,7 @@ OptTableGroup:
 		;
 
 OptTableSpace:
-	     		TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
+	     		TABLESPACE name { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
