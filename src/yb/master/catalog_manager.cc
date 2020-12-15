@@ -345,6 +345,9 @@ DEFINE_double(heartbeat_safe_deadline_ratio, .20,
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
+DEFINE_int32(partitions_vtable_cache_refresh_secs, 30,
+             "Amount of time to wait before refreshing the system.partitions cached vtable.");
+
 namespace yb {
 namespace master {
 
@@ -1113,6 +1116,9 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
   LOG_IF(DFATAL, system_tablets_.size() != kNumSystemTables)
       << "kNumSystemTables is " << kNumSystemTables << " but " << system_tablets_.size()
       << " tables were created";
+
+  // Cache the system.partitions tablet so we can access it in RebuildYQLSystemPartitions.
+  RETURN_NOT_OK(GetYQLPartitionsVTable(&system_partitions_tablet_));
 
   return Status::OK();
 }
@@ -6801,6 +6807,9 @@ Status CatalogManager::EnableBgTasks() {
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
+  // Add bg thread to rebuild the system partitions thread.
+  RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+      std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
   return Status::OK();
 }
 
@@ -8645,6 +8654,54 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
   }
 
   return all_tables;
+}
+
+Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) {
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
+      std::make_pair(kSystemNamespaceId, kSystemPartitionsTableName));
+  SCHECK(table != nullptr, NotFound, "YQL system.partitions table not found");
+
+  vector<scoped_refptr<TabletInfo>> tablets;
+  table->GetAllTablets(&tablets);
+  SCHECK(tablets.size() == 1, NotFound, "YQL system.partitions tablet not found");
+  *tablet = std::dynamic_pointer_cast<SystemTablet>(
+      VERIFY_RESULT(GetSystemTablet(tablets[0]->tablet_id())));
+  return Status::OK();
+}
+
+void CatalogManager::RebuildYQLSystemPartitions() {
+  if (FLAGS_partitions_vtable_cache_refresh_secs > 0) {
+    ScopedLeaderSharedLock l(this);
+    if (l.catalog_status().ok() && l.leader_status().ok()) {
+      if (system_partitions_tablet_ != nullptr) {
+        auto s = down_cast<const YQLPartitionsVTable&>(
+            system_partitions_tablet_->QLStorage()).GenerateAndCacheData();
+        if (!s.ok()) {
+          LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
+        }
+      } else {
+        LOG(ERROR) << "Error finding system.partitions vtable.";
+      }
+    }
+  }
+
+  while (true) {
+    // Allow for FLAGS_partitions_vtable_cache_refresh_secs to be changed on the fly. If set to 0,
+    // then this thread will sleep and awake every kDefaultYQLPartitionsRefreshBgTaskSleepSecs to
+    // check if the flag has changed again.
+    int sleep_secs = FLAGS_partitions_vtable_cache_refresh_secs;
+    if (sleep_secs <= 0) {
+      sleep_secs = kDefaultYQLPartitionsRefreshBgTaskSleepSecs;
+    }
+    SleepFor(MonoDelta::FromSeconds(sleep_secs));
+    const auto s = background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&CatalogManager::RebuildYQLSystemPartitions, this));
+    if (s.ok() || s.IsServiceUnavailable()) {
+      // Either succesfully started new task, or we are shutting down.
+      return;
+    }
+    LOG(WARNING) << "Could not submit RebuildYQLSystemPartitions to thread pool: " << s.ToString();
+  }
 }
 
 }  // namespace master

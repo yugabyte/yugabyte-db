@@ -19,6 +19,8 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.cql.BaseCQLTest;
+import org.yb.minicluster.MiniYBClusterBuilder;
+
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
 
@@ -33,6 +35,13 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestCassandraSparkWordCount extends BaseCQLTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();
+
+    @Override
+    protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+        super.customizeMiniClusterBuilder(builder);
+        // Disable the system.partitions vtable refresh bg thread.
+        builder.yqlSystemPartitionsVtableRefreshSecs(0);
+    }
 
     protected Map<String, String> getTServerFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
