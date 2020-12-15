@@ -87,7 +87,7 @@ restore_backup() {
   modify_service yb-platform stop
 
   if [[ "$is_prometheus" = true ]]; then
-    modify_service yb-platform stop
+    modify_service prometheus stop
   fi
 
   yugaware_dump="${destination}/${YUGAWARE_DUMP_FNAME}"
