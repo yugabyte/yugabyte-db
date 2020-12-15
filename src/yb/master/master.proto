@@ -1188,6 +1188,18 @@ message GetTableSchemaResponsePB {
   optional bool colocated = 13;
 }
 
+message GetColocatedTabletSchemaRequestPB {
+  required TableIdentifierPB parent_colocated_table = 1;
+}
+
+message GetColocatedTabletSchemaResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // List of all colocated user tables in this colocated database.
+  repeated GetTableSchemaResponsePB get_table_schema_response_pbs = 2;
+}
+
 // ============================================================================
 //  Administration/monitoring
 // ============================================================================
@@ -1954,6 +1966,8 @@ service MasterService {
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+  rpc GetColocatedTabletSchema(GetColocatedTabletSchemaRequestPB)
+      returns (GetColocatedTabletSchemaResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc IsCreateNamespaceDone(IsCreateNamespaceDoneRequestPB)

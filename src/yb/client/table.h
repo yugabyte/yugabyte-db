@@ -147,6 +147,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetColocatedTabletSchemaRpc;
 
   struct VersionedPartitions {
     std::vector<std::string> keys;

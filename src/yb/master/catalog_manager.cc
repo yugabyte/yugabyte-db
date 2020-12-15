@@ -4387,6 +4387,65 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                                GetColocatedTabletSchemaResponsePB* resp) {
+  VLOG(1) << "Servicing GetColocatedTabletSchema request for " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  // Lookup the given parent colocated table and verify if it exists.
+  scoped_refptr<TableInfo> parent_colocated_table;
+  {
+    TRACE("Looking up table");
+    RETURN_NOT_OK(FindTable(req->parent_colocated_table(), &parent_colocated_table));
+    TRACE("Locking table");
+    auto l = parent_colocated_table->LockForRead();
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
+  }
+
+  if (!parent_colocated_table->colocated() || !IsColocatedParentTable(*parent_colocated_table)) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE,
+                      STATUS(InvalidArgument, "Table provided is not a parent colocated table"));
+  }
+
+  // Next get all the user tables that are in the database.
+  ListTablesRequestPB listTablesReq;
+  ListTablesResponsePB ListTablesResp;
+
+  listTablesReq.mutable_namespace_()->set_id(parent_colocated_table->namespace_id());
+  listTablesReq.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  listTablesReq.set_exclude_system_tables(true);
+  Status status = ListTables(&listTablesReq, &ListTablesResp);
+  if (!status.ok() || ListTablesResp.has_error()) {
+    LOG(ERROR) << "Error while listing tables: " << status;
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
+  }
+
+  // Get the table schema for each colocated table.
+  for (const auto& t : ListTablesResp.tables()) {
+    // Need to check if this table is colocated first.
+    scoped_refptr<TableInfo> table;
+    TableIdentifierPB t_pb;
+    t_pb.set_table_id(t.id());
+    TRACE("Looking up table");
+    RETURN_NOT_OK(FindTable(t_pb, &table));
+
+    if (table->colocated()) {
+      // Now we can get the schema for this table.
+      GetTableSchemaRequestPB schemaReq;
+      GetTableSchemaResponsePB schemaResp;
+      schemaReq.mutable_table()->Swap(&t_pb);
+      status = GetTableSchema(&schemaReq, &schemaResp);
+      if (!status.ok() || schemaResp.has_error()) {
+        LOG(ERROR) << "Error while getting table schema: " << status;
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
+      }
+      resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
