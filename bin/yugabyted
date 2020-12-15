@@ -124,6 +124,7 @@ TS_MASTER_ADDRS_FLAG = "tserver_master_addrs"
 
 start_time_sec = time.time()
 
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -1339,11 +1340,9 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--tserver_flags", help=argparse.SUPPRESS)
 
-
         if not sys.argv[1:]:
             parser.print_help()
             return
-
 
         args = parser.parse_args()
         self.validate_and_set_configs(args)
@@ -1375,7 +1374,7 @@ class ControlScript(object):
         return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
     def master_port(self):
-       self.configs.saved_data.get("master_rpc_port")
+        self.configs.saved_data.get("master_rpc_port")
 
     def first_install_init_auth(self):
         if self.get_failed_node_processes():
@@ -1430,6 +1429,7 @@ class ControlScript(object):
 
         proxy_class.load_files(files_path)
 
+
 class Configs(object):
     def __init__(self, config_file, base_dir):
         self.saved_data = {
@@ -1477,7 +1477,7 @@ class Configs(object):
         if os.path.isfile(config_file):
             try:
                 with open(config_file) as f:
-                   configs.saved_data.update(json.load(f))
+                    configs.saved_data.update(json.load(f))
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
@@ -1617,7 +1617,7 @@ class ProcessManager(object):
 
     # Raise RetryableError if pidfile still exists.
     def is_proc_running(self, pid):
-        if (os.path.exists(self.pidfile) or ProcessManager.get_command(pid) != ""):
+        if os.path.exists(self.pidfile) or ProcessManager.get_command(pid) != "":
             raise RetryableError()
         else:
             return True
@@ -1740,7 +1740,6 @@ class YBProcessManager(ProcessManager):
         super(YBProcessManager, self).__init__(name, cmd, log_dir, data_dir, data_log_path)
         self.error_log = "{}/yb-{}.ERROR".format(data_log_path, name)
 
-
     def start(self):
         # Remove old logs as timestamped logs should have already been created.
         self.remove_error_logs()
@@ -1848,14 +1847,14 @@ class YBAdminProxy(object):
         cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
-        return (0 == ret_code)
+        return 0 == ret_code
 
     @staticmethod
     def set_rf(master_addrs, rf, timeout=10):
-        cmd = [ YBAdminProxy.path, "--init_master_addrs", master_addrs,
-                "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
+        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+               "modify_placement_info", "cloud1.datacenter1.rack1", str(rf)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
-        return (0 == ret_code)
+        return 0 == ret_code
 
     @staticmethod
     # Returns [ (uuid, ip:port) ] for each master
@@ -1864,8 +1863,8 @@ class YBAdminProxy(object):
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
-        masters = [ line.split() for line in out.splitlines()[1:] ]
-        return [ (master[0], master[1]) for master in masters ]
+        masters = [line.split() for line in out.splitlines()[1:]]
+        return [(master[0], master[1]) for master in masters]
 
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
@@ -1905,7 +1904,7 @@ class YBAdminProxy(object):
 # Proxy for ysqlsh commands.
 class YsqlProxy(object):
     def __init__(self, ip, port, path=os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"]),
-                    get_default_credentials=False):
+                 get_default_credentials=False):
         self.cmd = [path, "-h", str(ip), "-p", str(port)]
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
@@ -2075,9 +2074,11 @@ class YcqlProxy(object):
             Output.log("YCQL Connection Info - {}".format(out))
             return True
 
+
 # Currently unused. Useful for getting diagnostics that are available only through logs.
 class LogAnalyzer(object):
     unsupported_error = "not supported yet"
+
     def __init__(self, logfile):
         self.logfile = logfile
         # Flag to stop tailing the logfile.
@@ -2102,6 +2103,7 @@ class LogAnalyzer(object):
                     time.sleep(0.1)
                     continue
                 yield line
+
 
 # Manages API calls to YW.
 class YugaWareProxy(object):
@@ -2247,7 +2249,7 @@ class YugaWareProxy(object):
             err_msg = "Failed to set security level: {}".format(e)
 
         if not err_msg:
-            Output.log("Sucesssfully set YW security to {}".format(level))
+            Output.log("Successfully set YW security to {}".format(level))
         else:
             Output.log(err_msg, logging.ERROR)
         return err_msg
@@ -2459,6 +2461,7 @@ class Output(object):
 # Class to customize argparse output.
 class PrettyArgParser(argparse.ArgumentParser):
     epilog = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
+
     def __init__(self, **kwargs):
         kwargs["formatter_class"] = PrettyHelpFormatter
         kwargs["epilog"] = self.epilog
@@ -2490,6 +2493,7 @@ def get_kv(map):
     else:
         return map.items()
 
+
 def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
     if log_cmd:
         Output.log("run_process: cmd: {}".format(str(cmd)))
@@ -2508,13 +2512,17 @@ def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
             retcode, ret_out, ret_err))
     return (ret_out, ret_err, retcode)
 
+
 def run_process_checked(cmd, timeout=None, log_cmd=True, env_vars=None):
     out, err, retcode = run_process(cmd=cmd, timeout=timeout, log_cmd=log_cmd, env_vars=env_vars)
     if retcode:
         Output.log_error_and_exit("Error: {}".format(err))
     return out
 
-def rmcontents(dirname, exclude_names=[]):
+
+def rmcontents(dirname, exclude_names=None):
+    if exclude_names is None:
+        exclude_names = []
     for f in os.listdir(dirname):
         if f in exclude_names:
             continue
@@ -2530,6 +2538,7 @@ def rmcontents(dirname, exclude_names=[]):
 
 class RetryableError(Exception):
     pass
+
 
 # Retry as long as func throws RetryableError.
 def retry_op(func, timeout=180):
@@ -2609,7 +2618,7 @@ class EnvBasedCredentials(object):
                 proxy_class.db_owner(self.get_ysql_db(), self.get_ysql_user())
 
             # Note: Following lines will be commented till we can decide on default user deletion.
-            #proxy_class.delete_user(self.get_ysql_user(), self.get_ysql_password())
+            # proxy_class.delete_user(self.get_ysql_user(), self.get_ysql_password())
 
     def setup_ycql_credentials(self, proxy_class):
 
