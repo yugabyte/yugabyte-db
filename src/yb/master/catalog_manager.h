@@ -60,6 +60,7 @@
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -1133,6 +1134,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Used on normal master startup or when master comes out of the shell mode.
   CHECKED_STATUS EnableBgTasks();
 
+  // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
+  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet);
+  // Background task for automatically rebuilding system.partitions every
+  // partitions_vtable_cache_refresh_secs seconds.
+  void RebuildYQLSystemPartitions();
+
   // Set the current list of black listed nodes, which is used to track the load movement off of
   // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
   // when the blacklist load removal operation was started. It permits overwrite semantics
@@ -1353,6 +1360,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
 
+  // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
+  std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
+
   // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
   YsqlTransactionDdl ysql_transaction_;
 
@@ -1366,6 +1376,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  static constexpr int kDefaultYQLPartitionsRefreshBgTaskSleepSecs = 10;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
