@@ -4377,6 +4377,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
           "Placement policy cannot be altered for a colocated table");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
     }
+    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+      const Status s = STATUS(InvalidArgument,
+            "Placement policy cannot be altered for YSQL tables, use Tablespaces");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
     // Validate table replication info.
     RETURN_NOT_OK(ValidateTableReplicationInfo(req->replication_info()));
     table_pb.mutable_replication_info()->CopyFrom(req->replication_info());

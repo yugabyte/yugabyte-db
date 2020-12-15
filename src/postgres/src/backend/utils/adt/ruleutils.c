@@ -1139,9 +1139,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 
 /*
  * Internal version for use by ALTER TABLE.
- * Includes a tablespace clause in the result, unless YugaByte is enabled, in which case
- * we do not include this clause.
- * TODO - Remove the IsYugaByteEnabled check once Tablespaces are implemented.
+ * Includes a tablespace clause in the result.
  * TODO - We also currently add NONCONCURRENTLY here, but this can be removed with #6703.
  *
  * Returns a palloc'd C string; no pretty-printing.
@@ -1151,7 +1149,7 @@ pg_get_indexdef_string(Oid indexrelid)
 {
 	return pg_get_indexdef_worker(indexrelid, 0, NULL,
 								  false, false,
-								  !IsYugaByteEnabled(), true,
+								  true, true,
 								  0, false,
 								  IsYugaByteEnabled() /* useNonconcurrently */);
 }
