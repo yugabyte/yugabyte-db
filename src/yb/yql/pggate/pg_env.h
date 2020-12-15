@@ -72,6 +72,10 @@ struct PgObjectId {
     return GetPgsqlTablegroupId(database_oid, object_oid);
   }
 
+  TablespaceId GetYBTablespaceId() const {
+    return GetPgsqlTablespaceId(object_oid);
+  }
+
   std::string ToString() const {
     return Format("{$0, $1}", database_oid, object_oid);
   }
