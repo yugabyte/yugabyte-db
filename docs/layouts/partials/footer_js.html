@@ -205,7 +205,9 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
 
-      gtag('config', '{{.Site.GoogleAnalytics}}');
+      gtag('config', '{{.Site.GoogleAnalytics}}', {
+        'anonymize_ip': true
+      });
       /* Track outbound links */
       var buttons = document.querySelectorAll('a');
         Array.prototype.map.call(buttons, function(item) {
