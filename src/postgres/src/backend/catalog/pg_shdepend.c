@@ -59,6 +59,7 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
+#include "commands/tablespace.h"
 #include "commands/typecmds.h"
 #include "storage/lmgr.h"
 #include "miscadmin.h"
@@ -169,6 +170,37 @@ recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner)
 	referenced.objectSubId = 0;
 
 	recordSharedDependencyOn(&myself, &referenced, SHARED_DEPENDENCY_OWNER);
+}
+
+/*
+ * recordDependencyOnTablespace
+ *
+ * A convenient wrapper of recordSharedDependencyOn -- mark that an object is
+ * associated with a tablespace.
+ *
+ * Note: it's the caller's responsibility to ensure that there isn't a
+ * tablespace entry for the object already.
+ */
+void
+recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
+{
+	if (tablespaceOid == InvalidOid)
+	{
+		/* Nothing to do */
+		return;
+	}
+	ObjectAddress myself, referenced;
+
+	myself.classId = classId;
+	myself.objectId = objectId;
+	myself.objectSubId = 0;
+
+	referenced.classId = TableSpaceRelationId;
+	referenced.objectId = tablespaceOid;
+	referenced.objectSubId = 0;
+
+	recordSharedDependencyOn(&myself, &referenced,
+							 SHARED_DEPENDENCY_TABLESPACE);
 }
 
 /*
@@ -998,13 +1030,6 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 								objectId)));
 			break;
 
-			/*
-			 * Currently, this routine need not support any other shared
-			 * object types besides roles.  If we wanted to record explicit
-			 * dependencies on databases or tablespaces, we'd need code along
-			 * these lines:
-			 */
-#ifdef NOT_USED
 		case TableSpaceRelationId:
 			{
 				/* For lack of a syscache on pg_tablespace, do this: */
@@ -1018,7 +1043,6 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 				pfree(tablespace);
 				break;
 			}
-#endif
 
 		case DatabaseRelationId:
 			{
@@ -1078,6 +1102,8 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
+			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
+				appendStringInfo(descs, _("tablespace of %s"), objdesc);
 			else
 				elog(ERROR, "unrecognized dependency type: %d",
 					 (int) deptype);
