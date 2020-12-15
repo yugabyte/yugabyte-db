@@ -707,29 +707,10 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
   return impl_->ModifyFlushedFrontier(frontier);
 }
 
-bool HasPendingCompaction(rocksdb::DB* db) {
-  uint64_t compaction_pending = 0;
-  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-  return compaction_pending > 0;
-}
-
-bool HasRunningCompaction(rocksdb::DB* db) {
-  uint64_t running_compactions = 0;
-  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-  return running_compactions > 0;
-}
-
-Status ForceRocksDBCompact(rocksdb::DB* db, const MonoDelta timeout) {
-  auto expiration = MonoTime::Now() + timeout;
+Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");
-  while ((HasPendingCompaction(db) || HasRunningCompaction(db)) && MonoTime::Now() < expiration) {
-    if (MonoTime::Now() > expiration) {
-      return STATUS(TimedOut, "Timed out waiting for manual compaction to complete");
-    }
-    std::this_thread::sleep_for(10ms);
-  }
   return Status::OK();
 }
 
