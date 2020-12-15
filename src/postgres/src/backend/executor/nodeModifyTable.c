@@ -594,8 +594,8 @@ ExecInsert(ModifyTableState *mtstate,
 				/* insert index entries for tuple */
 				if (resultRelInfo->ri_NumIndices > 0)
 					recheckIndexes = ExecInsertIndexTuples(slot, tuple,
-																								 estate, false, NULL,
-																								 NIL);
+					                                       estate, false, NULL,
+					                                       NIL);
 			}
 		}
 	}
@@ -1171,21 +1171,19 @@ ExecUpdate(ModifyTableState *mtstate,
 			return NULL;
 		}
 
-		/*
-		 * Update indexes if needed.
-		 */
+		/* Update indices selectively if necessary, Single row updates do not affect indeces */
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
-		    !((ModifyTable *)mtstate->ps.plan)->no_index_update)
+		    !mtstate->yb_mt_is_single_row_update_or_delete)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+			List *no_update_index_list = ((ModifyTable *)mtstate->ps.plan)->no_update_index_list;
 
 			/* Delete index entries of the old tuple */
-			ExecDeleteIndexTuples(ybctid, oldtuple, estate);
+			ExecDeleteIndexTuplesOptimized(ybctid, oldtuple, estate, no_update_index_list);
 
 			/* Insert new index entries for tuple */
-			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
-												   estate, false, NULL,
-												   NIL);
+			recheckIndexes = ExecInsertIndexTuplesOptimized(
+			    slot, tuple, estate, false, NULL, NIL, no_update_index_list);
 		}
 	}
 	else

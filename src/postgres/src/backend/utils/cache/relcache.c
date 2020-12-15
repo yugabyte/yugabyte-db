@@ -5536,6 +5536,60 @@ IsProjectionFunctionalIndex(Relation index)
 	return is_projection;
 }
 
+bool
+CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
+                      Relation indexDesc,
+                      const int Anum_pg_index,
+                      AttrNumber attr_offset)
+{
+  bool      isnull = false;
+  Datum datum = heap_getattr(
+      indexDesc->rd_indextuple, Anum_pg_index, GetPgIndexDescriptor(), &isnull);
+  if (isnull)
+    return false;
+
+  Node *indexNode = stringToNode(TextDatumGetCString(datum));
+  Bitmapset *indexattrs = NULL;
+  pull_varattnos_min_attr(indexNode, 1, &indexattrs, attr_offset + 1);
+  return bms_overlap(updated_attrs, indexattrs);
+}
+/*
+ * CheckIndexForUpdate -- Given Oid of an Index corresponding to a specific
+ * relation and the set of attributes that are updated because of an SQL
+ * statement, this function returns true of the Index needs to be updated and
+ * vice versa.
+ */
+bool
+CheckIndexForUpdate(Oid indexOid, const Bitmapset *updated_attrs, AttrNumber attr_offset)
+{
+  Relation  indexDesc          = index_open(indexOid, AccessShareLock);
+  Bitmapset *indexattrs        = NULL;
+  bool need_update = false;
+
+  /*
+   * We first check updates affect the current index by iterating over the
+   * columns associated with an index to see if the updated attributes affects
+   * the index. If it does, we return true.
+   */
+  for (int i = 0; i < indexDesc->rd_index->indnatts; ++i)
+  {
+    const int attrnum = indexDesc->rd_index->indkey.values[i];
+    if (attrnum != 0 && bms_is_member(attrnum - attr_offset, updated_attrs))
+    {
+      need_update = true;
+      break;
+    }
+  }
+  /* If none of the columns are affected, we check for IndexExpressions and IndexPredicates */
+  need_update = need_update
+                || CheckUpdateExprOrPred(updated_attrs, indexDesc, Anum_pg_index_indexprs, attr_offset)
+                || CheckUpdateExprOrPred(updated_attrs, indexDesc, Anum_pg_index_indpred, attr_offset);
+
+  bms_free(indexattrs);
+  index_close(indexDesc, AccessShareLock);
+  return need_update;
+}
+
 /*
  * RelationGetIndexAttrBitmap -- get a bitmap of index attribute numbers
  *

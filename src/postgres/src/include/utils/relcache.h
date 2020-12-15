@@ -62,6 +62,8 @@ typedef enum IndexAttrBitmapKind
 
 extern Bitmapset *RelationGetIndexAttrBitmap(Relation relation,
 						   IndexAttrBitmapKind attrKind);
+extern bool CheckIndexForUpdate(Oid indexoid,
+						   const Bitmapset *updated_attrs, AttrNumber attr_offset);
 
 extern void RelationGetExclusionInfo(Relation indexRelation,
 						 Oid **operators,
