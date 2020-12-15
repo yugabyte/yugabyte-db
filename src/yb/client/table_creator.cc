@@ -95,6 +95,11 @@ YBTableCreator& YBTableCreator::tablegroup_id(const std::string& tablegroup_id) 
   return *this;
 }
 
+YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) {
+  tablespace_id_ = tablespace_id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -235,6 +240,10 @@ Status YBTableCreator::Create() {
 
   if (!tablegroup_id_.empty()) {
     req.set_tablegroup_id(tablegroup_id_);
+  }
+
+  if (!tablespace_id_.empty()) {
+    req.set_tablespace_id(tablespace_id_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
