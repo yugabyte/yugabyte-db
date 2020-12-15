@@ -1324,21 +1324,23 @@ class ControlScript(object):
                 "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
                 help="Toggle enabling or disabling webserver UI. Default false.")
             cur_parser.add_argument(
+                "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
+            cur_parser.add_argument(
+                "--master_flags", help="Specify extra master flags as a set of key value pairs. "
+                                       "Format (key=value,key=value)")
+            cur_parser.add_argument(
+                "--tserver_flags", help="Specify extra tserver flags as a set of key value pairs. "
+                                        "Format (key=value,key=value)")
+
+            # Hidden commands for development/advanced users
+            cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES, metavar="BOOL",
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--use_cassandra_authentication", choices=BOOL_CHOICES, metavar="BOOL",
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
-
-            # Hidden commands for development/advanced users
-            cur_parser.add_argument(
                 "--polling_interval", help=argparse.SUPPRESS)
-            cur_parser.add_argument(
-                "--master_flags", help=argparse.SUPPRESS)
-            cur_parser.add_argument(
-                "--tserver_flags", help=argparse.SUPPRESS)
 
         if not sys.argv[1:]:
             parser.print_help()
