@@ -70,7 +70,7 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 # What's being worked on?
 
-> This section has been updated on **Nov 30, 2020**.
+> This section has been updated on **Dec 14, 2020**.
 
 ## Current roadmap
 
