@@ -93,6 +93,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetTableSchema(const GetTableSchemaRequestPB* req,
                       GetTableSchemaResponsePB* resp,
                       rpc::RpcContext rpc) override;
+  void GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                GetColocatedTabletSchemaResponsePB* resp,
+                                rpc::RpcContext rpc) override;
   void ListTabletServers(const ListTabletServersRequestPB* req,
                          ListTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override;

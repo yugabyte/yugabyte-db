@@ -94,6 +94,8 @@ using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
+using yb::master::GetColocatedTabletSchemaRequestPB;
+using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -629,6 +631,17 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
                                     StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
+}
+
+Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetColocatedTabletSchemaById(this,
+                                             parent_colocated_table_id,
+                                             deadline,
+                                             info,
+                                             callback);
 }
 
 Result<IndexPermissions> YBClient::GetIndexPermissions(

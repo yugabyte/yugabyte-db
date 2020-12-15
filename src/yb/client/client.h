@@ -330,6 +330,10 @@ class YBClient {
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
 
+  CHECKED_STATUS GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback);
+
   Result<IndexPermissions> GetIndexPermissions(
       const TableId& table_id,
       const TableId& index_id);
@@ -735,6 +739,7 @@ class YBClient {
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetColocatedTabletSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::MetaCache;
   friend class internal::RemoteTablet;

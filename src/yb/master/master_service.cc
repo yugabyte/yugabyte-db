@@ -397,6 +397,12 @@ void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::GetTableSchema);
 }
 
+void MasterServiceImpl::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                                 GetColocatedTabletSchemaResponsePB* resp,
+                                                 RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetColocatedTabletSchema);
+}
+
 void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
                                         CreateNamespaceResponsePB* resp,
                                         RpcContext rpc) {
