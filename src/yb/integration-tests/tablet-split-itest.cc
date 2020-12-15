@@ -442,12 +442,24 @@ Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListPostSplitChildr
   return ListTableActiveTabletPeers(cluster_.get(), test_table_id);
 }
 
+bool HasPendingCompaction(rocksdb::DB* db) {
+  uint64_t compaction_pending = 0;
+  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
+  return compaction_pending > 0;
+}
+
+bool HasRunningCompaction(rocksdb::DB* db) {
+  uint64_t running_compactions = 0;
+  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
+  return running_compactions > 0;
+}
+
 void TabletSplitITest::VerifyTriggeredPostSplitCompaction(int num_peers) {
   for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
     const auto* tablet = peer->tablet();
     auto* db = tablet->TEST_db();
-    auto has_triggered_compaction = docdb::HasPendingCompaction(db) ||
-        docdb::HasRunningCompaction(db) ||
+    auto has_triggered_compaction = HasPendingCompaction(db) ||
+        HasRunningCompaction(db) ||
         tablet->metadata()->has_been_fully_compacted();
     EXPECT_TRUE(has_triggered_compaction);
     num_peers--;
