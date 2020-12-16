@@ -13,6 +13,7 @@ from __future__ import print_function
 import atexit
 import boto3
 import botocore
+import distro
 import datetime
 import glob
 import hashlib
