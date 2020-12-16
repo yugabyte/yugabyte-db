@@ -93,7 +93,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
             // Do nothing
           }
         } while (!status && iters < MAX_ITERS);
-        if (iters > MAX_ITERS) {
+        if (iters >= MAX_ITERS) {
           throw new RuntimeException("Pods' start taking too long.");
         }
         break;

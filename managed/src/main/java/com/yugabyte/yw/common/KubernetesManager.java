@@ -104,7 +104,8 @@ public class KubernetesManager {
       throw new RuntimeException("Helm Package path not provided.");
     }
     List<String> commandList = ImmutableList.of("helm",  "upgrade",  universePrefix,
-        helmPackagePath, "-f", overridesFile, "--namespace", universePrefix);
+        helmPackagePath, "-f", overridesFile, "--namespace", universePrefix,
+        "--timeout", getTimeout(), "--wait");
     LOG.info(String.join(" ", commandList));
     return execCommand(config, commandList);
   }
