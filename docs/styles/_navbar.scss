@@ -333,11 +333,18 @@ body {
       border: 1px solid #cbcdd0;
       color: #202951;
       text-decoration: none;
-      padding: 5px 15px;
+      padding: 10px 15px;
       height: 42px;
       border-radius: 7px;
       margin-right: 15px;
       font-size: 15px;
+      align-items: center;
+      display: flex;
+
+      i {
+        font-size: 20px;
+        margin-left: 5px;
+      }
     }
 
     .navbar-link-btn:hover {
@@ -349,16 +356,6 @@ body {
       margin-left: -7px;
       margin-right: -8px;
       margin-bottom: 2px;
-    }
-
-    .social-link-icon {
-      margin-left: 5px;
-    }
-
-    @media screen and (max-width: 1100px) {
-      .social-link-text {
-        display: none;
-      }
     }
 
     @media screen and (max-width: 991px) {

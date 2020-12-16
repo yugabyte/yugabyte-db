@@ -199,13 +199,13 @@
   </script>
 
   {{ with .Site.GoogleAnalytics }}
-    <script async src="https://www.googletagmanager.com/gtag/js?id={{.Site.GoogleAnalytics}}"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ . }}"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
 
-      gtag('config', '{{.Site.GoogleAnalytics}}', {
+      gtag('config', '{{ . }}', {
         'anonymize_ip': true
       });
       /* Track outbound links */
