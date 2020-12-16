@@ -22,7 +22,8 @@ from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+    YB_HOME_DIR
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
 
@@ -508,9 +509,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
-        self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
+        self.parser.add_argument('--certs_node_dir',
+                                 default=os.path.join(YB_HOME_DIR, "yugabyte-tls-config"))
         self.parser.add_argument('--encryption_key_source_file')
-        self.parser.add_argument('--encryption_key_target_dir', default="yugabyte-encryption-files")
+        self.parser.add_argument('--encryption_key_target_dir',
+                                 default="yugabyte-encryption-files")
 
         self.parser.add_argument('--master_http_port', default=7000)
         self.parser.add_argument('--master_rpc_port', default=7100)

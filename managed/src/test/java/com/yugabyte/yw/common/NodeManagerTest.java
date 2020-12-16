@@ -397,6 +397,8 @@ public class NodeManagerTest extends FakeDBApplication {
               configureParams.allowInsecure ? "true" : "false"
             );
             gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+            expectedCommand.add("--certs_node_dir");
+            expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
 
             if (cert.certType == CertificateInfo.Type.SelfSigned) {
               expectedCommand.add("--rootCA_cert");
