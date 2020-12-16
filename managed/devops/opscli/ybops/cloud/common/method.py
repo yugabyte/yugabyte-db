@@ -741,10 +741,10 @@ class AccessCreateVaultMethod(AbstractMethod):
         if args.vault_password is None:
             vault_password = generate_random_password()
             args.vault_password = "{}.vault_password".format(file_prefix)
-            with file(args.vault_password, "w") as f:
+            with open(args.vault_password, "w") as f:
                 f.write(vault_password)
         elif os.path.exists(args.vault_password):
-            with file(args.vault_password) as f:
+            with open(args.vault_password, "r") as f:
                 vault_password = f.read().strip()
 
             if vault_password is None:
