@@ -3,28 +3,26 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.LiveQueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
-import play.Configuration;
-import play.Environment;
-
+import org.pac4j.core.client.Clients;
+import org.pac4j.core.config.Config;
+import org.pac4j.oidc.client.OidcClient;
+import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
-
-import org.pac4j.core.config.Config;
-import org.pac4j.core.client.Clients;
-import org.pac4j.oidc.client.OidcClient;
-import org.pac4j.oidc.config.OidcConfiguration;
-
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
+import play.Configuration;
+import play.Environment;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -43,6 +41,9 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+    // TODO: other clouds
+    install(new AWSCloudModule());
+
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
     bind(ConfigHelper.class).asEagerSingleton();
