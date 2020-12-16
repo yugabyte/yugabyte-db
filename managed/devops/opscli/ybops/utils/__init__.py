@@ -263,9 +263,9 @@ def get_checksum(file_path, hasher):
     Returns:
         (string): hex digest based on the hasher provided
     """
-    with file(file_path, "rb") as f:
+    with open(file_path, "rb") as f:
         # Read the file in 4KB chunks until EOF.
-        for chunk in iter(lambda: f.read(BLOCK_SIZE), ""):
+        for chunk in iter(lambda: f.read(BLOCK_SIZE), b''):
             hasher.update(chunk)
         return hasher.hexdigest()
 
@@ -446,9 +446,9 @@ def format_rsa_key(key, public_key):
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
     if public_key:
-        return key.publickey().exportKey("OpenSSH")
+        return str(key.publickey().exportKey("OpenSSH"))
     else:
-        return key.exportKey("PEM")
+        return str(key.exportKey("PEM"))
 
 
 def validated_key_file(key_file):
@@ -463,7 +463,7 @@ def validated_key_file(key_file):
     if not os.path.exists(key_file):
         raise YBOpsRuntimeError("Key file {} not found.".format(key_file))
 
-    with file(key_file) as f:
+    with open(key_file) as f:
         return RSA.importKey(f.read())
 
 
@@ -488,10 +488,10 @@ def generate_rsa_keypair(key_name, destination='/tmp'):
     if os.path.exists(private_key_filename):
         raise YBOpsRuntimeError("Private key file {} already exists".format(private_key_filename))
 
-    with file(public_key_filename, "w") as f:
+    with open(public_key_filename, "w") as f:
         f.write(format_rsa_key(new_key, public_key=True))
         os.chmod(f.name, stat.S_IRUSR)
-    with file(private_key_filename, "w") as f:
+    with open(private_key_filename, "w") as f:
         f.write(format_rsa_key(new_key, public_key=False))
         os.chmod(f.name, stat.S_IRUSR)
 
