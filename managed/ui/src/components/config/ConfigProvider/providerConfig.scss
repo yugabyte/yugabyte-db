@@ -357,7 +357,8 @@
     }
 
     .custom-tab {
-      display: inline-block;
+      display: flex;
+      align-items: center;
       width: 180px;
       font-size: 15px;
       font-weight: 500;

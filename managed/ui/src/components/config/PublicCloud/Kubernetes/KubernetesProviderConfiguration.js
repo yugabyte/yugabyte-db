@@ -48,11 +48,11 @@ class KubernetesProviderConfiguration extends Component {
       .map((region) => {
         const providerData = providers.data.find((p) => p.uuid === region.provider.uuid);
 
-        // If the type is PKS we don't want to include other k8s configs and vice versa.
+        // If the type is Tanzu we don't want to include other k8s configs and vice versa.
         if (
           !isDefinedNotNull(providerData) ||
-          (type === 'pks' && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
-          (type === 'k8s' && providerData.config['KUBECONFIG_PROVIDER'] === 'pks')
+          (type === 'tanzu' && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
+          (type === 'k8s' && providerData.config['KUBECONFIG_PROVIDER'] === 'tanzu')
         ) {
           return null;
         }

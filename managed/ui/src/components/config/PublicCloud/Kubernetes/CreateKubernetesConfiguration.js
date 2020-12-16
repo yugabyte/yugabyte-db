@@ -2,18 +2,19 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
+import { withRouter } from 'react-router';
+import * as Yup from 'yup';
+import { Formik, Field } from 'formik';
+import JsYaml from 'js-yaml';
+import _ from 'lodash';
+import clsx from 'clsx';
 import { YBButton } from '../../../common/forms/fields';
 import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
-import { withRouter } from 'react-router';
-import { Formik, Field } from 'formik';
 import AddRegionList from './AddRegionList';
-import * as Yup from 'yup';
-import JsYaml from 'js-yaml';
-import _ from 'lodash';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 
@@ -115,21 +116,23 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-    let title = 'Create Managed Kubernetes config';
+    let title = 'Create Managed Kubernetes Configuration';
     let providerTypeOptions = null;
     if (providerTypeMetadata) {
       providerTypeOptions = [
         { value: providerTypeMetadata.code, label: providerTypeMetadata.name }
       ];
-      title = 'Create ' + providerTypeMetadata.name;
+      title = `Create ${providerTypeMetadata.name} Configuration`;
     } else {
-      providerTypeOptions = KUBERNETES_PROVIDERS.map((provider) => {
-        return { value: provider.code, label: provider.name };
-      }).filter((p) => p.value !== 'pks');
+      providerTypeOptions = KUBERNETES_PROVIDERS
+        // skip providers with dedicated tab
+        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks')
+        .map((provider) => ({ value: provider.code, label: provider.name }));
     }
 
     const initialValues = {
-      providerType: null,
+      // preselect the only available provider type, if any
+      providerType: providerTypeOptions.length === 1 ? providerTypeOptions[0] : null,
       accountName: '',
       serviceAccount: '',
       pullSecret: null,
@@ -199,13 +202,13 @@ class CreateKubernetesConfiguration extends Component {
                 <div className="editor-container">
                   <Row>
                     <Col lg={8}>
-                      <Row className="config-provider-row">
+                      <Row className={clsx('config-provider-row', { 'hidden': providerTypeOptions.length === 1 })}>
                         <Col lg={3}>
                           <div className="form-item-custom-label">Type</div>
                         </Col>
                         <Col lg={7}>
                           <Field
-                            name={'providerType'}
+                            name="providerType"
                             component={YBFormSelect}
                             options={providerTypeOptions}
                           />
