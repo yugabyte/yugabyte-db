@@ -37,6 +37,7 @@
 #include <functional>
 #include <map>
 #include <iomanip>
+#include <sstream>
 #include <unordered_set>
 
 #include "yb/common/partition.h"
@@ -55,6 +56,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/string_case.h"
@@ -1293,6 +1295,14 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
   auto underreplicated_ts = GetUnderReplicatedTablets();
 
+  if(!underreplicated_ts.ok()) {
+    jw.StartObject();
+    jw.String("Error");
+    jw.String(underreplicated_ts.status().ToString());
+    jw.EndObject();
+    return;
+  }
+
   jw.StartObject();
   jw.String("underreplicated_tablets");
   jw.StartArray();
@@ -1756,6 +1766,18 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
   jw.Protobuf(config);
 }
 
+void MasterPathHandlers::HandleVersionInfoDump(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+
+  // Get the version info.
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+
+  jw.Protobuf(version_info);
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1833,6 +1855,9 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/masters", "Master Statuses",
       std::bind(&MasterPathHandlers::HandleGetMastersStatus, this, _1, _2), false, false);
+  server->RegisterPathHandler(
+      "/api/v1/version", "YB Version Information",
+      std::bind(&MasterPathHandlers::HandleVersionInfoDump, this, _1, _2), false, false);
   return Status::OK();
 }
 
