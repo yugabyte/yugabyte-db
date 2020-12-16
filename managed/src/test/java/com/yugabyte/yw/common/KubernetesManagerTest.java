@@ -97,9 +97,10 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void testHelmUpgrade() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
     assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
-        "/tmp/override.yml", "--namespace", "demo-universe"),
+        "/tmp/override.yml", "--namespace", "demo-universe", "--timeout", "600s", "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -109,7 +110,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
     assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
-        "/tmp/override.yml", "--namespace", "demo-universe"),
+        "/tmp/override.yml", "--namespace", "demo-universe", "--timeout", "300s", "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
