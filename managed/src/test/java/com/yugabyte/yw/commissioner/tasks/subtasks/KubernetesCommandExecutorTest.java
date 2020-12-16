@@ -239,6 +239,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     if (defaultUserIntent.enableIPV6) {
       expectedOverrides.put("ip_version_support", "v6_only");
     }
+
+    Map<String, Object> partition = new HashMap<>();
+    partition.put("tserver", 0);
+    partition.put("master", 0);
+    expectedOverrides.put("partition", partition);
+
     // All flags as overrides.
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Master flags.
