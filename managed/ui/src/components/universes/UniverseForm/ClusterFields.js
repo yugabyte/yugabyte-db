@@ -597,6 +597,7 @@ export default class ClusterFields extends Component {
     });
     const volumesList = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList;
     const volumeDetail = volumesList[0];
+    const volumeCount = instanceTypeSelectedData.instanceTypeDetails.volumeCount;
     let mountPoints = null;
     if (instanceTypeSelectedData.providerCode === 'onprem') {
       mountPoints = instanceTypeSelectedData.instanceTypeDetails.volumeDetailsList
@@ -608,7 +609,7 @@ export default class ClusterFields extends Component {
     if (volumeDetail) {
       const deviceInfo = {
         volumeSize: volumeDetail.volumeSizeGB,
-        numVolumes: volumesList.length,
+        numVolumes: volumeCount,
         mountPoints: mountPoints,
         storageType:
           volumeDetail.volumeType === 'EBS'
@@ -618,7 +619,7 @@ export default class ClusterFields extends Component {
         diskIops: null
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
-      updateFormField(`${clusterType}.numVolumes`, volumesList.length);
+      updateFormField(`${clusterType}.numVolumes`, volumeCount);
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
       updateFormField(`${clusterType}.storageType`, volumeDetail.storageType);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
