@@ -4161,22 +4161,22 @@ NOTICE:  graph "UCSC" has been created
  
 (1 row)
 
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jack", gpa: 3.0, age: 21})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jack", gpa: 3.0, age: 21, zip: 94110})$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jill", gpa: 3.5, age: 27})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jill", gpa: 3.5, age: 27, zip: 95060})$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jim", gpa: 3.75, age: 32})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jim", gpa: 3.75, age: 32, zip: 96062})$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Rick", gpa: 2.5, age: 24})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Rick", gpa: 2.5, age: 24, zip: "95060"})$$) AS (a agtype);
  a 
 ---
 (0 rows)
@@ -4186,7 +4186,7 @@ SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Ann", gpa: 3.8::numeric
 ---
 (0 rows)
 
-SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Derek", gpa: 4.0, age: 19})$$) AS (a agtype);
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Derek", gpa: 4.0, age: 19, zip: 90210})$$) AS (a agtype);
  a 
 ---
 (0 rows)
@@ -4197,14 +4197,14 @@ SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Jessica", gpa: 3.9::num
 (0 rows)
 
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
-                                                         vertex                                                          
--------------------------------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "name": "Jack"}}::vertex
- {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "name": "Jill"}}::vertex
- {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "name": "Jim"}}::vertex
- {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "name": "Rick"}}::vertex
+                                                           vertex                                                            
+-----------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "zip": 94110, "name": "Jack"}}::vertex
+ {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "zip": 95060, "name": "Jill"}}::vertex
+ {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "zip": 96062, "name": "Jim"}}::vertex
+ {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "zip": "95060", "name": "Rick"}}::vertex
  {"id": 844424930131973, "label": "students", "properties": {"age": 23, "gpa": 3.8::numeric, "name": "Ann"}}::vertex
- {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "name": "Derek"}}::vertex
+ {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "zip": 90210, "name": "Derek"}}::vertex
  {"id": 844424930131975, "label": "students", "properties": {"age": 20, "gpa": 3.9::numeric, "name": "Jessica"}}::vertex
 (7 rows)
 
@@ -4227,14 +4227,14 @@ SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Mike", age: 18})$$) AS 
 (0 rows)
 
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
-                                                         vertex                                                          
--------------------------------------------------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "name": "Jack"}}::vertex
- {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "name": "Jill"}}::vertex
- {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "name": "Jim"}}::vertex
- {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "name": "Rick"}}::vertex
+                                                           vertex                                                            
+-----------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "zip": 94110, "name": "Jack"}}::vertex
+ {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "zip": 95060, "name": "Jill"}}::vertex
+ {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "zip": 96062, "name": "Jim"}}::vertex
+ {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "zip": "95060", "name": "Rick"}}::vertex
  {"id": 844424930131973, "label": "students", "properties": {"age": 23, "gpa": 3.8::numeric, "name": "Ann"}}::vertex
- {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "name": "Derek"}}::vertex
+ {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "zip": 90210, "name": "Derek"}}::vertex
  {"id": 844424930131975, "label": "students", "properties": {"age": 20, "gpa": 3.9::numeric, "name": "Jessica"}}::vertex
  {"id": 844424930131976, "label": "students", "properties": {"age": 24, "name": "Dave"}}::vertex
  {"id": 844424930131977, "label": "students", "properties": {"age": 18, "name": "Mike"}}::vertex
@@ -4292,6 +4292,28 @@ AS (min agtype, max agtype, count agtype, count_star agtype);
  2.5 | 4.0 | 7     | 9
 (1 row)
 
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.gpa), max(u.gpa), count(u.gpa), count(*) $$)
+AS (min agtype, max agtype, count agtype, count_star agtype);
+ min | max | count | count_star 
+-----+-----+-------+------------
+ 2.5 | 4.0 | 7     | 9
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.name), max(u.name), count(u.name), count(*) $$)
+AS (min agtype, max agtype, count agtype, count_star agtype);
+  min  |  max   | count | count_star 
+-------+--------+-------+------------
+ "Ann" | "Rick" | 9     | 9
+(1 row)
+
+-- check that min() & max() can work against mixed types
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.zip), max(u.zip), count(u.zip), count(*) $$)
+AS (min agtype, max agtype, count agtype, count_star agtype);
+   min   |  max  | count | count_star 
+---------+-------+-------+------------
+ "95060" | 96062 | 5     | 9
+(1 row)
+
 -- should return null
 SELECT * FROM cypher('UCSC', $$ RETURN min(NULL) $$) AS (min agtype);
  min 
@@ -4307,12 +4329,12 @@ SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);
 
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
-ERROR:  function pg_catalog.min() does not exist
+ERROR:  function ag_catalog.age_min() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agt...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
-ERROR:  function pg_catalog.max() does not exist
+ERROR:  function ag_catalog.age_max() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agt...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

@@ -7153,3 +7153,103 @@ Datum age_float8_stddev_pop_aggfinalfn(PG_FUNCTION_ARGS)
 
     return result;
 }
+
+PG_FUNCTION_INFO_V1(age_agtype_larger_aggtransfn);
+
+Datum age_agtype_larger_aggtransfn(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_arg1;
+    agtype *agtype_arg2;
+    agtype_value *agtv_arg1;
+    agtype_value *agtv_arg2;
+    agtype *agtype_larger;
+    int test;
+
+    /* for max we need to ignore NULL values */
+    /* if both are NULL return NULL */
+    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+        PG_RETURN_NULL();
+
+    /* if either are NULL, return the other */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
+
+    if (PG_ARGISNULL(1))
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+
+    /* get the arguments */
+    agtype_arg1 = AG_GET_ARG_AGTYPE_P(0);
+    agtype_arg2 = AG_GET_ARG_AGTYPE_P(1);
+
+    /* get the values because we need to test for AGTV_NULL */
+    agtv_arg1 = get_ith_agtype_value_from_container(&agtype_arg1->root, 0);
+    agtv_arg2 = get_ith_agtype_value_from_container(&agtype_arg2->root, 0);
+
+    /* check for AGTV_NULL, same as NULL above */
+    if (agtv_arg1->type == AGTV_NULL && agtv_arg2->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    if (agtv_arg1->type == AGTV_NULL)
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
+
+    if (agtv_arg2->type == AGTV_NULL)
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+
+    /* test for max value */
+    test = compare_agtype_containers_orderability(&agtype_arg1->root,
+                                                  &agtype_arg2->root);
+
+    agtype_larger = (test >= 0) ? agtype_arg1 : agtype_arg2;
+
+    PG_RETURN_POINTER(agtype_larger);
+}
+
+PG_FUNCTION_INFO_V1(age_agtype_smaller_aggtransfn);
+
+Datum age_agtype_smaller_aggtransfn(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_arg1;
+    agtype *agtype_arg2;
+    agtype_value *agtv_arg1;
+    agtype_value *agtv_arg2;
+    agtype *agtype_smaller;
+    int test;
+
+    /* for min we need to ignore NULL values */
+    /* if both are NULL return NULL */
+    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+        PG_RETURN_NULL();
+
+    /* if either are NULL, return the other */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
+
+    if (PG_ARGISNULL(1))
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+
+    /* get the arguments */
+    agtype_arg1 = AG_GET_ARG_AGTYPE_P(0);
+    agtype_arg2 = AG_GET_ARG_AGTYPE_P(1);
+
+    /* get the values because we need to test for AGTV_NULL */
+    agtv_arg1 = get_ith_agtype_value_from_container(&agtype_arg1->root, 0);
+    agtv_arg2 = get_ith_agtype_value_from_container(&agtype_arg2->root, 0);
+
+    /* check for AGTV_NULL, same as NULL above */
+    if (agtv_arg1->type == AGTV_NULL && agtv_arg2->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    if (agtv_arg1->type == AGTV_NULL)
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
+
+    if (agtv_arg2->type == AGTV_NULL)
+        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+
+    /* test for min value */
+    test = compare_agtype_containers_orderability(&agtype_arg1->root,
+                                                  &agtype_arg2->root);
+
+    agtype_smaller = (test <= 0) ? agtype_arg1 : agtype_arg2;
+
+    PG_RETURN_POINTER(agtype_smaller);
+}

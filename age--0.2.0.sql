@@ -1252,12 +1252,12 @@ LANGUAGE c
 IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
--- aggregate for stdev
+-- aggregate for age_stdev
 CREATE AGGREGATE ag_catalog.age_stdev(float8)
 (
    stype = _float8,
    sfunc = float8_accum,
-   finalfunc = age_float8_stddev_samp_aggfinalfn,
+   finalfunc = ag_catalog.age_float8_stddev_samp_aggfinalfn,
    combinefunc = float8_combine,
    finalfunc_modify = read_only,
    initcond = '{0,0,0}',
@@ -1270,15 +1270,53 @@ LANGUAGE c
 IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
--- aggregate for stdevp
+-- aggregate for age_stdevp
 CREATE AGGREGATE ag_catalog.age_stdevp (float8)
 (
    stype = _float8,
    sfunc = float8_accum,
-   finalfunc = age_float8_stddev_pop_aggfinalfn,
+   finalfunc = ag_catalog.age_float8_stddev_pop_aggfinalfn,
    combinefunc = float8_combine,
    finalfunc_modify = read_only,
    initcond = '{0,0,0}',
+   parallel = safe
+);
+
+--
+-- aggregate transfers function for min & max
+--
+-- max
+CREATE FUNCTION ag_catalog.age_agtype_larger_aggtransfn(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+-- aggregate for max
+CREATE AGGREGATE ag_catalog.age_max (agtype)
+(
+   stype = agtype,
+   sfunc = ag_catalog.age_agtype_larger_aggtransfn,
+   combinefunc = ag_catalog.age_agtype_larger_aggtransfn,
+   finalfunc_modify = read_only,
+   sortop = >,
+   parallel = safe
+);
+-- min
+CREATE FUNCTION ag_catalog.age_agtype_smaller_aggtransfn(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+-- aggregate for min
+CREATE AGGREGATE ag_catalog.age_min (agtype)
+(
+   stype = agtype,
+   sfunc = ag_catalog.age_agtype_smaller_aggtransfn,
+   combinefunc = ag_catalog.age_agtype_smaller_aggtransfn,
+   finalfunc_modify = read_only,
+   sortop = <,
    parallel = safe
 );
 
