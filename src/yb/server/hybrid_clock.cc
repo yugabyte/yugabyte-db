@@ -60,6 +60,10 @@ METRIC_DEFINE_gauge_uint64(server, hybrid_clock_error,
                            "Hybrid Clock Error",
                            yb::MetricUnit::kMicroseconds,
                            "Server clock maximum error.");
+METRIC_DEFINE_gauge_int64(server, hybrid_clock_skew,
+                           "Hybrid Clock Skew",
+                           yb::MetricUnit::kMicroseconds,
+                           "Server clock skew.");
 
 DEFINE_string(time_source, "",
               "The clock source that HybridClock should use (for tests only). "
@@ -257,6 +261,19 @@ uint64_t HybridClock::ErrorForMetrics() {
   return error;
 }
 
+int64_t HybridClock::SkewForMetrics() {
+  HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
+  auto now = clock_->Now();
+  if (PREDICT_FALSE(!now.ok())) {
+    LOG(DFATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
+        "Status: $0", now.status().ToString());
+    return 0;
+  }
+  // Making sure we don't return a negative value.
+  int64_t potential_skew = current_components.last_usec - now->time_point;
+  return std::max<int64_t>(0, potential_skew);
+}
+
 std::string HybridClockComponents::ToString() const {
   return Format("{ last_usec: $0 logical: $1 }", last_usec, logical);
 }
@@ -288,6 +305,10 @@ void HybridClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_enti
   METRIC_hybrid_clock_error.InstantiateFunctionGauge(
       metric_entity,
       Bind(&HybridClock::ErrorForMetrics, Unretained(this)))
+    ->AutoDetachToLastValue(&metric_detacher_);
+  METRIC_hybrid_clock_skew.InstantiateFunctionGauge(
+      metric_entity,
+      Bind(&HybridClock::SkewForMetrics, Unretained(this)))
     ->AutoDetachToLastValue(&metric_detacher_);
 }
 

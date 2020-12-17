@@ -156,6 +156,9 @@ class HybridClock : public Clock {
   // Used to get the current error, for metrics.
   uint64_t ErrorForMetrics();
 
+  // Used to get the current error, for metrics.
+  int64_t SkewForMetrics();
+
   PhysicalClockPtr clock_;
   boost::atomic<HybridClockComponents> components_{HybridClockComponents(0, 0)};
   State state_ = kNotInitialized;
