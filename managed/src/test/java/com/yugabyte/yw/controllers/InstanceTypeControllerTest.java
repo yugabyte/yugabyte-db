@@ -101,7 +101,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     return Json.parse(contentAsString(result));
   }
 
-  private InstanceType[] setUpValidInstanceTypes(int numInstanceTypes) {
+  private InstanceType[] setUpValidInstanceTypes(int numInstanceTypes, String instanceTypesCode) {
     InstanceType[] instanceTypes = new InstanceType[numInstanceTypes];
     for (int i = 0; i < numInstanceTypes; ++i) {
       InstanceType.VolumeDetails volDetails = new InstanceType.VolumeDetails();
@@ -109,8 +109,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       volDetails.volumeType = InstanceType.VolumeType.EBS;
       InstanceTypeDetails instanceDetails = new InstanceTypeDetails();
       instanceDetails.volumeDetailsList.add(volDetails);
+      instanceDetails.volumeDetailsList.add(volDetails);
       instanceDetails.setDefaultMountPaths();
-      String code = "c3.i" + Integer.toString(i);
+      instanceDetails.volumeCount = 1;
+      String code = instanceTypesCode + Integer.toString(i);
       instanceTypes[i] = InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails);
     }
     return instanceTypes;
@@ -132,8 +134,38 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListInstanceTypeVolumeCountWithValidProviderUUID() {
+    InstanceType[] instanceTypes = setUpValidInstanceTypes(1, "c5d.i");
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    assertEquals(1, json.size());
+    assertThat(json.get(0).get("instanceTypeDetails").get("volumeCount").asInt(), allOf(notNullValue(),
+        equalTo(instanceTypes[0].instanceTypeDetails.volumeDetailsList.size())));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testListc4InstanceTypeVolumeCountWithValidProviderUUID() {
+    InstanceType[] instanceTypes = setUpValidInstanceTypes(1, "c4.i");
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    assertEquals(1, json.size());
+    assertThat(json.get(0).get("instanceTypeDetails").get("volumeCount").asInt(), allOf(notNullValue(),
+        equalTo(instanceTypes[0].instanceTypeDetails.volumeCount)));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testListc5InstanceTypeVolumeCountWithValidProviderUUID() {
+    InstanceType[] instanceTypes = setUpValidInstanceTypes(1, "c5.i");
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    assertEquals(1, json.size());
+    assertThat(json.get(0).get("instanceTypeDetails").get("volumeCount").asInt(), allOf(notNullValue(),
+        equalTo(instanceTypes[0].instanceTypeDetails.volumeCount)));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testListInstanceTypeWithValidProviderUUID() {
-    InstanceType[] instanceTypes = setUpValidInstanceTypes(2);
+    InstanceType[] instanceTypes = setUpValidInstanceTypes(2,"c3.i");
 
     JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
     assertEquals(2, json.size());
