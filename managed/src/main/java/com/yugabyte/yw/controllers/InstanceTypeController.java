@@ -57,6 +57,17 @@ public class InstanceTypeController extends AuthenticatedController {
 
     try {
       instanceTypeList = InstanceType.findByProvider(provider);
+      // setting up the volumeCount to 1 for instanceType starting with c5/c4
+      for (InstanceType instanceType: instanceTypeList) {
+        if (provider.code.equals(aws.toString()) &&
+          ((instanceType.idKey.instanceTypeCode.startsWith("c5")) ||
+            (instanceType.idKey.instanceTypeCode.startsWith("c4")))) {
+          instanceType.instanceTypeDetails.volumeCount = 1;
+        }
+        else {
+          instanceType.instanceTypeDetails.volumeCount = instanceType.instanceTypeDetails.volumeDetailsList.size();
+        }
+      }
     } catch (Exception e) {
       LOG.error("Unable to list Instance types {}:{}", providerUUID, e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");
