@@ -1,6 +1,6 @@
 # YugabyteDB Docs
 
-This repository contains the source code for the (public documentation for YugabyteDB)[https://docs.yugabyte.com/]. Please [open an issue](https://github.com/YugaByte/docs/issues) to request features or suggest enhancements.
+This repository contains the source code for the [public documentation for YugabyteDB](https://docs.yugabyte.com/). Please [open an issue](https://github.com/YugaByte/docs/issues) to request features or suggest enhancements.
 
 
 # Contributing to YugabyteDB Docs
