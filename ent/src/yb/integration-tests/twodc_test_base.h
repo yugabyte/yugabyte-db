@@ -42,6 +42,14 @@ constexpr int kRpcTimeout = NonTsanVsTsan(30, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
+struct TwoDCTestParams {
+  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_) :
+      batch_size(batch_size_), enable_replicate_intents(enable_replicate_intents_) {}
+
+  int batch_size;
+  bool enable_replicate_intents;
+};
+
 class TwoDCTestBase : public YBTest {
  public:
   class Cluster {
@@ -68,7 +76,6 @@ class TwoDCTestBase : public YBTest {
     FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
-    FLAGS_cdc_enable_replicate_intents = true;
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
