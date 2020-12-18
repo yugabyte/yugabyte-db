@@ -47,7 +47,9 @@ libraryDependencies ++= Seq(
   "commons-validator" % "commons-validator" % "1.7",
   "com.h2database" % "h2" % "1.4.200" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
-  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test
+  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
+  "com.icegreen" % "greenmail" % "1.6.1" % Test,
+  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")

@@ -161,4 +161,9 @@ public class Customer extends Model {
     }
     save();
   }
+
+  @JsonIgnore
+  public String getTag() {
+    return String.format("[%s][%s]", name, code);
+  }
 }

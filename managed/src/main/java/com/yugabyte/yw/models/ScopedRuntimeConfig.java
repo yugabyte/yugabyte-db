@@ -1,6 +1,5 @@
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.google.common.annotations.VisibleForTesting;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -9,9 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
