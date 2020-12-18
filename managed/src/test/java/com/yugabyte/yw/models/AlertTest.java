@@ -1,22 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+
 import org.junit.Before;
 import org.junit.Test;
-import play.libs.Json;
+import org.junit.runner.RunWith;
 
 import java.util.*;
-import java.util.concurrent.*;
-
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
+@RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
   private Customer cust1;
   private Customer cust2;
@@ -65,15 +65,23 @@ public class AlertTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAlertsUniverseType() {
-    Universe u = ModelFactory.createUniverse();
-    Alert alert = Alert.create(cust1.uuid, u.universeUUID, Alert.TargetType.UniverseType,
+  @Parameters(method = "parametersToTestAlertsTypes")
+  public void testAlertsTypes(Alert.TargetType alertType, UUID uuid, Class claz) {
+    Alert alert = Alert.create(cust1.uuid, uuid, alertType,
                                "TEST_ALERT_1", "Warning", "Testing alert.");
     assertNotNull(alert.uuid);
     assertEquals(cust1.uuid, alert.customerUUID);
-    assertEquals(u.universeUUID, alert.targetUUID);
-    assertEquals(Universe.class, alert.targetType.getType());
+    assertEquals(uuid, alert.targetUUID);
     assertEquals("Warning", alert.type);
     assertEquals("Testing alert.", alert.message);
-}
+  }
+
+  private Object[] parametersToTestAlertsTypes() {
+    // @formatter:off
+    return new Object[] {
+        new Object[] { Alert.TargetType.TaskType, UUID.randomUUID(), AbstractTaskBase.class },
+        new Object[] { Alert.TargetType.UniverseType, UUID.randomUUID(), Universe.class },
+    };
+    // @formatter:on
+  }
 }

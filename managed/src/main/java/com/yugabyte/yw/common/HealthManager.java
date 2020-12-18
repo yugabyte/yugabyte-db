@@ -2,11 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Provider;
 
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
 import java.util.ArrayList;
@@ -22,9 +19,6 @@ import play.libs.Json;
 @Singleton
 public class HealthManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(HealthManager.class);
-
-  @Inject
-  play.Configuration appConfig;
 
   public static final String HEALTH_CHECK_SCRIPT = "bin/cluster_health.py";
 
@@ -49,74 +43,15 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellResponse runCommand(
-    String customerTag,
-    String destination,
-    SmtpData smtpData,
-    JsonNode taskFailures
-  ) {
-    return runCommand(
-      null /* provider */,
-      null /* clusters */,
-      null /* universeName */,
-      customerTag,
-      destination,
-      0L,
-      true /* sendMailAlways */,
-      false /* reportOnlyErrors */,
-      smtpData,
-      true /* isTaskNotification */,
-      taskFailures
-    );
-  }
-
-  public ShellResponse runCommand(
     Provider provider,
     List<ClusterInfo> clusters,
-    String universeName,
-    String customerTag,
-    String destination,
-    Long potentialStartTimeMs,
-    Boolean sendMailAlways,
-    Boolean reportOnlyErrors,
-    SmtpData smtpData
-  ) {
-    return runCommand(
-      provider,
-      clusters,
-      universeName,
-      customerTag,
-      destination,
-      potentialStartTimeMs,
-      sendMailAlways,
-      reportOnlyErrors,
-      smtpData,
-      false /* isTaskNotification */,
-      null /* alertInfo */
-    );
-  }
-
-  public ShellResponse runCommand(
-    Provider provider,
-    List<ClusterInfo> clusters,
-    String universeName,
-    String customerTag,
-    String destination,
-    Long potentialStartTimeMs,
-    Boolean sendMailAlways,
-    Boolean reportOnlyErrors,
-    SmtpData smtpData,
-    Boolean isTaskNotification,
-    JsonNode taskInfo
+    Long potentialStartTimeMs
   ) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(HEALTH_CHECK_SCRIPT);
 
-    if (universeName != null) {
-      commandArgs.add("--universe_name");
-      commandArgs.add(universeName);
-    }
     String description = String.join(" ", commandArgs);
 
     if (clusters != null) {
@@ -124,66 +59,14 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(clusters)));
     }
 
-    commandArgs.add("--customer_tag");
-    commandArgs.add(customerTag);
-    if (destination != null) {
-      commandArgs.add("--destination");
-      commandArgs.add(destination);
-    }
     if (potentialStartTimeMs > 0) {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
-    }
-    if (sendMailAlways) {
-      commandArgs.add("--send_status");
     }
 
     // Start with a copy of the cloud config env vars.
     HashMap<String, String> extraEnvVars = provider == null ?
       new HashMap<>() : new HashMap<>(provider.getConfig());
-
-    String email = appConfig.getString("yb.health.default_email");
-    if (smtpData != null) {
-      if (smtpData.smtpServer != null) {
-        extraEnvVars.put("SMTP_SERVER", smtpData.smtpServer);
-      }
-      if (smtpData.smtpPort != -1) {
-        extraEnvVars.put("SMTP_PORT", String.valueOf(smtpData.smtpPort));
-      }
-      if (smtpData.emailFrom != null) {
-        email = smtpData.emailFrom;
-      }
-      if (smtpData.smtpUsername != null) {
-        extraEnvVars.put("YB_ALERTS_USERNAME", smtpData.smtpUsername);
-      }
-      if (smtpData.smtpPassword != null) {
-        extraEnvVars.put("YB_ALERTS_PASSWORD", smtpData.smtpPassword);
-      }
-      extraEnvVars.put("SMTP_USE_SSL", String.valueOf(smtpData.useSSL));
-      extraEnvVars.put("SMTP_USE_TLS", String.valueOf(smtpData.useTLS));
-    } else {
-      String emailUsername = appConfig.getString("yb.health.ses_email_username");
-      String emailPassword = appConfig.getString("yb.health.ses_email_password");
-      if (emailUsername != null) {
-        extraEnvVars.put("YB_ALERTS_USERNAME", emailUsername);
-      }
-      if (emailPassword != null) {
-        extraEnvVars.put("YB_ALERTS_PASSWORD", emailPassword);
-      }
-    }
-
-    if (email != null) {
-      extraEnvVars.put("YB_ALERTS_EMAIL", email);
-    }
-    if (reportOnlyErrors) {
-      commandArgs.add("--report_only_errors");
-    }
-
-    if (isTaskNotification) {
-      commandArgs.add("--send_notification");
-      commandArgs.add("--alert_info");
-      commandArgs.add(Json.stringify(taskInfo));
-    }
 
     return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
   }
