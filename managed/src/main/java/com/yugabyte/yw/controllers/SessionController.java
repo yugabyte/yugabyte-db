@@ -362,7 +362,7 @@ public class SessionController extends Controller {
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
     String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = System.getProperty("log.override.path", String.format("%s/logs", appHomeDir));
+    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
