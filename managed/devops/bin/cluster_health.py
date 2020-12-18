@@ -160,6 +160,7 @@ def check_output(cmd, env):
             timeout -= 1
         if command.poll() is None and timeout <= 0:
             command.kill()
+            command.wait()
             return 'Error executing command {}: timeout occurred'.format(cmd)
 
         output, stderr = command.communicate()
