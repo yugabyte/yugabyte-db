@@ -99,7 +99,7 @@ namespace enterprise {
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
-class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> {
+class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
@@ -107,8 +107,9 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> 
       uint32_t replication_factor,
       uint32_t num_masters = 1) {
     FLAGS_enable_ysql = false;
-    FLAGS_cdc_max_apply_batch_num_records = GetParam();
     TwoDCTestBase::SetUp();
+    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+    FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;
@@ -290,7 +291,9 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<int> 
   YBSchema schema_;
 };
 
-INSTANTIATE_TEST_CASE_P(BatchSize, TwoDCTest, ::testing::Values(1, 100));
+INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCTest,
+                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
+                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
 
 TEST_P(TwoDCTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
@@ -780,71 +783,6 @@ TEST_P(TwoDCTest, ApplyOperations) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, MultipleTransactions) {
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
-
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  // tables contains both producer and consumer universe tables (alternately).
-  // Pick out just the producer table from the list.
-  producer_tables.reserve(1);
-  producer_tables.push_back(tables[0]);
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
-
-  // After creating the cluster, make sure all producer tablets are being polled for.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
-
-  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-  auto txn_1 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-
-  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
-  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
-  ASSERT_NO_FATALS(WriteIntents(10, 15, producer_client(), txn_1.first, tables[0]->name()));
-  ASSERT_NO_FATALS(WriteIntents(10, 20, producer_client(), txn_1.first, tables[0]->name()));
-
-  ASSERT_OK(WaitFor([&]() {
-    return CountIntents(consumer_cluster()) > 0;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster replicated intents"));
-
-  // Make sure that none of the intents replicated have been committed.
-  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
-  ASSERT_EQ(consumer_results.size(), 0);
-
-  txn_0.second->CommitFuture().get();
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-
-  txn_1.second->CommitFuture().get();
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-}
-
-// Make sure when we compact a tablet, we retain intents.
-TEST_P(TwoDCTest, NoCleanupOfFlushedFiles) {
-  uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  // tables contains both producer and consumer universe tables (alternately).
-  // Pick out just the producer table from the list.
-  producer_tables.reserve(1);
-  producer_tables.push_back(tables[0]);
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
-
-  // After creating the cluster, make sure all producer tablets are being polled for.
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
-  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
-  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
-  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
-  ASSERT_EQ(consumer_results.size(), 0);
-  ASSERT_OK(consumer_cluster()->FlushTablets());
-  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
-  ASSERT_OK(consumer_cluster()->FlushTablets());
-  ASSERT_OK(consumer_cluster()->CompactTablets());
-  SleepFor(MonoDelta::FromSeconds(5));
-  txn_0.second->CommitFuture().get();
-  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
-}
-
 TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
@@ -876,7 +814,13 @@ TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, UpdateWithinTransaction) {
+class TwoDCTestWithEnableIntentsReplication : public TwoDCTest {
+};
+
+INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCTestWithEnableIntentsReplication,
+                        ::testing::Values(TwoDCTestParams(0, true), TwoDCTestParams(1, true)));
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
@@ -915,7 +859,7 @@ TEST_P(TwoDCTest, UpdateWithinTransaction) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, TransactionsWithRestart) {
+TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithRestart) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables = { tables[0] };
@@ -949,6 +893,71 @@ TEST_P(TwoDCTest, TransactionsWithRestart) {
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+
+  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  auto txn_1 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+
+  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(10, 15, producer_client(), txn_1.first, tables[0]->name()));
+  ASSERT_NO_FATALS(WriteIntents(10, 20, producer_client(), txn_1.first, tables[0]->name()));
+
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) > 0;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster replicated intents"));
+
+  // Make sure that none of the intents replicated have been committed.
+  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
+  ASSERT_EQ(consumer_results.size(), 0);
+
+  txn_0.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  txn_1.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+}
+
+// Make sure when we compact a tablet, we retain intents.
+TEST_P(TwoDCTestWithEnableIntentsReplication, NoCleanupOfFlushedFiles) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
+  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  ASSERT_NO_FATALS(WriteIntents(0, 5, producer_client(), txn_0.first, tables[0]->name()));
+  auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
+  ASSERT_EQ(consumer_results.size(), 0);
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  SleepFor(MonoDelta::FromSeconds(5));
+  txn_0.second->CommitFuture().get();
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
 TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
@@ -987,7 +996,7 @@ TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, BiDirectionalWrites) {
+TEST_P(TwoDCTestWithEnableIntentsReplication, BiDirectionalWrites) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
 
   // Setup bi-directional replication.
@@ -1406,9 +1415,9 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
     WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
   }
 
-  // Count the number of ops in total.
-  uint32_t expected_num_writes =
-      (num_ops_per_workload * (num_runs * 2 + 1)) / FLAGS_cdc_max_apply_batch_num_records;
+  // Count the number of ops in total, expect 1 batch if the batch flag is set to 0.
+  uint32_t expected_num_writes = FLAGS_cdc_max_apply_batch_num_records > 0 ?
+      (num_ops_per_workload * (num_runs * 2 + 1)) / FLAGS_cdc_max_apply_batch_num_records : 1;
 
   LOG(INFO) << "expected num writes: " <<expected_num_writes;
 
