@@ -10056,7 +10056,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 							tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
 																foundObject.objectId);
 							tab->changedIndexDefs = lappend(tab->changedIndexDefs,
-															pg_get_indexdef_string(foundObject.objectId));
+											pg_get_indexdef_string(foundObject.objectId));
 						}
 					}
 					else if (relKind == RELKIND_SEQUENCE)
