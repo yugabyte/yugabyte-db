@@ -25,15 +25,19 @@ Options:
   -h, --help
     Show usage.
   -s, --postgres_max_log_size <size in mb>
-    max size of disk to use for postgres logs (default=100mb)
+    max size of disk to use for postgres logs (default=100mb).
+  -d, --cores_disk_percent_max <number>
+    max percentage of disk to use for core dump files (default=10).
 EOT
 }
 
 gzip_only=false
 YB_HOME_DIR=/home/yugabyte
+YB_CORES_DIR="/var/yugabyte/cores"
 
 logs_disk_percent_max=10
 postgres_max_log_size_kb=$((100 * 1000))
+cores_disk_percent_max=10
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,6 +51,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     -z|--gzip_only)
       gzip_only=true
+    ;;
+    -d|--cores_disk_percent_max)
+      cores_disk_percent_max=$2
+      shift
     ;;
     -h|--help)
       print_help
@@ -67,6 +75,11 @@ fi
 
 if [[ $logs_disk_percent_max -lt 1 || $logs_disk_percent_max -gt 100 ]]; then
   echo "--logs_disk_percent_max needs to be [1, 100]" >&2
+  exit 1
+fi
+
+if [[ $cores_disk_percent_max -lt 1 || $cores_disk_percent_max -gt 100 ]]; then
+  echo "--cores_disk_percent_max needs to be [1, 100]" >&2
   exit 1
 fi
 
@@ -102,6 +115,32 @@ delete_gz_files() {
       break
     fi
   done
+}
+
+delete_core_dump_files () {
+  local core_dump_dir="$1"
+  local permitted_usage="$2"
+  local disk_usage_kb="$(du -sk $core_dump_dir | awk '{print $1}')"
+  echo "Permitted disk usage for core dump files in kb: $permitted_usage"
+  echo "Disk usage by core dump files in kb: $disk_usage_kb"
+
+  # Sort by time: oldest first
+  local files="$(ls -Acr $core_dump_dir)"
+  # Handle space in a file name
+  IFS=$'\n'
+  for file in $files; do
+    file="${core_dump_dir}/${file}"
+    # If usage exceeds permitted, delete the old files.
+    if [ $disk_usage_kb -gt $permitted_usage ]; then
+      local file_size=$(du -k ${file} | awk '{print $1}')
+      disk_usage_kb=$(($disk_usage_kb-$file_size))
+      echo "Deleting core file ${file}"
+      rm "${file}"
+    else
+      break
+    fi
+  done
+  unset IFS
 }
 
 server_types="master tserver"
@@ -148,3 +187,9 @@ for daemon_type in $daemon_types; do
     delete_gz_files $YB_LOG_DIR $postgres_log $postgres_max_log_size_kb
   fi
 done
+
+if [ -d "$YB_CORES_DIR" ]; then
+  core_dump_disk_size_kb=$(df -k $YB_CORES_DIR | awk 'NR==2{print $2}')
+  core_dump_max_size_kb=$(($core_dump_disk_size_kb * $cores_disk_percent_max / 100))
+  delete_core_dump_files $YB_CORES_DIR $core_dump_max_size_kb
+fi
