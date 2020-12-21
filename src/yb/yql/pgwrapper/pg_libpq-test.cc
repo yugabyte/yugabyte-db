@@ -43,6 +43,8 @@ namespace pgwrapper {
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
+  void TestUriAuth();
+
   void TestMultiBankAccount(IsolationLevel isolation);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
@@ -106,6 +108,115 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
     ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", QuotePgName(user_name)));
     ASSERT_OK(ConnectToDBAsUser("" /* db_name */, user_name));
   }
+}
+
+// Test libpq connection using URI connection string.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
+  const std::string& host = pg_ts->bind_host();
+  const uint16_t port = pg_ts->pgsql_rpc_port();
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "yugabyte");
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_user"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "yugabyte");
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("show listen_addresses"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, host);
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("show port"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, std::to_string(port));
+    }
+  }
+  // Supply database name.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "template1");
+    }
+  }
+  // Supply an incorrect password.  Since HBA config gives the yugabyte user trust access, postgres
+  // won't request a password, our client won't send this password, and the authentication should
+  // succeed.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    ASSERT_OK(ConnectUsingString(conn_str));
+  }
+}
+
+void PgLibPqTest::TestUriAuth() {
+  const std::string& host = pg_ts->bind_host();
+  const uint16_t port = pg_ts->pgsql_rpc_port();
+  // Don't supply password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    Result<PGConn> result = ConnectUsingString(
+        conn_str,
+        CoarseMonoClock::Now() + 2s /* deadline */);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError());
+    ASSERT_TRUE(result.status().message().ToBuffer().find("Connect failed") != std::string::npos)
+        << result.status();
+  }
+  // Supply an incorrect password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    Result<PGConn> result = ConnectUsingString(
+        conn_str,
+        CoarseMonoClock::Now() + 2s /* deadline */);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError());
+    ASSERT_TRUE(result.status().message().ToBuffer().find("Connect failed") != std::string::npos)
+        << result.status();
+  }
+  // Supply the correct password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    ASSERT_OK(ConnectUsingString(conn_str));
+  }
+}
+
+// Enable authentication using password.  This scheme requests the plain password.  You may still
+// use SSL for encryption on the wire.
+class PgLibPqTestAuthPassword : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_hba_conf_csv=host all all samehost password");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriPassword), PgLibPqTestAuthPassword) {
+  TestUriAuth();
+}
+
+// Enable authentication using md5.  This scheme is a challenge and response, so the plain password
+// isn't sent.
+class PgLibPqTestAuthMd5 : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_hba_conf_csv=host all all samehost md5");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgLibPqTestAuthMd5) {
+  TestUriAuth();
 }
 
 // Test that repeats example from this article:
