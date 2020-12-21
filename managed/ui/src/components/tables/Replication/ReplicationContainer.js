@@ -9,14 +9,10 @@ import {
   resetMetrics
 } from '../../../actions/graph';
 import {
-  createAlertDefinition, createAlertDefinitionResponse,
-  getAlertDefinition,
-  getAlertDefinitionResponse,
   getMasterLeader,
   getMasterLeaderResponse,
-  resetMasterLeader, updateAlertDefinition, updateAlertDefinitionResponse
+  resetMasterLeader
 } from '../../../actions/universe';
-import {reduxForm} from "redux-form";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -40,24 +36,6 @@ const mapDispatchToProps = (dispatch) => {
 
     resetMasterLeader: () => {
       dispatch(resetMasterLeader());
-    },
-
-    createAlertDefinition: (uuid, data) => {
-      dispatch(createAlertDefinition(uuid, data)).then((response) => {
-        dispatch(createAlertDefinitionResponse(response.payload));
-      });
-    },
-
-    getAlertDefinition: (uuid, name) => {
-      dispatch(getAlertDefinition(uuid, name)).then((response) => {
-        dispatch(getAlertDefinitionResponse(response.payload));
-      });
-    },
-
-    updateAlertDefinition: (uuid, data) => {
-      dispatch(updateAlertDefinition(uuid, data)).then((response) => {
-        dispatch(updateAlertDefinitionResponse(response.payload));
-      });
     }
   };
 };
@@ -66,19 +44,10 @@ function mapStateToProps(state) {
   const { universe } = state;
   return {
     currentCustomer: state.customer.currentCustomer,
-    alertDefinition: null,
     graph: state.graph,
-    universe: universe,
-    initialValues: {
-      enableAlert: false,
-      value: 180000
-    }
+    universe
   };
 }
 
-const replicationForm = reduxForm({
-  form: 'replicationLagAlertForm',
-  fields: ['enableAlert', 'value']
-});
 
-export default connect(mapStateToProps, mapDispatchToProps)(replicationForm(Replication));
+export default connect(mapStateToProps, mapDispatchToProps)(Replication);
