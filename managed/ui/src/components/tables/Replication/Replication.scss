@@ -3,6 +3,12 @@
 @import '../../../_style/colors.scss';
 
 #universe-tab-panel {
+  .replication-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
   .replication-content {
     > .replication-content-stats {
       display: flex;
