@@ -14,6 +14,7 @@
 #ifndef YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
 #define YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
 
+#include "yb/util/monotime.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -26,6 +27,9 @@ class LibPqTestBase : public PgWrapperTestBase {
   Result<PGConn> Connect();
   Result<PGConn> ConnectToDB(const string& db_name);
   Result<PGConn> ConnectToDBAsUser(const string& db_name, const string& user);
+  Result<PGConn> ConnectUsingString(
+      const string& conn_str,
+      CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10));
   static bool TransactionalFailure(const Status& status);
 };
 

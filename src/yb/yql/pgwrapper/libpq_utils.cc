@@ -133,21 +133,24 @@ Result<PGConn> PGConn::Connect(
     const HostPort& host_port,
     const std::string& db_name,
     const std::string& user) {
+  auto conn_info = Format(
+      "host=$0 port=$1 user=$2",
+      host_port.host(),
+      host_port.port(),
+      QuotePgConnStrValue(user));
+  if (!db_name.empty()) {
+    conn_info = Format("dbname=$0 $1", QuotePgConnStrValue(db_name), conn_info);
+  }
+  return Connect(conn_info);
+}
+
+Result<PGConn> PGConn::Connect(const std::string& conn_str, CoarseTimePoint deadline) {
   auto start = CoarseMonoClock::now();
-  auto deadline = start + 60s;
   for (;;) {
-    auto conn_info = Format(
-        "host=$0 port=$1 user=$2",
-        host_port.host(),
-        host_port.port(),
-        QuotePgConnStrValue(user));
-    if (!db_name.empty()) {
-      conn_info = Format("dbname=$0 $1", QuotePgConnStrValue(db_name), conn_info);
-    }
-    PGConnPtr result(PQconnectdb(conn_info.c_str()));
+    PGConnPtr result(PQconnectdb(conn_str.c_str()));
     auto status = PQstatus(result.get());
     if (status == ConnStatusType::CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG: " << host_port << ", time taken: "
+      LOG(INFO) << "Connected to PG (" << conn_str << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result));
     }
