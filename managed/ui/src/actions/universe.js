@@ -113,13 +113,6 @@ export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
 export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
-export const CREATE_ALERT_DEFINITION = 'CREATE_ALERT_DEFINITION';
-export const CREATE_ALERT_DEFINITION_RESPONSE = 'CREATE_ALERT_DEFINITION_RESPONSE';
-export const GET_ALERT_DEFINITION = 'GET_ALERT_DEFINITION';
-export const GET_ALERT_DEFINITION_RESPONSE = 'GET_ALERT_DEFINITION_RESPONSE';
-export const UPDATE_ALERT_DEFINITION = "UPDATE_ALERT_DEFINITION";
-export const UPDATE_ALERT_DEFINITION_RESPONSE = "UPDATE_ALERT_DEFINITION_RESPONSE";
-
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -662,53 +655,17 @@ export function fetchLiveQueries(universeUUID, cancelFn) {
 export function createAlertDefinition(universeUUID, data) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
-  const request = axios.post(endpoint, data);
-
-  return {
-    type: CREATE_ALERT_DEFINITION,
-    payload: request
-  };
+  return axios.post(endpoint, data);
 }
 
-export function createAlertDefinitionResponse(response) {
-  return {
-    type: CREATE_ALERT_DEFINITION_RESPONSE,
-    payload: response
-  };
-}
-
-export function getAlertDefinition(universeUUID, name) {
+export function getAlertDefinition(universeUUID, alertName) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${name}`;
-  const request = axios.get(endpoint);
-
-  return {
-    type: GET_ALERT_DEFINITION,
-    payload: request
-  };
-}
-
-export function getAlertDefinitionResponse(response) {
-  return {
-    type: GET_ALERT_DEFINITION_RESPONSE,
-    payload: response
-  };
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
+  return axios.get(endpoint).then(resp => resp.data);
 }
 
 export function updateAlertDefinition(alertDefinitionUUID, data) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
-  const request = axios.put(endpoint, data);
-
-  return {
-    type: UPDATE_ALERT_DEFINITION,
-    payload: request
-  };
-}
-
-export function updateAlertDefinitionResponse(response) {
-  return {
-    type: UPDATE_ALERT_DEFINITION_RESPONSE,
-    payload: response
-  };
+  return axios.put(endpoint, data);
 }
