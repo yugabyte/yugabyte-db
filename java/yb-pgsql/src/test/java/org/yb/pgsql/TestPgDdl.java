@@ -26,13 +26,9 @@ public class TestPgDdl extends BasePgSQLTest {
   public void testLargeTransaction() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
-      for (int i = 0; i < 30; ++i) {
-        stmt.execute(String.format("CREATE TABLE table_%d (k INT PRIMARY KEY, " +
-            "v_1 INT, v_2 INT, v_3 INT, v_4 INT, v_5 INT, " +
-            "v_6 INT, v_7 INT, v_8 INT, v_9 INT, v_10 INT)", i + 1));
-        for (int j = 0; j < 10; ++j) {
-          stmt.execute(String.format("CREATE INDEX ON table_%d(v_%d)", i + 1, j + 1));
-        }
+      for (int i = 0; i < 111; ++i) {
+        // Table is created with a single tablet for performance reason.
+        stmt.execute(String.format("CREATE TABLE table_%d (k INT) SPLIT INTO 1 TABLETS", i + 1));
       }
       stmt.execute("COMMIT");
     }
