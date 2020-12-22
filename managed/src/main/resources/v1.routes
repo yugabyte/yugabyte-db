@@ -64,6 +64,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID/kms                               c
 GET     /customers/:cUUID/universes/:uniUUID/kms/key_ref                       com.yugabyte.yw.controllers.EncryptionAtRestController.getCurrentKeyRef(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Customer profile API
+GET     /customers                                                             com.yugabyte.yw.controllers.CustomerController.list()
 GET     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
@@ -129,7 +130,7 @@ POST    /customers/:cUUID/universes/:uniUUID/run_query                         c
 POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             com.yugabyte.yw.controllers.UniverseController.createUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-PUT    /customers/:cUUID/universes/:uniUUID/mark_helm3_compatible              com.yugabyte.yw.controllers.UniverseController.setHelm3Compatible(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID/mark_helm3_compatible             com.yugabyte.yw.controllers.UniverseController.setHelm3Compatible(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/live_queries                      com.yugabyte.yw.controllers.UniverseController.getLiveQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
@@ -188,6 +189,8 @@ DELETE /customers/:cUUID/users/:uUUID                                          c
 GET    /customers/:cUUID/users/:uUUID/audit_trail                              com.yugabyte.yw.controllers.AuditController.list(cUUID: java.util.UUID, uUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/audit_info                               com.yugabyte.yw.controllers.AuditController.getTaskAudit(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/audit_user                               com.yugabyte.yw.controllers.AuditController.getUserFromTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
+
+GET     /index                                                                 com.yugabyte.yw.controllers.ApiDiscoveryController.index()
 
 GET    /callback                                                               @org.pac4j.play.CallbackController.callback()
 POST   /callback                                                               @org.pac4j.play.CallbackController.callback()
