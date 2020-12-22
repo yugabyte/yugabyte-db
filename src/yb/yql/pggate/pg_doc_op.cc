@@ -407,6 +407,8 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
     SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
+    // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
+    // the following lines?
     int partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
     SCHECK(partition >= 0 || partition < table_desc_->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
@@ -445,6 +447,8 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
 }
 
 Status PgDocReadOp::InitializeYbctidOperators() {
+  // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
+  // the following lines?
   int op_count = table_desc_->GetPartitionCount();
 
   if (batch_row_orders_.size() == 0) {
@@ -554,8 +558,9 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
 
 Status PgDocReadOp::PopulateParallelSelectCountOps() {
   // Create batch operators, one per partition, to SELECT COUNT() in parallel.
+  // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
+  // the following line?
   RETURN_NOT_OK(ClonePgsqlOps(table_desc_->GetPartitionCount()));
-
   // Set "pararallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
@@ -575,7 +580,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   }
 
   // Assign partitions to operators.
-  const auto& partition_keys = table_desc_->table()->GetPartitions();
+  const auto& partition_keys = table_desc_->GetPartitions();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -612,7 +617,9 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   SCHECK(exec_params_.partition_key != nullptr, Uninitialized, "expected non-null partition_key");
 
   // Seek the tablet of the given key.
-  const std::vector<std::string>& partition_keys = table_desc_->table()->GetPartitions();
+  // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
+  // the following line?
+  const std::vector<std::string>& partition_keys = table_desc_->GetPartitions();
   const auto& partition_key = std::find(
       partition_keys.begin(),
       partition_keys.end(),

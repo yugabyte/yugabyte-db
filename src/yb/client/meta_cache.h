@@ -565,7 +565,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupTabletByKey(
       const std::shared_ptr<const YBTable>& table, const std::string& partition_start,
       CoarseTimePoint deadline, LookupTabletCallback* callback,
-      const std::string** partition_group_start);
+      std::shared_ptr<const std::string>* partition_group_start);
 
   template <class Lock>
   bool DoLookupTabletById(

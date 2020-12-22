@@ -62,6 +62,8 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
+typedef std::vector<std::string> TablePartitions;
+struct VersionedTablePartitions;
 
 class YBOperation;
 typedef std::shared_ptr<YBOperation> YBOperationPtr;

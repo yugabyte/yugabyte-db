@@ -50,6 +50,12 @@ struct YBTableInfo {
   boost::optional<master::ReplicationInfoPB> replication_info;
 };
 
+struct VersionedTablePartitions {
+  TablePartitions keys;
+  // See SysTablesEntryPB::partitions_version.
+  int32_t version;
+};
+
 // A YBTable represents a table on a particular cluster. It holds the current
 // schema of the table. Any given YBTable instance belongs to a specific YBClient
 // instance.
@@ -84,10 +90,13 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool IsHashPartitioned() const;
   bool IsRangePartitioned() const;
 
-  const std::vector<std::string>& GetPartitions() const;
-
+  // Note that table partitions are mutable could change at any time because of tablet splitting.
+  // So it is not safe to rely on following Get*Partition* functions to return information that
+  // is consistent across subsequent calls.
+  std::shared_ptr<const TablePartitions> GetPartitionsShared() const;
+  std::shared_ptr<const VersionedTablePartitions> GetVersionedPartitions() const;
+  TablePartitions GetPartitionsCopy() const;
   int32_t GetPartitionCount() const;
-
   int32_t GetPartitionsVersion() const;
 
   // Indexes available on the table.
@@ -120,9 +129,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   std::unique_ptr<YBqlReadOp> NewQLSelect();
 
   // Finds partition start for specified partition_key.
-  // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
-  size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
-  const std::string& FindPartitionStart(
+  // Partitions could be grouped by group_by bunches, in this case start of such bunch is returned.
+  std::shared_ptr<const std::string> FindPartitionStart(
       const std::string& partition_key, size_t group_by = 1) const;
 
   void MarkPartitionsAsStale();
@@ -149,18 +157,14 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   friend class internal::GetTableSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
-  struct VersionedPartitions {
-    std::vector<std::string> keys;
-    // See SysTablesEntryPB::partitions_version.
-    int32_t version;
-  };
-
   YBTable(client::YBClient* client, const YBTableInfo& info);
 
   CHECKED_STATUS Open();
 
   // Fetches tablet partitions from master using GetTableLocations RPC.
-  Result<VersionedPartitions> FetchPartitions();
+  Result<std::shared_ptr<const VersionedTablePartitions>> FetchPartitions();
+
+  size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
   client::YBClient* const client_;
   YBTableType table_type_;
@@ -168,7 +172,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Mutex protecting partitions_.
   mutable rw_spinlock mutex_;
-  VersionedPartitions partitions_ GUARDED_BY(mutex_);
+  std::shared_ptr<const VersionedTablePartitions> partitions_ GUARDED_BY(mutex_);
 
   std::atomic<bool> partitions_are_stale_{false};
   std::mutex partitions_refresh_mutex_;

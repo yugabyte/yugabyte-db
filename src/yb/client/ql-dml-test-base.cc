@@ -270,7 +270,7 @@ Result<int32_t> SelectRow(
 Result<std::map<int32_t, int32_t>> SelectAllRows(
     TableHandle* table, const YBSessionPtr& session) {
   std::vector<YBqlReadOpPtr> ops;
-  auto partitions = table->table()->GetPartitions();
+  auto partitions = table->table()->GetPartitionsCopy();
   partitions.push_back(std::string()); // Upper bound for last partition.
 
   uint16_t prev_code = 0;

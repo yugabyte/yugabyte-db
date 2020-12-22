@@ -572,7 +572,7 @@ CHECKED_STATUS SetRangePartitionBounds(const YBPgsqlReadOp& op,
       key->clear();
     } else {
       // In case of backward scan process must be start from the last partition.
-      *key = op.table()->GetPartitions().back();
+      *key = op.table()->GetPartitionsShared()->back();
     }
     key_upper_bound->clear();
     return Status::OK();
@@ -1016,15 +1016,15 @@ CHECKED_STATUS ReviewResponsePagingState(YBPgsqlReadOp* op) {
       return Status::OK();
     }
   }
-  const auto& partitions = op->table()->GetPartitions();
-  const auto idx = FindPartitionStartIndex(partitions, current_next_partition_key);
+  const auto partitions = op->table()->GetPartitionsShared();
+  const auto idx = FindPartitionStartIndex(*partitions, current_next_partition_key);
   SCHECK_GT(
       idx, 0,
       IllegalState, "Paging state for backward scan cannot point to first partition");
   SCHECK_EQ(
-      partitions[idx], current_next_partition_key,
+      (*partitions)[idx], current_next_partition_key,
       IllegalState, "Paging state for backward scan must point to partition start key");
-  const auto& next_partition_key = partitions[idx - 1];
+  const auto& next_partition_key = (*partitions)[idx - 1];
   response.mutable_paging_state()->set_next_partition_key(next_partition_key);
   return Status::OK();
 }

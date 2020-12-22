@@ -1316,7 +1316,7 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(
     return nullptr;
   }
 
-  DCHECK_EQ(partition_key, table->FindPartitionStart(partition_key));
+  DCHECK_EQ(partition_key, *table->FindPartitionStart(partition_key));
   auto tablet_it = it->second.tablets_by_partition.find(partition_key);
   if (PREDICT_FALSE(tablet_it == it->second.tablets_by_partition.end())) {
     // No tablets with a start partition key lower than 'partition_key'.
@@ -1367,7 +1367,7 @@ template <class Lock>
 bool MetaCache::DoLookupTabletByKey(
     const std::shared_ptr<const YBTable>& table, const std::string& partition_start,
     CoarseTimePoint deadline, LookupTabletCallback* callback,
-    const std::string** partition_group_start) {
+    std::shared_ptr<const std::string>* partition_group_start) {
   RemoteTabletPtr tablet;
   auto scope_exit = ScopeExit([callback, &tablet] {
     if (tablet) {
@@ -1383,7 +1383,7 @@ bool MetaCache::DoLookupTabletByKey(
     }
 
     if (!*partition_group_start) {
-      *partition_group_start = &table->FindPartitionStart(partition_start, kPartitionGroupSize);
+      *partition_group_start = table->FindPartitionStart(partition_start, kPartitionGroupSize);
     }
 
     auto table_it = tables_.find(table->id());
@@ -1433,19 +1433,19 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                                   const string& partition_key,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
-  const auto& partition_start = table->FindPartitionStart(partition_key);
+  const auto partition_start = table->FindPartitionStart(partition_key);
   VLOG_WITH_FUNC(4) << "Table: " << table->ToString()
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
-                    << ", partition_start: " << Slice(partition_start).ToDebugHexString();
+                    << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 
-  const std::string* partition_group_start = nullptr;
+  std::shared_ptr<const std::string> partition_group_start;
   if (DoLookupTabletByKey<SharedLock<boost::shared_mutex>>(
-          table, partition_start, deadline, &callback, &partition_group_start)) {
+          table, *partition_start, deadline, &callback, &partition_group_start)) {
     return;
   }
 
   bool result = DoLookupTabletByKey<std::lock_guard<boost::shared_mutex>>(
-      table, partition_start, deadline, &callback, &partition_group_start);
+      table, *partition_start, deadline, &callback, &partition_group_start);
   LOG_IF(DFATAL, !result)
       << "Lookup was not started for table " << table->ToString()
       << ", partition_key: " << Slice(partition_key).ToDebugHexString();

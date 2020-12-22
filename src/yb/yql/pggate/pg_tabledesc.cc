@@ -25,7 +25,8 @@ namespace pggate {
 
 using google::protobuf::RepeatedPtrField;
 
-PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_table) {
+PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table)
+    : table_(pg_table), table_partitions_(table_->GetVersionedPartitions()) {
   const auto& schema = pg_table->schema();
   const int num_columns = schema.num_columns();
   columns_.resize(num_columns);
@@ -96,11 +97,11 @@ bool PgTableDesc::IsRangePartitioned() const {
 }
 
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
-  return table_->GetPartitions();
+  return table_partitions_->keys;
 }
 
 int PgTableDesc::GetPartitionCount() const {
-  return table_->GetPartitionCount();
+  return table_partitions_->keys.size();
 }
 
 Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
@@ -127,7 +128,7 @@ Result<int> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   // - Hash Partition: ybctid -> hashcode -> key -> partition index.
   // - Range Partition: ybctid == key -> partition index.
   string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
-  return table_->FindPartitionStartIndex(partition_key);
+  return client::FindPartitionStartIndex(table_partitions_->keys, partition_key);
 }
 
 Status PgTableDesc::SetScanBoundary(PgsqlReadRequestPB *req,
