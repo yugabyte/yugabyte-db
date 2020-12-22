@@ -925,7 +925,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
       const consensus::ConsensusStatePB& consensus_state,
-      const tablet::RaftGroupStatePB& replica_state);
+      const ReportedTabletPB& report);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -934,12 +934,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO: See if we can remove this logic, as it seems confusing.
   void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                         const consensus::ConsensusStatePB* consensus_state,
-                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const ReportedTabletPB& report,
                                         const scoped_refptr<TabletInfo>& tablet_to_update);
 
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
-                                             const tablet::RaftGroupStatePB& replica_state,
+                                             const ReportedTabletPB& report,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
