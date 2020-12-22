@@ -164,6 +164,10 @@ std::shared_ptr<const TabletInfo::ReplicaMap> TabletInfo::GetReplicaLocations() 
 void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
+  last_update_time_ = MonoTime::Now();
+  // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
+  // clients that already have the old shared_ptr.
+  replica_locations_ = std::make_shared<TabletInfo::ReplicaMap>(*replica_locations_);
   auto it = replica_locations_->find(replica.ts_desc->permanent_uuid());
   if (it == replica_locations_->end()) {
     replica_locations_->emplace(replica.ts_desc->permanent_uuid(), replica);
