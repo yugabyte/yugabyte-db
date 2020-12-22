@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.node.ValueNode;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
@@ -21,6 +22,7 @@ import play.data.FormFactory;
 import play.libs.Json;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -131,14 +133,28 @@ public class CertificateController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     JsonNode jsonArray = Json.toJson(certs);
-    for(JsonNode each : jsonArray){
-      ((ObjectNode) each).put("removable", false);
-    }
-    if (certs == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-
-    return ApiResponse.success(jsonArray);
+    List<Universe> universes = Universe.getAll();
+    HashMap<String, Boolean> removable = new HashMap<String, Boolean>();
+    for (Universe universe : universes) {
+      try {
+        UUID universe_json_info = universe.getUniverseDetails().rootCA;
+        removable.put(universe_json_info.toString(), true);
+      } catch (NullPointerException a) {
+        continue;
+      }}
+      for (JsonNode each : jsonArray) {
+        JsonNode cert_uuid = each.get("uuid");
+        Boolean value = removable.get(cert_uuid.asText());
+        if (value != null) {
+          ((ObjectNode) each).put("removable", true);
+        } else {
+          ((ObjectNode) each).put("removable", true);
+        }
+      }
+      if (certs == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      }
+      return ApiResponse.success(jsonArray);
   }
 
   public Result get(UUID customerUUID, String label) {
