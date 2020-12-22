@@ -788,6 +788,11 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
       continue;
     }
 
+     // Don't move a replica right after split
+    if (ContainsKey(from_ts_meta.parent_data_tablets, tablet_id)) {
+      continue;
+    }
+
     if (VERIFY_RESULT(
         state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id)))) {
       non_over_replicated_tablets.insert(tablet_id);

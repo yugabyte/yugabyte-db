@@ -1535,6 +1535,12 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
       }),
       "Failed to submit compaction for post-split tablet.");
+  if (tablet->StillHasParentDataAfterSplit()) {
+    std::lock_guard<RWMutex> lock(mutex_);
+    tablets_being_compacted_after_split_.insert(tablet->tablet_id());
+    VLOG(2) << TabletLogPrefix(tablet->tablet_id())
+            << " marking as being compacted after split";
+  }
 }
 
 void TSTabletManager::StartShutdown() {
@@ -1872,7 +1878,7 @@ void TSTabletManager::MarkDirtyUnlocked(const TabletId& tablet_id,
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
   VLOG(2) << TabletLogPrefix(tablet_id)
-          << "Marking dirty. Reason: " << context->ToString()
+          << "Marking dirty. Reason: " << AsString(context)
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
   server_->heartbeater()->TriggerASAP();
@@ -1897,6 +1903,11 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
+  if (tablet_peer->tablet() != nullptr) {
+      reported_tablet->set_processing_parent_data(
+                  tablet_peer->tablet()->StillHasParentDataAfterSplit());
+  }
+
   // We cannot get consensus state information unless the TabletPeer is running.
   shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
   if (consensus) {
@@ -1919,6 +1930,27 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
     report->set_sequence_number(cur_report_seq);
+
+    TabletIdSet::iterator i = tablets_being_compacted_after_split_.begin();
+    while (i != tablets_being_compacted_after_split_.end()) {
+      TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, *i);
+      if (tablet_peer) {
+          const auto& tablet = (*tablet_peer)->tablet();
+          const std::string& tablet_id = tablet->tablet_id();
+          if (!tablet->StillHasParentDataAfterSplit()) {
+            i = tablets_being_compacted_after_split_.erase(i);
+            VLOG(1) << "Tablet " << tablet_id << " compacted after split and marked for report";
+            InsertOrUpdate(&dirty_tablets_, tablet_id, TabletReportState{cur_report_seq});
+          } else {
+            ++i;
+          }
+      } else {
+          VLOG(1) << "Tablet " << *i << " should being compacted after split "
+                                        "but was not found";
+          i = tablets_being_compacted_after_split_.erase(i);
+      }
+    }
+
     if (include_bootstrap) {
       for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
         VLOG(1) << "Tablet " << tablet_id << " being remote bootstrapped and marked for report";

@@ -705,6 +705,88 @@ TEST_F(TabletSplitITest, TestInitiatesCompactionAfterSplit) {
   ASSERT_GE(pre_split_bytes_written, post_split_bytes_read);
 }
 
+TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
+  constexpr auto kNumRows = 10000;
+
+  // Keep tablets without compaction after split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = true;
+
+  CreateSingleTablet();
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kNumRows));
+
+  auto test_table_id = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName)).table_id;
+  // Verify that heartbeat contains flag processing_parent_data for all tablets of the test
+  // table on each tserver to have after split
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto server = cluster_->mini_tablet_server(i)->server();
+    if (!server) { // Server is shut down.
+      continue;
+    }
+    auto* ts_manager = server->tablet_manager();
+    std::set<TabletId> tablets;
+    for (auto& peer : ts_manager->GetTabletPeers()) {
+      if (peer->tablet_metadata()->table_id() == test_table_id) {
+        tablets.insert(peer->tablet()->tablet_id());
+      }
+    }
+
+    master::TabletReportPB report;
+    ts_manager->GenerateTabletReport(&report);
+    for (const auto& reported_tablet : report.updated_tablets()) {
+      if (tablets.find(reported_tablet.tablet_id()) == tablets.end()) {
+        continue;
+      }
+      EXPECT_TRUE(reported_tablet.processing_parent_data());
+    }
+  }
+
+  // Wait for the flag processing_parent_data to be propagated to master through heartbeat
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+
+  // Add new tserver in to force load balancer moves.
+  auto newts = cluster_->num_tablet_servers();
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(newts + 1));
+  const auto newts_uuid = cluster_->mini_tablet_server(newts)->server()->permanent_uuid();
+
+  // Verify none test table replica on the new tserver
+  scoped_refptr<master::TableInfo> tbl_info = catalog_manager()->GetTableInfo(test_table_id);
+  vector<scoped_refptr<master::TabletInfo>> tablets;
+  tbl_info->GetAllTablets(&tablets);
+  bool foundReplica = false;
+  for (const auto& tablet : tablets) {
+    auto replica_map = tablet->GetReplicaLocations();
+    if (replica_map->find(newts_uuid) != replica_map->end()) {
+      foundReplica = true;
+      break;
+    }
+  }
+  EXPECT_FALSE(foundReplica);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = false;
+
+  ASSERT_NO_FATALS(WaitForTestTableTabletsCompactionFinish(5s * kTimeMultiplier));
+
+  // Wait for test table replica on the new tserver
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+                        tbl_info = catalog_manager()->GetTableInfo(test_table_id);
+                        tbl_info->GetAllTablets(&tablets);
+                        foundReplica = false;
+                        for (const auto& tablet : tablets) {
+                          auto replica_map = tablet->GetReplicaLocations();
+                          if (replica_map->find(newts_uuid) != replica_map->end()) {
+                            foundReplica = true;
+                            break;
+                          }
+                      }
+                      return foundReplica;
+                    }, MonoDelta::FromMilliseconds(30000 * 2), "WaitForLBToBeProcessed"));
+
+}
+
 // Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock
 // between TSTabletManager::ApplyTabletSplit and Heartbeater::Thread::TryHeartbeat.
 TEST_F(TabletSplitITest, SlowSplitSingleTablet) {

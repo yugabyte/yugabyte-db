@@ -59,6 +59,10 @@ struct TabletReplica {
   consensus::RaftPeerPB::MemberType member_type;
   MonoTime time_updated;
 
+  // Replica is processing a parent data after a tablet splits, rocksdb sst files will have
+  // metadata saying that either the first half, or the second half is irrelevant.
+  bool processing_parent_data = false;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
