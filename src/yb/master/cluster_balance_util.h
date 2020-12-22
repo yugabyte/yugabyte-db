@@ -153,6 +153,10 @@ struct CBTabletServerMetadata {
 
   // The set of tablet leader ids that this tablet server is currently running.
   std::set<TabletId> leaders;
+
+  // The set of tablet ids that have possible non relevant data. Replica should be compacted
+  // first before moving
+  std::set<TabletId> parent_data_tablets;
 };
 
 struct CBTabletServerLoadCounts {
@@ -357,6 +361,12 @@ class PerTableLoadState {
                    << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
+      }
+      if (replica.second.processing_parent_data) {
+        RETURN_NOT_OK(AddParentDataTablet(tablet_id, ts_uuid));
+        VLOG(1) << "Replica might have non relevant data: " << replica.second.ToString();
+      } else {
+        RETURN_NOT_OK(RemoveParentDataTablet(tablet_id, ts_uuid));
       }
 
       // If this replica is blacklisted, we want to keep track of these specially, so we can
@@ -757,6 +767,22 @@ class PerTableLoadState {
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     int num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
     global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
+    return Status::OK();
+  }
+
+  Status AddParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    per_ts_meta_.at(ts_uuid).parent_data_tablets.insert(tablet_id);
+    return Status::OK();
+  }
+
+  Status RemoveParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    if (per_ts_meta_.at(ts_uuid).parent_data_tablets.erase(tablet_id) != 0) {
+      VLOG(1) << "Updated replica have relevant data, tablet id: " << tablet_id;
+    }
     return Status::OK();
   }
 
