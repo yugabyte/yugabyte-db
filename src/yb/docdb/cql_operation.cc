@@ -968,13 +968,18 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         boost::optional<int32_t> hash_code = request_.has_hash_code()
                                              ? boost::make_optional<int32_t>(request_.hash_code())
                                              : boost::none;
-        DocQLScanSpec spec(projection,
+        const auto range_covers_whole_partition_key = !request_.has_where_expr();
+        const auto include_static_columns_in_scan = range_covers_whole_partition_key &&
+                                                    schema_->has_statics();
+        DocQLScanSpec spec(*schema_,
                            hash_code,
                            hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
                            nullptr,
-                           request_.query_id());
+                           request_.query_id(),
+                           true /* is_forward_scan */,
+                           include_static_columns_in_scan);
 
         // Create iterator.
         DocRowwiseIterator iterator(
