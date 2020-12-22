@@ -130,10 +130,15 @@ public class CertificateController extends AuthenticatedController {
 
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
+    JsonNode jsonArray = Json.toJson(certs);
+    for(JsonNode each : jsonArray){
+      ((ObjectNode) each).put("removable", false);
+    }
     if (certs == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    return ApiResponse.success(certs);
+
+    return ApiResponse.success(jsonArray);
   }
 
   public Result get(UUID customerUUID, String label) {
@@ -146,11 +151,6 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result delete(UUID certificate) {
-
-//    Customer customer = Customer.get(customerUUID);
-//    if (customer == null) {
-//      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-//    }
 
     CertificateInfo cert = CertificateInfo.get(certificate);
 
