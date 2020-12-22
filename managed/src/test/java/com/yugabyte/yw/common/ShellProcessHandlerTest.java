@@ -9,7 +9,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -78,7 +78,7 @@ public class ShellProcessHandlerTest {
     private String createTestShellScript() throws IOException {
         String fileName = TMP_STORAGE_PATH + "/test.sh";
         FileWriter fw = new FileWriter(fileName);
-        fw.write(">&2 echo error; sleep 2; echo foobar; sleep 2; echo more; exit -1");
+        fw.write(">&2 echo error; sleep 2; echo foobar; sleep 2; echo more; exit 255");
         fw.close();
         // Set the file as a executable
         File file = new File(fileName);
