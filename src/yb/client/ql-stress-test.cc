@@ -388,7 +388,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   }
 
   size_t total_entries = 0;
-  size_t expected_leaders = table_.table()->GetPartitions().size();
+  size_t expected_leaders = table_.table()->GetPartitionCount();
   ASSERT_OK(WaitFor(
       std::bind(&QLStressTest::CheckRetryableRequestsCountsAndLeaders, this,
                 expected_leaders, &total_entries),

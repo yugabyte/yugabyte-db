@@ -170,7 +170,7 @@ void AdminCliTest::CheckImportedTable(const YBTable* src_table,
 
   ASSERT_EQ(same_ids, table->id() == src_table->id());
   ASSERT_EQ(table->table_type(), src_table->table_type());
-  ASSERT_EQ(table->GetPartitions(), src_table->GetPartitions());
+  ASSERT_EQ(table->GetPartitionsCopy(), src_table->GetPartitionsCopy());
   ASSERT_TRUE(table->partition_schema().Equals(src_table->partition_schema()));
   ASSERT_TRUE(table->schema().Equals(src_table->schema()));
   ASSERT_EQ(table->schema().table_properties().is_transactional(),
