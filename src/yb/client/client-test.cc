@@ -89,6 +89,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -2282,6 +2283,73 @@ TEST_F(ClientTest, BadMasterAddress) {
   }
 
   messenger->Shutdown();
+}
+
+TEST_F(ClientTest, RefreshPartitions) {
+  const auto kLookupTimeout = 10s;
+  const auto kNumLookupThreads = 2;
+  const auto kNumLookups = 100;
+
+  std::atomic<bool> stop_requested{false};
+  std::atomic<size_t> num_lookups_called{0};
+  std::atomic<size_t> num_lookups_done{0};
+
+  const auto callback = [&num_lookups_done](
+                            size_t lookup_idx, const Result<internal::RemoteTabletPtr>& tablet) {
+    const auto prefix = Format("Lookup $0 got ", lookup_idx);
+    if (tablet.ok()) {
+      LOG(INFO) << prefix << "tablet: " << (*tablet)->tablet_id();
+    } else {
+      LOG(INFO) << prefix << "error: " << AsString(tablet.status());
+    }
+    num_lookups_done.fetch_add(1);
+  };
+
+  const auto lookup_func = [&]() {
+    while(!stop_requested) {
+      const auto hash_code = RandomUniformInt<uint16_t>(0, PartitionSchema::kMaxPartitionKey);
+      const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      client_->LookupTabletByKey(
+          client_table_.table(), partition_key, CoarseMonoClock::now() + kLookupTimeout,
+          std::bind(callback, num_lookups_called.fetch_add(1), std::placeholders::_1));
+    }
+  };
+
+  const auto marker_func = [&]() {
+    while(!stop_requested) {
+      const auto table = client_table_.table();
+      table->MarkPartitionsAsStale();
+      const auto result = table->MaybeRefreshPartitions();
+      if (!result.ok()) {
+        LOG(INFO) << AsString(result.status());
+      }
+    }
+  };
+
+  LOG(INFO) << "Starting threads";
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < kNumLookupThreads; ++i) {
+    threads.push_back(std::thread(lookup_func));
+  }
+  threads.push_back(std::thread(marker_func));
+
+  ASSERT_OK(LoggedWaitFor([&num_lookups_called]{
+    return num_lookups_called >= kNumLookups;
+  }, 120s, "Tablet lookup calls"));
+
+  LOG(INFO) << "Stopping threads";
+  stop_requested = true;
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  LOG(INFO) << "Stopped threads";
+
+  ASSERT_OK(LoggedWaitFor([&num_lookups_done, num_lookups = num_lookups_called.load()] {
+    return num_lookups_done >= num_lookups;
+  }, kLookupTimeout, "Tablet lookup responses"));
+
+  LOG(INFO) << "num_lookups_done: " << num_lookups_done;
 }
 
 }  // namespace client
