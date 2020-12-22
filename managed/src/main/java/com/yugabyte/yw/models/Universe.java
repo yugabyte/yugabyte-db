@@ -96,6 +96,9 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
+  public static List<Universe> getAll() {
+    return find.query().findList();
+  }
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);

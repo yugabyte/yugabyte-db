@@ -12,7 +12,7 @@ import com.yugabyte.yw.forms.ClientCertParams;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -36,7 +36,7 @@ public class CertificateController extends AuthenticatedController {
 
   public Result upload(UUID customerUUID) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
+      .bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -59,17 +59,17 @@ public class CertificateController extends AuthenticatedController {
       if (customCertInfo == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
       } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
-                 customCertInfo.rootCertPath == null) {
+        customCertInfo.rootCertPath == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
       }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     try {
       UUID certUUID = CertificateHelper.uploadRootCA(
-                        label, customerUUID, appConfig.getString("yb.storage.path"),
-                        certContent, keyContent, certStart, certExpiry, certType,
-                        customCertInfo
-                      );
+        label, customerUUID, appConfig.getString("yb.storage.path"),
+        certContent, keyContent, certStart, certExpiry, certType,
+        customCertInfo
+      );
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
@@ -80,7 +80,7 @@ public class CertificateController extends AuthenticatedController {
 
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
-                                                 .bindFromRequest();
+      .bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -94,7 +94,7 @@ public class CertificateController extends AuthenticatedController {
 
     try {
       JsonNode result = CertificateHelper.createClientCertificate(
-          rootCA, null, formData.get().username, certStart, certExpiry);
+        rootCA, null, formData.get().username, certStart, certExpiry);
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {
@@ -145,9 +145,46 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
+  public Result delete(UUID certificate) {
+
+//    Customer customer = Customer.get(customerUUID);
+//    if (customer == null) {
+//      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+//    }
+
+    CertificateInfo cert = CertificateInfo.get(certificate);
+
+    if (cert == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
+    }
+    List<Universe> universes = Universe.getAll();
+
+    for (Universe universe : universes) {
+      // For the universes which does not have certificate attached to it.
+      try {
+        UUID universe_json_info = universe.getUniverseDetails().rootCA;
+        if (universe_json_info.toString() == cert.uuid.toString()) {
+          return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
+        }
+      } catch (NullPointerException a) {
+        continue;
+      }
+    }
+
+    if (cert.delete()) {
+      ObjectNode responseJson = Json.newObject();
+      responseJson.put("Successfully deleted the certificate", true);
+      Audit.createAuditEntry(ctx(), request());
+      LOG.info("Successfully deleted the certificate:" + certificate);
+      return ApiResponse.success(responseJson);
+    } else {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Certificate");
+    }
+  }
+
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
+      .bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
