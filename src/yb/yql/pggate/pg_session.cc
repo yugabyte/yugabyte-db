@@ -335,7 +335,7 @@ Status PgSessionAsyncRunResult::GetStatus(const PgSession& pg_session) {
   SCHECK(InProgress(), IllegalState, "Request must be in progress");
   auto status = future_status_.get();
   future_status_ = std::future<Status>();
-  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetPendingErrors(), status));
+  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetAndClearPendingErrors(), status));
   for (const auto& bop : buffered_operations_) {
     RETURN_NOT_OK(pg_session.HandleResponse(*bop.operation, bop.relation_id));
   }
@@ -1070,7 +1070,7 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
     RETURN_NOT_OK(ApplyOperation(session, transactional, buffered_op));
   }
   const auto status = session->FlushFuture().get();
-  RETURN_NOT_OK(CombineErrorsToStatus(session->GetPendingErrors(), status));
+  RETURN_NOT_OK(CombineErrorsToStatus(session->GetAndClearPendingErrors(), status));
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(HandleResponse(*buffered_op.operation, buffered_op.relation_id));
   }

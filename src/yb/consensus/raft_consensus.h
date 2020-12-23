@@ -223,9 +223,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
 
-  // Resets split operation ID, to be used only from SplitOperation::DoAbort.
-  CHECKED_STATUS ResetSplitOpId();
-
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 

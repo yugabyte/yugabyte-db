@@ -315,9 +315,6 @@ class ReplicaState {
   // tablet IDs otherwise.
   std::array<TabletId, kNumSplitParts> GetSplitChildTabletIdsUnlocked() const;
 
-  // Makes split_op_id uninitialized. To be used on split operation abort.
-  void ResetSplitOpIdUnlocked();
-
   // Returns true if an op from the current term has been committed.
   bool AreCommittedAndCurrentTermsSameUnlocked() const;
 

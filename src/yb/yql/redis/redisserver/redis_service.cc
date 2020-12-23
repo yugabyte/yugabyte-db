@@ -460,7 +460,7 @@ class Block : public std::enable_shared_from_this<Block> {
     bool tablet_not_found = false;
     if (!status.ok()) {
       if (session_ != nullptr) {
-        for (const auto& error : session_->GetPendingErrors()) {
+        for (const auto& error : session_->GetAndClearPendingErrors()) {
           if (error->status().IsNotFound()) {
             tablet_not_found = true;
           }

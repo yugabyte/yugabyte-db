@@ -642,7 +642,7 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
 
   SCHECK_GT(
       yb::OpId::FromPB(round->replicate_msg()->id()), split_op_info_.op_id, InvalidArgument,
-      "Received op id should be grater than split OP ID.");
+      "Received op id should be greater than split OP ID.");
 
   auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -661,9 +661,9 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
     return STATUS_EC_FORMAT(
                IllegalState, ConsensusError(ConsensusErrorPB::TABLET_SPLIT),
-               "Tablet split has been added to Raft log, operation $0 $1 should be retried to new "
-               "tablets.",
-               op_type, round->replicate_msg()->id())
+               "Tablet split has been added to Raft log ($0), operation $1 $2 should be retried to "
+               "new tablets.",
+               split_op_info_.op_id, OperationType_Name(op_type), round->replicate_msg()->id())
         .CloneAndAddErrorCode(SplitChildTabletIdsData(std::vector<TabletId>(
             split_op_info_.child_tablet_ids.begin(), split_op_info_.child_tablet_ids.end())));
   }
@@ -1032,14 +1032,6 @@ std::array<TabletId, kNumSplitParts> ReplicaState::GetSplitChildTabletIdsUnlocke
   return split_op_info_.child_tablet_ids;
 }
 
-void ReplicaState::ResetSplitOpIdUnlocked() {
-  DCHECK(IsLocked());
-  split_op_info_.op_id = yb::OpId();
-  for (auto& split_child_tablet_id : split_op_info_.child_tablet_ids) {
-    split_child_tablet_id.clear();
-  }
-}
-
 RestartSafeCoarseMonoClock& ReplicaState::Clock() {
   return retryable_requests_.Clock();
 }
@@ -1100,6 +1092,12 @@ void ReplicaState::CancelPendingOperation(const OpIdPB& id, bool should_exist) {
   CHECK_EQ(GetCurrentTermUnlocked(), id.term());
   CHECK_EQ(next_index_, id.index() + 1);
   next_index_ = id.index();
+
+  if (OpId::FromPB(id) == split_op_info_.op_id) {
+    // If we cancel first split operation in Raft log designated for this Raft group - we need
+    // to reset split_op_info_.
+    split_op_info_ = SplitOpInfo();
+  }
 
   // We don't use UpdateLastReceivedOpIdUnlocked because we're actually
   // updating it back to a lower value and we need to avoid the checks

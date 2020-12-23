@@ -1604,9 +1604,14 @@ void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
 
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the errors and discard the IOError.
+
+  // We need temp variable here to have ownership of failed ops, so they don't get released
+  // concurrently.
+  client::CollectedErrors pending_errors;
   OpErrors op_errors;
   if (s.IsIOError()) {
-    for (const auto& error : session->GetPendingErrors()) {
+    pending_errors = session->GetAndClearPendingErrors();
+    for (const auto& error : pending_errors) {
       op_errors[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
     }
     s = Status::OK();
@@ -2368,7 +2373,7 @@ void Executor::Reset() {
   exec_context_ = nullptr;
   exec_contexts_.clear();
   write_batch_.Clear();
-  session_->Abort();
+  session_->Reset();
   num_flushes_ = 0;
   result_ = nullptr;
   cb_.Reset();

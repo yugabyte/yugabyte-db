@@ -292,7 +292,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       Status s = session->Flush();
       if (PREDICT_FALSE(!s.ok())) {
-        client::CollectedErrors errors = session->GetPendingErrors();
+        client::CollectedErrors errors = session->GetAndClearPendingErrors();
         for (const auto& e : errors) {
           ASSERT_TRUE(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status();
         }
