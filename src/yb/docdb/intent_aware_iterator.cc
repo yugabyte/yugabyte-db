@@ -194,6 +194,7 @@ namespace {
 struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
   Slice intent_value;
+  DocHybridTime intent_time;
   DocHybridTime value_time;
   IntentTypeSet intent_types;
 
@@ -201,10 +202,37 @@ struct DecodeStrongWriteIntentResult {
   bool same_transaction = false;
 
   std::string ToString() const {
-    return Format("{ intent_prefix: $0 intent_value: $1 value_time: $2 same_transaction: $3 "
-                  "intent_types: $4 }",
-                  intent_prefix.ToDebugHexString(), intent_value.ToDebugHexString(), value_time,
-                  same_transaction, intent_types);
+    return Format("{ intent_prefix: $0 intent_value: $1 intent_time: $2 value_time: $3 "
+                  "same_transaction: $4 intent_types: $5 }",
+                  intent_prefix.ToDebugHexString(), intent_value.ToDebugHexString(), intent_time,
+                  value_time, same_transaction, intent_types);
+  }
+
+  // Returns the upper limit for the "value time" of an intent in order for the intent to be visible
+  // in the read results. The "value time" is defined as follows:
+  //   - For uncommitted transactions, the "value time" is the time when the intent was written.
+  //     Note that same_transaction or in_txn_limit could only be set for uncommited transactions.
+  //   - For committed transactions, the "value time" is the commit time.
+  //
+  // The logic here is as follows:
+  //   - When a transaction is reading its own intents, the in_txn_limit allows a statement to
+  //     avoid seeing its own partial results. This is necessary for statements such as INSERT ...
+  //     SELECT to avoid reading rows that the same statement generated and going into an infinite
+  //     loop.
+  //   - If an intent's hybrid time is greater than the tablet's local limit, then this intent
+  //     cannot lead to a read restart and we only need to see it if its commit time is less than or
+  //     equal to read_time.
+  //   - If an intent's hybrid time is <= than the tablet's local limit, then we cannot claim that
+  //     the intent was written after the read transaction began based on the local limit, and we
+  //     must compare the intent's commit time with global_limit and potentially perform a read
+  //     restart, because the transaction that wrote the intent might have been committed before our
+  //     read transaction begin.
+  HybridTime MaxAllowedValueTime(const ReadHybridTime& read_time) const {
+    if (same_transaction) {
+      return read_time.in_txn_limit;
+    }
+    return intent_time.hybrid_time() > read_time.local_limit
+        ? read_time.read : read_time.global_limit;
   }
 };
 
@@ -237,6 +265,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     result.intent_value.consume_byte();
     IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
     result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+    result.intent_time = decoded_intent_key.doc_ht;
     if (result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
@@ -276,6 +305,10 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
   return subdoc_key.has_hybrid_time();
 }
 
+std::string EncodeHybridTime(HybridTime value) {
+  return DocHybridTime(value, kMaxWriteId).EncodedInDocDbFormat();
+}
+
 } // namespace
 
 IntentAwareIterator::IntentAwareIterator(
@@ -285,10 +318,12 @@ IntentAwareIterator::IntentAwareIterator(
     const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
     : read_time_(read_time),
-      encoded_read_time_local_limit_(
-          DocHybridTime(read_time_.local_limit, kMaxWriteId).EncodedInDocDbFormat()),
-      encoded_read_time_global_limit_(
-          DocHybridTime(read_time_.global_limit, kMaxWriteId).EncodedInDocDbFormat()),
+      encoded_read_time_read_(EncodeHybridTime(read_time_.read)),
+      encoded_read_time_local_limit_(EncodeHybridTime(read_time_.local_limit)),
+      encoded_read_time_global_limit_(EncodeHybridTime(read_time_.global_limit)),
+      encoded_read_time_regular_limit_(
+          read_time_.local_limit > read_time_.read ? Slice(encoded_read_time_local_limit_)
+                                                   : Slice(encoded_read_time_read_)),
       txn_op_context_(txn_op_context),
       transaction_status_cache_(
           txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time, deadline) {
@@ -707,9 +742,7 @@ void IntentAwareIterator::ProcessIntent() {
   }
 
   // Ignore intent past read limit.
-  auto max_allowed_time = decode_result->same_transaction
-      ? read_time_.in_txn_limit : read_time_.global_limit;
-  if (decode_result->value_time.hybrid_time() > max_allowed_time) {
+  if (decode_result->value_time.hybrid_time() > decode_result->MaxAllowedValueTime(read_time_)) {
     return;
   }
 
@@ -1087,12 +1120,47 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
       // Value came from a transaction, we could try to filter it by original intent time.
       Slice encoded_intent_doc_ht = value;
       encoded_intent_doc_ht.consume_byte();
-      if (encoded_intent_doc_ht.compare(Slice(encoded_read_time_local_limit_)) > 0 &&
-          encoded_doc_ht.compare(Slice(encoded_read_time_global_limit_)) > 0) {
+      // The logic here replicates part of the logic in
+      // DecodeStrongWriteIntentResult:: MaxAllowedValueTime for intents that have been committed
+      // and applied to regular RocksDB only. Note that here we are comparing encoded hybrid times,
+      // so comparisons are reversed vs. the un-encoded case. If a value is found "invalid", it
+      // can't cause a read restart. If it is found "valid", it will cause a read restart if it is
+      // greater than read_time.read. That last comparison is done outside this function.
+      Slice max_allowed = encoded_intent_doc_ht.compare(encoded_read_time_local_limit_) > 0
+          ? Slice(encoded_read_time_global_limit_)
+          : Slice(encoded_read_time_read_);
+      if (encoded_doc_ht.compare(max_allowed) > 0) {
         iter_valid_ = true;
         return;
       }
-    } else if (encoded_doc_ht.compare(Slice(encoded_read_time_local_limit_)) > 0) {
+    } else if (encoded_doc_ht.compare(encoded_read_time_regular_limit_) > 0) {
+      // If a value does not contain the hybrid time of the intent that wrote the original
+      // transaction, then it either (a) originated from a single-shard transaction or (b) the
+      // intent hybrid time has already been garbage-collected during a compaction because the
+      // corresponding transaction's commit time (stored in the key) became lower than the history
+      // cutoff. See the following commit for the details of this intent hybrid time GC.
+      //
+      // https://github.com/yugabyte/yugabyte-db/commit/26260e0143e521e219d93f4aba6310fcc030a628
+      //
+      // encoded_read_time_regular_limit_ is simply the encoded value of max(read_ht, local_limit).
+      // The above condition
+      //
+      //   encoded_doc_ht.compare(encoded_read_time_regular_limit_) >= 0
+      //
+      // corresponds to the following in terms of decoded hybrid times (order is reversed):
+      //
+      //   commit_ht <= max(read_ht, local_limit)
+      //
+      // and the inverse of that can be written as
+      //
+      //   commit_ht > read_ht && commit_ht > local_limit
+      //
+      // The reason this is correct here is that in case (a) the event of writing a single-shard
+      // record to the tablet would certainly be after our read transaction's start time in case
+      // commit_ht > local_limit, so it can never cause a read restart. In case (b) we know that
+      // commit_ht < history_cutoff and read_ht >= history_cutoff (by definition of history cutoff)
+      // so commit_ht < read_ht, and in this case read restart is impossible regardless of the
+      // value of local_limit.
       iter_valid_ = true;
       return;
     }
