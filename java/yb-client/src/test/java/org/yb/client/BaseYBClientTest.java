@@ -76,6 +76,8 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
         .defaultOperationTimeoutMs(DEFAULT_SLEEP)
         .defaultSocketReadTimeoutMs(DEFAULT_SLEEP)
         .sslCertFile(certFile)
+        .sslClientCertFiles(clientCertFile, clientKeyFile)
+        .bindHostAddress(clientHost, clientPort)
         .build();
 
     syncClient = new YBClient(client);
