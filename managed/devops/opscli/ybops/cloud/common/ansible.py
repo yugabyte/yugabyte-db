@@ -45,7 +45,7 @@ class AnsibleProcess(object):
     def build_connection_target(self, target):
         return target + ","
 
-    def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
+    def run(self, filename, extra_vars=dict(), host_info={}):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
@@ -91,6 +91,8 @@ class AnsibleProcess(object):
         if ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
+            # Ansible automatically uses /usr/local/bin/python when "-i localhost," is specified.
+            process_args.extend(["-e", "ansible_python_interpreter='/usr/bin/env python'"])
         elif self.can_ssh:
             process_args.extend([
                 "--private-key", ssh_key_file,
@@ -109,11 +111,10 @@ class AnsibleProcess(object):
             inventory_target = self.build_connection_target(
                 host_info.get("name", self.connection_target))
 
-        # Set inventory, connection type, and pythonpath.
+        # Set inventory and connection type.
         process_args.extend([
             "-i", inventory_target,
-            "-c", connection_type,
-            "-e", "ansible_python_interpreter='/usr/bin/env python'"
+            "-c", connection_type
         ])
 
         # Setup the full list of extra-vars needed for ansible plays.
@@ -121,10 +122,8 @@ class AnsibleProcess(object):
 
         logging.info("Running ansible command {}".format(json.dumps(process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        if print_output:
-            print(stdout)
+        p = subprocess.Popen(process_args, stderr=subprocess.PIPE)
+        _, stderr = p.communicate()
         if p.returncode != 0:
             raise YBOpsRuntimeError(
                 "Playbook with args {} failed with return code {} and error {}".format(

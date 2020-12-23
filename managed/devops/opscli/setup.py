@@ -25,7 +25,7 @@ setup(name='ybops',
           'ybops/common',
           'ybops/utils',
       ],
-      package_data={'ybops': ['data/*.yml', 'data/internal/*.yml', 'data/*.j2', 'data/*.sh']},
+      package_data={'ybops': ['data/*.yml', 'data/internal/*.yml', 'data/*.j2']},
       scripts=[
           'ybops/scripts/ybcloud.py'
       ],

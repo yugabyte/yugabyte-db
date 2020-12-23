@@ -13,8 +13,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import javax.persistence.Column;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -28,7 +26,6 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
-import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -55,11 +52,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Constraints.Required()
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
-
-  @Constraints.Required()
-  @DbJson
-  @Column(nullable = false, columnDefinition = "TEXT")
-  public JsonNode preflight_checks;
 
   @JsonIgnore
   // This is set during configure to figure out which cluster type is intended to be modified.

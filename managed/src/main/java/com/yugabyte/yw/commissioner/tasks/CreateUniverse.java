@@ -52,16 +52,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Select master nodes.
       selectMasters();
 
-      if (taskParams().firstTry) {
-        // Update the user intent.
-        writeUserIntentToUniverse();
-      }
-
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
-
-      // Check if nodes are able to be provisioned/configured properly.
-      createPrecheckTasks(taskParams().nodeDetailsSet)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      // Update the user intent.
+      writeUserIntentToUniverse();
 
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(taskParams().nodeDetailsSet)
@@ -76,6 +68,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       // Override master flags (on primary cluster) and tserver flags as necessary.
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);

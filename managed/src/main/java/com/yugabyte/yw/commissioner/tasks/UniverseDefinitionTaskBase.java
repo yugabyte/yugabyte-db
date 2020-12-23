@@ -38,7 +38,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -550,42 +549,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
-
-  /**
-   * Creates a task list to run preflight checks for the list of nodes passed in.
-   *
-   * @param nodes : a collection of nodes that need to be checked
-   */
-  public SubTaskGroup createPrecheckTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
-
-    for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      NodeTaskParams params = new NodeTaskParams();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Whether to install node_exporter on nodes or not.
-      params.extraDependencies.installNodeExporter =
-        taskParams().extraDependencies.installNodeExporter;
-      // Which user the node exporter service will run as
-      params.nodeExporterUser = taskParams().nodeExporterUser;
-
-      // Create the Ansible task to setup the server.
-      PrecheckNode precheckNode = new PrecheckNode();
-      precheckNode.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(precheckNode);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
 
   /**
    * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.

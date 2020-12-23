@@ -13,9 +13,6 @@ export const RESET_CUSTOMER_TASKS = 'RESET_CUSTOMER_TASKS';
 export const FETCH_FAILED_TASK_DETAIL = 'FETCH_TASK_DETAIL';
 export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 
-export const RETRY_TASK = 'RETRY_TASK';
-export const RETRY_TASK_RESPONSE = 'RETRY_TASK_RESPONSE';
-
 export function fetchTaskProgress(taskUUID) {
   const request =
     axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
@@ -77,21 +74,6 @@ export function fetchFailedSubTasks(taskUUID) {
 export function fetchFailedSubTasksResponse(response) {
   return {
     type: FETCH_FAILED_TASK_DETAIL_RESPONSE,
-    payload: response.payload
-  };
-}
-
-export function retryTask(taskUUID) {
-  const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
-  return {
-    type: RETRY_TASK,
-    payload: request
-  };
-}
-
-export function retryTaskResponse(response) {
-  return {
-    type: RETRY_TASK_RESPONSE,
     payload: response.payload
   };
 }

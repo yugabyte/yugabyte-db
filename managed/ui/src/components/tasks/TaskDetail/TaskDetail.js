@@ -12,10 +12,8 @@ import './TaskDetail.scss';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
-import { Highlighter } from '../../../helpers/Highlighter';
-import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
-import { getPromiseState } from '../../../utils/PromiseUtils';
-import 'highlight.js/styles/github.css';
+import Highlight from 'react-highlight';
+import "highlight.js/styles/github.css";
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -31,29 +29,16 @@ class TaskDetail extends Component {
     this.setState({errorStringDisplay: !this.state.errorStringDisplay});
   };
 
-  retryTaskClicked = (currentTaskUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID);
-  }
-
   componentDidMount() {
-    const {
-      params,
-      fetchCurrentTaskDetail,
-      fetchFailedTaskDetail,
-      fetchUniverseList
-    } = this.props;
+    const { params } = this.props;
     const currentTaskUUID = params.taskUUID;
     if (isNonEmptyString(currentTaskUUID)) {
-      fetchCurrentTaskDetail(currentTaskUUID);
-      fetchFailedTaskDetail(currentTaskUUID);
+      this.props.fetchCurrentTaskDetail(currentTaskUUID);
+      this.props.fetchFailedTaskDetail(currentTaskUUID);
     }
-    fetchUniverseList();
   }
   render() {
-    const {
-      tasks: { failedTasks, taskProgressData },
-      params: { taskUUID }
-    } = this.props;
+    const { tasks: { failedTasks, taskProgressData }} = this.props;
     const self = this;
     const currentTaskData = taskProgressData.data;
     const formatDateField = function(cell) {
@@ -73,66 +58,41 @@ class TaskDetail extends Component {
     if (taskProgressData.data.details && isNonEmptyArray(taskProgressData.data.details.taskDetails)) {
       taskProgressBarData = <StepProgressBar progressData={taskProgressData.data} status={currentTaskData.status}/>;
     }
-    let taskFailureDetails = <span />;
-    const getTruncatedErrorString = (errorString) => {
-      const truncatedError = _.truncate(errorString, {
-        length: 400,
-        separator: /,? +/
-      });
-      return <Highlighter type="json" text={truncatedError} element="pre" />;
+    let taskFailureDetails = <span/>;
+    const getTruncatedErrorString = function(errorString) {
+      return (
+        <Highlight className='json'>
+          {_.truncate(errorString, {
+            'length': 400,
+            'separator': /,? +/
+          })}
+        </Highlight>
+      );
     };
 
-    const getErrorMessageDisplay = (errorString, taskUUID, allowRetry) => {
+    const getErrorMessageDisplay = errorString => {
       let errorElement = getTruncatedErrorString(errorString);
-      let displayMessage = 'Expand';
-      let displayIcon = <i className="fa fa-expand"></i>;
+      let displayMessage = "Expand";
       if (self.state.errorStringDisplay) {
-        errorElement = <Highlighter type="json" text={errorString} element="pre"/>;
-        displayMessage = 'View Less';
-        displayIcon = <i className="fa fa-compress"></i>;
+        errorElement = <Highlight className='json'>{errorString}</Highlight>;
+        displayMessage = "View Less";
       }
 
       return (
         <div className="clearfix">
-          <div className="onprem-config__json">
-            {errorElement}
-          </div>
-          <div
-            className="btn btn-orange text-center pull-right task-detail-button"
-            onClick={self.toggleErrorStringDisplay}
-          >
-            {displayIcon}
+          {errorElement}
+          <div className="btn btn-orange text-center pull-right" onClick={self.toggleErrorStringDisplay}>
             {displayMessage}
-          </div>
-          <div
-            className="btn btn-orange text-center pull-right task-detail-button"
-            onClick={() => self.retryTaskClicked(taskUUID)}
-          >
-            <i className="fa fa-refresh"></i>
-            Retry Task
           </div>
         </div>
       );
     };
-    let universe = null;
-    if (currentTaskData.targetUUID && getPromiseState(this.props.universe.universeList).isSuccess()) {
-      const universes = this.props.universe.universeList.data;
-      universe = _.find(
-        universes,
-        (universe) => universe.universeUUID === currentTaskData.targetUUID
-      );
-    }
 
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
-      taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
-        let errorString = <span />;
-        if (subTask.errorString !== 'null') {
-          let allowRetry = false;
-          if (universe !== null) {
-            const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
-            allowRetry = primaryCluster.userIntent.providerType === "onprem";
-          }
-          errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
+      taskFailureDetails = failedTasks.data.failedSubTasks.map(subTask => {
+        let errorString = <span/>;
+        if (subTask.errorString !== "null") {
+          errorString = getErrorMessageDisplay(subTask.errorString);
         }
         return (
           <div className="task-detail-info" key={subTask.creationTime}>
@@ -149,6 +109,13 @@ class TaskDetail extends Component {
           </div>
         );
       });
+    }
+
+    let universe = null;
+    if (currentTaskData.targetUUID) {
+      const universes = (this.props.universe && this.props.universe.universeList &&
+        this.props.universe.universeList.data) || [];
+      universe = _.find(universes, universe => universe.universeUUID === currentTaskData.targetUUID);
     }
 
     let heading;

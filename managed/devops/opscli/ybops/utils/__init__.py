@@ -45,9 +45,9 @@ if sys.version_info[0] == 2:
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT = 60
 DEFAULT_SSH_PORT = 22
-SSH_TIMEOUT = 15
+SSH_TIMEOUT = 16
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
@@ -428,6 +428,8 @@ def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key):
         if can_ssh(host_ip, ssh_port, ssh_user, ssh_key):
             return True
 
+        sys.stdout.write('.')
+        sys.stdout.flush()
         time.sleep(1)
 
         if retry_count > SSH_RETRY_LIMIT:
@@ -611,46 +613,12 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
         ssh_client.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SSH_TIMEOUT):
-    """This method will execute the given cmd on remote host and return the output.
-    Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
-        cmd (str): Command to run
-        timetout (int): Time in seconds to wait before erroring
-    Returns:
-        rc (int): returncode
-        stdout (str): output log
-        stderr (str): error logs
-    """
-    ssh_key = paramiko.RSAKey.from_private_key_file(ssh_key_file)
-    ssh_client = get_ssh_client()
-
-    try:
-        ssh_client.connect(hostname=host_name,
-                           username=username,
-                           pkey=ssh_key,
-                           port=port,
-                           timeout=timeout,
-                           banner_timeout=timeout)
-
-        _, stdout, stderr = ssh_client.exec_command(cmd)
-        return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
-    except (paramiko.ssh_exception, socket.timeout, socket.error) as e:
-        logging.error("Failed to execute remote command: {}".format(e))
-        return False
-    finally:
-        ssh_client.close()
-
-
-def scp_to_tmp(filepath, host, user, port, private_key):
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
-    logging.info("Copying local '{}' to remote '{}'".format(
-        filepath, dest_path))
+def scp_package_to_tmp(package, host, user, port, private_key):
+    dest_path = os.path.join("/tmp", os.path.basename(package))
+    logging.info("Copying package from local '{}' to remote '{}'".format(
+        package, dest_path))
     scp_cmd = [
-        "scp", "-i", private_key, "-P", str(port), "-p",
+        "scp", "-i", private_key, "-P", str(port),
         "-o", "stricthostkeychecking=no",
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=20",
@@ -658,7 +626,7 @@ def scp_to_tmp(filepath, host, user, port, private_key):
         "-o", "ControlPersist=600s",
         "-o", "IPQoS=throughput",
         "-vvvv",
-        filepath, "{}@{}:{}".format(user, host, dest_path)
+        package, "{}@{}:{}".format(user, host, dest_path)
     ]
     # Save the debug output to temp files.
     out_fd, out_name = tempfile.mkstemp(text=True)
@@ -677,7 +645,6 @@ def scp_to_tmp(filepath, host, user, port, private_key):
     # Cleanup the temp files now that they are clearly not needed.
     os.remove(out_name)
     os.remove(err_name)
-    return proc.returncode
 
 
 def get_or_create(getter):
