@@ -69,6 +69,9 @@ Result<T> GetValue(PGresult* result, int row, int column) {
 Result<std::string> AsString(PGresult* result, int row, int column);
 void LogResult(PGresult* result);
 
+std::string PqEscapeLiteral(const std::string& input);
+std::string PqEscapeIdentifier(const std::string& input);
+
 class PGConn {
  public:
   ~PGConn();

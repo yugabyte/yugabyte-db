@@ -13,7 +13,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/util/barrier.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_quote.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -95,7 +94,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& db_name : names) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", QuotePgName(db_name)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", PqEscapeIdentifier(db_name)));
     ASSERT_OK(ConnectToDB(db_name));
   }
 }
@@ -105,7 +104,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& user_name : names) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", QuotePgName(user_name)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", PqEscapeIdentifier(user_name)));
     ASSERT_OK(ConnectToDBAsUser("" /* db_name */, user_name));
   }
 }
