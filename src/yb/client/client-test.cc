@@ -832,7 +832,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
   CHECK_EQ(1, session->CountPendingErrors());
-  CollectedErrors errors = session->GetPendingErrors();
+  CollectedErrors errors = session->GetAndClearPendingErrors();
   CHECK_EQ(1, errors.size());
   std::unique_ptr<YBError> result = std::move(errors.front());
   return result;
