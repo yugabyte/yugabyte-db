@@ -301,8 +301,15 @@ class IntentAwareIterator {
   bool NextRegular(Direction direction);
 
   const ReadHybridTime read_time_;
-  const string encoded_read_time_local_limit_;
-  const string encoded_read_time_global_limit_;
+  const std::string encoded_read_time_read_;
+  const std::string encoded_read_time_local_limit_;
+  const std::string encoded_read_time_global_limit_;
+
+  // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of
+  // read_time and local_limit (in terms of hybrid time comparison), and this slice points to
+  // one of the strings above.
+  Slice encoded_read_time_regular_limit_;
+
   const TransactionOperationContextOpt txn_op_context_;
   docdb::BoundedRocksDbIterator intent_iter_;
   docdb::BoundedRocksDbIterator iter_;
