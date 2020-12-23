@@ -473,8 +473,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  void CompactPostSplitTablet(tablet::TabletPtr tablet);
-
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
