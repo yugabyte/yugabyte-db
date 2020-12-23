@@ -53,6 +53,7 @@ target_link_libraries(integration-tests
   tserver
   tserver_test_util
   master
+  pq_utils
   ql_api
   ysck
   yb-admin_lib

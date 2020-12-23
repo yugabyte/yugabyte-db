@@ -242,4 +242,45 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");
     }
   }
+
+  @Test
+  public void testYSQLColocatedBackupWithTableOidAlreadySet() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
+    }
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Create a table with a set table_oid.
+      stmt.execute("SET yb_enable_create_with_table_oid = true");
+      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (table_oid = 123456)");
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      // Check that backup and restore works fine.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      // Now try to do a backup/restore of the restored db.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+    }
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb1");
+      stmt.execute("DROP DATABASE yb2");
+      stmt.execute("DROP DATABASE yb3");
+    }
+  }
 }

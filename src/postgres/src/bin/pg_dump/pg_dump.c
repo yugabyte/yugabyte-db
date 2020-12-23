@@ -15887,12 +15887,37 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 			if (yb_table_properties.is_colocated)
 			{
+				/* First check through reloptions to see if table_oid is already set. */
+				bool addtableoid = true;
+				if (nonemptyReloptions(tbinfo->reloptions))
+				{
+					char  **options;
+					int		noptions;
+					if (parsePGArray(tbinfo->reloptions, &options, &noptions))
+					{
+						for (int i = 0; i < noptions; ++i)
+						{
+							if (strncmp(options[i], "table_oid", 9) == 0)
+							{
+								addtableoid = false;
+								break;
+							}
+						}
+					}
+					if (options)
+					{
+						free(options);
+					}
+				}
 				/*
 				 * For colocated tables, we need to set the new table to have the same table_oid
 				 * since we store the table_oid in our DocKeys.
 				 * TODO: What happens if there is a collision here?
 				 */
-				appendPQExpBuffer(yb_reloptions, "table_oid=%d", tbinfo->dobj.catId.oid);
+				if (addtableoid)
+				{
+					appendPQExpBuffer(yb_reloptions, "table_oid=%d", tbinfo->dobj.catId.oid);
+				}
 			}
 
 			/*

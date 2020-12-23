@@ -161,6 +161,8 @@ components:
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
             container_path: /opt/yugabyte/releases
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
+            container_path: /prometheus
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'

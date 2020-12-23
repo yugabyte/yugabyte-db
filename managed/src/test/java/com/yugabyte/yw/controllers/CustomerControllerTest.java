@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -55,7 +56,8 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.fakeRequest;
 
 public class CustomerControllerTest extends FakeDBApplication {
-  String baseRoute = "/api/customers/";
+  String rootRoute = "/api/customers";
+  String baseRoute = rootRoute + "/";
 
   private Customer customer;
   private Users user;
@@ -65,6 +67,24 @@ public class CustomerControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
   }
+
+  @Test
+  public void testListCustomersWithoutAuth() {
+    Result result = route(fakeRequest("GET", rootRoute));
+    assertEquals(FORBIDDEN, result.status());
+  }
+
+  @Test
+  public void testListCustomersWithAuth() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
+    assertEquals(OK, result.status());
+    ArrayNode json = (ArrayNode)Json.parse(contentAsString(result));
+    assertTrue(json.get(0).textValue().equals(customer.uuid.toString()));
+  }
+
+  // check that invalid creds is failing to do that
 
   @Test
   public void testCustomerGETWithValidUUID() {
