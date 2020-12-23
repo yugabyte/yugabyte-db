@@ -34,7 +34,7 @@ $$;
 
 DROP TABLE IF EXISTS partman_trigfix_temp;
 
--- End code to fix partiton functions
+-- End code to fix partition functions
 ************************************************************/
 
 

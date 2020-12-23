@@ -55,7 +55,7 @@ IF p_target_table IS NOT NULL THEN
     WHERE n.nspname = split_part(p_target_table, '.', 1)::name
     AND c.relname = split_part(p_target_table, '.', 2)::name;
         IF v_target_tablename IS NULL THEN
-            RAISE EXCEPTION 'Unable to find given target table in system catalogs. Ensure it is schema qualified: %', p_source_table;
+            RAISE EXCEPTION 'Unable to find given target table in system catalogs. Ensure it is schema qualified: %', p_target_table;
         END IF;
 END IF;
 
@@ -138,3 +138,4 @@ RAISE NOTICE 'Ensure to VACUUM ANALYZE the old parent & target table after undo 
 
 END
 $$;
+

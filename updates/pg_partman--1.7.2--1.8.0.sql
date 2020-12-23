@@ -15,7 +15,7 @@
 -- New analyze parameter to run_maintenance(). 
     -- Defaults to true so that if any partition set has a new child table created, an analyze is run on that whole partition set. This is to ensure constraint exclusion works properly.
     -- Large partition sets were causing run_maintenance() to take a long time to run since the analyze would hold it up. This could cause some contention.
-    -- Setting p_analyze to false will cause the analyze to not run for ALL partition sets that are eligible for new partiton creation or retention management at the time it is called.
+    -- Setting p_analyze to false will cause the analyze to not run for ALL partition sets that are eligible for new partition creation or retention management at the time it is called.
     -- If you set this to false, it is advised that you have some other means to ensure a regular analyze is being run on your partition sets.
     -- NOTE this parameter is set as the second argument since it's likely to be more commonly used, so make sure to check any current run_maintenence() calls to account for this (previously p_jobmon was the second parameter).
 
@@ -2394,7 +2394,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitions made. '||v_drop_count||' partitions dropped.');
     IF v_step_overflow_id IS NOT NULL OR v_step_serial_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE
@@ -3188,7 +3188,7 @@ IF p_batch_interval IS NULL THEN
     p_batch_interval := v_part_interval;
 END IF;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables.
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
@@ -3454,7 +3454,7 @@ IF p_batch_interval IS NULL THEN
     p_batch_interval := v_part_interval;
 END IF;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables and stop new id partitions from being made.
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;

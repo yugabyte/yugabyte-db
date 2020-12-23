@@ -2025,7 +2025,7 @@ LOOP
 END LOOP; -- end of creation loop
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitons made. %s partitions dropped.', v_create_count, v_drop_count));
+    PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitions made. %s partitions dropped.', v_create_count, v_drop_count));
     IF v_step_overflow_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE

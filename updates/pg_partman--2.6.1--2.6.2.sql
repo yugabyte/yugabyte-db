@@ -1218,7 +1218,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitons made. %s partitions dropped.', v_create_count, v_drop_count));
+    PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitions made. %s partitions dropped.', v_create_count, v_drop_count));
     IF v_step_overflow_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE
@@ -1364,7 +1364,7 @@ v_partition_expression := case
     else format('%I', v_control)
 end;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables.
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 

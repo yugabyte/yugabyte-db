@@ -664,7 +664,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitions made. '||v_drop_count||' partitions dropped.');
     PERFORM close_job(v_job_id);
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;

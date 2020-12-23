@@ -1,3 +1,16 @@
+4.4.1
+NEW FEATURES
+============
+-- Added documentation for how to use pg_partman with native partitioning.
+
+BUG FIXES
+=========
+-- Fix long present typos mostly in comments, error messages, & docs. (Github PR #315 & #319)
+-- Update description of the pg_partman_bgw.dbname GUC to state that it is not actually optional.
+-- Fix syntax error in reapply_indexes.py
+-- Fixed wrong variable usage in undo_partition_proc() exception.
+
+
 4.4.0
 NEW FEATURES
 ============
@@ -541,7 +554,7 @@ See the updates/pg_partman--2.6.3--2.6.4.sql file for more specific instructions
 
 
 1.8.6
--- Fixed bug with run_maintenance() and subpartitioning. If you had any subpartitioned sets that went back a significant amount of time, or had a significant number of subpartitions, calls to run_maintenance() would seem to hang. It would finish eventually, but could take quite a long time and if you have pg_jobmon installed, would also cause many entries mentioning old partiton sets. This bug was introduced with the fixed included in v1.8.5.
+-- Fixed bug with run_maintenance() and subpartitioning. If you had any subpartitioned sets that went back a significant amount of time, or had a significant number of subpartitions, calls to run_maintenance() would seem to hang. It would finish eventually, but could take quite a long time and if you have pg_jobmon installed, would also cause many entries mentioning old partition sets. This bug was introduced with the fixed included in v1.8.5.
 
 
 1.8.5
@@ -561,7 +574,7 @@ See the updates/pg_partman--2.6.3--2.6.4.sql file for more specific instructions
 1.8.3
 -- Fix both the retention system and the undo partitioning functions/scripts not cleaning up the custom_time_partitions table when using a custom time interval (Github Issue #49).
 -- When using sub-partitioning, the call to create_parent() that is within create_partition_id() & create_partition_time() was passing 2 of the parameters through incorrectly. p_use_run_maintenance was being fed to p_inherit_fk and vice versa, so the inherit_fk and use_run_maintenance columns in part_config & part_config_sub may be reversed. Since these are both boolean parameters, no error was being raised. If you've used sub-partitioning and used anything other than the default values for either of these configuration options, please double-check the part_config & part_config_sub tables to ensure the proper values are there. If you did not set them specifically, the default values were set for both and things should be fine.
-    -- If p_use_run_maintenance was set wrong, you likely noticed that new partitons were not getting created for new sub-partition sets. You'll still have to fix any existing config settings, but future ones shoould be fine now.
+    -- If p_use_run_maintenance was set wrong, you likely noticed that new partitions were not getting created for new sub-partition sets. You'll still have to fix any existing config settings, but future ones shoould be fine now.
     -- If p_inherit_fk was set wrong, child tables were likely not inheriting FKs or they were inheriting them when you didn't want them to. Again, fix this for existing partition sets by correcting the config table and all future sub-partitions should now be set properly. If you need to generate FKs on child tables that were missing them, you can use the reapply_foreign_keys.py script.
 
 
@@ -599,7 +612,7 @@ See the updates/pg_partman--2.6.3--2.6.4.sql file for more specific instructions
 -- New analyze parameter to run_maintenance(). 
     -- Defaults to true so that if any partition set has a new child table created, an analyze is run on that whole partition set. This is to ensure constraint exclusion works properly.
     -- Large partition sets were causing run_maintenance() to take a long time to run since the analyze would hold it up. This could cause some contention.
-    -- Setting p_analyze to false will cause the analyze to not run for ALL partition sets that are eligible for new partiton creation or retention management at the time it is called.
+    -- Setting p_analyze to false will cause the analyze to not run for ALL partition sets that are eligible for new partition creation or retention management at the time it is called.
     -- If you set this to false, it is advised that you have some other means to ensure a regular analyze is being run on your partition sets.
     -- NOTE this parameter is set as the second argument since it's likely to be more commonly used, so make sure to check any current run_maintenence() calls to account for this (previously p_jobmon was the second parameter).
 
@@ -637,7 +650,7 @@ See the updates/pg_partman--2.6.3--2.6.4.sql file for more specific instructions
 -- New configuration option to allow serial partitioning to use run_maintenance() instead of creating next partition via trigger.
     -- Use "p_use_run_maintenance" argument to create_parent() to set this during partition creation.
     -- part_config table has new boolean column "use_run_maintenance"
-    -- Serial/ID based partitoning defaults to FALSE. This means serial partitioning uses the parent partition trigger function to make new child partitions when the current one reaches 50% of its configured capacity (the same way it used to work). If set to TRUE, then you must schedule run_maintenance() to run often enough to keep up with your insertion rate. Otherwise rows will get inserted to the parent table.
+    -- Serial/ID based partitioning defaults to FALSE. This means serial partitioning uses the parent partition trigger function to make new child partitions when the current one reaches 50% of its configured capacity (the same way it used to work). If set to TRUE, then you must schedule run_maintenance() to run often enough to keep up with your insertion rate. Otherwise rows will get inserted to the parent table.
     -- Time based partitioning defaults to TRUE and config values for using run_maintenance cannot be set to false. All time-based partitioning still requires run_maintenance() for creating new child tables.
     -- Existing partition sets have their config table values set to the defaults above.
     -- If you'd like to change an existing serial partition set to use run_maintenance instead of the trigger, update the "use_run_maintenance" column in part_config to set it to TRUE for that parent table. You must then run the "create_id_function()" function giving it a parameter of the schema qualified parent table of the set. This will remove the code in the trigger that automatically makes new child tables.

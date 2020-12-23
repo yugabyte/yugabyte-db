@@ -743,7 +743,7 @@ IF v_parent_type IS NULL THEN
 END IF;
 
 IF p_type = 'native' AND (lower(p_native_check) <> 'yes' OR p_native_check IS NULL) THEN
-    RAISE EXCEPTION 'The sub-partitioning of a natively partitoned table is a DESTRUCTIVE process unless all child tables are already natively subpartitioned. All child tables, and therefore ALL DATA, may be destroyed since the parent table must be declared as partitioned on first creation and cannot be altered later. See docs for more info. Set p_native_check parameter to "yes" if you are sure this is ok.';
+    RAISE EXCEPTION 'The sub-partitioning of a natively partitioned table is a DESTRUCTIVE process unless all child tables are already natively subpartitioned. All child tables, and therefore ALL DATA, may be destroyed since the parent table must be declared as partitioned on first creation and cannot be altered later. See docs for more info. Set p_native_check parameter to "yes" if you are sure this is ok.';
 END IF;
 
 IF p_upsert <> '' THEN

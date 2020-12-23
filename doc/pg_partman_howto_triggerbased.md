@@ -620,7 +620,7 @@ Now the monitoring function returns nothing (as should be the norm):
     --------------+-------
     (0 rows)
 ```
-Now we also see all child partitons were created for the data that exists:
+Now we also see all child partitions were created for the data that exists:
 ```
     keith@keith=# SELECT tablename FROM pg_tables WHERE schemaname = 'partman_test' ORDER BY tablename;
                 tablename             
@@ -925,11 +925,11 @@ This just undoes the id partitions committing at the default partition interval 
 
 ### Undo Partitioning: Sub-partition ID->ID->ID
 
-Undoing sub-partitioning involves a little more work (or possibly a lot if it's a large set). You have to start from the bottom up. Just as I did above for generating statements for partitioning the data out, I can do the same for the undo_partition.py script. Keep in mind this gets the undo statement for ALL the parents at once. You do have to go through and parse out the top level calls as well as the mid-level partition, but this at least saves you a lot of potential typing (and typos). The bottom partitons must all be done first and the top last. Also, in this case I have no intention of keeping the old, empty tables anymore, so the --droptable option is given. pg_partman tries to be as safe as possible, so it only uninherits tables by default when undoing partitioning. If you want something dropped, you have to be sure and tell it.
+Undoing sub-partitioning involves a little more work (or possibly a lot if it's a large set). You have to start from the bottom up. Just as I did above for generating statements for partitioning the data out, I can do the same for the undo_partition.py script. Keep in mind this gets the undo statement for ALL the parents at once. You do have to go through and parse out the top level calls as well as the mid-level partition, but this at least saves you a lot of potential typing (and typos). The bottom partitions must all be done first and the top last. Also, in this case I have no intention of keeping the old, empty tables anymore, so the --droptable option is given. pg_partman tries to be as safe as possible, so it only uninherits tables by default when undoing partitioning. If you want something dropped, you have to be sure and tell it.
 ```
     SELECT 'python undo_partition.py -c host=localhost -p '||parent_table||' -t id -i 100 --droptable' FROM partman.part_config ORDER BY parent_table;
 ```
-First do the lowest level sub-partitons:
+First do the lowest level sub-partitions:
 ```
     python undo_partition.py -c host=localhost -p partman_test.id_taptest_table_p0_p0 -t id -i 100 --droptable
     python undo_partition.py -c host=localhost -p partman_test.id_taptest_table_p0_p1000 -t id -i 100 --droptable

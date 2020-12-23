@@ -1,4 +1,4 @@
--- Fixed bug with run_maintenance() and subpartitioning. If you had any subpartitioned sets that went back a significant amount of time, or had a significant number of subpartitions, calls to run_maintenance() would seem to hang. It would finish eventually, but could take quite a long time and if you have pg_jobmon installed, would also cause many entries mentioning old partiton sets. This bug was introduced with the fixed included in v1.8.5.
+-- Fixed bug with run_maintenance() and subpartitioning. If you had any subpartitioned sets that went back a significant amount of time, or had a significant number of subpartitions, calls to run_maintenance() would seem to hang. It would finish eventually, but could take quite a long time and if you have pg_jobmon installed, would also cause many entries mentioning old partition sets. This bug was introduced with the fixed included in v1.8.5.
 
 /*
  * Function to manage pre-creation of the next partitions in a set.
@@ -253,7 +253,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitions made. '||v_drop_count||' partitions dropped.');
     IF v_step_overflow_id IS NOT NULL OR v_step_serial_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE

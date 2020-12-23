@@ -195,7 +195,7 @@ As a note for people that were not aware, you can name arguments in function cal
 
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set. It also fixes data that accidentally gets inserted into the parent table (trigger-based only) or default table (native, PG11+ only).
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are trying to partition a large amount of data automatically, it is recommended to either use the `partiton_data.py` script to commit data in smaller batches. Or if you're on PG11+, use the `partition_data_proc()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
+ * If you are trying to partition a large amount of data automatically, it is recommended to either use the `partition_data.py` script to commit data in smaller batches. Or if you're on PG11+, use the `partition_data_proc()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
  * For sub-partitioned sets, you must start partitioning data at the highest level and work your way down each level. This means you must first run this function before running create_sub_parent() to create the additional partitioning levels. Then continue running this function again on each new sub-parent once they're created. See the  pg_partman_howto.md document for a full example. IMPORTANT NOTE: this may not work as expected for native partitioning since subpartitioning a native set in pg_partman is a destructive operation. See create_sub_parent().
  * `p_parent_table` - the existing parent table. For non-native partitioning, this is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * `p_batch_interval` - optional argument, only relevant for non-native partitioning. A time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval. NOTE: This option CANNOT be used when moving data out of a default partition in PostgreSQL 11+.
@@ -211,7 +211,7 @@ As a note for people that were not aware, you can name arguments in function cal
 
  * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set. It also fixes data that accidentally gets inserted into the parent (trigger-based only).
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are trying to partition a large amount of data automatically, it is recommended to either use the `partiton_data.py` script to commit data in smaller batches. Or if you're on PG11+, use the `partition_data_proc()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
+ * If you are trying to partition a large amount of data automatically, it is recommended to either use the `partition_data.py` script to commit data in smaller batches. Or if you're on PG11+, use the `partition_data_proc()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
  * For sub-partitioned sets, you must start partitioning data at the highest level and work your way down each level. This means you must first run this function before running create_sub_parent() to create the additional partitioning levels. Then continue running this function again on each new sub-parent once they're created. See the  pg_partman_howto.md document for a full example. IMPORTANT NOTE: this may not work as expected for native partitioning since subpartitioning a native set in pg_partman is a destructive operation. See create_sub_parent().
  * `p_parent_table` - the existing parent table. For non-native partitioning, this is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * `p_batch_interval` - optional argument, only relevant for non-native partitioning. A time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval. NOTE: This option CANNOT be used when moving data out of a default partition in PostgreSQL 11+.
@@ -236,7 +236,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_order` - Allows you to specify the order that data is migrated from the parent/default to the children, either ascending (ASC) or descending (DESC). Default is ASC.
  * `p_lock_wait` - Parameter passed directly through to the underlying partition_data_*() function. Number of seconds to wait on rows that may be locked by another transaction. Default is to wait forever (0).
  * `p_lock_wait_tries` - Parameter to set how many times the procedure will attempt waiting the amount of time set for p_lock_wait. Default is 10 tries.
- * `p_quiet` - Procedures cannot return values, so by default it emmits NOTICE's to show progress. Set this option to silence these notices.
+ * `p_quiet` - Procedures cannot return values, so by default it emits NOTICE's to show progress. Set this option to silence these notices.
 
 *`create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
 
@@ -412,7 +412,7 @@ As a note for people that were not aware, you can name arguments in function cal
 *`undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, p_target_table text DEFAULT NULL, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record`*
 
  * Undo a partition set created by `pg_partman`. This function MOVES the data from the child tables to either the parent table (non-native) or the given target table (native).
- * If you are trying to un-partition a large amount of data automatically, it is recommended to either use the `undo_partiton.py` script to commit data in smaller batches. Or if you're on PG11+, use the `undo_partition_data()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to either use the `undo_partition.py` script to commit data in smaller batches. Or if you're on PG11+, use the `undo_partition_data()` procedure to do the same thing. This will greatly reduce issues caused by long running transactions and data contention.
  * When this function is run, the **`undo_in_progress`** column in the configuration table is set to true. This causes all partition creation and retention management to stop.
  * By default, partitions are not DROPPED, they are UNINHERITED/UNATTACHED. This leave previous child tables as empty, independent tables.
  * For non-native, when this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
@@ -441,7 +441,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_keep_table` - Same as the p_keep_table option in the undo_partition() function.
  * `p_lock_wait` - Parameter passed directly through to the underlying partition_data_*() function. Number of seconds to wait on rows that may be locked by another transaction. Default is to wait forever (0).
  * `p_lock_wait_tries` - Parameter to set how many times the procedure will attempt waiting the amount of time set for p_lock_wait. Default is 10 tries.
- * `p_quiet` - Procedures cannot return values, so by default it emmits NOTICE's to show progress. Set this option to silence these notices.
+ * `p_quiet` - Procedures cannot return values, so by default it emits NOTICE's to show progress. Set this option to silence these notices.
 
 
 *`drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int`*

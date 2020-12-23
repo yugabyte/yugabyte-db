@@ -38,7 +38,7 @@ def check_compatibility(conn, partman_schema):
     if pg_version >= 110000 and partition_type == "native":
         print("This script cannot currently work with native partition sets in PG11+. Please use native index inheritance methods if possible.")
         cur.close()
-        conn_close(conn)
+        close_conn(conn)
         sys.exit(2)
 
     cur.close()

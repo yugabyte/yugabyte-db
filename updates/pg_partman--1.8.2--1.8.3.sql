@@ -1,6 +1,6 @@
 -- Fix both the retention system and the undo partitioning functions/scripts not cleaning up the custom_time_partitions table when using a custom time interval (Github Issue #49).
 -- When using sub-partitioning, the call to create_parent() that is within create_partition_id() & create_partition_time() was passing 2 of the parameters through incorrectly. p_use_run_maintenance was being fed to p_inherit_fk and vice versa, so the inherit_fk and use_run_maintenance columns in part_config & part_config_sub may be reversed. Since these are both boolean parameters, no error was being raised. If you've used sub-partitioning and used anything other than the default values for either of these configuration options, please double-check the part_config & part_config_sub tables to ensure the proper values are there. If you did not set them specifically, the default values were set for both and things should be fine.
-    -- If p_use_run_maintenance was set wrong, you likely noticed that new partitons were not getting created for new sub-partition sets. You'll still have to fix any existing config settings, but future ones shoould be fine now.
+    -- If p_use_run_maintenance was set wrong, you likely noticed that new partitions were not getting created for new sub-partition sets. You'll still have to fix any existing config settings, but future ones shoould be fine now.
     -- If p_inherit_fk was set wrong, child tables were likely not inheriting FKs or they were inheriting them when you didn't want them to. Again, fix this for existing partition sets by correcting the config table and all future sub-partitions should now be set properly. If you need to generate FKs on child tables that were missing them, you can use the reapply_foreign_keys.py script.
 
 /*
@@ -93,7 +93,7 @@ IF p_batch_interval IS NULL THEN
     p_batch_interval := v_part_interval;
 END IF;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables.
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;

@@ -143,7 +143,7 @@ _PG_init(void)
     #endif  
 
     DefineCustomStringVariable("pg_partman_bgw.dbname",
-                            "CSV list of specific databases in the cluster to run pg_partman BGW on. This setting is not required and when not set, pg_partman will dynamically figure out which ones to run on. If set, forces the BGW to only run on these specific databases and never any others. Recommend leaving this unset unless necessary.",
+                            "CSV list of specific databases in the cluster to run pg_partman BGW on.",
                             NULL,
                             &pg_partman_bgw_dbname,
                             NULL,

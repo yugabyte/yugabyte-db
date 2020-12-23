@@ -144,7 +144,7 @@ IF p_type = 'native' THEN
     AND c.relname = v_parent_tablename::name;
 
     IF v_partstrat <> 'r' OR v_partstrat IS NULL THEN
-        RAISE EXCEPTION 'When using native partitioning, you must have created the given parent table as ranged (not list) partitioned already. Ex: CREATE TABLE ... PARITIONED BY RANGE ...)';
+        RAISE EXCEPTION 'When using native partitioning, you must have created the given parent table as ranged (not list) partitioned already. Ex: CREATE TABLE ... PARTITION BY RANGE ...)';
     END IF;
 
     IF array_length(v_partattrs, 1) > 1 THEN

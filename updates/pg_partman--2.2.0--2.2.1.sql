@@ -345,7 +345,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT %I.update_step(%L, %L, ''Partition maintenance finished. %s partitons made. %s partitions dropped.'')'
+    EXECUTE format('SELECT %I.update_step(%L, %L, ''Partition maintenance finished. %s partitions made. %s partitions dropped.'')'
         , v_jobmon_schema
         , v_step_id
         , 'OK'

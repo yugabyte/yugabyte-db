@@ -1,7 +1,7 @@
 -- New configuration option to allow serial partitioning to use run_maintenance() instead of creating next partition via trigger.
     -- Use "p_use_run_maintenance" argument to create_parent() to set this during partition creation.
     -- part_config table has new boolean column "use_run_maintenance"
-    -- Serial/ID based partitoning defaults to FALSE. This means serial partitioning uses the parent partition trigger function to make new child partitions when the current one reaches 50% of its configured capacity (the same way it used to work). If set to TRUE, then you must schedule run_maintenance() to run often enough to keep up with your insertion rate. Otherwise rows will get inserted to the parent table.
+    -- Serial/ID based partitioning defaults to FALSE. This means serial partitioning uses the parent partition trigger function to make new child partitions when the current one reaches 50% of its configured capacity (the same way it used to work). If set to TRUE, then you must schedule run_maintenance() to run often enough to keep up with your insertion rate. Otherwise rows will get inserted to the parent table.
     -- Time based partitioning defaults to TRUE and config values for using run_maintenance cannot be set to false. All time-based partitioning still requires run_maintenance() for creating new child tables.
     -- Existing partition sets have their config table values set to the defaults above.
     -- If you'd like to change an existing serial partition set to use run_maintenance instead of the trigger, update the "use_run_maintenance" column in part_config to set it to TRUE for that parent table. You must then run the "create_id_function()" function giving it a parameter of the schema qualified parent table of the set. This will remove the code in the trigger that automatically makes new child tables.
@@ -562,7 +562,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitions made. '||v_drop_count||' partitions dropped.');
     IF v_step_overflow_id IS NOT NULL OR v_step_serial_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE

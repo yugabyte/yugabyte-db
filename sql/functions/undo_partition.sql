@@ -168,7 +168,7 @@ v_partition_expression := CASE
     ELSE format('%I', v_control)
 END;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 
 IF v_partition_type != 'native' THEN

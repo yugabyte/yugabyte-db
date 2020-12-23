@@ -848,7 +848,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Undoing partitioning for table '||p_parent_table);
 END IF;
 
--- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
+-- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables and stop new id partitions from being made.
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;

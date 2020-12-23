@@ -1002,7 +1002,7 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitions made. '||v_drop_count||' partitions dropped.');
     IF v_step_overflow_id IS NOT NULL OR v_step_serial_id IS NOT NULL THEN
         PERFORM fail_job(v_job_id);
     ELSE

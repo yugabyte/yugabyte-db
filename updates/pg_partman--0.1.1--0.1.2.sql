@@ -759,7 +759,7 @@ LOOP
 END LOOP; -- end of main loop
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_count||' partitons made');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_count||' partitions made');
     PERFORM close_job(v_job_id);
 END IF;
 
