@@ -1327,6 +1327,33 @@ public class YBClient implements AutoCloseable {
     }
 
     /**
+     * Sets the client cert and key files if mutual auth is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an mTLS connection.
+     * @param certFile the path to the client certificate.
+     * @param keyFile the path to the client private key file.
+     * @return this builder
+     */
+    public YBClientBuilder sslClientCertFiles(String certFile, String keyFile) {
+      clientBuilder.sslClientCertFiles(certFile, keyFile);
+      return this;
+    }
+
+    /**
+     * Sets the outbound client host:port on which the socket binds.
+     * Optional.
+     * If not provided, defaults to null.
+     * @param host the address to bind to.
+     * @param port the port to bind to (0 means any free port).
+     * @return this builder
+     */
+    public YBClientBuilder bindHostAddress(String host, int port) {
+      clientBuilder.bindHostAddress(host, port);
+      return this;
+    }
+
+    /**
      * Set the executors which will be used for the embedded Netty boss and workers.
      * Optional.
      * If not provided, uses a simple cached threadpool. If either argument is null,
