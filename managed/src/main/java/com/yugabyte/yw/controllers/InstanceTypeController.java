@@ -50,6 +50,17 @@ public class InstanceTypeController extends AuthenticatedController {
     try {
       instanceTypesMap = InstanceType.findByProvider(provider).stream()
         .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
+      // Setting up the default volumeCount to 1 for instanceTypes starting with c5./c4.
+      for (Map.Entry<String, InstanceType> entry : instanceTypesMap.entrySet()) {
+        if((provider.code.equals("aws") && (entry.getKey().startsWith("c5.") ||
+            entry.getKey().startsWith("c4.")))) {
+          entry.getValue().instanceTypeDetails.volumeCount = 1;
+        }
+        else {
+          entry.getValue().instanceTypeDetails.volumeCount =
+              entry.getValue().instanceTypeDetails.volumeDetailsList.size();
+        }
+      }
     } catch (Exception e) {
       LOG.error("Unable to list Instance types {}:{} in DB.", providerUUID, e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");

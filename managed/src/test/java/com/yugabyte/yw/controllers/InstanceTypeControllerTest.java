@@ -101,7 +101,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     return Json.parse(contentAsString(result));
   }
 
-  private Map<String, InstanceType> setUpValidInstanceTypes(int numInstanceTypes) {
+  private Map<String, InstanceType> setUpValidInstanceTypes(int numInstanceTypes,
+                                                            String instanceTypesCode) {
     Map<String, InstanceType> instanceTypes = new HashMap<>(numInstanceTypes);
     for (int i = 0; i < numInstanceTypes; ++i) {
       InstanceType.VolumeDetails volDetails = new InstanceType.VolumeDetails();
@@ -109,8 +110,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       volDetails.volumeType = InstanceType.VolumeType.EBS;
       InstanceTypeDetails instanceDetails = new InstanceTypeDetails();
       instanceDetails.volumeDetailsList.add(volDetails);
+      instanceDetails.volumeDetailsList.add(volDetails);
       instanceDetails.setDefaultMountPaths();
-      String code = "c3.i" + i;
+      instanceDetails.volumeCount = 1;
+      String code = instanceTypesCode + i;
       instanceTypes.put(code,
         InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails));
     }
@@ -134,23 +137,38 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
     checkListResponse(instanceTypes, json);
   }
 
   @Test
+  public void testListc4InstanceTypeVolumeCountWithValidProviderUUID() {
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(1,"c4.i");
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    checkListVolumeCount(instanceTypes, json);
+  }
+
+  @Test
+  public void testListc5InstanceTypeVolumeCountWithValidProviderUUID() {
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(1,"c5.i");
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    checkListVolumeCount(instanceTypes, json);
+  }
+
+  @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_ignoreNoCloud() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     when(mockCloudAPIFactory.get(any())).thenReturn(null);
     JsonNode json = doListFilteredInstanceTypeAndVerify(
       awsProvider.uuid, OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
+
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_ignoreCloudException() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     RuntimeException thrown = new RuntimeException("cloud exception");
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
@@ -162,7 +180,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_allOffered() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     ImmutableSet<String> everywhere = ImmutableSet.of("zone1", "zone2");
     Map<String, Set<String>> allInstancesEverywhere = ImmutableMap.of(
       "c3.i0", everywhere,
@@ -185,7 +203,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_disjointOffered() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     Map<String, Set<String>> cloudResponse = ImmutableMap.of(
       "c3.i0", ImmutableSet.of("zone1"),
       "c3.i1", ImmutableSet.of("zone2"));
@@ -207,7 +225,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_someNotOffered() {
-    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2,"c3.i");
     Map<String, Set<String>> cloudResponse = ImmutableMap.of(
       "c3.i1", ImmutableSet.of("zone2", "zone1"));
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
@@ -248,12 +266,23 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       JsonNode jsonDetails = detailsListNode.get(0);
       assertThat(jsonDetails.get("volumeSizeGB").asInt(), allOf(notNullValue(),
         equalTo(targetDetails.volumeSizeGB)));
+      assertThat(itdNode.get("volumeCount").asInt(), allOf(notNullValue(),
+        equalTo(itd.volumeDetailsList.size())));
       assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
       assertValue(jsonDetails, "mountPath", targetDetails.mountPath);
     }
     List<String> expectedCodes = new ArrayList<>(instanceTypes.keySet());
     assertValues(json, "instanceTypeCode", expectedCodes);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  private void checkListVolumeCount(Map<String, InstanceType> instanceTypes, JsonNode json) {
+    assertEquals(1, json.size());
+    JsonNode instance = json.path(0);
+    InstanceType expectedInstanceType =
+      instanceTypes.get(instance.path("instanceTypeCode").asText());
+    assertThat(instance.get("instanceTypeDetails").get("volumeCount").asInt(), allOf(notNullValue(),
+      equalTo(expectedInstanceType.instanceTypeDetails.volumeCount)));
   }
 
   @Test
