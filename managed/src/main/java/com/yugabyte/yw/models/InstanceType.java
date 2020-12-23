@@ -210,6 +210,7 @@ public class InstanceType extends Model {
 
     public List<VolumeDetails> volumeDetailsList;
     public PublicCloudConstants.Tenancy tenancy;
+    public Integer volumeCount= DEFAULT_VOLUME_COUNT;
 
     public InstanceTypeDetails() {
       volumeDetailsList = new LinkedList<>();
