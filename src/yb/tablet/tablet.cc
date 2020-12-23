@@ -218,6 +218,9 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
 
+DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+                 "Pause before triggering post split compaction.");
+
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -928,6 +931,10 @@ bool Tablet::StartShutdown() {
 
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
+  }
+
+  if (post_split_compaction_task_pool_token_) {
+    post_split_compaction_task_pool_token_->Shutdown();
   }
 
   return true;
@@ -3037,7 +3044,7 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-bool Tablet::MightHaveNonRelevantData() {
+bool Tablet::StillHasParentDataAfterSplit() {
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
@@ -3322,6 +3329,25 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
   }
   return middle_key;
+}
+
+Status Tablet::TriggerPostSplitCompactionIfNeeded(
+    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction) {
+  if (post_split_compaction_task_pool_token_) {
+    return STATUS(
+        IllegalState, "Already triggered post split compaction for this tablet instance.");
+  }
+  if (StillHasParentDataAfterSplit()) {
+    post_split_compaction_task_pool_token_ = get_token_for_compaction();
+    return post_split_compaction_task_pool_token_->SubmitFunc(
+        std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
+  }
+  return Status::OK();
+}
+
+void Tablet::TriggerPostSplitCompactionSync() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
 }
 
 // ------------------------------------------------------------------------------------------------
