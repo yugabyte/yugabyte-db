@@ -574,19 +574,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return result.status();
     }
 
-    if (!result->messages.empty()) {
-      // All entries committed at leader may not be available at lagging follower.
-      // `commited_op_id` in this request may make a lagging follower aware of the
-      // highest committed op index at the leader. We have a sanity check during tablet
-      // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
-      // committed operation. Hence avoid sending a committed op id that is too large
-      // to such a lagging follower.
-      const auto& msg = result->messages.back();
-      if (msg->id().index() < request->mutable_committed_op_id()->index()) {
-        *request->mutable_committed_op_id() = msg->id();
-      }
-    }
-
     preceding_id = result->preceding_op;
     // We use AddAllocated rather than copy, because we pin the log cache at the "all replicated"
     // point. At some point we may want to allow partially loading (and not pinning) earlier
@@ -623,6 +610,24 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   preceding_id.ToPB(request->mutable_preceding_id());
+
+  // All entries committed at leader may not be available at lagging follower.
+  // `commited_op_id` in this request may make a lagging follower aware of the
+  // highest committed op index at the leader. We have a sanity check during tablet
+  // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
+  // committed operation. Hence avoid sending a committed op id that is too large
+  // to such a lagging follower.
+  // If we send operations to it, then last know operation to this follower will be last sent
+  // operation. If we don't send any operation, then last known operation will be preceding
+  // operation.
+  // We don't have to change committed_op_id when it is less than max_allowed_committed_op_id,
+  // because it will have actual committed_op_id value and this operation is known to the
+  // follower.
+  const auto max_allowed_committed_op_id = !request->ops().empty()
+      ? OpId::FromPB(request->ops().rbegin()->id()) : preceding_id;
+  if (max_allowed_committed_op_id.index < request->committed_op_id().index()) {
+    max_allowed_committed_op_id.ToPB(request->mutable_committed_op_id());
+  }
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     if (request->ops_size() > 0) {
