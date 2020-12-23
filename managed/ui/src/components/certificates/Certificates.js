@@ -14,6 +14,7 @@ import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { YBFormInput } from '../common/forms/fields';
+import { api } from '../../redesign/helpers/api';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -86,7 +87,8 @@ class DownloadCertificateForm extends Component {
 class Certificates extends Component {
   state = {
     showSubmitting: false,
-    selectedCert: {}
+    selectedCert: {},
+    certificateArray: []
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -116,8 +118,61 @@ class Certificates extends Component {
       .finally(() => this.setState({ showSubmitting: false }));
   };
 
+  /**
+   * Delete the root certificate if certificate is safe to remove,
+   * i.e - Certificate is not attached to any universe for current user.
+   * 
+   * @param certificateUUID Unique id of certificate.
+   */
+  deleteRootCertificate = (certificateUUID) => {
+    api.deleteCertificate(certificateUUID).then(
+      () => {
+        this.getCertificateArray()
+      }
+    ).catch(
+      err => {
+        console.log("Error", err)
+      }
+    )
+  };
+
+  /**
+   * Lifecycle method to fetch iniial data required by compoenent
+   * i.e certificates attached to current user.
+   */
+  componentDidMount() {
+    this.getCertificateArray();
+  }
+
+  /**
+   * Fetch certificates attched to current user.
+   */
+  getCertificateArray = () => {
+    api.getCertificates().then(
+      response => {
+        const certificateArray  = response
+        ? response.map((cert) => {
+          return {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            removable: cert.removable
+          };
+        })
+        : [];
+      this.setState({ certificateArray: certificateArray})
+      }
+    );
+  }
+
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
+    const deleteDisabled = !row.removable;
     const payload = {
       name: row.name,
       uuid: row.uuid,
@@ -153,32 +208,24 @@ class Certificates extends Component {
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
+        <MenuItem
+          onClick={() => { this.deleteRootCertificate(payload?.uuid)}}
+          disabled={deleteDisabled}
+        >
+          <i className="fa fa-trash"></i> Delete Root CA Cert
+        </MenuItem>
       </DropdownButton>
     );
   };
 
   render() {
     const {
-      customer: { currentCustomer, userCertificates },
+      customer: { currentCustomer },
       modal: { showModal, visibleModal },
       showAddCertificateModal
     } = this.props;
-    const { showSubmitting } = this.state;
 
-    const certificateArray = getPromiseState(userCertificates).isSuccess()
-      ? userCertificates.data.map((cert) => {
-        return {
-          type: cert.certType,
-          uuid: cert.uuid,
-          name: cert.label,
-          expiryDate: cert.expiryDate,
-          certificate: cert.certificate,
-          creationTime: cert.startDate,
-          privateKey: cert.privateKey,
-          customCertInfo: cert.customCertInfo
-        };
-      })
-      : [];
+    const { showSubmitting, certificateArray } = this.state;
 
     return (
       <div id="page-wrapper">
