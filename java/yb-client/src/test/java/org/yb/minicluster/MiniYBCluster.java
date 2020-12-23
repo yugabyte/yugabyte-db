@@ -144,6 +144,14 @@ public class MiniYBCluster implements AutoCloseable {
 
   private String certFile = null;
 
+  // The client cert files for mTLS.
+  private String clientCertFile = null;
+  private String clientKeyFile = null;
+
+  // This is used as the default bind address (Used only for mTLS verification).
+  private String clientHost = null;
+  private int clientPort = 0;
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
@@ -153,14 +161,22 @@ public class MiniYBCluster implements AutoCloseable {
                 List<String> commonTServerArgs,
                 Map<String, String> tserverEnvVars,
                 String testClassName,
-                String certFile) throws Exception {
+                String certFile,
+                String clientCertFile,
+                String clientKeyFile,
+                String clientHost,
+                int clientPort) throws Exception {
     this.clusterParameters = clusterParameters;
     this.testClassName = testClassName;
     this.certFile = certFile;
+    this.clientCertFile = clientCertFile;
+    this.clientKeyFile = clientKeyFile;
     if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startPgSqlProxy) {
       throw new AssertionError(
           "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
     }
+    this.clientHost = clientHost;
+    this.clientPort = clientPort;
 
     startCluster(
         clusterParameters.numMasters, clusterParameters.numTservers, masterArgs, tserverArgs,
@@ -177,6 +193,8 @@ public class MiniYBCluster implements AutoCloseable {
         .defaultAdminOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
         .defaultOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
         .sslCertFile(certFile)
+        .sslClientCertFiles(clientCertFile, clientKeyFile)
+        .bindHostAddress(clientHost, clientPort)
         .build();
 
     if (waitForMasterLeader) {

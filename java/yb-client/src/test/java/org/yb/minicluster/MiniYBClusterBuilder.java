@@ -36,6 +36,14 @@ public class MiniYBClusterBuilder {
 
   private String certFile = null;
 
+  // The client cert files for mTLS.
+  private String clientCertFile = null;
+  private String clientKeyFile = null;
+
+  // This is used as the default bind address (Used only for mTLS verification).
+  private String clientHost = null;
+  private int clientPort = 0;
+
   private Map<String, String> tserverEnvVars = new TreeMap<String, String>();
 
   public MiniYBClusterBuilder numMasters(int numMasters) {
@@ -60,6 +68,18 @@ public class MiniYBClusterBuilder {
 
   public MiniYBClusterBuilder sslCertFile(String certFile) {
     this.certFile = certFile;
+    return this;
+  }
+
+  public MiniYBClusterBuilder sslClientCertFiles(String certFile, String keyFile) {
+    this.clientCertFile = certFile;
+    this.clientKeyFile = keyFile;
+    return this;
+  }
+
+  public MiniYBClusterBuilder bindHostAddress(String clientHost, int clientPort) {
+    this.clientHost = clientHost;
+    this.clientPort = clientPort;
     return this;
   }
 
@@ -196,6 +216,10 @@ public class MiniYBClusterBuilder {
         commonTServerArgs,
         tserverEnvVars,
         testClassName,
-        certFile);
+        certFile,
+        clientCertFile,
+        clientKeyFile,
+        clientHost,
+        clientPort);
   }
 }
