@@ -1082,6 +1082,7 @@ export default class ClusterFields extends Component {
           </option>
         );
       });
+
     const kmsConfigList = [
       <option value="0" key={`kms-option-0`}>
         Select Configuration
