@@ -127,7 +127,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_quote.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
@@ -2173,7 +2172,7 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // TODO(jason): handle "yugabyte" role being password protected
   std::string conn_str = Format(
       "dbname=$0 host=$1 port=$2 user=$3",
-      QuotePgConnStrValue(database_name),
+      pgwrapper::PqEscapeLiteral(database_name),
       pgsql_proxy_bind_address.host(),
       pgsql_proxy_bind_address.port(),
       "yugabyte");

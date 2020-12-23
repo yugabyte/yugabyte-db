@@ -25,7 +25,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_quote.h"
 
 using namespace std::literals;
 
@@ -85,6 +84,16 @@ YBPgErrorCode GetSqlState(PGresult* result) {
   return static_cast<YBPgErrorCode>(sqlstate);
 }
 
+// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
+inline void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
+  CHECK(str);
+  size_t start_pos = 0;
+  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
+    str->replace(start_pos, from.length(), to);
+    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+  }
+}
+
 }  // anonymous namespace
 
 
@@ -137,9 +146,9 @@ Result<PGConn> PGConn::Connect(
       "host=$0 port=$1 user=$2",
       host_port.host(),
       host_port.port(),
-      QuotePgConnStrValue(user));
+      PqEscapeLiteral(user));
   if (!db_name.empty()) {
-    conn_info = Format("dbname=$0 $1", QuotePgConnStrValue(db_name), conn_info);
+    conn_info = Format("dbname=$0 $1", PqEscapeLiteral(db_name), conn_info);
   }
   return Connect(conn_info);
 }
@@ -459,6 +468,37 @@ void LogResult(PGresult* result) {
     }
     LOG(INFO) << line;
   }
+}
+
+// Escape literals in postgres (e.g. to make a libpq connection to a database named
+// `this->'\<-this`, use `dbname='this->\'\\<-this'`).
+//
+// This should behave like `PQescapeLiteral` except that it doesn't need an existing connection
+// passed in.
+std::string PqEscapeLiteral(const std::string& input) {
+  std::string output = input;
+  // Escape certain characters.
+  ReplaceAll(&output, "\\", "\\\\");
+  ReplaceAll(&output, "'", "\\'");
+  // Quote.
+  output.insert(0, 1, '\'');
+  output.push_back('\'');
+  return output;
+}
+
+// Escape identifiers in postgres (e.g. to create a database named `this->"\<-this`, use `CREATE
+// DATABASE "this->""\<-this"`).
+//
+// This should behave like `PQescapeIdentifier` except that it doesn't need an existing connection
+// passed in.
+std::string PqEscapeIdentifier(const std::string& input) {
+  std::string output = input;
+  // Escape certain characters.
+  ReplaceAll(&output, "\"", "\"\"");
+  // Quote.
+  output.insert(0, 1, '"');
+  output.push_back('"');
+  return output;
 }
 
 } // namespace pgwrapper
