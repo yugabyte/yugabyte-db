@@ -183,7 +183,7 @@ externalResolvers := {
   validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.2-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
