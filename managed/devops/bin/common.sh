@@ -88,9 +88,11 @@ readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 # Basename (i.e. name excluding the directory path) of our virtualenv.
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
   readonly YB_VIRTUALENV_BASENAME=venv
+  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
 else
   readonly YB_VIRTUALENV_BASENAME=python_virtual_env
+  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
 fi
 
