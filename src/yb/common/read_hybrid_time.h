@@ -80,12 +80,16 @@ struct ReadHybridTime {
   template <class PB>
   static ReadHybridTime FromPB(const PB& read_time) {
     return {
-      HybridTime(read_time.read_ht()),
-      HybridTime(read_time.local_limit_ht()),
-      HybridTime(read_time.global_limit_ht()),
+      .read = HybridTime(read_time.read_ht()),
+      .local_limit = HybridTime(read_time.has_local_limit_ht()
+          ? read_time.local_limit_ht()
+          : read_time.deprecated_max_of_read_time_and_local_limit_ht()),
+      .global_limit = HybridTime(read_time.global_limit_ht()),
       // Use max hybrid time for backward compatibility.
-      read_time.in_txn_limit_ht() ? HybridTime(read_time.in_txn_limit_ht()) : HybridTime::kMax,
-      0
+      .in_txn_limit = read_time.in_txn_limit_ht()
+          ? HybridTime(read_time.in_txn_limit_ht())
+          : HybridTime::kMax,
+      .serial_no = 0,
     };
   }
 
@@ -96,6 +100,7 @@ struct ReadHybridTime {
     out->set_global_limit_ht(global_limit.ToUint64());
     out->set_in_txn_limit_ht(
         in_txn_limit.is_valid() ? in_txn_limit.ToUint64() : HybridTime::kMax.ToUint64());
+    out->set_deprecated_max_of_read_time_and_local_limit_ht(std::max(local_limit, read).ToUint64());
   }
 
   template <class PB>

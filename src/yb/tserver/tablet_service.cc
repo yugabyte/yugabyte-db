@@ -1648,7 +1648,7 @@ struct ReadContext {
     DCHECK_GT(restart_time, read_time.read);
     VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
     auto result = read_time;
-    result.read = restart_time;
+    result.read = std::min(std::max(restart_time, safe_ht_to_read), read_time.global_limit);
     result.local_limit = safe_ht_to_read;
     return result;
   }
@@ -1995,6 +1995,8 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();
       restart_read_time->set_read_ht(read_context->read_time.read.ToUint64());
+      restart_read_time->set_deprecated_max_of_read_time_and_local_limit_ht(
+          read_context->read_time.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_context->read_time.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
       down_cast<Tablet*>(read_context->tablet.get())->metrics()->restart_read_requests->Increment();

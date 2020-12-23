@@ -164,8 +164,6 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
   std::atomic<int> num_read_successes(0);
   TestThreadHolder thread_holder;
 
-  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
-
   // Set up table
   auto setup_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(setup_conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value INT)"));
@@ -196,6 +194,7 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
           ASSERT_STR_CONTAINS(result.status().ToString(), "Restart read");
           ++num_read_restarts;
           ASSERT_OK(read_conn.Execute("ABORT"));
+          break;
         } else {
           ASSERT_OK(read_conn.Execute("COMMIT"));
           ++num_read_successes;
@@ -231,11 +230,21 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
   ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDeferrable)) {
+class PgMiniLargeClockSkewTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+    PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDeferrable),
+          PgMiniLargeClockSkewTest) {
   TestReadRestart(true /* deferrable */);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot)) {
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
+          PgMiniLargeClockSkewTest) {
   TestReadRestart(false /* deferrable */);
 }
 
