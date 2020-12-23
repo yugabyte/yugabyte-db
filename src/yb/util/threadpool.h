@@ -107,15 +107,15 @@ struct ThreadPoolMetrics {
 //   .Build(...);
 #define THREAD_POOL_METRICS_DEFINE(entity, name, label) \
     METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _queue_length), \
-        label " Queue Length", MetricUnit::kMicroseconds, \
+        label " Queue Length", yb::MetricUnit::kMicroseconds, \
         label " - queue length histogram.", \
         10000000, 2); \
     METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _queue_time_us), \
-        label " Queue Time", MetricUnit::kMicroseconds, \
+        label " Queue Time", yb::MetricUnit::kMicroseconds, \
         label " - queue time histogram, microseconds.", \
         10000000, 2); \
     METRIC_DEFINE_histogram(entity, BOOST_PP_CAT(name, _run_time_us), \
-        label " Run Time", MetricUnit::kMicroseconds, \
+        label " Run Time", yb::MetricUnit::kMicroseconds, \
         label " - run time histogram, microseconds.", \
         10000000, 2)
 
