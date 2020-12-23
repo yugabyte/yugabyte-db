@@ -547,8 +547,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
         break;
       case TRANS_STMT_ROLLBACK:
       case TRANS_STMT_ROLLBACK_TO:
-	type = Rollback;
-	break;
+        type = Rollback;
+        break;
       default:
         type = Other;
         break;
