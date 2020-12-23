@@ -242,7 +242,7 @@ Result<bool> YBTable::MaybeRefreshPartitions() {
   const auto& partitions = *partitions_result;
   {
     std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-    if (partitions->version <= partitions_->version) {
+    if (partitions->version < partitions_->version) {
       return STATUS_FORMAT(
           TryAgain, "Received table $0 partitions version: $1, ours is: $2", id(),
           partitions->version, partitions_->version);

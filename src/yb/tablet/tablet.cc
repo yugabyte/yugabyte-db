@@ -1579,7 +1579,7 @@ void Tablet::UpdateQLIndexesFlushed(
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetPendingErrors()) {
+      for (const auto& error : session->GetAndClearPendingErrors()) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;

@@ -102,7 +102,7 @@ Result<size_t> SelectRowsCount(
       if (s.ok()) {
         return true;
       }
-      for (auto& error : session->GetPendingErrors()) {
+      for (auto& error : session->GetAndClearPendingErrors()) {
         if (error->status().IsTryAgain()) {
           return false;
         }

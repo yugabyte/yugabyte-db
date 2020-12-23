@@ -254,7 +254,7 @@ Result<int32_t> SelectRow(
   table->AddColumns({column}, req);
   auto status = session->ApplyAndFlush(op);
   if (status.IsIOError()) {
-    for (const auto& error : session->GetPendingErrors()) {
+    for (const auto& error : session->GetAndClearPendingErrors()) {
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
     }
   }

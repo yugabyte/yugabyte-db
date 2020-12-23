@@ -7918,7 +7918,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
     }
 
     if (PREDICT_FALSE(!l_tablet->data().is_running())) {
-      return STATUS(ServiceUnavailable, "Tablet not running");
+      return STATUS_FORMAT(ServiceUnavailable, "Tablet $0 not running", tablet->id());
     }
 
     locs = tablet->GetReplicaLocations();
