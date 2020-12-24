@@ -260,6 +260,12 @@ class UniverseForm extends Component {
     this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
+  // This hook will help to render the KMS configs on browser reload while editing
+  // the universe. 
+  componentDidMount() {
+    this.props.getKMSConfigs();
+  }
+
   UNSAFE_componentWillMount() {
     this.props.resetConfig();
     this.setState({ editNotAllowed: true });
