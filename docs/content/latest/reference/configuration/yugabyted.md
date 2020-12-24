@@ -171,11 +171,11 @@ Enable or disable the webserver UI. Default is `false`.
 
 ##### --master_flags *master_flags*
 
-Specify extra master flags as a set of key value pairs. Format (key=value,key=value).
+Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 ##### --tserver_flags *tserver_flags*
 
-Specify extra tserver flags as a set of key value pairs. Format (key=value,key=value).
+Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 ##### --ysql_enable_auth *bool*
 
