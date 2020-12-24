@@ -62,7 +62,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
-using std::string;
 using std::map;
 using std::shared_ptr;
 using strings::Substitute;
@@ -864,7 +863,7 @@ class TablePartitionLookup : public ToStringable {
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    const std::string* partition_group_start, RequestCleanup* cleanup) {
+    const PartitionGroupKey* partition_group_start, RequestCleanup* cleanup) {
   if (VLOG_IS_ON(2)) {
     auto group_start =
         partition_group_start ? Slice(*partition_group_start).ToDebugHexString() : "<NULL>";
@@ -882,7 +881,7 @@ Status MetaCache::ProcessTabletLocations(
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
 
-    std::unordered_map<TableId, std::unordered_map<std::string, RemoteTabletPtr>> processed_tables;
+    std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>> processed_tables;
 
     for (const TabletLocationsPB& loc : locations) {
       const std::string& tablet_id = loc.tablet_id();
@@ -1262,7 +1261,7 @@ class LookupByKeyRpc : public LookupRpc {
 };
 
 void MetaCache::LookupByKeyFailed(
-    const std::shared_ptr<const YBTable>& table, const std::string& partition_group_start,
+    const std::shared_ptr<const YBTable>& table, const PartitionGroupKey& partition_group_start,
     int64_t request_no, const Status& status) {
   VLOG(1) << "Lookup for table " << table->id() << " and partition "
           << Slice(partition_group_start).ToDebugHexString() << ", failed with: " << status;
@@ -1309,14 +1308,14 @@ void MetaCache::LookupByIdFailed(
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(
-    const std::shared_ptr<const YBTable>& table, const std::string& partition_key) {
+    const std::shared_ptr<const YBTable>& table, const PartitionKey& partition_key) {
   auto it = tables_.find(table->id());
   if (PREDICT_FALSE(it == tables_.end())) {
     // No cache available for this table.
     return nullptr;
   }
 
-  DCHECK_EQ(partition_key, table->FindPartitionStart(partition_key));
+  DCHECK_EQ(partition_key, *table->FindPartitionStart(partition_key));
   auto tablet_it = it->second.tablets_by_partition.find(partition_key);
   if (PREDICT_FALSE(tablet_it == it->second.tablets_by_partition.end())) {
     // No tablets with a start partition key lower than 'partition_key'.
@@ -1342,7 +1341,7 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(
 // We disable thread safety analysis in this function due to manual conditional locking.
 RemoteTabletPtr MetaCache::FastLookupTabletByKeyUnlocked(
     const std::shared_ptr<const YBTable>& table,
-    const std::string& partition_start) {
+    const PartitionKey& partition_start) {
   // Fast path: lookup in the cache.
   auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
   if (result && result->HasLeader()) {
@@ -1365,9 +1364,9 @@ bool IsUniqueLock(SharedLock<Mutex>*) {
 
 template <class Lock>
 bool MetaCache::DoLookupTabletByKey(
-    const std::shared_ptr<const YBTable>& table, const std::string& partition_start,
-    CoarseTimePoint deadline, LookupTabletCallback* callback,
-    const std::string** partition_group_start) {
+    const std::shared_ptr<const YBTable>& table,
+    const PartitionKeyPtr& partition_start, CoarseTimePoint deadline,
+    LookupTabletCallback* callback, PartitionGroupKeyPtr* partition_group_start) {
   RemoteTabletPtr tablet;
   auto scope_exit = ScopeExit([callback, &tablet] {
     if (tablet) {
@@ -1377,13 +1376,13 @@ bool MetaCache::DoLookupTabletByKey(
   int64_t request_no;
   {
     Lock lock(mutex_);
-    tablet = FastLookupTabletByKeyUnlocked(table, partition_start);
+    tablet = FastLookupTabletByKeyUnlocked(table, *partition_start);
     if (tablet) {
       return true;
     }
 
     if (!*partition_group_start) {
-      *partition_group_start = &table->FindPartitionStart(partition_start, kPartitionGroupSize);
+      *partition_group_start = table->FindPartitionStart(*partition_start, kPartitionGroupSize);
     }
 
     auto table_it = tables_.find(table->id());
@@ -1406,7 +1405,7 @@ bool MetaCache::DoLookupTabletByKey(
         lookups_group = &lookups_group_it->second;
       }
     }
-    lookups_group->lookups.Push(new LookupData(callback, deadline, &partition_start));
+    lookups_group->lookups.Push(new LookupData(callback, deadline, partition_start));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
     if (!lookups_group->running_request_number.compare_exchange_strong(
@@ -1430,15 +1429,15 @@ bool MetaCache::DoLookupTabletByKey(
 
 // We disable thread safety analysis in this function due to manual conditional locking.
 void MetaCache::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
-                                  const string& partition_key,
+                                  const PartitionKey& partition_key,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
-  const auto& partition_start = table->FindPartitionStart(partition_key);
+  const auto partition_start = table->FindPartitionStart(partition_key);
   VLOG_WITH_FUNC(4) << "Table: " << table->ToString()
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
-                    << ", partition_start: " << Slice(partition_start).ToDebugHexString();
+                    << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 
-  const std::string* partition_group_start = nullptr;
+  PartitionGroupKeyPtr partition_group_start;
   if (DoLookupTabletByKey<SharedLock<boost::shared_mutex>>(
           table, partition_start, deadline, &callback, &partition_group_start)) {
     return;

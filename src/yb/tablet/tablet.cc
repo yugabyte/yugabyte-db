@@ -127,7 +127,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_quote.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
@@ -810,6 +809,9 @@ void Tablet::CleanupIntentFiles() {
 }
 
 void Tablet::DoCleanupIntentFiles() {
+  if (metadata_->is_under_twodc_replication()) {
+    return;
+  }
   HybridTime best_file_max_ht = HybridTime::kMax;
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
@@ -1175,6 +1177,9 @@ Status Tablet::ApplyKeyValueRowOperations(
       WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
     }
     if (intents_write_batch.Count() != 0) {
+      if (!metadata_->is_under_twodc_replication()) {
+        RETURN_NOT_OK(metadata_->set_is_under_twodc_replication(true));
+      }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }
 
@@ -1579,7 +1584,7 @@ void Tablet::UpdateQLIndexesFlushed(
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetPendingErrors()) {
+      for (const auto& error : session->GetAndClearPendingErrors()) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;
@@ -2173,7 +2178,7 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
   // TODO(jason): handle "yugabyte" role being password protected
   std::string conn_str = Format(
       "dbname=$0 host=$1 port=$2 user=$3",
-      QuotePgConnStrValue(database_name),
+      pgwrapper::PqEscapeLiteral(database_name),
       pgsql_proxy_bind_address.host(),
       pgsql_proxy_bind_address.port(),
       "yugabyte");

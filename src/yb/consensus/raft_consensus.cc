@@ -3093,13 +3093,6 @@ std::array<TabletId, kNumSplitParts> RaftConsensus::GetSplitChildTabletIds() {
   return state_->GetSplitChildTabletIdsUnlocked();
 }
 
-Status RaftConsensus::ResetSplitOpId() {
-  ReplicaState::UniqueLock lock;
-  RETURN_NOT_OK(state_->LockForUpdate(&lock));
-  state_->ResetSplitOpIdUnlocked();
-  return Status::OK();
-}
-
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
   LOG_WITH_PREFIX(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
   mark_dirty_clbk_.Run(context);

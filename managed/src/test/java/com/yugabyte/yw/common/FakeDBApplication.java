@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -35,6 +36,7 @@ public class FakeDBApplication extends WithApplication {
   public ExtraMigrationManager mockExtraMigrationManager;
   public MetricQueryHelper mockMetricQueryHelper;
   public CloudQueryHelper mockCloudQueryHelper;
+  public CloudAPI.Factory mockCloudAPIFactory;
   public ReleaseManager mockReleaseManager;
   public YBClientService mockService;
   public DnsManager mockDnsManager;
@@ -57,6 +59,7 @@ public class FakeDBApplication extends WithApplication {
     mockExtraMigrationManager = mock(ExtraMigrationManager.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
+    mockCloudAPIFactory = mock(CloudAPI.Factory.class);
     mockReleaseManager = mock(ReleaseManager.class);
     mockService = mock(YBClientService.class);
     mockNetworkManager = mock(NetworkManager.class);
@@ -64,26 +67,27 @@ public class FakeDBApplication extends WithApplication {
     mockYamlWrapper = mock(YamlWrapper.class);
     mockQueryAlerts = mock(QueryAlerts.class);
     return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
-        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-        .overrides(bind(CallHome.class).toInstance(mockCallHome))
-        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
-        .overrides(bind(Executors.class).toInstance(mockExecutors))
-        .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
-        .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
-        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
-        .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
-        .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
-        .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
-        .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
-        .overrides(bind(YBClientService.class).toInstance(mockService))
-        .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
-        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
-        .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
-        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-        .build();
+      .configure((Map) Helpers.inMemoryDatabase())
+      .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+      .overrides(bind(CallHome.class).toInstance(mockCallHome))
+      .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+      .overrides(bind(Executors.class).toInstance(mockExecutors))
+      .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+      .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
+      .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+      .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+      .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+      .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
+      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+      .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+      .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+      .overrides(bind(YBClientService.class).toInstance(mockService))
+      .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
+      .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
+      .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
+      .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+      .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+      .build();
   }
 }
