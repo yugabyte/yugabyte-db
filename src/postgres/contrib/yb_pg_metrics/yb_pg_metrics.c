@@ -521,6 +521,36 @@ ybpgm_memsize(void)
 }
 
 /*
+ * Get the statement type for a transactional statement.
+ */
+static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
+  statementType type = Other;
+  switch (stmt->kind) {
+    case TRANS_STMT_BEGIN:
+    case TRANS_STMT_START:
+      type = Begin;
+      break;
+    case TRANS_STMT_COMMIT:
+    case TRANS_STMT_COMMIT_PREPARED:
+      type = Commit;
+      break;
+    case TRANS_STMT_ROLLBACK:
+    case TRANS_STMT_ROLLBACK_TO:
+    case TRANS_STMT_ROLLBACK_PREPARED:
+      type = Rollback;
+      break;
+    case TRANS_STMT_SAVEPOINT:
+    case TRANS_STMT_RELEASE:
+    case TRANS_STMT_PREPARE:
+      type = Other;
+      break;
+    default:
+      elog(ERROR, "unrecognized statement kind: %d", stmt->kind);
+  }
+  return type;
+}
+
+/*
  * Hook used for tracking "Other" statements.
  */
 static void
@@ -538,21 +568,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     if (IsA(pstmt->utilityStmt, TransactionStmt)) {
       TransactionStmt *stmt = (TransactionStmt *)(pstmt->utilityStmt);
-      switch (stmt->kind) {
-      case TRANS_STMT_BEGIN:
-        type = Begin;
-        break;
-      case TRANS_STMT_COMMIT:
-        type = Commit;
-        break;
-      case TRANS_STMT_ROLLBACK:
-      case TRANS_STMT_ROLLBACK_TO:
-        type = Rollback;
-        break;
-      default:
-        type = Other;
-        break;
-      }
+      type = ybpgm_getStatementType(stmt); 
     } else {
       type = Other;
     }
