@@ -10,7 +10,6 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.Universe;
@@ -133,19 +132,23 @@ public class CertificateController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     JsonNode certificates = Json.toJson(certs);
-    List<Universe> universes = Universe.getAll();
     HashMap<String, Boolean> removable = new HashMap<String, Boolean>();
+    
+    
+    List<Universe> universes = Universe.getAll();
     for (Universe universe : universes) {
       try {
-        UUID cert = universe.getUniverseDetails().rootCA;
+  
+        Universe universe_obj = Universe.get(universe.universeUUID);
+        UUID cert = universe_obj.getUniverseDetails().rootCA;
         removable.put(cert.toString(), true);
       } catch (NullPointerException a) {
         continue;
-      }}
+      }
+      }
       for (JsonNode cert : certificates) {
         JsonNode cert_uuid = cert.get("uuid");
         Boolean value = removable.get(cert_uuid.asText());
-        System.out.println(removable+"hello");
         if (value == null) {
           ((ObjectNode) cert).put("removable", true);
         } else {
@@ -179,8 +182,9 @@ public class CertificateController extends AuthenticatedController {
     for (Universe universe : universes) {
       // For the universes which does not have certificate attached to it.
       try {
-        UUID universe_json_info = universe.getUniverseDetails().rootCA;
-        if (universe_json_info.toString() == cert.uuid.toString()) {
+    	  Universe universe_obj = Universe.get(universe.universeUUID);
+          UUID certificate_uuid = universe_obj.getUniverseDetails().rootCA;
+        if (certificate_uuid.toString() == cert.uuid.toString()) {
           return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
         }
       } catch (NullPointerException a) {
