@@ -129,37 +129,34 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
-  public Result list(UUID customerUUID) {
-    List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    JsonNode certificates = Json.toJson(certs);
-    HashMap<String, Boolean> removable = new HashMap<String, Boolean>();
-    
-    
-    List<Universe> universes = Universe.getAll();
-    for (Universe universe : universes) {
-      try {
-  
-        Universe universe_obj = Universe.get(universe.universeUUID);
-        UUID cert = universe_obj.getUniverseDetails().rootCA;
-        removable.put(cert.toString(), true);
-      } catch (NullPointerException a) {
-        continue;
-      }
-      }
-      for (JsonNode cert : certificates) {
-        JsonNode cert_uuid = cert.get("uuid");
-        Boolean value = removable.get(cert_uuid.asText());
-        if (value == null) {
-          ((ObjectNode) cert).put("removable", true);
-        } else {
-          ((ObjectNode) cert).put("removable", false);
-        }
-      }
-      if (certs == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
-      return ApiResponse.success(certificates);
-  }
+	public Result list(UUID customerUUID) {
+		List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
+		HashMap<String, Boolean> removable = new HashMap<String, Boolean>();
+		List<Universe> universes = Universe.getAll();
+		for (Universe universe : universes) {
+			try {
+				Universe universe_obj = Universe.get(universe.universeUUID);
+				UUID cert = universe_obj.getUniverseDetails().rootCA;
+				removable.put(cert.toString(), true);
+			} catch (NullPointerException a) {
+				continue;
+			}
+		}
+		JsonNode certificates = Json.toJson(certs);
+		for (JsonNode cert : certificates) {
+			JsonNode cert_uuid = cert.get("uuid");
+			Boolean value = removable.get(cert_uuid.asText());
+			if (value == null) {
+				((ObjectNode) cert).put("removable", true);
+			} else {
+				((ObjectNode) cert).put("removable", false);
+			}
+		}
+		if (certs == null) {
+			return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+		}
+		return ApiResponse.success(certificates);
+	}
 
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.get(label);
@@ -170,38 +167,35 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
-  public Result delete(UUID certificate) {
-
-    CertificateInfo cert = CertificateInfo.get(certificate);
-
-    if (cert == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
-    }
-    List<Universe> universes = Universe.getAll();
-
-    for (Universe universe : universes) {
-      // For the universes which does not have certificate attached to it.
-      try {
-    	  Universe universe_obj = Universe.get(universe.universeUUID);
-          UUID certificate_uuid = universe_obj.getUniverseDetails().rootCA;
-        if (certificate_uuid.toString() == cert.uuid.toString()) {
-          return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
-        }
-      } catch (NullPointerException a) {
-        continue;
-      }
-    }
-
-    if (cert.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("Successfully deleted the certificate", true);
-      Audit.createAuditEntry(ctx(), request());
-      LOG.info("Successfully deleted the certificate:" + certificate);
-      return ApiResponse.success(responseJson);
-    } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Certificate");
-    }
-  }
+	public Result delete(UUID certificate) {
+		CertificateInfo cert = CertificateInfo.get(certificate);
+		if (cert == null) {
+			return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
+		}
+		List<Universe> universes = Universe.getAll();
+		for (Universe universe : universes) {
+			// Try catch block for the universes which does not have certificate attached to
+			// it.
+			try {
+				Universe universe_obj = Universe.get(universe.universeUUID);
+				UUID certificate_uuid = universe_obj.getUniverseDetails().rootCA;
+				if (certificate_uuid.toString() == cert.uuid.toString()) {
+					return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
+				}
+			} catch (NullPointerException a) {
+				continue;
+			}
+		}
+		if (cert.delete()) {
+			ObjectNode responseJson = Json.newObject();
+			responseJson.put("Successfully deleted the certificate", true);
+			Audit.createAuditEntry(ctx(), request());
+			LOG.info("Successfully deleted the certificate:" + certificate);
+			return ApiResponse.success(responseJson);
+		} else {
+			return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Certificate");
+		}
+	}
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
