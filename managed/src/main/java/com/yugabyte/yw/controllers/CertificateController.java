@@ -132,29 +132,30 @@ public class CertificateController extends AuthenticatedController {
 
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    JsonNode jsonArray = Json.toJson(certs);
+    JsonNode certificates = Json.toJson(certs);
     List<Universe> universes = Universe.getAll();
     HashMap<String, Boolean> removable = new HashMap<String, Boolean>();
     for (Universe universe : universes) {
       try {
-        UUID universe_json_info = universe.getUniverseDetails().rootCA;
-        removable.put(universe_json_info.toString(), true);
+        UUID cert = universe.getUniverseDetails().rootCA;
+        removable.put(cert.toString(), true);
       } catch (NullPointerException a) {
         continue;
       }}
-      for (JsonNode each : jsonArray) {
-        JsonNode cert_uuid = each.get("uuid");
+      for (JsonNode cert : certificates) {
+        JsonNode cert_uuid = cert.get("uuid");
         Boolean value = removable.get(cert_uuid.asText());
-        if (value != null) {
-          ((ObjectNode) each).put("removable", true);
+        System.out.println(removable+"hello");
+        if (value == null) {
+          ((ObjectNode) cert).put("removable", true);
         } else {
-          ((ObjectNode) each).put("removable", true);
+          ((ObjectNode) cert).put("removable", false);
         }
       }
       if (certs == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      return ApiResponse.success(jsonArray);
+      return ApiResponse.success(certificates);
   }
 
   public Result get(UUID customerUUID, String label) {
