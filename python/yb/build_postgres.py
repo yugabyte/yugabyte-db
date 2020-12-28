@@ -76,6 +76,8 @@ CONFIG_ENV_VARS = [
     'YB_THIRDPARTY_DIR'
 ]
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
+TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
+TRANSIENT_BUILD_RETRIES = 3
 
 
 def sha256(s):
@@ -572,18 +574,33 @@ class PostgresBuilder(YbBuildToolBase):
 
                 complete_make_cmd = make_cmd + make_cmd_suffix
                 complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
-                make_result = run_program(
-                    ' '.join(shlex.quote(arg) for arg in complete_make_cmd),
-                    stdout_stderr_prefix='make',
-                    cwd=work_dir,
-                    error_ok=True,
-                    shell=True  # TODO: get rid of shell=True.
-                )
-                logging.info("Successfully ran 'make' in the %s directory", work_dir)
-
-                if make_result.failure():
-                    make_result.print_output_to_stdout()
-                    raise RuntimeError("PostgreSQL compilation failed")
+                attempt = 0
+                while attempt <= TRANSIENT_BUILD_RETRIES:
+                    attempt += 1
+                    make_result = run_program(
+                        ' '.join(shlex.quote(arg) for arg in complete_make_cmd),
+                        stdout_stderr_prefix='make',
+                        cwd=work_dir,
+                        error_ok=True,
+                        shell=True  # TODO: get rid of shell=True.
+                    )
+                    if make_result.failure():
+                        transient_err = False
+                        for line in make_result.get_stderr():
+                            if any(x in line for x in TRANSIENT_BUILD_ERRORS):
+                                transient_err = True
+                                logging.info(f'Error: {line}')
+                                break
+                        if transient_err:
+                            logging.info("Transient error. Re-trying make command.")
+                        else:
+                            make_result.print_output_to_stdout()
+                            raise RuntimeError("PostgreSQL compilation failed")
+                    else:
+                        logging.info("Successfully ran 'make' in the %s directory", work_dir)
+                        break  # No error, break out of retry loop
+                else:
+                    raise RuntimeError("Maximum build attempts reached.")
 
                 if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
                     run_program(
