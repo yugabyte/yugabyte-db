@@ -127,6 +127,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
+    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -724,6 +725,12 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
       this.setState({ enableNodeToNodeEncrypt: event.target.checked });
+    } 
+    
+    // This condition will make sure if enableNodeToNodeEncrypt is false
+    // then enableClientToNodeEncrypt will set to false.
+    if(!event.target.checked) {
+      this.setState({ enableClientToNodeEncrypt: false});
     }
   }
 
@@ -1020,6 +1027,16 @@ export default class ClusterFields extends Component {
     }
   }
 
+  /**
+   * This method is used to disable the ClientToNodeTLS field initially.
+   * 
+   * @param isFieldReadOnly If true then readonly access.
+   * @param enableNodeToNodeEncrypt NodeToNodeTLS state.
+   */
+  clientToNodeEncryptField(isFieldReadOnly, enableNodeToNodeEncrypt) {
+    return isFieldReadOnly ? isFieldReadOnly : !enableNodeToNodeEncrypt;
+  }
+
   render() {
     const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
     const { hasInstanceTypeChanged } = this.state;
@@ -1304,7 +1321,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={isFieldReadOnly}
+          isReadOnly={ this.clientToNodeEncryptField(isFieldReadOnly, this.state.enableNodeToNodeEncrypt)}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
