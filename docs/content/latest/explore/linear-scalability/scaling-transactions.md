@@ -1,19 +1,15 @@
 ---
-title: Explore linear scalability on macOS
-headerTitle: Linear scalability
-linkTitle: Linear scalability
-description: Learn how to scale a local three-node YugabyteDB cluster (on macOS) while a workload is running.
-aliases:
-  - /explore/linear-scalability/
-  - /latest/explore/linear-scalability/
-  - /latest/explore/cloud-native/linear-scalability/
-  - /latest/explore/postgresql/linear-scalability/
-  - /latest/explore/linear-scalability-macos/
+title: Scaling Transactions
+headerTitle: Scaling Concurrent Transactions
+linkTitle: Scaling Concurrent Transactions
+description: Scaling Concurrent Transactions in YugabyteDB.
+headcontent: Scaling Concurrent Transactions in YugabyteDB.
 menu:
   latest:
-    identifier: linear-scalability-1-macos
-    parent: explore
-    weight: 210
+    name: Scaling Transactions
+    identifier: explore-transactions-scaling-transactions-1-ysql
+    parent: explore-scalability
+    weight: 230
 isTocNested: true
 showAsideToc: true
 ---
@@ -21,40 +17,24 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/linear-scalability/macos" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/transactions/scaling-transactions/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
-
+<!--
   <li >
-    <a href="/latest/explore/linear-scalability/linux" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/transactions/distributed-transactions-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
-
-  <li >
-    <a href="/latest/explore/linear-scalability/docker" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
-
-  <li >
-    <a href="/latest/explore/linear-scalability-kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
+-->
 </ul>
 
 With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
-
-**Note**: Verify that you have the required extra loopback addresses by reviewing the [Quick Start section](../../../quick-start/install/macos/#configure).
 
 ## 1. Create universe
 
@@ -64,7 +44,7 @@ If you have a previously running local universe, destroy it using the `yb-ctl de
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new 3-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
+Start a new three-node cluster with a replication factor (RFå) of `3` and set the number of [shards](../../../architecture/concepts/docdb/sharding/) (aka tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
 
 ```sh
 $ ./bin/yb-ctl create --rf 3 --num_shards_per_tserver 4
@@ -80,7 +60,7 @@ Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `SqlInserts` workload app against the local universe by running the following command.
+Run the `SqlInserts` workload app against the local universe using the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -89,7 +69,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_read 4
 ```
 
-The workload application prints some stats while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 

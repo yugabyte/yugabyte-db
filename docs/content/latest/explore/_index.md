@@ -25,17 +25,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
 {{< /tip >}}
 
 <div class="row">
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Linear scalability</div>
-      </div>
-      <div class="body">
-        Reliable, rapid scaling for both writes and reads.
-      </div>
-    </a>
-  </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="fault-tolerance/">
       <div class="head">
@@ -47,14 +36,14 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-sharding/">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="linear-scalability/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
-        <div class="title">Auto sharding</div>
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Linear scalability</div>
       </div>
       <div class="body">
-        Purpose-built for large, ever-growing datasets.
+        Reliable, rapid scaling for both writes and reads.
       </div>
     </a>
   </div>
