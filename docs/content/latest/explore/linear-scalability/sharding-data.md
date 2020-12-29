@@ -1,57 +1,37 @@
 ---
-title: Explore auto sharding on macOS
-headerTitle: Auto sharding
-linkTitle: Auto sharding
-description: Follow this macOS-based tutorial to learn how YugabyteDB automatically splits tables into shards.
-aliases:
-  - /explore/auto-sharding/
-  - /latest/explore/auto-sharding/
-  - /latest/explore/planet-scale/auto-sharding/
-  - /explore/auto-rebalancing/
-  - /latest/explore/auto-rebalancing/
-  - /latest/explore/planet-scale/auto-rebalancing/
-  - /latest/explore/auto-sharding-macos/
+title: Sharding Data
+headerTitle: Sharding Data Across Nodes
+linkTitle: Sharding Data Across Nodes
+description: Sharding Data Across Nodes in YugabyteDB.
+headcontent: Sharding Data Across Nodes in YugabyteDB.
 menu:
   latest:
-    identifier: auto-sharding-1-macos
-    parent: explore
-    weight: 225
+    name: Sharding Data
+    identifier: explore-transactions-sharding-data-1-ysql
+    parent: explore-scalability
+    weight: 240
 isTocNested: true
 showAsideToc: true
 ---
 
+<!--
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/auto-sharding/macos" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
-      macOS
+    <a href="/latest/explore/transactions/scaling-transactions/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/auto-sharding/linux" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
-      Linux
+    <a href="/latest/explore/transactions/distributed-transactions-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
-<!--
-  <li >
-    <a href="/latest/explore/auto-sharding/docker" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
-      Docker
-    </a>
-  </li>
--->
-<!--
-  <li >
-    <a href="/latest/explore/auto-sharding/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
--->
 </ul>
+-->
 
 YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../../architecture/docdb/sharding/) in YugabyteDB.
 
@@ -72,7 +52,7 @@ If you have a currently running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor of 1 (rf=1). We are passing the following flags:
+Start a new local universe with a replication factor of 1 (RF=1). We are passing the following flags:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
 - `--num_shards_per_tserver 4`  This flag controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
@@ -105,7 +85,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                 |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
@@ -115,7 +95,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 72053), yb-master (pid 72050)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
@@ -126,7 +106,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 2: yb-tserver (pid 72128)                                                                   |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/ycqlsh 127.0.0.2 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.2 -p 6379                                       |
@@ -136,7 +116,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 3: yb-tserver (pid 72166)                                                                   |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                              |
 | YCQL                : ./bin/ycqlsh 127.0.0.3 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.3 -p 6379                                       |
