@@ -351,6 +351,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
         } else {
           record->mutable_transaction_state()->set_transaction_id(
               batch.transaction().transaction_id());
+          record->mutable_transaction_state()->add_tablets(tablet_peer->tablet_id());
         }
       }
     }
