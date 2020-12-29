@@ -57,7 +57,6 @@ The various features are explained in the sections below.
       </div>
     </a>
   </div>
-<!-- ADD THIS ONCE READY: 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="explicit-locking/">
       <div class="head">
@@ -65,10 +64,11 @@ The various features are explained in the sections below.
         <div class="title">Explicit Locking</div>
       </div>
       <div class="body">
-        Row and table level locking in YSQL.
+        Explicit row-level locking in YSQL.
       </div>
     </a>
   </div>
+<!-- ADD THIS ONCE READY: 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ddl-operations/">
       <div class="head">
