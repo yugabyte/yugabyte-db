@@ -209,7 +209,9 @@ class Certificates extends Component {
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
         <MenuItem
-          onClick={() => { this.deleteRootCertificate(payload?.uuid)}}
+          onClick={() => { 
+            !deleteDisabled && this.deleteRootCertificate(payload?.uuid)
+          }}
           disabled={deleteDisabled}
         >
           <i className="fa fa-trash"></i> Delete Root CA Cert
