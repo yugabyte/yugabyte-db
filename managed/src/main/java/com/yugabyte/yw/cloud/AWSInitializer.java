@@ -48,6 +48,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 @Singleton
 public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
+  // Config names
+  static final String YB_VOLUME_INFO_VOLUME_COUNT = "yb.volumeInfo.volume_count";
 
   private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
   private Provider provider;
@@ -516,8 +518,7 @@ public class AWSInitializer extends AbstractInitializer {
           LOG.error(msg);
           throw new UnsupportedOperationException(msg);
         } else {
-          // TODO: hardcode me not?
-          volumeCount = 2;
+          volumeCount = YB_VOLUME_INFO_VOLUME_COUNT;
           volumeSizeGB = 250;
           volumeType = VolumeType.EBS;
         }
