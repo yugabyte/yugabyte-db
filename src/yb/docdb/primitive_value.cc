@@ -55,20 +55,21 @@ using yb::util::DecodeDoubleFromKey;
 // at compile time.
 #define IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH \
     case ValueType::kArray: FALLTHROUGH_INTENDED; \
-    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED; \
-    case ValueType::kRowLock: FALLTHROUGH_INTENDED; \
     case ValueType::kBitSet: FALLTHROUGH_INTENDED; \
+    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED; \
+    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
+    case ValueType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
-    case ValueType::kGreaterThanIntentType: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisList: FALLTHROUGH_INTENDED;            \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
+    case ValueType::kRowLock: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kUserTimestamp: \
@@ -234,6 +235,7 @@ string PrimitiveValue::ToString() const {
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
     case ValueType::kGreaterThanIntentType:
       break;
     case ValueType::kLowest:
@@ -572,6 +574,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
     case ValueType::kInvalid: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
@@ -1178,6 +1181,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kExternalIntents: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte:
