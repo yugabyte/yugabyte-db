@@ -41,13 +41,25 @@ public class TestJsonIndex extends BaseCQLTest {
     session.execute("CREATE INDEX jidx ON test_json_index(j1->'a'->>'b')");
     session.execute("CREATE INDEX cidx ON test_json_index(a_column)");
 
-    for (int h = 0; h < 3000; h++) {
+    int h;
+    for (h = 0; h < 3000; h++) {
       String jvalue = String.format("{ \"a\" : { \"b\" : \"bvalue_%d\" }," +
                                     "  \"a_column\" : %d }", h, h );
       String stmt = String.format("INSERT INTO test_json_index(h, j1, j2) VALUES (%d, '%s', '%s');",
                                   h, jvalue, jvalue);
       session.execute(stmt);
     }
+
+    // Insert various value formats to the JSONB column to make sure that the JSONB expression
+    // index supports null values.
+    session.execute(String.format("INSERT INTO test_json_index(h) values (%d);", h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, 'null');", h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, '\"abc\"');",
+                                  h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, '3');", h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, 'true');", h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, 'false');", h++));
+    session.execute(String.format("INSERT INTO test_json_index(h, j1) values (%d, '2.0');", h++));
 
     // Run index scan and check the time.
     String query = "SELECT h FROM test_json_index WHERE j1->'a'->>'b' = 'bvalue_77';";

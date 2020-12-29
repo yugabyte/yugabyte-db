@@ -55,6 +55,8 @@ class QLExprResult {
 
   QLExprResultWriter Writer();
 
+  bool IsNull() const;
+
  private:
   friend class QLExprResultWriter;
 
