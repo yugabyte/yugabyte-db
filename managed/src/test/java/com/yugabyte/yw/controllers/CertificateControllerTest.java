@@ -95,6 +95,11 @@ public class CertificateControllerTest extends FakeDBApplication {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + label;
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
+  
+  private Result deleteCertificate(UUID certUUID) {
+	    String uri = "/api/certificates/" + certUUID.toString();
+	    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+	  }
 
   private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
                                          ObjectNode bodyJson) {
@@ -120,12 +125,29 @@ public class CertificateControllerTest extends FakeDBApplication {
       result_uuids.add(UUID.fromString(e.get("uuid").toString()));
       result_labels.add(e.get("label").toString());
       assertEquals(e.get("certType"), "SelfSigned");
+      assertEquals(e.get("removable"), true);
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
     assertAuditEntry(0, customer.uuid);
   }
 
+  @Test
+  public void testDeleteCertificate() {
+	UUID cert_uuid = test_certs_uuids.get(0);  
+	Result result = deleteCertificate(cert_uuid);
+	JsonNode json = Json.parse(contentAsString(result));
+	assertEquals(OK, result.status());
+  }
+  
+  @Test
+  public void testDeleteInvalidCertificate() {
+	UUID uuid=UUID.randomUUID();
+	Result result = deleteCertificate(uuid);
+	JsonNode json = Json.parse(contentAsString(result));
+	assertEquals(BAD_REQUEST, result.status());
+  }
+  
   @Test
   public void testGetCertificate() {
     UUID cert_uuid = test_certs_uuids.get(0);
