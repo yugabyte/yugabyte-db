@@ -478,7 +478,7 @@ public class UniverseController extends AuthenticatedController {
 
       if (!validateEncryption(formData))
       {
-        return ApiResponse.error(BAD_REQUEST, "To enable ClientToNode TLS encryption it is a must that we enable NodeToNode TLS encryption.");
+        return ApiResponse.error(BAD_REQUEST, "It is imperative that the NodeToNode TLS encryption should be enabled for enabling the ClientToNode TLS encryption.");
       }
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
