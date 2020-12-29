@@ -185,6 +185,10 @@ export default class ClusterFields extends Component {
         }
       }
     } = this.props;
+
+    // This prop will help us to get the list of KMS configs.
+    this.props.getKMSConfigs();
+
     // Set default software version in case of create
     if (
       isNonEmptyArray(this.props.softwareVersions) &&
@@ -283,7 +287,6 @@ export default class ClusterFields extends Component {
       // If Edit Case Set Initial Configuration
       this.props.getExistingUniverseConfiguration(_.cloneDeep(universeDetails));
     } else {
-      this.props.getKMSConfigs();
       // Repopulate the form fields when switching back to the view
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
         this.setState({
@@ -1082,6 +1085,7 @@ export default class ClusterFields extends Component {
           </option>
         );
       });
+
     const kmsConfigList = [
       <option value="0" key={`kms-option-0`}>
         Select Configuration
