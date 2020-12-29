@@ -104,6 +104,7 @@ namespace docdb {
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
+    ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     \
     /* We allow putting a 32-bit hash in front of the document key. This hash is computed based */ \

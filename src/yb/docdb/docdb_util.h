@@ -119,6 +119,7 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS AddExternalIntents(
       const TransactionId& txn_id,
       const std::vector<ExternalIntent>& intents,
+      const Uuid& involved_tablet,
       HybridTime hybrid_time);
 
   CHECKED_STATUS InsertSubDocument(

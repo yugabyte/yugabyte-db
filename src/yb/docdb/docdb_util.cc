@@ -252,16 +252,17 @@ Status DocDBRocksDBUtil::SetPrimitive(
 Status DocDBRocksDBUtil::AddExternalIntents(
     const TransactionId& txn_id,
     const std::vector<ExternalIntent>& intents,
+    const Uuid& involved_tablet,
     HybridTime hybrid_time) {
   class Provider : public ExternalIntentsProvider {
    public:
-    Provider(const std::vector<ExternalIntent>* intents, HybridTime hybrid_time)
-        : intents_(*intents), hybrid_time_(hybrid_time) {}
+    Provider(
+        const std::vector<ExternalIntent>* intents, const Uuid& involved_tablet,
+        HybridTime hybrid_time)
+        : intents_(*intents), involved_tablet_(involved_tablet), hybrid_time_(hybrid_time) {}
 
     void SetKey(const Slice& slice) override {
       key_.AppendRawBytes(slice);
-      key_.AppendValueType(ValueType::kHybridTime);
-      key_.AppendHybridTime(DocHybridTime(hybrid_time_));
     }
 
     void SetValue(const Slice& slice) override {
@@ -269,7 +270,11 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      batch->Put(key_.AsSlice(), value_.AsSlice());
+      KeyValuePairPB kv_pair;
+      kv_pair.set_key(key_.ToStringBuffer());
+      kv_pair.set_value(value_.ToString());
+      ExternalTxnApplyState external_txn_apply_state;
+      AddPairToWriteBatch(kv_pair, hybrid_time_, 0, &external_txn_apply_state, nullptr, batch);
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
@@ -290,8 +295,13 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       return std::pair<Slice, Slice>(intent_key_.AsSlice(), intent_value_);
     }
 
+    const Uuid& InvolvedTablet() override {
+      return involved_tablet_;
+    }
+
    private:
     const std::vector<ExternalIntent>& intents_;
+    const Uuid involved_tablet_;
     const HybridTime hybrid_time_;
     size_t next_idx_ = 0;
     KeyBytes key_;
@@ -301,7 +311,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     std::string intent_value_;
   };
 
-  Provider provider(&intents, hybrid_time);
+  Provider provider(&intents, involved_tablet, hybrid_time);
   CombineExternalIntents(txn_id, &provider);
 
   rocksdb::WriteBatch rocksdb_write_batch;

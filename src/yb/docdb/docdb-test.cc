@@ -3485,7 +3485,9 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
     { DocPath(encoded_doc_key, "subkey3"), Value(PrimitiveValue("value6")) },
     { DocPath(encoded_doc_key, "subkey4"), Value(PrimitiveValue("value7")) }
   };
-  ASSERT_OK(AddExternalIntents(txn3, intents, kTxn3HT));
+  Uuid status_tablet;
+  ASSERT_OK(status_tablet.FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
+  ASSERT_OK(AddExternalIntents(txn3, intents, status_tablet, kTxn3HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
@@ -3493,7 +3495,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
-TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> \
+    IT 03e99a3f0a8bb38b4944a75e911d3e4c [\
     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
@@ -3543,7 +3546,8 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 3 } -> \
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
-TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> [\
+TXN EXT 30303030-3030-3030-3030-303030303033 HT{ physical: 7000 } -> \
+    IT 03e99a3f0a8bb38b4944a75e911d3e4c [\
     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey3"]) -> "value6", \
     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey4"]) -> "value7"]
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \

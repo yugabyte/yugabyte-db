@@ -768,8 +768,8 @@ CHECKED_STATUS ConvertUuidToBlob(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     string byte_stream;
-    Uuid source_val = source->uuid_value();
-    RETURN_NOT_OK(source_val.ToBytes(&byte_stream));
+    const Uuid& source_val = source->uuid_value();
+    source_val.ToBytes(&byte_stream);
     target->set_binary_value(byte_stream);
   }
   return Status::OK();
@@ -781,8 +781,8 @@ CHECKED_STATUS ConvertTimeuuidToBlob(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     string byte_stream;
-    Uuid source_val = source->timeuuid_value();
-    RETURN_NOT_OK(source_val.ToBytes(&byte_stream));
+    const Uuid& source_val = source->timeuuid_value();
+    source_val.ToBytes(&byte_stream);
     target->set_binary_value(byte_stream);
   }
   return Status::OK();
