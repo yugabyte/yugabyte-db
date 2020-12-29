@@ -49,17 +49,18 @@ using namespace yb::size_literals;
 namespace tserver {
 namespace enterprise {
 
-void CombineExternalIntents(
-    const TransactionId& txn_id,
+CHECKED_STATUS CombineExternalIntents(
+    const TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
 
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
+        const Uuid& involved_tablet,
         const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>* pairs,
         docdb::KeyValuePairPB* out)
-        : pairs_(*pairs), out_(out) {
+        : involved_tablet_(involved_tablet), pairs_(*pairs), out_(out) {
     }
 
     void SetKey(const Slice& slice) override {
@@ -68,6 +69,10 @@ void CombineExternalIntents(
 
     void SetValue(const Slice& slice) override {
       out_->set_value(slice.cdata(), slice.size());
+    }
+
+    const Uuid& InvolvedTablet() override {
+      return involved_tablet_;
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
@@ -82,13 +87,20 @@ void CombineExternalIntents(
     }
 
    private:
+    Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     docdb::KeyValuePairPB* out_;
     size_t next_idx_ = 0;
   };
 
-  Provider provider(&pairs, out->Add());
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
+  SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
+  Uuid status_tablet;
+  RETURN_NOT_OK(status_tablet.FromHexString(transaction_state.tablets()[0]));
+
+  Provider provider(status_tablet, &pairs, out->Add());
   docdb::CombineExternalIntents(txn_id, &provider);
+  return Status::OK();
 }
 
 CHECKED_STATUS AddRecord(
@@ -102,10 +114,8 @@ CHECKED_STATUS AddRecord(
   }
 
   if (record.has_transaction_state()) {
-    auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-        record.transaction_state().transaction_id()));
-    CombineExternalIntents(txn_id, record.changes(), write_batch->mutable_write_pairs());
-    return Status::OK();
+    return CombineExternalIntents(
+        record.transaction_state(), record.changes(), write_batch->mutable_write_pairs());
   }
 
   for (const auto& kv_pair : record.changes()) {
