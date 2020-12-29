@@ -724,13 +724,9 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
-    } 
-    
-    // This condition will make sure if enableNodeToNodeEncrypt is false
-    // then enableClientToNodeEncrypt will set to false.
-    if(!event.target.checked) {
-      this.setState({ enableClientToNodeEncrypt: false});
+      this.setState({
+        enableNodeToNodeEncrypt: event.target.checked,
+        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked});
     }
   }
 
@@ -1029,12 +1025,15 @@ export default class ClusterFields extends Component {
 
   /**
    * This method is used to disable the ClientToNodeTLS field initially.
+   * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
+   * If ClientToNode TLS sets to enable and NodeToNode TLS sets to disable then
+   * ClientToNode TLS will be disabled.
    * 
    * @param isFieldReadOnly If true then readonly access.
    * @param enableNodeToNodeEncrypt NodeToNodeTLS state.
    */
   clientToNodeEncryptField(isFieldReadOnly, enableNodeToNodeEncrypt) {
-    return isFieldReadOnly ? isFieldReadOnly : !enableNodeToNodeEncrypt;
+    return isFieldReadOnly || !enableNodeToNodeEncrypt;
   }
 
   render() {
