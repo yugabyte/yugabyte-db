@@ -235,19 +235,23 @@ class AwsBootstrapClient():
         host_vpc = None
         if self.host_vpc_id and self.host_vpc_region:
             host_vpc = get_client(self.host_vpc_region).Vpc(self.host_vpc_id)
-            region_and_vpc_tuples.append((self.host_vpc_region, host_vpc))
+            if self.host_vpc_id not in [c.vpc.id for _, c in components.items()]:
+                region_and_vpc_tuples.append((self.host_vpc_region, host_vpc))
         # Setup VPC peerings.
         for i in range(len(region_and_vpc_tuples) - 1):
             i_region, i_vpc = region_and_vpc_tuples[i]
             for j in range(i + 1, len(region_and_vpc_tuples)):
                 j_region, j_vpc = region_and_vpc_tuples[j]
-                peering = create_vpc_peering(
+                peerings = create_vpc_peering(
                     # i is the host, j is the target.
                     client=get_client(i_region), vpc=j_vpc, host_vpc=i_vpc, target_region=j_region)
-                if len(peering) != 1:
+                if len(peerings) != 1:
                     raise YBOpsRuntimeError(
-                        "Expecting one peering connection, got {}".format(peer_conn))
-                peering = peering[0]
+                        "Expecting one peering connection from {} to {}, got {}".format(
+                            i_vpc.id,
+                            j_vpc.id,
+                            len(peerings)))
+                peering = peerings[0]
                 # Add route i -> j.
                 add_route_to_rt(components[i_region].route_table, j_vpc.cidr_block,
                                 "VpcPeeringConnectionId", peering.id)
@@ -804,7 +808,6 @@ def cleanup_vpc_peering(vpc_peerings, **kwargs):
 @get_or_create(get_vpc_peerings)
 def create_vpc_peering(client, vpc, host_vpc, target_region):
     """Method would create a vpc peering between the newly created VPC and caller's VPC
-    Also makes sure, if they aren't the same, then there is no need for vpc peering.
     Args:
         client (boto client): Region specific boto client
         vpc (VPC object): Newly created VPC object
