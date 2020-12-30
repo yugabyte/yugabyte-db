@@ -842,8 +842,8 @@ public class UniverseController extends AuthenticatedController {
         UniverseResourceDetails details = UniverseResourceDetails.create(universe.getNodes(),
             universe.getUniverseDetails());
         universePayload.put("pricePerHour", details.pricePerHour);
-        SimpleDateFormat dmyFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        universePayload.put("creationDate", dmyFormat.format(universe.creationDate));
+        SimpleDateFormat creationDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        universePayload.put("creationDate", creationDate.format(universe.creationDate));
       } catch (Exception e) {
         LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
       }
