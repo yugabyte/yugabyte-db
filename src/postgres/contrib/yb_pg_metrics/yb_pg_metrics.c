@@ -51,6 +51,9 @@ typedef enum statementType
 	Insert,
 	Delete,
 	Update,
+	Begin,
+	Commit,
+	Rollback,
 	Other,
 	Transaction,
 	AggregatePushdown,
@@ -150,6 +153,9 @@ set_metric_names(void)
   strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
   strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
   strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
+  strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
+  strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
+  strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
@@ -579,6 +585,36 @@ ybpgm_memsize(void)
 }
 
 /*
+ * Get the statement type for a transactional statement.
+ */
+static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
+  statementType type = Other;
+  switch (stmt->kind) {
+    case TRANS_STMT_BEGIN:
+    case TRANS_STMT_START:
+      type = Begin;
+      break;
+    case TRANS_STMT_COMMIT:
+    case TRANS_STMT_COMMIT_PREPARED:
+      type = Commit;
+      break;
+    case TRANS_STMT_ROLLBACK:
+    case TRANS_STMT_ROLLBACK_TO:
+    case TRANS_STMT_ROLLBACK_PREPARED:
+      type = Rollback;
+      break;
+    case TRANS_STMT_SAVEPOINT:
+    case TRANS_STMT_RELEASE:
+    case TRANS_STMT_PREPARE:
+      type = Other;
+      break;
+    default:
+      elog(ERROR, "unrecognized statement kind: %d", stmt->kind);
+  }
+  return type;
+}
+
+/*
  * Hook used for tracking "Other" statements.
  */
 static void
@@ -592,6 +628,15 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
   {
     instr_time start;
     instr_time end;
+    statementType type;
+
+    if (IsA(pstmt->utilityStmt, TransactionStmt)) {
+      TransactionStmt *stmt = (TransactionStmt *)(pstmt->utilityStmt);
+      type = ybpgm_getStatementType(stmt);
+    } else {
+      type = Other;
+    }
+
     INSTR_TIME_SET_CURRENT(start);
 
     IncBlockNestingLevel();
@@ -616,7 +661,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
-    ybpgm_Store(Other, INSTR_TIME_GET_MICROSEC(end));
+    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end));
   }
   else
   {
