@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.typesafe.config.Config;
-
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
