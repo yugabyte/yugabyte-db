@@ -568,7 +568,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     if (IsA(pstmt->utilityStmt, TransactionStmt)) {
       TransactionStmt *stmt = (TransactionStmt *)(pstmt->utilityStmt);
-      type = ybpgm_getStatementType(stmt); 
+      type = ybpgm_getStatementType(stmt);
     } else {
       type = Other;
     }
