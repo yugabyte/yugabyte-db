@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default
+package db.migration.default.common
 
 import java.sql.Connection
 import play.api.libs.json._
