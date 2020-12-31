@@ -1,13 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default
+package db.migration.default.common
 
 import java.sql.Connection
 import play.api.libs.json._
 
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 
-class V16__PlacementUtil_UUID_Update extends JdbcMigration {
+class V26__Universe_Details_EBS_Type_UUID_Update extends JdbcMigration {
 
   /**
     * Utility method to recursively apply a modification function to a json value and all its
@@ -30,11 +30,26 @@ class V16__PlacementUtil_UUID_Update extends JdbcMigration {
     }
   }
 
-  def addPlacementUuid(primaryClusterUuid: String)(json: JsValue, path: Array[Any]): JsValue = {
+  def renameEBSType(json: JsValue, path: Array[Any]): JsValue = {
     path match {
-      case Array("nodeDetailsSet", _) if !json.as[JsObject].keys.contains("placementUuid") =>
-        json.as[JsObject] + ("placementUuid" -> JsString(primaryClusterUuid))
-      case _ => json
+      // Match every path that has a proper ebsType path
+      case Array("clusters", _ : Integer, "userIntent") if (json \ "deviceInfo" \ "ebsType").isInstanceOf[JsDefined] =>
+        val deviceInfo = json \ "deviceInfo"
+        val storageType = deviceInfo \ "ebsType"
+        val provider = json \ "providerType"
+        var newStorageValue : JsValue = storageType.get
+        if (newStorageValue == JsNull && provider.isInstanceOf[JsDefined]) {
+          provider.get.as[String] match {
+            case "gcp" =>
+              newStorageValue = Json.toJson("Scratch")
+            case "aws" =>
+              newStorageValue = Json.toJson("GP2")
+            case _ =>
+          }
+        }
+        json.as[JsObject] - "deviceInfo" + ("deviceInfo" -> (deviceInfo.as[JsObject] - "ebsType" + ("storageType" -> newStorageValue)))
+      case _ =>
+        json
     }
   }
 
@@ -45,12 +60,10 @@ class V16__PlacementUtil_UUID_Update extends JdbcMigration {
     while (resultSet.next()) {
       val univUuid = resultSet.getString("universe_uuid")
       val univDetails = Json.parse(resultSet.getString("universe_details_json"))
-      val clusters = (univDetails \ "clusters").get.as[JsArray].value
-      val primaryClusterId = clusters.find(c => (c \ "clusterType").get.equals(JsString("PRIMARY")))
-                                     .map(c => (c \ "uuid").get.as[JsString].value).get
-      val newUnivDetails = processJson(univDetails)(addPlacementUuid(primaryClusterId)).toString()
+      val newUnivDetails = processJson(univDetails)(renameEBSType).toString()
       connection.createStatement().execute(s"UPDATE universe SET universe_details_json = " +
         s"'$newUnivDetails' WHERE universe_uuid = '$univUuid'")
     }
   }
 }
+

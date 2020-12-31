@@ -33,9 +33,11 @@ public class Customer extends Model {
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
   // to be partitioned in case the db is being sharded.
+  // Use IDENTITY strategy because `customer.id` is a `bigserial` type; not a sequence.
   @Id
-  @SequenceGenerator(name="customer_id_seq", sequenceName="customer_id_seq", allocationSize=1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_id_seq")  private Long id;
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
   public Long getCustomerId() { return id; }
 
   @Column(length = 15, nullable = false)

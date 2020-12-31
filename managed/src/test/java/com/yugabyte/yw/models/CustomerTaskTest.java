@@ -91,10 +91,12 @@ public class CustomerTaskTest extends FakeDBApplication {
 
   @Test
   public void testCreateInstance() {
+    long expectedId = 1;
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
       Date currentDate = new Date();
+      assertSame(expectedId++, th.getId());
       assertTrue(currentDate.compareTo(th.getCreateTime()) >= 0);
       assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(),
         equalTo("Creating " + targetType.toString() + " : Foo"))));

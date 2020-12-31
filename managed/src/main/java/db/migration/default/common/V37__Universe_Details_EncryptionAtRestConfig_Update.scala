@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default
+package db.migration.default.common
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
