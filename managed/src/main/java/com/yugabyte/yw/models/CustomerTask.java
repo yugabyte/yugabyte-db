@@ -176,11 +176,14 @@ public class CustomerTask extends Model {
     }
   }
 
+  // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
-  @SequenceGenerator(
-    name = "customer_task_id_seq", sequenceName = "customer_task_id_seq", allocationSize = 1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "customer_task_id_seq")
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  public Long getId() {
+    return id;
+  }
 
   @Constraints.Required
   @Column(nullable = false)
