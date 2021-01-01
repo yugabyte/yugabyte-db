@@ -1826,7 +1826,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/tablet-server-clocks", "Tablet Server Clocks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-server");
+      false /* is_on_nav_bar */);
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
       this, _1, _2, false /* only_user_tables */);
   server->RegisterPathHandler(
