@@ -177,6 +177,26 @@ class TSDescriptor {
     return leader_count_;
   }
 
+  void set_physical_time(int64_t physical_time) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    physical_time_ = physical_time;
+  }
+
+  int64_t physical_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return physical_time_;
+  }
+
+  void set_hybrid_time(int64_t hybrid_time) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    hybrid_time_ = hybrid_time;
+  }
+
+  int64_t hybrid_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return hybrid_time_;
+  }
+
   void set_total_memory_usage(uint64_t total_memory_usage) {
     std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.total_memory_usage = total_memory_usage;
@@ -336,6 +356,10 @@ class TSDescriptor {
 
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_;
+
+  // The physical and hybrid times on this node at the time of heartbeat
+  int64_t physical_time_;
+  int64_t hybrid_time_;
 
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;
