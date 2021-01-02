@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: explore-multi-region-deployments
     parent: explore
-    weight: 700
+    weight: 234
 ---
 
 YugabyteDB supports a rich set of multi-region deployment topologies. This section explains some of these deployments. The predominant deployments include:
