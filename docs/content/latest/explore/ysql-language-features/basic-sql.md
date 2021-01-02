@@ -52,6 +52,90 @@ The output shows that the YugabyteDB server version is 2.5.0.0-b0, and is a fork
 (1 row)
 ```
 
+### Query timing
+
+By default the timing of query results will be displayed in milliseconds in `ysqlsh`. You can toggle this off (and on again) by using the `\timing` command.
+
+```
+yugabyte=# \timing
+Timing is off.
+```
+
+### List all databases
+
+List all databases using the following statements.
+```sql
+yugabyte=# \l
+```
+Output:
+```
+                                   List of databases
+      Name       |  Owner   | Encoding | Collate |    Ctype    |   Access privileges
+-----------------+----------+----------+---------+-------------+-----------------------
+ postgres        | postgres | UTF8     | C       | en_US.UTF-8 |
+ system_platform | postgres | UTF8     | C       | en_US.UTF-8 |
+ template0       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
+                 |          |          |         |             | postgres=CTc/postgres
+ template1       | postgres | UTF8     | C       | en_US.UTF-8 | =c/postgres          +
+                 |          |          |         |             | postgres=CTc/postgres
+ yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |
+(5 rows)
+```
+
+### List all schemas
+
+You can list all schemas using `\dn` as shown here.
+```sql
+yugabyte=# \dn
+```
+Example:
+```
+# Create an example schema.
+yugabyte=# create schema example;
+CREATE SCHEMA
+
+# List all schemas.
+yugabyte=# \dn
+  List of schemas
+  Name   |  Owner
+---------+----------
+ example | yugabyte
+ public  | postgres
+```
+
+### List tables
+
+You can list all the tables in a database by using the `\d` command.
+```sql
+yugabyte=# \d
+```
+Output:
+```
+                 List of relations
+ Schema |        Name         |   Type   |  Owner
+--------+---------------------+----------+----------
+ public | users               | table    | yugabyte
+ public | users_id_seq        | sequence | yugabyte
+ ```
+
+### Describe a table
+
+Describe a table using the `\d` command.
+```sql
+yugabyte=# \d users
+```
+Output:
+```
+                                Table "public.users"
+  Column  |     Type      | Collation | Nullable |              Default
+----------+---------------+-----------+----------+-----------------------------------
+ id       | integer       |           | not null | nextval('users_id_seq'::regclass)
+ username | character(25) |           | not null |
+ enabled  | boolean       |           |          | true
+Indexes:
+    "users_pkey" PRIMARY KEY, lsm (id HASH)
+```
+
 ## Users
 
 YugabyteDB has two admin users already created - `yugabyte` (the recommended user) and `postgres` (mainly for backward compatibility with PostgreSQL). You can check this as shown below.
