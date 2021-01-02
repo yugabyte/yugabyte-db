@@ -26,6 +26,18 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-language-features/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">PostgreSQL features in YSQL</div>
+      </div>
+      <div class="body">
+        YSQL supports most PostgreSQL language features.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="fault-tolerance/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
@@ -70,6 +82,17 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="multi-region-deployments/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Multi-Region Deployments</div>
+      </div>
+      <div class="body">
+        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="follower-reads/">
@@ -103,18 +126,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
       <div class="body">
         Stream data changes from YugabyteDB to external systems.
-      </div>
-    </a>
-  </div>
-
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="multi-region-deployments/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Multi-Region Deployments</div>
-      </div>
-      <div class="body">
-        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
       </div>
     </a>
   </div>
