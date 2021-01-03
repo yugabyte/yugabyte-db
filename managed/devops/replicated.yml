@@ -245,8 +245,6 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                taskGC.gc_check_interval = 1 day
-                taskGC.task_retention_duration = 30 days
               }
 
   - name: nginx
