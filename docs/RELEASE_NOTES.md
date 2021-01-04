@@ -3,9 +3,9 @@
 Below is the complete list of release notes for every version of pg_stat_monitor.
 
 ## v0.6.0
+Initial Release.
 
-## v0.7.0
-
+## REL0_7_0_STABLE
 ### Improvements
 PG-153: Log application_name.
 PG-145: View/Query to show the actual Database name and Username.
@@ -21,7 +21,6 @@ PG-148: Loss of query statistics/monitoring due to not enough “slots” availa
 
 
 ## Master
-
 ### Improvements
 PG-156: Adding a placeholder replacement function for prepared statement
 
