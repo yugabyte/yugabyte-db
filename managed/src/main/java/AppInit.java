@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
+
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -133,6 +134,9 @@ public class AppInit {
       // TODO: (Daniel) - Integrate this with runtime settings once #5975 has landed
       // Start periodic platform backups
       platformBackupManager.start();
+
+      // Add checksums for all certificates that don't have a checksum.
+      CertificateHelper.createChecksums();
 
       Logger.info("AppInit completed");
    }

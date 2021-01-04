@@ -444,6 +444,39 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      case Certs:
+        {
+          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+          if (cert == null) {
+            throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+          }
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
+            throw new RuntimeException("Self signed certs cannot be rotated.");
+          }
+          String processType = taskParam.getProperty("processType");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else {
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
+          }
+          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+          subcommand.add("--use_custom_certs");
+          subcommand.add("--rotating_certs");
+          subcommand.add("--root_cert_path");
+          subcommand.add(customCertInfo.rootCertPath);
+          subcommand.add("--node_cert_path");
+          subcommand.add(customCertInfo.nodeCertPath);
+          subcommand.add("--node_key_path");
+          subcommand.add(customCertInfo.nodeKeyPath);
+          if (customCertInfo.clientCertPath != null) {
+            subcommand.add("--client_cert_path");
+            subcommand.add(customCertInfo.clientCertPath);
+            subcommand.add("--client_key_path");
+            subcommand.add(customCertInfo.clientKeyPath);
+          }
+        }
+        break;
     }
     return subcommand;
   }
