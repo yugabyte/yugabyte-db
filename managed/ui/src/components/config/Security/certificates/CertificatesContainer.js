@@ -2,10 +2,10 @@
 
 import { connect } from 'react-redux';
 import Certificates from './Certificates';
-import { openDialog, closeDialog } from '../../actions/modal';
-import { retrieveClientCertificate, fetchRootCertificate } from '../../actions/customers';
+import { openDialog, closeDialog } from '../../../../actions/modal';
+import { retrieveClientCertificate, fetchRootCertificate } from '../../../../actions/customers';
 
-import { getTlsCertificates, getTlsCertificatesResponse } from '../../actions/customers';
+import { getTlsCertificates, getTlsCertificatesResponse } from '../../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
