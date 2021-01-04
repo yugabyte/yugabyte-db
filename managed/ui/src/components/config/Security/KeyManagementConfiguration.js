@@ -12,7 +12,7 @@ import {
 } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import ListKeyManagementConfigurations from './ListKeyManagementConfigurations';
+import { ListKeyManagementConfigurations } from './ListKeyManagementConfigurations';
 import * as Yup from 'yup';
 
 import { regionsData } from '../PublicCloud/views/providerRegionsData';

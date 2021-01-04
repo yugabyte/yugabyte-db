@@ -26,7 +26,6 @@ import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
-import Certificates from './pages/Certificates';
 import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
 import { CreateUniverse } from './redesign/universe/CreateUniverse';
@@ -166,7 +165,6 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile}/>
         <Route path="/logs" component={YugawareLogs}/>
         <Route path="/releases" component={Releases}/>
-        <Route path="/certificates" component={Certificates}/>
       </Route>
     </Route>
   );

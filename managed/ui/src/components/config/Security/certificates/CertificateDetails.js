@@ -1,25 +1,30 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Fragment } from 'react';
-import { YBModal } from '../common/forms/fields';
+import { YBModal } from '../../../common/forms/fields';
 
 export const CertificateDetails = ({certificate, visible, onHide}) => {
-  const certStart = certificate.certStart ? (new Date(certificate.certStart)).toLocaleDateString('default', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  }) : '';
-  const certExpiry = certificate.certExpiry ? (new Date(certificate.certExpiry)).toLocaleDateString('default', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  }) : '';
+  const certStart = certificate.creationTime
+    ? new Date(certificate.creationTime).toLocaleDateString('default', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      })
+    : '';
+  const certExpiry = certificate.expiryDate
+    ? new Date(certificate.expiryDate).toLocaleDateString('default', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      })
+    : '';
+
   return (
     <div className="cert-details-modal">
       <YBModal
         title={'Certificate Details'}
         visible={visible}
-        onHide={onHide}         
+        onHide={onHide}
         submitLabel={'Close'}
         onFormSubmit={onHide}
       >
@@ -27,7 +32,7 @@ export const CertificateDetails = ({certificate, visible, onHide}) => {
           <li><label>Certificate Name</label><div>{certificate.name}</div></li>
           <li><label>Certificate Start</label><div>{certStart}</div></li>
           <li><label>Certificate Expiration</label><div>{certExpiry}</div></li>
-          {certificate.rootCertPath && 
+          {certificate.rootCertPath &&
             <Fragment>
               <li><label>Root CA Certificate</label><div>{certificate.rootCertPath}</div></li>
               <li><label>Database Node Certificate Path</label><div>{certificate.nodeCertPath}</div></li>

@@ -1,19 +1,19 @@
 import React, { Component, Fragment } from 'react';
-import { YBPanelItem } from '../panels';
+import { YBPanelItem } from '../../../panels';
 import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
-import { YBButton } from '../common/forms/fields';
-import { YBModalForm } from '../common/forms';
-import { getPromiseState } from '../../utils/PromiseUtils';
+import { YBButton } from '../../../common/forms/fields';
+import { YBModalForm } from '../../../common/forms';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
 import moment from 'moment';
-import { isNotHidden, isDisabled } from '../../utils/LayoutUtils';
+import { isNotHidden, isDisabled } from '../../../../utils/LayoutUtils';
 
 import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
-import { YBFormInput } from '../common/forms/fields';
+import { YBFormInput } from '../../../common/forms/fields';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -121,6 +121,8 @@ class Certificates extends Component {
     const payload = {
       name: row.name,
       uuid: row.uuid,
+      creationTime: row.creationTime,
+      expiryDate: row.expiryDate
     };
     // TODO: Replace dropdown option + modal with a side panel
     return (
@@ -130,7 +132,7 @@ class Certificates extends Component {
             if (row.customCertInfo) {
               Object.assign(payload, row.customCertInfo);
             }
-            this.setState({ selectedCert: payload });            
+            this.setState({ selectedCert: payload });
             this.props.showCertificateDetailsModal();
           }}
         >
@@ -186,7 +188,7 @@ class Certificates extends Component {
           header={
             <Row className="header-row">
               <Col xs={6}>
-                <h2 className="content-title">Certificates</h2>
+                <h2>Certificates</h2>
               </Col>
               <Col xs={6} className="universe-table-header-action">
                 {isNotHidden(currentCustomer.data.features, 'universe.create') && (
@@ -201,6 +203,7 @@ class Certificates extends Component {
               </Col>
             </Row>
           }
+          noBackground
           body={
             <Fragment>
               <BootstrapTable
