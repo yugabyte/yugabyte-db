@@ -246,6 +246,8 @@ bool CQLProcessor::CheckAuthentication(const CQLRequest& req) const {
   return call_->ql_session()->is_user_authenticated() ||
       // CQL requests which do not need authorization.
       req.opcode() == CQLMessage::Opcode::STARTUP ||
+      // Some drivers issue OPTIONS prior to AUTHENTICATE
+      req.opcode() == CQLMessage::Opcode::OPTIONS ||
       req.opcode() == CQLMessage::Opcode::AUTH_RESPONSE;
 }
 
