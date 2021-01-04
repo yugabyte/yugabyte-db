@@ -145,7 +145,10 @@ public class UserTaskDetails {
     KubernetesInitYSQL,
 
     // Start master process on a node
-    StartingMasterProcess;
+    StartingMasterProcess,
+
+    // Rotate Node Certs.
+    RotatingCert;
 
     private boolean alwaysRunAll;
 
@@ -330,6 +333,10 @@ public class UserTaskDetails {
       case StartingMasterProcess:
         title = "Starting Master Process";
         description = "Waiting for node to start the master process.";
+        break;
+      case RotatingCert:
+        title = "Rotating Cert";
+        description = "Changing certs.";
         break;
       case CreateNamespace:
         title = "Creating Namespace";
