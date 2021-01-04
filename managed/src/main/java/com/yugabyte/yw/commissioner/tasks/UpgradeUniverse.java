@@ -18,8 +18,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,7 +56,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
     Everything,
     Software,
     GFlags,
-    Restart
+    Restart,
+    Certs
   }
 
   public enum UpgradeTaskSubType {
@@ -69,7 +73,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     return (UpgradeParams)taskParams;
   }
 
-  private void verifyParams(UserIntent primIntent) {
+  private void verifyParams(Universe universe, UserIntent primIntent) {
     switch (taskParams().taskType) {
       case Software:
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
@@ -101,6 +105,30 @@ public class UpgradeUniverse extends UniverseTaskBase {
               "No gflags to change.");
         }
         break;
+      case Certs:
+        System.out.println("CERT1 " + universe.getUniverseDetails().nodePrefix);
+        if (taskParams().certUUID == null) {
+          throw new IllegalArgumentException("CertUUID cannot be null");
+        }
+        CertificateInfo cert = CertificateInfo.get(taskParams().certUUID);
+        if (cert == null) {
+          throw new IllegalArgumentException("Certifcate not present: " + taskParams().certUUID);
+        }
+        if (universe.getUniverseDetails().rootCA.equals(taskParams().certUUID)) {
+          throw new IllegalArgumentException("Cluster already has the same cert.");
+        }
+        if (!taskParams().rotateRoot &&
+            CertificateHelper.areCertsDiff(universe.getUniverseDetails().rootCA,
+                                           taskParams().certUUID)) {
+          throw new IllegalArgumentException("CA certificates cannot be different.");
+        }
+        if (CertificateHelper.arePathsSame(universe.getUniverseDetails().rootCA,
+                                           taskParams().certUUID)) {
+          throw new IllegalArgumentException("The node cert/key paths cannot be same.");
+        }
+        if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
+          throw new IllegalArgumentException("Cert update cannot be non restart.");
+        }
       }
   }
 
@@ -109,11 +137,10 @@ public class UpgradeUniverse extends UniverseTaskBase {
     List<NodeDetails> tServerNodes = new ArrayList<>();
     List<NodeDetails> masterNodes  = new ArrayList<>();
     // Check the nodes that need to be upgraded.
-    if (taskParams().taskType == UpgradeTaskType.Software ||
-        taskParams().taskType == UpgradeTaskType.Restart) {
+    if (taskParams().taskType != UpgradeTaskType.GFlags) {
       tServerNodes = universe.getTServers();
       masterNodes = universe.getMasters();
-    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
+    } else {
       // Master flags need to be changed.
       if (!taskParams().masterGFlags.equals(intent.masterGFlags)) {
         masterNodes = universe.getMasters();
@@ -144,7 +171,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       UserIntent primIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
       // Check if the combination of taskType and upgradeOption are compatible.
-      verifyParams(primIntent);
+      verifyParams(universe, primIntent);
 
       // Get the nodes that need to be upgraded.
       // Left element is master and right element is tserver.
@@ -206,6 +233,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // TODO: This is assuming that master nodes is a subset of tserver node,
       // instead we should do a union.
       createDownloadTasks(tServerNodes);
+    } else if (taskParams().taskType == UpgradeTaskType.Certs) {
+      createCertUpdateTasks(tServerNodes);
     }
 
     // Common subtasks.
@@ -221,10 +250,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // Update the software version on success.
       createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
           .setSubTaskGroupType(getTaskSubGroupType());
-    }
-    if (taskParams().taskType == UpgradeTaskType.GFlags) {
+    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
       // Update the list of parameter key/values in the universe with the new ones.
       updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+          .setSubTaskGroupType(getTaskSubGroupType());
+    } else if (taskParams().taskType == UpgradeTaskType.Certs) {
+      createUnivSetCertTask(taskParams().certUUID)
           .setSubTaskGroupType(getTaskSubGroupType());
     }
   }
@@ -270,6 +301,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
         break;
       case Restart:
         nodeState = Stopping;
+      case Certs:
+        nodeState = UpdateCert;
         break;
     }
     SubTaskGroupType subGroupType = getTaskSubGroupType();
@@ -281,7 +314,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
       createServerConfFileUpdateTasks(Arrays.asList(node), processType);
       // Stop is done after conf file update to reduce unavailability.
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
-    } else {
+    }
+    // For both rolling restart and a cert update, just a stop is good enough.
+    else {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
     }
 
@@ -313,9 +348,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
     if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(nodes, processType);
     }
-    NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software ?
-        UpgradeSoftware : UpdateGFlags;
-
+    NodeDetails.NodeState nodeState = null;
+    switch (taskParams().taskType) {
+      case Software:
+        nodeState = UpgradeSoftware;
+        break;
+      case GFlags:
+        nodeState = UpdateGFlags;
+        break;
+      case Certs:
+        nodeState = UpdateCert;
+        break;
+    }
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
@@ -351,6 +395,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     subTaskGroupQueue.add(downloadTaskGroup);
+  }
+
+  private void createCertUpdateTasks(List<NodeDetails> nodes) {
+    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+        SubTaskGroupType.RotatingCert, taskParams().nodePrefix);
+    SubTaskGroup rotateCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      rotateCertGroup.addTask(getConfigureTask(node, ServerType.TSERVER,
+                              UpgradeTaskType.Certs, UpgradeTaskSubType.None));
+    }
+    rotateCertGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
+    subTaskGroupQueue.add(rotateCertGroup);
   }
 
   private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -427,6 +483,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
         params.gflagsToRemove = userIntent.tserverGFlags.keySet().stream().filter(
                 flag -> !taskParams().tserverGFlags.containsKey(flag)).collect(Collectors.toSet());
       }
+    } else if (type == UpgradeTaskType.Certs) {
+      params.rootCA = taskParams().certUUID;
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
