@@ -177,7 +177,9 @@ public enum TaskType {
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
 
-  WaitForEncryptionKeyInMemory("subtasks.WaitForEncryptionKeyInMemory");
+  WaitForEncryptionKeyInMemory("subtasks.WaitForEncryptionKeyInMemory"),
+
+  UnivSetCertificate("subtasks.UnivSetCertificate");
 
   private String relativeClassPath;
 

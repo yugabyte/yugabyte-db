@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
 
 import io.ebean.*;
@@ -18,6 +19,9 @@ import javax.persistence.Entity;
 import javax.persistence.Enumerated;
 import javax.persistence.EnumType;
 import javax.persistence.Id;
+
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -67,6 +71,15 @@ public class CertificateInfo extends Model {
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
+  @Column(nullable = true)
+  public String checksum;
+  public void setChecksum() throws IOException, NoSuchAlgorithmException {
+    if (this.certificate != null) {
+      this.checksum = Util.getFileChecksum(this.certificate);
+      this.save();
+    }
+  }
+
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
   public JsonNode customCertInfo;
@@ -85,7 +98,8 @@ public class CertificateInfo extends Model {
 
   public static CertificateInfo create(
     UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-    String privateKey, String certificate, CertificateInfo.Type certType) {
+    String privateKey, String certificate, CertificateInfo.Type certType)
+    throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
     cert.uuid = uuid;
     cert.customerUUID = customerUUID;
@@ -95,13 +109,15 @@ public class CertificateInfo extends Model {
     cert.privateKey = privateKey;
     cert.certificate = certificate;
     cert.certType = certType;
+    cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
 
   public static CertificateInfo create(
     UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate,
-    String certificate, CertificateParams.CustomCertInfo customCertInfo) {
+    String certificate, CertificateParams.CustomCertInfo customCertInfo)
+    throws IOException, NoSuchAlgorithmException {
     CertificateInfo cert = new CertificateInfo();
     cert.uuid = uuid;
     cert.customerUUID = customerUUID;
@@ -111,6 +127,7 @@ public class CertificateInfo extends Model {
     cert.certificate = certificate;
     cert.certType = Type.CustomCertHostPath;
     cert.customCertInfo = Json.toJson(customCertInfo);
+    cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
@@ -126,6 +143,9 @@ public class CertificateInfo extends Model {
     return find.query().where().eq("label", label).findOne();
   }
 
+  public static List<CertificateInfo> getAllNoChecksum() {
+    return find.query().where().isNull("checksum").findList();
+  }
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();

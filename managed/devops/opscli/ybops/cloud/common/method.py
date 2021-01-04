@@ -502,6 +502,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
+        self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
@@ -661,6 +662,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
         if args.use_custom_certs:
+            if args.rotating_certs:
+                logging.info("Verifying root certs are the same.")
+                self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options)
         else:
@@ -674,8 +678,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
-        self.cloud.setup_ansible(args).run(
-            "configure-{}.yml".format(args.type), self.extra_vars, host_info)
+        # If we are just rotating certs, we don't need to do any configuration changes.
+        if not args.rotating_certs:
+            self.cloud.setup_ansible(args).run(
+                "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):

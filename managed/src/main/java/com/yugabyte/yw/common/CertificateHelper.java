@@ -62,8 +62,8 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
-
 
 /**
  * Helper class for Certificates
@@ -296,16 +296,19 @@ public class CertificateHelper {
       certPath, ((keyPath == null) ? "no private key" : keyPath)
     );
     CertificateInfo cert;
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
-        certExpiry, keyPath, certPath, certType);
-    } else {
-      cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
-        certExpiry, certPath, customCertInfo);
+    try {
+      if (certType == CertificateInfo.Type.SelfSigned) {
+        cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+          certExpiry, keyPath, certPath, certType);
+      } else {
+        cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+          certExpiry, certPath, customCertInfo);
+      }
+      return cert.uuid;
+    } catch (IOException | NoSuchAlgorithmException e) {
+      LOG.error("Could not generate checksum for cert");
+      throw new RuntimeException("Checksum generation failed.");
     }
-
-    return cert.uuid;
-
   }
 
   public static String getCertPEMFileContents(UUID rootCA) {
@@ -351,5 +354,40 @@ public class CertificateHelper {
     File certFile = new File(cert.certificate);
     String path = certFile.getParentFile().toString();
     return String.format("%s/%s", path, CLIENT_KEY);
+  }
+
+  public static boolean areCertsDiff(UUID cert1, UUID cert2) {
+    try {
+      CertificateInfo cer1 = CertificateInfo.get(cert1);
+      CertificateInfo cer2 = CertificateInfo.get(cert2);
+      FileInputStream is1 = new FileInputStream(new File(cer1.certificate));
+      FileInputStream is2 = new FileInputStream(new File(cer2.certificate));
+      CertificateFactory fact = CertificateFactory.getInstance("X.509");
+      X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
+      X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
+      return !certObj2.equals(certObj1);
+    } catch (IOException | CertificateException e) {
+      LOG.error("Unable to read certs {}: {}", cert1.toString(), cert2.toString());
+      throw new RuntimeException("Could not read certs to compare. " + e);
+    }
+  }
+
+  public static boolean arePathsSame(UUID cert1, UUID cert2) {
+    CertificateInfo cer1 = CertificateInfo.get(cert1);
+    CertificateInfo cer2 = CertificateInfo.get(cert2);
+    return (cer1.getCustomCertInfo().nodeCertPath.equals(cer2.getCustomCertInfo().nodeCertPath) ||
+            cer1.getCustomCertInfo().nodeKeyPath.equals(cer2.getCustomCertInfo().nodeKeyPath));
+  }
+
+  public static void createChecksums() {
+    List<CertificateInfo> certs = CertificateInfo.getAllNoChecksum();
+    for (CertificateInfo cert : certs) {
+      try {
+        cert.setChecksum();
+      } catch (IOException | NoSuchAlgorithmException e) {
+        // Log error, but don't cause it to error out.
+        LOG.error("Could not generate checksum for cert: {}", cert.certificate);
+      }
+    }
   }
 }

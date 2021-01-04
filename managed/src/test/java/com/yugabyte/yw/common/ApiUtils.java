@@ -126,6 +126,7 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
+        universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
     };

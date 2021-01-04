@@ -285,6 +285,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Create a task to mark the updated cert on a universe.
+   */
+  public SubTaskGroup createUnivSetCertTask(UUID certUUID) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    UnivSetCertificate.Params params = new UnivSetCertificate.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.certUUID = certUUID;
+    UnivSetCertificate task = new UnivSetCertificate();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to destroy nodes and adds it to the task queue.
    *
    * @param nodes : a collection of nodes that need to be removed
