@@ -3,7 +3,7 @@ package com.yugabyte.yw.commissioner;
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
-import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
@@ -18,7 +18,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Singleton
 public class TaskGarbageCollector {
@@ -42,7 +41,7 @@ public class TaskGarbageCollector {
   static final String YB_TASK_GC_TASK_RETENTION_DURATION = "yb.taskGC.task_retention_duration";
 
   private final Scheduler scheduler;
-  private final Config config;
+  private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutionContext executionContext;
   private final Optional<Counter> purgedCustomerTaskCount;
   private final Optional<Counter> purgedTaskInfoCount;
@@ -97,19 +96,20 @@ public class TaskGarbageCollector {
   @Inject
   public TaskGarbageCollector(
     ActorSystem actorSystem,
-    Config config,
+    RuntimeConfigFactory runtimeConfigFactory,
     ExecutionContext executionContext) {
-    this(actorSystem.scheduler(), config, executionContext, CollectorRegistry.defaultRegistry);
+    this(actorSystem.scheduler(), runtimeConfigFactory, executionContext,
+      CollectorRegistry.defaultRegistry);
   }
 
   @VisibleForTesting
   TaskGarbageCollector(
     Scheduler scheduler,
-    Config config,
+    RuntimeConfigFactory runtimeConfigFactory,
     ExecutionContext executionContext,
     CollectorRegistry promRegistry) {
     this.scheduler = scheduler;
-    this.config = config;
+    this.runtimeConfigFactory = runtimeConfigFactory;
     this.executionContext = executionContext;
 
     // Register metric
@@ -121,7 +121,7 @@ public class TaskGarbageCollector {
 
   public void start() {
     Duration gcInterval = this.gcCheckInterval();
-    if (gcCheckInterval().isZero()) {
+    if (gcInterval.isZero()) {
       LOG.info("yb.taskGC.gc_check_interval set to 0.");
       LOG.warn("!!! TASK GC DISABLED !!!");
     } else {
@@ -140,7 +140,7 @@ public class TaskGarbageCollector {
   }
 
   private void checkCustomer(Customer c) {
-    List<CustomerTask> staleTasks = CustomerTask.findOlderThan(c, taskRetentionDuration());
+    List<CustomerTask> staleTasks = CustomerTask.findOlderThan(c, taskRetentionDuration(c));
     purgeStaleTasks(c, staleTasks);
   }
 
@@ -164,16 +164,18 @@ public class TaskGarbageCollector {
   }
 
   /**
-   * The interval at which the gc checker will run. Can be overridden per customer.
+   * The interval at which the gc checker will run.
    */
   private Duration gcCheckInterval() {
-    return config.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
+    return runtimeConfigFactory.staticApplicationConf()
+      .getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
   }
 
   /**
    * For how many days to retain a completed task before garbage collecting it.
    */
-  private Duration taskRetentionDuration() {
-    return config.getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
+  private Duration taskRetentionDuration(Customer customer) {
+    return runtimeConfigFactory.forCustomer(customer)
+      .getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
   }
 }
