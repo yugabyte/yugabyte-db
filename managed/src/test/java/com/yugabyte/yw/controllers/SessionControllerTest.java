@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
@@ -480,11 +481,14 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidFormat() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result = route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/www.test.com"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/www.test.com",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -492,11 +496,14 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidIP() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result = route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -504,6 +511,8 @@ public class SessionControllerTest {
   public void testProxyRequestInvalidPort() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);;
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
@@ -518,10 +527,11 @@ public class SessionControllerTest {
     universe = Universe.get(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     System.out.println("PRIVATE IP: " + node.cloudInfo.private_ip);
-    Result result =route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/" + node.cloudInfo.private_ip + ":7001/"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/" + node.cloudInfo.private_ip + ":7001/",
+      authToken
+    );
     assertBadRequest(result, "Invalid proxy request");
   }
 
@@ -529,6 +539,8 @@ public class SessionControllerTest {
   public void testProxyRequestValid() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);;
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
@@ -543,10 +555,11 @@ public class SessionControllerTest {
     universe = Universe.get(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
-    Result result = route(fakeRequest(
+    Result result = doRequestWithAuthToken(
       "GET",
-      "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/"
-    ));
+      "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/",
+      authToken
+    );
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
     assertInternalServerError(

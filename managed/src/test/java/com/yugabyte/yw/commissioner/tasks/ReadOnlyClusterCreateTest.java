@@ -109,6 +109,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),

@@ -11,12 +11,9 @@ import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+
 import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -127,6 +124,9 @@ public class AppInit {
 
       // Fail incomplete tasks
       taskManager.failAllPendingTasks();
+
+      // Add checksums for all certificates that don't have a checksum.
+      CertificateHelper.createChecksums();
 
       Logger.info("AppInit completed");
    }

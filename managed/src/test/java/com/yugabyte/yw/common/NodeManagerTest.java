@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -44,6 +45,8 @@ import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 import java.io.File;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -62,6 +65,7 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubT
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertNotNull;
@@ -208,7 +212,8 @@ public class NodeManagerTest extends FakeDBApplication {
     return accessKey;
   }
 
-  private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params){
+  private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params)
+  throws IOException, NoSuchAlgorithmException {
     Calendar cal = Calendar.getInstance();
     Date today = cal.getTime();
     cal.add(Calendar.YEAR, 1); // to get previous year add -1
@@ -221,11 +226,12 @@ public class NodeManagerTest extends FakeDBApplication {
     customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
     if (t.privateKey == null) {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
-                                    today, nextYear, "/path/to/cert.crt", customCertInfo);
+                                    today, nextYear, TestHelper.TMP_PATH + "/ca.crt",
+                                    customCertInfo);
     } else {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
                                     params.nodePrefix, today, nextYear, t.privateKey,
-                                    "/path/to/cert.crt",
+                                    TestHelper.TMP_PATH + "/ca.crt",
                                     CertificateInfo.Type.SelfSigned);
     }
 
@@ -246,6 +252,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    new File(TestHelper.TMP_PATH).mkdirs();
+    createTempFile("ca.crt", "test-cert");
   }
 
   private List<String> nodeCommand(
@@ -1113,7 +1121,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableNodeToNodeTLSNodeCommand() {
+  public void testEnableNodeToNodeTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       params.nodeName = t.node.getNodeName();
@@ -1132,7 +1141,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
 
   @Test
-  public void testCustomCertNodeCommand() {
+  public void testCustomCertNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     for (TestData t : testData) {
@@ -1155,7 +1165,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableClientToNodeTLSNodeCommand() {
+  public void testEnableClientToNodeTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -1174,7 +1185,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableAllTLSNodeCommand() {
+  public void testEnableAllTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
