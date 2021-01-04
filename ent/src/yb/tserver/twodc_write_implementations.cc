@@ -133,46 +133,6 @@ CHECKED_STATUS AddRecord(
   return Status::OK();
 }
 
-// The SequentialWriteImplementation strategy sends one record per WriteRequestPB, and waits for a
-// a response from one rpc before sending out another. This implementation sends rpcs in order
-// of opid. Note that a single write request can still contain a batch of multiple key value pairs,
-// corresponding to all the changes in a record.
-class SequentialWriteImplementation : public TwoDCWriteInterface {
- public:
-  ~SequentialWriteImplementation() = default;
-
-  Status ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
-    auto write_request = std::make_unique<WriteRequestPB>();
-    write_request->set_tablet_id(tablet_id);
-    if (PREDICT_FALSE(FLAGS_TEST_twodc_write_hybrid_time)) {
-      // Used only for testing external hybrid time.
-      write_request->set_external_hybrid_time(yb::kInitialHybridTimeValue);
-    } else {
-      write_request->set_external_hybrid_time(record.time());
-    }
-
-    RETURN_NOT_OK(AddRecord(record, write_request->mutable_write_batch()));
-
-    records_.push_back(std::move(write_request));
-
-    return Status::OK();
-  }
-
-  std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
-    auto next_req = std::move(records_.front());
-    records_.pop_front();
-    return next_req;
-  }
-
-  bool HasMoreWrites() override {
-    return !records_.empty();
-  }
-
- private:
-  std::deque <std::unique_ptr<WriteRequestPB>> records_;
-
-};
-
 // The BatchedWriteImplementation strategy batches together multiple records per WriteRequestPB.
 // Max number of records in a request is cdc_max_apply_batch_num_records, and max size of a request
 // is cdc_max_apply_batch_size_kb. Batches are not sent by opid order, since a GetChangesResponse
@@ -211,6 +171,9 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   }
 
   std::unique_ptr <WriteRequestPB> GetNextWriteRequest() override {
+    if (records_.empty()) {
+      return nullptr;
+    }
     auto& queue = records_.begin()->second;
     auto next_req = std::move(queue.front());
     queue.pop_front();
@@ -220,20 +183,13 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     return next_req;
   }
 
-  bool HasMoreWrites() override {
-    return !records_.empty();
-  }
-
  private:
-  std::map<std::string, std::deque<std::unique_ptr < WriteRequestPB>>> records_;
+  std::map<std::string, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
+
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {
-  if (FLAGS_cdc_max_apply_batch_num_records == 1) {
-    write_strategy->reset(new SequentialWriteImplementation());
-  } else {
-    write_strategy->reset(new BatchedWriteImplementation());
-  }
+  write_strategy->reset(new BatchedWriteImplementation());
 }
 
 } // namespace enterprise
