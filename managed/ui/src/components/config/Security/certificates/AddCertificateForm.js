@@ -3,10 +3,10 @@
 import React, { Component } from 'react';
 import { Alert, Tabs, Tab } from 'react-bootstrap';
 import PropTypes from 'prop-types';
-import { YBFormInput, YBFormDatePicker, YBFormDropZone } from '../common/forms/fields';
-import { getPromiseState } from '../../utils/PromiseUtils';
-import { YBModalForm } from '../common/forms';
-import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';
+import { YBFormInput, YBFormDatePicker, YBFormDropZone } from '../../../common/forms/fields';
+import { getPromiseState } from '../../../../utils/PromiseUtils';
+import { YBModalForm } from '../../../common/forms';
+import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { Field } from 'formik';
 
 import MomentLocaleUtils, { formatDate, parseDate } from 'react-day-picker/moment';
@@ -23,14 +23,17 @@ const initialValues = {
   clientCertPrivate: '',
 };
 
-const DatePickerInput = (props) => {
-  return (
-    <div className="date-picker-input" onClick={props.onClick}>
-      <input {...props} />
-      <i className="fa fa-calendar" />
-    </div>
-  );
-};
+// react-day-picker lib requires this to be class component
+class DatePickerInput extends Component {
+  render() {
+    return (
+      <div className="date-picker-input" onClick={this.props.onClick}>
+        <input {...this.props} />
+        <i className="fa fa-calendar" />
+      </div>
+    );
+  }
+}
 
 export default class AddCertificateForm extends Component {
   static propTypes = {
@@ -105,7 +108,7 @@ export default class AddCertificateForm extends Component {
         self.props.addCertificate(formValues, setSubmitting);
       }).catch((err) => {
         console.warn(`File Upload gone wrong. ${err}`);
-        setSubmitting(false);        
+        setSubmitting(false);
       });
     }
   };
@@ -115,7 +118,7 @@ export default class AddCertificateForm extends Component {
     if (!values.certName) {
       errors.certName = 'Certificate name is required';
     }
-    if (!values.certExpiry) {      
+    if (!values.certExpiry) {
       errors.certExpiry = 'Expiration date is required';
     } else {
       const timestamp = Date.parse(values.certExpiry);
@@ -123,7 +126,7 @@ export default class AddCertificateForm extends Component {
         errors.certExpiry = 'Set a valid expiration date';
       }
     }
-    if (!values.certContent) {      
+    if (!values.certContent) {
       errors.certContent = 'Certificate file is required';
     }
     if (this.state.tab === 'selfSigned') {
@@ -141,7 +144,7 @@ export default class AddCertificateForm extends Component {
         errors.nodeCertPrivate = 'Database node certificate private key is required';
       }
     }
-  
+
     return errors;
   }
 
@@ -149,7 +152,7 @@ export default class AddCertificateForm extends Component {
     this.props.onHide();
     this.props.addCertificateReset();
   };
-  
+
   tabSelect = (newTabKey, formikProps) => {
     const { setFieldTouched, setFieldValue, setErrors, errors, values } = formikProps;
     const newErrors = { ...errors };
@@ -171,7 +174,7 @@ export default class AddCertificateForm extends Component {
       delete newErrors.nodeCertPath;
       delete newErrors.nodeCertPrivate;
     } else if (this.state.tab !== newTabKey && newTabKey === 'caSigned') {
-      setFieldValue('keyContent', null, false);      
+      setFieldValue('keyContent', null, false);
       delete newErrors.keyContent;
       if (values.certExpiry instanceof Date) {
         setFieldValue('certExpiry',
@@ -196,7 +199,7 @@ export default class AddCertificateForm extends Component {
     const {
       customer: { addCertificate }
     } = this.props;
-  
+
     return (
       <div className="add-cert-modal">
         <YBModalForm
@@ -204,7 +207,7 @@ export default class AddCertificateForm extends Component {
           className={getPromiseState(addCertificate).isError() ? 'modal-shake' : ''}
           visible={this.props.visible}
           onHide={this.onHide}
-          showCancelButton={true}          
+          showCancelButton={true}
           submitLabel="Add"
           cancelLabel="Cancel"
           onFormSubmit={(values, { setSubmitting }) => {
@@ -216,13 +219,12 @@ export default class AddCertificateForm extends Component {
             this.addCertificate(payload, setSubmitting);
           }}
           initialValues={initialValues}
-          validate={this.validateForm}          
+          validate={this.validateForm}
           render={(props) => {
-            console.log(props);
             return (
               <Tabs
                 id="add-cert-tabs"
-                activeKey={this.state.tab}              
+                activeKey={this.state.tab}
                 onSelect={(k) => this.tabSelect(k, props)}
               >
                 <Tab eventKey="selfSigned" title="Self Signed">
@@ -244,7 +246,7 @@ export default class AddCertificateForm extends Component {
                     required
                     onDayChange={(val) => props.setFieldValue('certExpiry', val)}
                     pickerComponent={DatePickerInput}
-                  />                
+                  />
                   <Field
                     name="certContent"
                     component={YBFormDropZone}
@@ -272,7 +274,7 @@ export default class AddCertificateForm extends Component {
                   <Field
                     name="certExpiry"
                     component={YBFormDatePicker}
-                    label="Expiration Date"
+                    label="Root Certificate Expiration Date"
                     formatDate={formatDate}
                     parseDate={parseDate}
                     format="LL"
@@ -286,7 +288,7 @@ export default class AddCertificateForm extends Component {
                     required
                     onDayChange={(val) => props.setFieldValue('certExpiry', val)}
                     pickerComponent={DatePickerInput}
-                  />                
+                  />
                   <Field
                     name="certContent"
                     component={YBFormDropZone}
@@ -319,12 +321,12 @@ export default class AddCertificateForm extends Component {
                     name="clientCert"
                     component={YBFormInput}
                     label="Client Certificate"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/"
+                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.crt"
                   />
                   <Field name="clientCertPrivate"
                     component={YBFormInput}
                     label="Client Certificate Private Key"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/"
+                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.key"
                   />
                   {getPromiseState(addCertificate).isError() && isNonEmptyObject(addCertificate.error) && (
                     <Alert bsStyle="danger" variant="danger">
