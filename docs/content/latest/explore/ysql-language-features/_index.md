@@ -34,7 +34,8 @@ This section walks through some of the features in YSQL. If you have worked with
 
 |       Feature in YSQL        |              Description of feature                       |
 |------------------------------|-----------------------------------------------------------|
-| <span style="font-size:16px">[Basic SQL](basic-sql/)</span>                 | Basic and composite data types, tables and schemas |
+| <span style="font-size:16px">[Basics](databases-schemas-tables/)</span>  | SQL shell with `ysqlsh`, users, databases, tables and schemas |
+| <span style="font-size:16px">[Data types](data-types/)</span>            | String / numeric / temporal types, `SERIAL` pseudo type, `ENUM`, arrays, and composite types |
 <!--
 | <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT` and `RETURNING` clauses, etc. |
 | <span style="font-size:16px">[Queries and Joins](queries/)</span>           | Joins, `FROM` / `GROUP BY` / `HAVING` clauses, common table expressions, recursive queries, etc. |
