@@ -6,14 +6,23 @@ Below is the complete list of release notes for every version of pg_stat_monitor
 
 ## v0.7.0
 
-1. Query to decode the username from userid.
+### Improvements
+PG-153: Log application_name.
+PG-145: View/Query to show the actual Database name and Username.
+PG-111: Incomplete buckets
+PG-110; Number of Warnings
+PG-109: Log query with error
+PG-150: Log query type for the query (SELECT, UPDATE, INSERT or DELETE )
 
-2. Query to decode the database name from dboid.
+### Bugs Fixed
+PG-111: Problem showing information in case of incomplete buckets.
+PG-112: Column name “IP” to client_ip.
+PG-148: Loss of query statistics/monitoring due to not enough “slots” available.
 
-3. Log application name with queries.
 
-4. Log elevel, sqlcode and error message 
+## Master
 
-5. List all the views and table used in the view.
+### Improvements
+PG-156: Adding a placeholder replacement function for prepared statement
 
-6. Log query command Type (SELECT, INSERT, UPDATE OR DELETE) along with each query.
+### Bugs Fixed
