@@ -268,6 +268,9 @@ typedef struct cypher_create_path
 #define CYPHER_TARGET_NODE_INSERT_ENTITY(flags) \
     (flags & CYPHER_TARGET_NODE_FLAG_INSERT)
 
+#define UPDATE_CLAUSE_SET "SET"
+#define UPDATE_CLAUSE_REMOVE "REMOVE"
+
 /* Data Structures that contain information about a vertices and edges the need to be updated */
 typedef struct cypher_update_information
 {
@@ -275,6 +278,7 @@ typedef struct cypher_update_information
     int flags;
     AttrNumber tuple_position;
     char *graph_name;
+    char *clause_name;
 } cypher_update_information;
 
 typedef struct cypher_update_item
@@ -284,6 +288,7 @@ typedef struct cypher_update_item
     char *var_name;
     char *prop_name;
     List *qualified_name;
+    bool remove_item;
 } cypher_update_item;
 
 /* grammar node for typecasts */

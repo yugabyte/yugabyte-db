@@ -609,10 +609,6 @@ remove:
              n->location = @1;
 
             $$ = (Node *)n;
-
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("REMOVE clause not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 

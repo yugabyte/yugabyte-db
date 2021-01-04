@@ -47,6 +47,8 @@ static void rescan_cypher_set(CustomScanState *node);
 
 static void process_update_list(CustomScanState *node);
 agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property);
+static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
+                                TupleTableSlot *elemTupleSlot, EState *estate, HeapTuple old_tuple);
 
 const CustomExecMethods cypher_set_exec_methods = {"Cypher Set",
                                                       begin_cypher_set,
@@ -89,7 +91,7 @@ static void begin_cypher_set(CustomScanState *node, EState *estate,
     estate->es_output_cid++;
 }
 
-static void update_entity_tuple(ResultRelInfo *resultRelInfo,
+static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                 TupleTableSlot *elemTupleSlot, EState *estate, HeapTuple old_tuple)
 {
     HeapTuple tuple;
@@ -140,6 +142,8 @@ static void update_entity_tuple(ResultRelInfo *resultRelInfo,
     ReleaseBuffer(buffer);
 
     estate->es_result_relation_info = saved_resultRelInfo;
+
+    return tuple;
 }
 
 /*
@@ -148,10 +152,14 @@ static void update_entity_tuple(ResultRelInfo *resultRelInfo,
  */
 static void process_all_tuples(CustomScanState *node)
 {
+    cypher_set_custom_scan_state *css =
+        (cypher_set_custom_scan_state *)node;
     TupleTableSlot *slot;
 
     do
     {
+        css->tuple_info = NIL;
+
         process_update_list(node);
 
         slot = ExecProcNode(node->ss.ps.lefttree);
@@ -275,6 +283,8 @@ static void process_update_list(CustomScanState *node)
         ResultRelInfo *resultRelInfo;
         TupleTableSlot *elemTupleSlot;
         HeapTuple heap_tuple;
+        HeapTuple tuple;
+        char *clause_name = css->set_list->clause_name;
 
         update_item = (cypher_update_item *)lfirst(lc);
 
@@ -287,14 +297,14 @@ static void process_update_list(CustomScanState *node)
 
         if (scanTupleSlot->tts_tupleDescriptor->attrs[update_item->entity_position -1].atttypid != AGTYPEOID)
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("age set clause can only update agtype")));
+                    errmsg("age %s clause can only update agtype", clause_name)));
 
         original_entity = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->entity_position - 1]);
         original_entity_value = get_ith_agtype_value_from_container(&original_entity->root, 0);
 
         if (original_entity_value->type != AGTV_VERTEX && original_entity_value->type != AGTV_EDGE)
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("age set clause can only update vertex and edges")));
+                    errmsg("age %s clause can only update vertex and edges", clause_name)));
 
         // get the id and label for later
         id = get_agtype_value_object_value(original_entity_value, "id");
@@ -306,9 +316,11 @@ static void process_update_list(CustomScanState *node)
 
         /*
          * Determine if the property should be removed.
-         * XXX: this will be expanded when the REMOVE clause is implemented.
          */
-        remove_property = scanTupleSlot->tts_isnull[update_item->prop_position - 1];
+        if(update_item->remove_item)
+            remove_property = true;
+        else
+            remove_property = scanTupleSlot->tts_isnull[update_item->prop_position - 1];
 
         if (remove_property)
             new_property_value = NULL;
@@ -350,8 +362,20 @@ static void process_update_list(CustomScanState *node)
         // update the on-disc table
         heap_tuple = get_heap_tuple(node, update_item->var_name);
 
-        // update the on-disc table
-        update_entity_tuple(resultRelInfo, elemTupleSlot, estate, heap_tuple);
+        tuple = update_entity_tuple(resultRelInfo, elemTupleSlot, estate, heap_tuple);
+
+        if (update_item->var_name != NULL)
+        {
+            clause_tuple_information *tuple_info;
+
+            tuple_info = palloc(sizeof(clause_tuple_information));
+
+            tuple_info->tuple = tuple;
+            tuple_info->name = update_item->var_name;
+
+            css->tuple_info = lappend(css->tuple_info, tuple_info);
+        }
+
 
         ExecCloseIndices(resultRelInfo);
 
@@ -374,6 +398,8 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
     TupleTableSlot *slot;
 
     saved_resultRelInfo = estate->es_result_relation_info;
+
+    css->tuple_info = NIL;
 
     //Process the subtree first
     estate->es_output_cid--;
@@ -414,9 +440,13 @@ static void end_cypher_set(CustomScanState *node)
 
 static void rescan_cypher_set(CustomScanState *node)
 {
-    ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("cypher set clause cannot be rescaned"),
-                    errhint("its unsafe to use joins in a query with a Cypher SET clause")));
+    cypher_set_custom_scan_state *css =
+        (cypher_set_custom_scan_state *)node;
+    char *clause_name = css->set_list->clause_name;
+
+     ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("cypher %s clause cannot be rescaned", clause_name),
+                    errhint("its unsafe to use joins in a query with a Cypher %s clause", clause_name)));
 }
 
 Node *create_cypher_set_plan_state(CustomScan *cscan)

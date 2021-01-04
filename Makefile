@@ -63,6 +63,7 @@ REGRESS = scan \
           cypher_create \
           cypher_match \
           cypher_set \
+          cypher_remove \
           cypher_with \
           drop
 

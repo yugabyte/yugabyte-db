@@ -100,7 +100,6 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var.i = 3$$) AS (a agty
 
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 $$) AS (a agtype);
 
-SELECT * FROM cypher('cypher_set', $$MATCH (n) REMOVE n.i $$) AS (a agtype);
 --
 -- Clean up
 --

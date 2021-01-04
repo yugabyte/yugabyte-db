@@ -202,11 +202,12 @@ static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
                                            cypher_clause *clause);
-// set clause
+// set and remove clause
 static Query *transform_cypher_set(cypher_parsestate *cpstate,
                                    cypher_clause *clause);
 cypher_update_information *transform_cypher_set_item_list(cypher_parsestate *cpstate, List *set_item_list, Query *query);
-
+cypher_update_information *transform_cypher_remove_item_list(
+    cypher_parsestate *cpstate, List *remove_item_list, Query *query);
 
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
@@ -271,20 +272,21 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
     Oid func_set_oid;
     Const *pattern_const;
     Expr *func_expr;
+    char *clause_name;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
     query->targetList = NIL;
 
-    if (self->is_remove)
-        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-            errmsg("REMOVE clause not yet implemented"),
-            parser_errposition(pstate, self->location)));
+    if (self->is_remove == true)
+        clause_name = UPDATE_CLAUSE_REMOVE;
+    else
+        clause_name = UPDATE_CLAUSE_SET;
 
     if (!clause->prev)
     {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("SET cannot be the first clause in a Cypher query"),
+                        errmsg("%s cannot be the first clause in a Cypher query", clause_name),
                         parser_errposition(pstate, self->location)));
     }
     else
@@ -302,10 +304,21 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     if (list_length(self->items) != 1)
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-            errmsg("SET clause does not yet support updating more than one property"),
+            errmsg("%s clause does not yet support updating more than one property", clause_name),
             parser_errposition(pstate, self->location)));
 
-    set_items_target_list = transform_cypher_set_item_list(cpstate, self->items, query);
+    if (self->is_remove == true)
+        set_items_target_list = transform_cypher_remove_item_list(cpstate, self->items, query);
+    else
+        set_items_target_list = transform_cypher_set_item_list(cpstate, self->items, query);
+
+    if (list_length(self->items) != 1)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+            errmsg("%s clause does not yet support updating more than one property",
+                    set_items_target_list->clause_name),
+            parser_errposition(pstate, self->location)));
+
+    set_items_target_list->clause_name = clause_name;
     set_items_target_list->graph_name = cpstate->graph_name;
 
     if (!clause->next)
@@ -328,6 +341,89 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     return query;
 }
+
+cypher_update_information *transform_cypher_remove_item_list(
+    cypher_parsestate *cpstate, List *remove_item_list, Query *query)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ListCell *li;
+    cypher_update_information *info = palloc0(sizeof(cypher_update_information));
+
+    info->set_items = NIL;
+    info->flags = 0;
+
+    foreach (li, remove_item_list)
+    {
+        cypher_set_item *set_item = lfirst(li);
+        cypher_update_item *item;
+        ColumnRef *ref;
+        A_Indirection *ind;
+        char *variable_name, *property_name;
+        Value *property_node, *variable_node;
+
+        item = palloc0(sizeof(cypher_update_item));
+
+        if (!is_ag_node(lfirst(li), cypher_set_item))
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("unexpected node in cypher update list")));
+
+        if (set_item->is_add)
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("REMOVE clause does not support adding propereties from maps"),
+                parser_errposition(pstate, set_item->location)));
+
+        item->remove_item = true;
+
+
+        if (!IsA(set_item->prop, A_Indirection))
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("REMOVE clause must be in the format: REMOVE variable.property_name"),
+                parser_errposition(pstate, set_item->location)));
+
+        ind = (A_Indirection *)set_item->prop;
+
+        // extract variable name
+        if (!IsA(ind->arg, ColumnRef))
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("REMOVE clause must be in the format: REMOVE variable.property_name"),
+                parser_errposition(pstate, set_item->location)));
+
+        ref = (ColumnRef *)ind->arg;
+
+        variable_node = linitial(ref->fields);
+
+        variable_name = variable_node->val.str;
+        item->var_name = variable_name;
+        item->entity_position = get_target_entry_resno(query->targetList, variable_name);
+
+        if (item->entity_position == -1)
+            ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("undefined reference to variable %s in REMOVE clause", variable_name),
+                parser_errposition(pstate, set_item->location)));
+
+        // extract property name
+        if (list_length(ind->indirection) != 1)
+           ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("REMOVE clause must be in the format: REMOVE variable.property_name"),
+                parser_errposition(pstate, set_item->location)));
+
+        property_node = linitial(ind->indirection);
+
+
+        if (!IsA(property_node, String))
+           ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("REMOVE clause expects a property name"),
+                parser_errposition(pstate, set_item->location)));
+
+        property_name = property_node->val.str;
+        item->prop_name = property_name;
+
+        info->set_items = lappend(info->set_items, item);
+    }
+
+    return info;
+}
+
 
 cypher_update_information *transform_cypher_set_item_list(
     cypher_parsestate *cpstate, List *set_item_list, Query *query)
@@ -359,6 +455,8 @@ cypher_update_information *transform_cypher_set_item_list(
            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                 errmsg("SET clause does not yet support adding propereties from maps"),
                 parser_errposition(pstate, set_item->location)));
+
+        item->remove_item = false;
 
         // extract variable name
         ref = (ColumnRef *)ind->arg;
