@@ -9,8 +9,8 @@ import {
   getTlsCertificates,
   getTlsCertificatesResponse,
   addCertificateReset
-} from '../../actions/customers';
-import { closeDialog } from '../../actions/modal';
+} from '../../../../actions/customers';
+import { closeDialog } from '../../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {

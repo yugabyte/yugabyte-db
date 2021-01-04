@@ -85,14 +85,6 @@ export default class TopNavBar extends Component {
                   <i className="fa fa-file fa-fw"></i>Logs
                 </YBMenuItem>
               )}
-              {isNotHidden(currentCustomer.data.features, 'main.certificates') && (
-                <YBMenuItem
-                  to={'/certificates'}
-                  disabled={isDisabled(currentCustomer.data.features, 'main.certificates')}
-                >
-                  <i className="fa fa-lock fa-fw"></i>Certificates
-                </YBMenuItem>
-              )}
               {isNotHidden(currentCustomer.data.features, 'main.releases') && (
                 <YBMenuItem
                   to={'/releases'}
