@@ -13,7 +13,7 @@ import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
-import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 

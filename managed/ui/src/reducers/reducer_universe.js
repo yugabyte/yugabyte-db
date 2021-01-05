@@ -59,13 +59,7 @@ import {
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
   SET_ALERTS_CONFIG,
-  SET_ALERTS_CONFIG_RESPONSE,
-  CREATE_ALERT_DEFINITION,
-  CREATE_ALERT_DEFINITION_RESPONSE,
-  GET_ALERT_DEFINITION,
-  GET_ALERT_DEFINITION_RESPONSE,
-  UPDATE_ALERT_DEFINITION,
-  UPDATE_ALERT_DEFINITION_RESPONSE
+  SET_ALERTS_CONFIG_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import {
@@ -109,8 +103,7 @@ const INITIAL_STATE = {
   healthCheck: getInitialState({}),
   universeImport: getInitialState({}),
   alertsConfig: getInitialState({}),
-  backupState: getInitialState({}),
-  alertDefinition: getInitialState({})
+  backupState: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -298,18 +291,6 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, backupState: getInitialState([]) };
     case UPDATE_BACKUP_STATE_RESPONSE:
       return setPromiseResponse(state, 'backupState', action);
-    case CREATE_ALERT_DEFINITION:
-      return setLoadingState(state, 'alertDefinition', {});
-    case CREATE_ALERT_DEFINITION_RESPONSE:
-      return setPromiseResponse(state, 'alertDefinition', action);
-    case GET_ALERT_DEFINITION:
-      return setLoadingState(state, 'alertDefinition', {});
-    case GET_ALERT_DEFINITION_RESPONSE:
-      return setPromiseResponse(state, 'alertDefinition', action);
-    case UPDATE_ALERT_DEFINITION:
-      return setLoadingState(state, 'alertDefinition', {});
-    case UPDATE_ALERT_DEFINITION_RESPONSE:
-      return setPromiseResponse(state, 'alertDefinition', action);
     default:
       return state;
   }

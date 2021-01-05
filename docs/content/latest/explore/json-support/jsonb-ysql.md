@@ -10,7 +10,7 @@ menu:
     name: JSON Support
     identifier: explore-json-support-1-ysql
     parent: explore
-    weight: 234
+    weight: 232
 isTocNested: true
 showAsideToc: true
 ---

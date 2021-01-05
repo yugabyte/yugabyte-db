@@ -6,7 +6,7 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 
-class ListKeyManagementConfiguration extends Component {
+export class ListKeyManagementConfigurations extends Component {
   render() {
     const { configs, onCreate, onDelete } = this.props;
 
@@ -72,7 +72,12 @@ class ListKeyManagementConfiguration extends Component {
                 data={configs.data}
                 className="backup-list-table middle-aligned-table"
               >
-                <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+                <TableHeaderColumn
+                  dataField="metadata"
+                  dataFormat={cell => cell.configUUID}
+                  isKey={true}
+                  hidden={true}
+                />
                 <TableHeaderColumn
                   dataField="metadata"
                   dataFormat={(cell) => cell.name}
@@ -104,7 +109,7 @@ class ListKeyManagementConfiguration extends Component {
                   dataFormat={actionList}
                   columnClassName="no-border name-column no-side-padding"
                   className="no-border"
-                ></TableHeaderColumn>
+                />
               </BootstrapTable>
             </Fragment>
           }
@@ -114,4 +119,3 @@ class ListKeyManagementConfiguration extends Component {
     );
   }
 }
-export default ListKeyManagementConfiguration;

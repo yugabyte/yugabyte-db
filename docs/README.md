@@ -1,6 +1,6 @@
 # YugabyteDB Docs
 
-This repository contains the source code for the (public documentation for YugabyteDB)[https://docs.yugabyte.com/]. Please [open an issue](https://github.com/YugaByte/docs/issues) to request features or suggest enhancements.
+This repository contains the source code for the [public documentation for YugabyteDB](https://docs.yugabyte.com/). Please [open an issue](https://github.com/YugaByte/docs/issues) to request features or suggest enhancements.
 
 
 # Contributing to YugabyteDB Docs
@@ -11,7 +11,30 @@ YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
 * Hugo framework: http://gohugo.io/overview/introduction/
 * Material Docs theme: http://themes.gohugo.io/material-docs/
 
+## Docker Setup
+* [Linux] For those wanting to contribute, without making direct modifications to system packages, you can download the yugabyte-db docs dockerfile for easy, simple setup for contributing to Yugabyte docs. 
 
+1. Ensure that you have cloned the yugabyte repository 
+```
+git clone https://github.com/yugabyte/yugabyte-db.git
+```
+2. `cd` into the docs folder of the yugabyte repository
+```
+cd ./yugabyte-db/docs
+```
+3. Build the contianer with the provided file 
+```
+docker build -t yb-docs  . 
+```
+4. Once built, run the container 
+```
+docker run -d --rm -v `pwd`:/yugabyte-db -p 1313:1313 --name yb-docs yb-docs 
+```
+5. NOTE: The build will take some time, to monitor the build follow the logs. 
+```
+docker logs -f yb-docs
+```
+ 
 ## Step 1. Initial setup
 
 Follow these steps if this is the first time you are setting up the YugabyteDB docs repo locally.

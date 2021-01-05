@@ -6,6 +6,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { getProxyNodeAddress } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
@@ -26,14 +27,7 @@ export default class NodeDetailsTable extends Component {
         return <span>{cell}</span>;
       }
       const isMaster = type === 'master';
-      let href = '';
-
-      if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
-        href = 'http://' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort);
-      } else {
-        href = '/universes/' + universeUUID + '/proxy/' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort) + '/';
-      }
-
+      const href = getProxyNodeAddress(universeUUID, customer, row.privateIP, isMaster ? row.masterPort : row.tserverPort);
       if (row.nodeAlive) {
         return (
           <div>

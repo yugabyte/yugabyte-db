@@ -195,8 +195,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(ReplicaMap replica_locations);
-  void GetReplicaLocations(ReplicaMap* replica_locations) const;
+  void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
+  std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
@@ -256,7 +256,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  ReplicaMap replica_locations_;
+  std::shared_ptr<ReplicaMap> replica_locations_;
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
@@ -357,6 +357,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_local_index() const;
   bool is_unique_index() const;
 
+  void set_is_system() { is_system_ = true; }
+  bool is_system() const { return is_system_; }
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -456,6 +459,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;

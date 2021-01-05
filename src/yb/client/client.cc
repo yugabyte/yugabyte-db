@@ -94,6 +94,8 @@ using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
+using yb::master::GetColocatedTabletSchemaRequestPB;
+using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -629,6 +631,17 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
                                     StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
+}
+
+Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetColocatedTabletSchemaById(this,
+                                             parent_colocated_table_id,
+                                             deadline,
+                                             info,
+                                             callback);
 }
 
 Result<IndexPermissions> YBClient::GetIndexPermissions(
@@ -1590,7 +1603,7 @@ Status YBClient::GetTabletsAndUpdateCache(
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, /* partition_group_start= */ nullptr, /* cleanup= */ nullptr));
+      tablets, /* partition_group_start= */ nullptr, /* lookup_rpc= */ nullptr));
 
   return Status::OK();
 }
@@ -1674,6 +1687,20 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
       tablet_id, table, deadline, std::move(callback), use_cache);
+}
+
+void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                                CoarseTimePoint deadline,
+                                LookupTabletRangeCallback callback) {
+  data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
+}
+
+std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
+    const std::shared_ptr<const YBTable>& table,
+    CoarseTimePoint deadline) {
+  return MakeFuture<Result<std::vector<internal::RemoteTabletPtr>>>([&](auto callback) {
+    this->LookupAllTablets(table, deadline, std::move(callback));
+  });
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {

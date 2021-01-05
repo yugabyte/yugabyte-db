@@ -152,11 +152,18 @@ public class Backup extends Model {
   }
 
   // We need to set the taskUUID right after commissioner task is submitted.
-  public synchronized void setTaskUUID(UUID taskUUID) {
+
+  /**
+   * @param taskUUID to set if none set previously
+   * @return true if the call ends up setting task uuid.
+   */
+  public synchronized boolean setTaskUUID(UUID taskUUID) {
     if (this.taskUUID == null) {
       this.taskUUID = taskUUID;
       save();
+      return true;
     }
+    return false;
   }
 
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {

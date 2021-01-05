@@ -586,6 +586,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace
 %type <rolespec> OptTableSpaceOwner
+%type <str>	OptTableSpaceLocation
 %type <ival>	opt_check_option
 
 %type <grpopt>	OptTableGroup
@@ -903,6 +904,7 @@ stmt :
 			| AlterSeqStmt
 			| AlterTableStmt
 			| CallStmt
+			| ClosePortalStmt
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
@@ -917,10 +919,12 @@ stmt :
 			| CreatePolicyStmt
 			| CreateRoleStmt
 			| CreateSchemaStmt
+			| CreateTableSpaceStmt
 			| CreateTrigStmt
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeallocateStmt
+			| DeclareCursorStmt
 			| DefineStmt
 			| DeleteStmt
 			| DiscardStmt
@@ -934,6 +938,7 @@ stmt :
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
+			| FetchStmt
 			| GrantRoleStmt
 			| GrantStmt
 			| IndexStmt
@@ -988,7 +993,6 @@ stmt :
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CheckPointStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1001,17 +1005,14 @@ stmt :
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| FetchStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ImportForeignSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -3065,14 +3066,12 @@ alter_type_cmd:
 ClosePortalStmt:
 			CLOSE cursor_name
 				{
-					parser_ybc_not_support(@1, "CLOSE cursor");
 					ClosePortalStmt *n = makeNode(ClosePortalStmt);
 					n->portalname = $2;
 					$$ = (Node *)n;
 				}
 			| CLOSE ALL
 				{
-					parser_ybc_not_support(@1, "CLOSE ALL cursor");
 					ClosePortalStmt *n = makeNode(ClosePortalStmt);
 					n->portalname = NULL;
 					$$ = (Node *)n;
@@ -4314,7 +4313,7 @@ OptTableGroup:
 		;
 
 OptTableSpace:
-			TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
+	     		TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -4832,21 +4831,28 @@ DropTableGroupStmt: DROP TABLEGROUP name
 /*****************************************************************************
  *
  *		QUERY:
- *             CREATE TABLESPACE tablespace LOCATION '/path/to/tablespace/'
+ *             CREATE TABLESPACE tablespace
  *
  *****************************************************************************/
 
-CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION Sconst opt_reloptions
+CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner OptTableSpaceLocation opt_reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE TABLESPACE", 1153);
 					CreateTableSpaceStmt *n = makeNode(CreateTableSpaceStmt);
 					n->tablespacename = $3;
 					n->owner = $4;
-					n->location = $6;
-					n->options = $7;
+					n->options = $6;
+					if (n->options == NULL && $5 == NULL) {
+						parser_yyerror("While creating tablespaces, one of "
+							       "LOCATION or WITH options should be present");
+					}
 					$$ = (Node *) n;
+
 				}
 		;
+
+OptTableSpaceLocation: LOCATION Sconst              { parser_ybc_warn_ignored(@1, "LOCATION", 6569); $$ = $2; }
+                        | /*EMPTY */                            { $$ = NULL; }
+                ;
 
 OptTableSpaceOwner: OWNER RoleSpec		{ $$ = $2; }
 			| /*EMPTY */				{ $$ = NULL; }
@@ -7339,7 +7345,6 @@ security_label:	Sconst				{ $$ = $1; }
 
 FetchStmt:	FETCH fetch_args
 				{
-					parser_ybc_not_support(@1, "FETCH");
 					FetchStmt *n = (FetchStmt *) $2;
 					n->ismove = false;
 					$$ = (Node *)n;
@@ -7371,6 +7376,8 @@ fetch_args:	cursor_name
 				}
 			| NEXT opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH NEXT", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7379,6 +7386,8 @@ fetch_args:	cursor_name
 				}
 			| PRIOR opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH PRIOR", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_BACKWARD;
@@ -7387,6 +7396,8 @@ fetch_args:	cursor_name
 				}
 			| FIRST_P opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH FIRST", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_ABSOLUTE;
@@ -7395,6 +7406,8 @@ fetch_args:	cursor_name
 				}
 			| LAST_P opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH LAST", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_ABSOLUTE;
@@ -7403,6 +7416,8 @@ fetch_args:	cursor_name
 				}
 			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH ABSOLUTE", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_ABSOLUTE;
@@ -7411,6 +7426,8 @@ fetch_args:	cursor_name
 				}
 			| RELATIVE_P SignedIconst opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH RELATIVE", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_RELATIVE;
@@ -7419,6 +7436,8 @@ fetch_args:	cursor_name
 				}
 			| SignedIconst opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH + OR -", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7435,6 +7454,8 @@ fetch_args:	cursor_name
 				}
 			| FORWARD opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7443,6 +7464,8 @@ fetch_args:	cursor_name
 				}
 			| FORWARD SignedIconst opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
@@ -7451,6 +7474,8 @@ fetch_args:	cursor_name
 				}
 			| FORWARD ALL opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
@@ -7459,6 +7484,8 @@ fetch_args:	cursor_name
 				}
 			| BACKWARD opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH BACKWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_BACKWARD;
@@ -7467,6 +7494,8 @@ fetch_args:	cursor_name
 				}
 			| BACKWARD SignedIconst opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH BACKWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
@@ -7475,6 +7504,8 @@ fetch_args:	cursor_name
 				}
 			| BACKWARD ALL opt_from_in cursor_name
 				{
+					parser_ybc_signal_unsupported(@1, "FETCH BACKWARD", 6514);
+
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
@@ -12082,7 +12113,11 @@ set_target_list:
  *****************************************************************************/
 DeclareCursorStmt: DECLARE cursor_name cursor_options CURSOR opt_hold FOR SelectStmt
 				{
-					parser_ybc_not_support(@1, "DECLARE CURSOR");
+					SelectStmt *stmt = (SelectStmt *)$7;
+					if (stmt->lockingClause) {
+						parser_ybc_signal_unsupported(@1, "CURSOR with row-locking", 6541);
+					}
+
 					DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
 					n->portalname = $2;
 					/* currently we always set FAST_PLAN option */
