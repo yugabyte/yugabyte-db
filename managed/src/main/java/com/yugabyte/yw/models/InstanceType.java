@@ -9,11 +9,13 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import javax.inject.Inject;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.typesafe.config.ConfigFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +31,9 @@ public class InstanceType extends Model {
 
   public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of(
     "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
+  static final String YB_VOLUME_INFO_VOLUME_COUNT = "yb.volumeInfo.volume_count";
+  static final String YB_VOLUME_INFO_VOLUME_SIZE_GB = "yb.volumeInfo.volume_size_gb";
+  private static ConfigFactory config;
 
   public enum VolumeType {
     @EnumValue("EBS")
@@ -43,6 +48,13 @@ public class InstanceType extends Model {
     @EnumValue("NVME")
     NVME
   }
+
+  @Inject
+  public InstanceType(ConfigFactory config) {
+    config = config;
+  }
+
+  public InstanceType(){}
 
   @EmbeddedId
   @Constraints.Required
@@ -179,6 +191,13 @@ public class InstanceType extends Model {
       entries = entries.stream()
         .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
         .collect(Collectors.toList());
+      for (InstanceType instanceType : entries) {
+        if (instanceType.instanceTypeDetailsJson.isEmpty()) {
+          instanceType.instanceTypeDetails.setVolumeDetailsList(
+            config.load().getInt(YB_VOLUME_INFO_VOLUME_COUNT),
+            config.load().getInt(YB_VOLUME_INFO_VOLUME_SIZE_GB), VolumeType.EBS);
+        }
+      }
     }
 
     return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
@@ -251,6 +270,5 @@ public class InstanceType extends Model {
               volumeType);
       return instanceTypeDetails;
     }
-
   }
 }
