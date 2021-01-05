@@ -116,7 +116,7 @@ To learn more about ``pg_stat_monitor`` configuration and usage, see [User Guide
 
 ## Submitting Bug Reports
 
-If you found a bug in ``pg_stat_statements``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues)
+If you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues)
 
 Start by searching the open tickets for a similar report. If you find that someone else has already reported your issue, then you can upvote that report to increase its visibility.
 
