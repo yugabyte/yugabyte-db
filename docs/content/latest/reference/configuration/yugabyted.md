@@ -169,6 +169,14 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 
 Enable or disable the webserver UI. Default is `false`.
 
+##### --master_flags *master_flags*
+
+Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+
+##### --tserver_flags *tserver_flags*
+
+Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+
 ##### --ysql_enable_auth *bool*
 
 Enable or disable YSQL Authentication. Default is `false`.
@@ -457,6 +465,14 @@ Create a single-node cluster with a given base dir and listen address. Note the 
 
 ```sh
 bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
+```
+
+### Pass additional flags to tserver
+
+Create a single-node cluster and set additional flags to the yb-tserver process.
+
+```sh
+bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
 ```
 
 ### Create a multi-node cluster
