@@ -138,5 +138,7 @@ As a general rule of thumb, try to create bug reports that are:
 ## Copyright Notice
 
 Portions Copyright © 2018-2020, Percona LLC and/or its affiliates
+
 Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+
 Portions Copyright (c) 1994, The Regents of the University of California
