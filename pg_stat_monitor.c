@@ -245,8 +245,6 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
 }
 
-static char **get_params_text_list(const ParamListInfo paramlist);
-static char *get_denormalized_query(const ParamListInfo paramlist, const char *query_text);
 
 /*
  * Post-parse-analysis hook: mark query with a queryId
@@ -399,7 +397,6 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	float   utime;
 	float   stime;
 	uint64	queryId = queryDesc->plannedstmt->queryId;
-	const char  *query_text;
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
 	{
@@ -411,15 +408,6 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		getrusage(RUSAGE_SELF, &rusage_end);
 		utime = TIMEVAL_DIFF(rusage_start.ru_utime, rusage_end.ru_utime);
 		stime = TIMEVAL_DIFF(rusage_start.ru_stime, rusage_end.ru_stime);
-
-		/*
-		 * For a query with parameters if we want the actual query we denormalized it
-		 * by replacing all the placeholders with actual parameter values.
-		 */
-		if(!PGSM_NORMALIZED_QUERY && queryDesc->params)
-			query_text = get_denormalized_query(queryDesc->params, queryDesc->sourceText);
-		else
-			query_text = queryDesc->sourceText;
 
 		if (PGSM_ENABLED == 1)
 			pgss_store(queryId,
@@ -2608,93 +2596,3 @@ exit:
 	return buf_len;
 }
 
-/* transform parameters value from datum to string*/
-static char **
-get_params_text_list(const ParamListInfo paramlist)
-{
-	StringInfoData  buf;
-	int             entry_num = paramlist->numParams;
-	int             i;
-	char          **params_text;
-
-	initStringInfo(&buf);
-	params_text = (char **)palloc0(sizeof(char *) * entry_num);
-
-	for(i = 0; i < entry_num; i++)
-	{
-		ParamExternData *param = &paramlist->params[i];
-		
-		if (param->isnull || !OidIsValid(param->ptype))
-		{
-			appendStringInfoString(&buf, "NULL");
-		}
-		else
-		{
-			Oid		typoutput;
-			bool	typisvarlena;
-			char	*pstring;
-			
-			getTypeOutputInfo(param->ptype, &typoutput, &typisvarlena);
-			pstring = OidOutputFunctionCall(typoutput, param->value);
-			appendStringInfo(&buf, "%s",pstring);
-		}
-		
-		/* assign memory space and add terminate symbol at the end of string*/
-		params_text[i] = (char *)palloc0(sizeof(char) * (buf.len + 1));
-		memcpy(params_text[i], buf.data, buf.len);
-		memset(params_text[i] + sizeof(char) * buf.len,'\0',sizeof(char));
-
-		/*clean the temp buffer*/
-		resetStringInfo(&buf);
-	}
-	
-	return params_text;
-}
-
-/* denormalize the query, replace placeholder with actual value*/
-static char * 
-get_denormalized_query(const ParamListInfo paramlist, const char *query_text)
-{
-	int             current_param;
-	int             param_num;
-	int             i;
-	char          **param_text;
-	const char     *cursor_ori;
-	StringInfoData  result_buf;
-
-	param_text = get_params_text_list(paramlist);
-	param_num = paramlist->numParams;
-	current_param = 0;
-	cursor_ori = query_text;
-	initStringInfo(&result_buf);
-
-	while(*cursor_ori != '\0')
-	{
-		if(*cursor_ori != '$')
-		{
-			/* copy the origin query string to result*/
-			appendStringInfoChar(&result_buf,*cursor_ori);
-			cursor_ori++;
-		}
-		else
-		{
-			/* skip the placeholder */
-			cursor_ori++;
-			while(*cursor_ori >= '0' && *cursor_ori <= '9')
-			{
-					cursor_ori++;
-			}
-			/* replace the placeholder with actual value */
-			appendStringInfo(&result_buf,"%s",param_text[current_param++]);
-		}
-	}
-
-	/* free the query text array*/
-	for(i = 0; i < param_num; i++)
-	{
-		pfree(param_text[i]);
-	}
-	pfree(param_text);
-
-	return result_buf.data;
-}
