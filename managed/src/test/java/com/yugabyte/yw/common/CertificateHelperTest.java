@@ -36,7 +36,6 @@ import java.security.cert.X509Certificate;
 import java.util.UUID;
 import java.util.Calendar;
 import java.util.Date;
-
 import static org.junit.Assert.*;
 
 
@@ -80,8 +79,8 @@ public class CertificateHelperTest extends FakeDBApplication {
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
     CertificateHelper.createClientCertificate(rootCA, String.format(certPath + "/%s",
-      rootCA),
-      "yugabyte", null, null);
+        rootCA),
+        "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
@@ -89,7 +88,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
       assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
       FileInputStream is = new FileInputStream(new File(certPath +
-        String.format("/%s/yugabytedb.crt", rootCA)));
+          String.format("/%s/yugabytedb.crt", rootCA)));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
       clientCer.verify(cert.getPublicKey(), "BC");
     } catch (Exception e) {
@@ -116,7 +115,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
     JsonNode result = CertificateHelper.createClientCertificate(rootCA, null, "postgres",
-      certStart, certExpiry);
+        certStart, certExpiry);
     String clientCert = result.get("yugabytedb.crt").asText();
     assertNotNull(clientCert);
     ByteArrayInputStream bytes = new ByteArrayInputStream(clientCert.getBytes());
@@ -143,7 +142,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
     JsonNode result = CertificateHelper.createClientCertificate(rootCA,
-      String.format("/tmp", rootCA), "postgres", certStart, certExpiry);
+        String.format("/tmp", rootCA), "postgres", certStart, certExpiry);
 
     is = new FileInputStream(new File(String.format("/tmp/yugabytedb.crt", rootCA)));
     X509Certificate clientCer = (X509Certificate) fact.generateCertificate(is);
@@ -181,9 +180,8 @@ public class CertificateHelperTest extends FakeDBApplication {
 
     try {
       rootCA = CertificateHelper.uploadRootCA("test", c.uuid, "/tmp", cert_content, null,
-        certStart, certExpiry, type, null);
+          certStart, certExpiry, type, null);
     } catch (Exception e) {
-      //assertEquals("Invalid certificate.", e.getMessage());
       fail(e.getMessage());
     }
     assertNotNull(CertificateInfo.get(rootCA));
@@ -199,7 +197,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     CertificateInfo.Type type = CertificateInfo.Type.SelfSigned;
     try {
       rootCA = CertificateHelper.uploadRootCA("test", c.uuid, "/tmp", "test_cert", "test_key",
-        certStart, certExpiry, type, null);
+          certStart, certExpiry, type, null);
     } catch (Exception e) {
       assertEquals("Invalid certificate.", e.getMessage());
     }
