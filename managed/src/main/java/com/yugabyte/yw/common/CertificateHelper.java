@@ -382,7 +382,11 @@ public class CertificateHelper {
 
   private static boolean verifySignature(X509Certificate cert, String key) {
     try {
-      PemReader pemReader = new PemReader(new StringReader(key));
+      // Add the security provider in case uploadRootCA was never called.
+      Security.addProvider(new BouncyCastleProvider());
+      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
+      keypairGen.initialize(2048);
+      PemReader pemReader = new PemReader(new StringReader(new String(key)));
       PemObject pemObject = pemReader.readPemObject();
       byte[] bytes = pemObject.getContent();
       pemReader.close();
@@ -393,9 +397,9 @@ public class CertificateHelper {
       pk = kf.generatePrivate(spec);
       RSAPrivateKey privKey = (RSAPrivateKey) pk;
       RSAPublicKey publicKey = (RSAPublicKey) cert.getPublicKey();
-      return privKey.getModulus() == publicKey.getModulus();
+      return privKey.getModulus().toString().equals(publicKey.getModulus().toString());
     } catch (Exception e) {
-      LOG.error("Cert or key is invalid.");
+      LOG.error("Cert or key is invalid." + e.getMessage());
     }
     return false;
   }
