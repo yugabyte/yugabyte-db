@@ -28,8 +28,17 @@ class AwsStorageConfiguration extends Component {
       showDeleteStorageConfig
     } = this.props;
     const { iamRoleEnabled } = this.state;
+
+    // console.log(customerConfigs, '******** customerConfig');
+
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
+
+    // console.log(s3Config, '*********** s3config');
+
     const config = s3Config ? s3Config.data : {};
+
+    // console.log(config, '********** config');
+
     const allowKeyEdits = !isEmptyObject(s3Config) || iamRoleEnabled;
     return (
       <Row className="config-section-header" key={'s3'}>
