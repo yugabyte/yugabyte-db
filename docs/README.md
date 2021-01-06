@@ -10,58 +10,50 @@ YugabyteDB docs are based on the Hugo framework and use the Material Docs theme.
 
 * Hugo framework: http://gohugo.io/overview/introduction/
 * Material Docs theme: http://themes.gohugo.io/material-docs/
+* Ensure that you have cloned the yugabyte repository
 
-
-## Step 1. Initial setup
-
-Follow these steps if this is the first time you are setting up the YugabyteDB docs repo locally.
-
-1. Fork this repository on GitHub and create a local clone of your fork. This should look something like below:
 ```
-git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
-cd ./yugabyte-db
+git clone https://github.com/yugabyte/yugabyte-db.git
+cd ./yugabyte-db/docs
 ```
 
-Add the master as a remote branch by running the following:
+## [Option 1] Docker Setup
+For those wanting to contribute, without making direct modifications to system packages, you can download the yugabyte-db docs dockerfile for easy, simple setup for contributing to Yugabyte docs.
+
+1. Build the contianer with the provided file
 ```
-$ git remote add --track master upstream https://github.com/yugabyte/yugabyte-db.git
+docker build -t yb-docs  .
+```
+2. Once built, run the container
+```
+docker run -d --rm -v `pwd`/..:/yugabyte-db/ -p 1313:1313 --name yb-docs yb-docs
+```
+3. NOTE: The build will take some time, to monitor the build follow the logs.
+```
+docker logs -f yb-docs
 ```
 
-2. Install Hugo. For example, on a Mac, you can run the following commands:
+## [Option 2] Local setup
+To run hugo locally
+
+1. Install Hugo. For example, on a Mac, you can run the following commands:
 ```
 brew update
 brew install hugo
 brew install npm
 ```
 
-4. Install node modules as shown below:
+2. From the docs directory, install node modules:
 ```
-$ cd docs
 $ npm ci
 ```
 
-## Step 2. Update your docs repo and start the local webserver
-
-The assumption here is that you are working on a local clone of your fork. See the previous step.
-
-1. Rebase your fork to fetch the latest docs changes:
-Ensure you are on the master branch.
+3. Start the local webserver:
 ```
-$ git checkout master
-```
-
-Now rebase to the latest changes.
-```
-$ git pull --rebase upstream master
-$ git push origin master
-```
-
-2. Start the local webserver on `127.0.0.1` interface by running the following:
-```
-$ cd docs
 $ npm start
 ```
 
+## Viewing local docs
 You should be able to see the local version of the docs by browsing to:
 http://localhost:1313/
 
@@ -78,7 +70,7 @@ YB_HUGO_BASE=<YOUR_IP_OR_HOSTNAME> npm start
 You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
 
 
-## Step 3. Identify an issue
+## Next Steps: Identify an issue
 
 There needs to be a GitHub issue describing the enhancement you intend to do. Please post a comment on the issue you plan to work on before starting to work on it. This is to ensure someone else does not end up working on this in parallel.
 
@@ -90,7 +82,7 @@ In case you do not have an issue and you're looking for one to work on, here is 
 
 If you run into any issues, please let us know by posting in our [the community slack](https://www.yugabyte.com/slack), we really appreciate your feedback (and love to talk to you as well).
 
-## Step 4. Make changes
+## Next Steps: Contributing
 
 Make the changes locally and test them on the browser. You can make the changes on a branch with
 ```
@@ -106,7 +98,7 @@ $ git add -A
 $ git commit
 ```
 
-## Step 5. Submit a pull request
+### Submit a pull request
 
 Create a [pull request in the YugabyteDB docs repo](https://github.com/yugabyte/docs/pulls) once you are ready to submit your changes.
 
