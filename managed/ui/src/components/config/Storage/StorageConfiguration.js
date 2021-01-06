@@ -15,7 +15,6 @@ import AwsStorageConfiguration from './AwsStorageConfiguration';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
 import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
-import { config } from 'ace-builds';
 
 const storageConfigTypes = {
   NFS: {
