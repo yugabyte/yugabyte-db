@@ -455,7 +455,8 @@ void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
 						   Datum ybctid,
-						   bool is_backfill)
+						   bool is_backfill,
+						   uint64_t *write_time)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
@@ -488,6 +489,7 @@ void YBCExecuteInsertIndex(Relation index,
 
 	if (is_backfill)
 	{
+		Assert(write_time);
 		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
 													true /* is_backfill */));
 		/*
@@ -495,9 +497,8 @@ void YBCExecuteInsertIndex(Relation index,
 		 * This is to guarantee that backfilled writes are temporally before
 		 * any online writes.
 		 */
-		/* TODO(jason): don't hard-code 50 (issue #6208). */
 		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt,
-												   50 /* write_time */));
+												   *write_time));
 	}
 
 	/* Execute the insert and clean up. */
