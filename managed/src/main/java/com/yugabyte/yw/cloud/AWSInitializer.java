@@ -78,7 +78,7 @@ public class AWSInitializer extends AbstractInitializer {
           ObjectMapper mapper = new ObjectMapper();
           regionJson = mapper.readTree(regionStream);
         } catch (IOException e) {
-          LOG.error("Failed to parse region metadata from region ", region.code);
+          LOG.error("Failed to parse region metadata from region {}", region.code);
           return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
         }
 

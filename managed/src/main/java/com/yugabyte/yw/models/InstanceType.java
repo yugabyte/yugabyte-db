@@ -31,9 +31,9 @@ public class InstanceType extends Model {
 
   public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of(
     "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
-  static final String YB_VOLUME_INFO_VOLUME_COUNT = "yb.volumeInfo.volume_count";
-  static final String YB_VOLUME_INFO_VOLUME_SIZE_GB = "yb.volumeInfo.volume_size_gb";
-  private static ConfigFactory config;
+  static final String YB_VOLUME_INFO_VOLUME_COUNT_KEY = "yb.volumeInfo.volume_count";
+  static final String YB_VOLUME_INFO_VOLUME_SIZE_GB_KEY = "yb.volumeInfo.volume_size_gb";
+  private ConfigFactory config;
 
   public enum VolumeType {
     @EnumValue("EBS")
@@ -51,7 +51,7 @@ public class InstanceType extends Model {
 
   @Inject
   public InstanceType(ConfigFactory config) {
-    config = config;
+    this.config = config;
   }
 
   public InstanceType(){}
@@ -178,6 +178,14 @@ public class InstanceType extends Model {
     return p -> supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
   }
 
+  private static void populateDefaultIfEmpty(InstanceType instanceType) {
+    if (instanceType.instanceTypeDetailsJson.isEmpty()) {
+      instanceType.instanceTypeDetails.setVolumeDetailsList(
+        instanceType.config.load().getInt(YB_VOLUME_INFO_VOLUME_COUNT_KEY),
+        instanceType.config.load().getInt(YB_VOLUME_INFO_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
+    }
+  }
+
   /**
    * Query Helper to find supported instance types for a given cloud provider.
    */
@@ -192,11 +200,7 @@ public class InstanceType extends Model {
         .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
         .collect(Collectors.toList());
       for (InstanceType instanceType : entries) {
-        if (instanceType.instanceTypeDetailsJson.isEmpty()) {
-          instanceType.instanceTypeDetails.setVolumeDetailsList(
-            config.load().getInt(YB_VOLUME_INFO_VOLUME_COUNT),
-            config.load().getInt(YB_VOLUME_INFO_VOLUME_SIZE_GB), VolumeType.EBS);
-        }
+        populateDefaultIfEmpty(instanceType);
       }
     }
 
