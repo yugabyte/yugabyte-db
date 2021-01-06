@@ -29,12 +29,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CallHomeManager;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -64,9 +59,6 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
-
-  @Inject
-  ReleaseManager releaseManager;
 
   @Inject
   CloudQueryHelper cloudQueryHelper;

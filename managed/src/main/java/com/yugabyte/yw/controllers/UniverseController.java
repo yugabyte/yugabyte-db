@@ -112,10 +112,6 @@ public class UniverseController extends AuthenticatedController {
   @Inject
   YcqlQueryExecutor ycqlQueryExecutor;
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
-
-
   // The YB client to use.
   public YBClientService ybService;
 
