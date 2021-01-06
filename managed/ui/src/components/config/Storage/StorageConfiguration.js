@@ -15,13 +15,14 @@ import AwsStorageConfiguration from './AwsStorageConfiguration';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
 import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
+import { config } from 'ace-builds';
 
 const storageConfigTypes = {
   NFS: {
     title: 'NFS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'NFS_BACKUP_LOCATION',
         label: 'NFS Storage Path',
         placeHolder: 'NFS Storage Path'
       }
@@ -31,7 +32,7 @@ const storageConfigTypes = {
     title: 'GCS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'GCS_BACKUP_LOCATION',
         label: 'GCS Bucket',
         placeHolder: 'GCS Bucket'
       },
@@ -46,7 +47,7 @@ const storageConfigTypes = {
     title: 'Azure Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'AZ_BACKUP_LOCATION',
         label: 'Container URL',
         placeHolder: 'Container URL'
       },

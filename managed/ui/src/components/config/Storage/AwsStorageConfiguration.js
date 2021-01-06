@@ -117,17 +117,17 @@ class AwsStorageConfiguration extends Component {
             <Col lg={9}>
               {!isEmptyObject(s3Config) ? (
                 <Field
-                  name="BACKUP_LOCATION"
+                  name="AWS_BACKUP_LOCATION"
                   placeHolder="S3 Bucket"
                   input={{
-                    value: config['BACKUP_LOCATION'],
+                    value: config['AWS_BACKUP_LOCATION'],
                     disabled: !isEmptyObject(s3Config)
                   }}
                   component={YBTextInputWithLabel}
                 />
               ) : (
                 <Field
-                  name="BACKUP_LOCATION"
+                  name="AWS_BACKUP_LOCATION"
                   placeHolder="S3 Bucket"
                   component={YBTextInputWithLabel}
                   validate={required}
