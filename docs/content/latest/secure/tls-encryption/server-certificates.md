@@ -41,7 +41,7 @@ You should now have three directories, named `127.0.0.1`, `127.0.0.2`, and `127.
 
 ### Create the root configuration file
 
-Create the file `ca.conf` in the `yugabyte-tls-config` directory with the OpenSSL CA configuration.
+Create the file `ca.conf` in the `secure-data` directory with the OpenSSL CA configuration.
 
 ```sh
 $ cat > secure-data/ca.conf
