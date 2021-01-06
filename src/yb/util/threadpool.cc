@@ -46,6 +46,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -612,6 +613,7 @@ void ThreadPool::DispatchThread(bool permanent) {
 
     // Execute the task
     {
+      LongOperationTracker long_operation_tracker("Thread Pool Task", std::chrono::seconds(5));
       MicrosecondsInt64 start_wall_us = GetMonoTimeMicros();
       task.runnable->Run();
       int64_t wall_us = GetMonoTimeMicros() - start_wall_us;
