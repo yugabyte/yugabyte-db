@@ -231,7 +231,7 @@ Now you can generate the node key `node.key` and node certificate `node.crt` for
 ### Generate configuration for each node
 
 Repeat the steps in this section once for each node.
-The IP address of each node is  `<node-ip-address>`
+The IP address of each node is `<node-ip-address>`
 
 1. Generate a configuration file (`node.conf`) for a node, using the node's IP address (`<node-ip-address>`) as the directory name.
 
