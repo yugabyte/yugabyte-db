@@ -1381,7 +1381,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
-  static constexpr int kDefaultYQLPartitionsRefreshBgTaskSleepSecs = 10;
+  rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
