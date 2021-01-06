@@ -16,11 +16,14 @@ DETAIL:  Expected ":", but found "}".
 CONTEXT:  JSON data, line 1: [{"cloud"}...
 -- One of the required keys missing
 CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1"}]');
-ERROR:  Key min_number_of_replicas must be defined in the placement policy
+ERROR:  Required key "min_number_of_replicas" not specified in json object: {"cloud":"cloud1","region":"r1","zone":"z1"}
 -- Invalid value for replication factor
 CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":"three"}]');
 ERROR:  Invalid value for "min_number_of_replicas" key
 DETAIL:  Found "three" but min_replicas_for_block should be  an integer > 0
+-- Invalid keys in the placement policy.
+CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3,"invalid_key":"invalid_value"}]');
+ERROR:  Invalid key "invalid_key" found in json object {"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3,"invalid_key":"invalid_value"}
 -- Positive cases
 CREATE TABLESPACE x LOCATION '/data';
 WARNING:  LOCATION not supported yet and will be ignored
@@ -29,12 +32,12 @@ LINE 1: CREATE TABLESPACE x LOCATION '/data';
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6569. Click '+' on the description to raise its priority
 CREATE TABLESPACE y WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_number_of_replicas":3}]');
 -- describe command
-\db+
-                                                                                                                                  List of tablespaces
-    Name    |  Owner   | Location | Access privileges |                                                                                                Options                                                                                                |   Size    | Description
-------------+----------+----------+-------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------+-------------
- pg_default | postgres |          |                   |                                                                                                                                                                                                       | 608 bytes |
- pg_global  | postgres |          |                   |                                                                                                                                                                                                       | 43 kB     |
- x          | yugabyte |          |                   |                                                                                                                                                                                                       |           |
- y          | yugabyte |          |                   | {"replica_placement=[{\"cloud\":\"cloud1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replicas\":3},{\"cloud\":\"cloud2\",\"region\":\"r2\", \"zone\":\"z2\", \"min_number_of_replicas\":3}]"} |           |
+\db
+       List of tablespaces
+    Name    |  Owner   | Location
+------------+----------+----------
+ pg_default | postgres |
+ pg_global  | postgres |
+ x          | yugabyte |
+ y          | yugabyte |
 (4 rows)
