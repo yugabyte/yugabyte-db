@@ -57,6 +57,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -265,9 +266,15 @@ Status MiniCluster::RestartSync() {
   }
   LOG(INFO) << "Restart master server(s)...";
   for (auto& master_server : mini_masters_) {
+    LOG(INFO) << "Restarting master " << master_server->permanent_uuid();
+    LongOperationTracker long_operation_tracker("Master restart", 5s);
     CHECK_OK(master_server->Restart());
+    LOG(INFO) << "Waiting for catalog manager at " << master_server->permanent_uuid();
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
+  LOG(INFO) << string(80, '-');
+  LOG(INFO) << __FUNCTION__ << " done";
+  LOG(INFO) << string(80, '-');
 
   RETURN_NOT_OK_PREPEND(WaitForAllTabletServers(),
                         "Waiting for tablet servers to start");
