@@ -51,7 +51,6 @@ public class Module extends AbstractModule {
     bind(YBClientService.class).to(LocalYBClientService.class);
     bind(YsqlQueryExecutor.class).asEagerSingleton();
     bind(YcqlQueryExecutor.class).asEagerSingleton();
-
     bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
 
     // We only needed to bind below ones for Platform mode.
@@ -80,6 +79,7 @@ public class Module extends AbstractModule {
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
+      bind(PlatformBackupManager.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

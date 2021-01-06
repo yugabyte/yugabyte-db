@@ -31,7 +31,7 @@ fi
 
 
 # Check whether the script is being run from within a Yugabyte Platform docker container.
-grep 'docker' /proc/1/cgroup > /dev/null 2>&1
+grep -E 'kubepods|docker' /proc/1/cgroup > /dev/null 2>&1
 CONTAINER_CHECK="$?"
 
 if [[ $CONTAINER_CHECK -eq 0 ]] && [[ "$DOCKER_BASED" = false ]]; then
@@ -68,8 +68,13 @@ run_sudo_cmd() {
 # Query prometheus for it's data directory and set as env var
 set_prometheus_data_dir() {
   prometheus_host="$1"
-  PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:9090/api/v1/status/flags" |
+  data_dir="$2"
+  if [[ "$DOCKER_BASED" = true ]]; then
+    PROMETHEUS_DATA_DIR="${data_dir}/prometheusv2"
+  else
+    PROMETHEUS_DATA_DIR=$(curl "http://${prometheus_host}:9090/api/v1/status/flags" |
     python -c "import sys, json; print(json.load(sys.stdin)['data']['storage.tsdb.path'])")
+  fi
   if [[ -z "$PROMETHEUS_DATA_DIR" ]]; then
     echo "Failed to find prometheus data directory"
     exit 1
@@ -149,21 +154,19 @@ create_backup() {
   db_port="$7"
   verbose="$8"
   prometheus_host="$9"
-  exclude_prometheus_flag=""
   exclude_releases_flag=""
-  if [[ "$exclude_prometheus" = true ]]; then
-    exclude_prometheus_flag="--exclude prometheus*"
-  fi
 
   if [[ "$exclude_releases" = true ]]; then
     exclude_releases_flag="--exclude release*"
   fi
 
   exclude_dirs="--exclude postgresql --exclude devops --exclude yugaware/lib \
-  --exclude yugaware/logs"
+  --exclude yugaware/logs --exclude yugaware/README.md --exclude yugaware/bin \
+  --exclude yugaware/conf --exclude backup_*.tgz --exclude helm"
 
   modify_service yb-platform stop
 
+  mkdir -p "${output_path}"
   tar_name="${output_path}/backup_${now}.tgz"
   db_backup_path="${data_dir}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_postgres_backup ${db_backup_path}' RETURN
@@ -172,7 +175,7 @@ create_backup() {
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
     echo "Creating prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}"
+    set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
     snapshot_dir=$(curl -X POST "http://${prometheus_host}:9090/api/v1/admin/tsdb/snapshot" |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
@@ -182,11 +185,9 @@ create_backup() {
   fi
   echo "Creating platform backup package..."
   if [[ "${verbose}" = true ]]; then
-    tar ${exclude_prometheus_flag} ${exclude_releases_flag} ${exclude_dirs} -czvf "${tar_name}" \
-    -C "${data_dir}" .
+    tar ${exclude_releases_flag} ${exclude_dirs} -czvf "${tar_name}" -C "${data_dir}" .
   else
-    tar ${exclude_prometheus_flag} ${exclude_releases_flag} ${exclude_dirs} -czf "${tar_name}" \
-    -C "${data_dir}" .
+    tar ${exclude_releases_flag} ${exclude_dirs} -czf "${tar_name}" -C "${data_dir}" .
   fi
 
   echo "Finished creating backup ${tar_name}"
@@ -201,6 +202,7 @@ restore_backup() {
   db_username="$5"
   verbose="$6"
   prometheus_host="$7"
+  data_dir="$8"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
 
   modify_service yb-platform stop
@@ -218,7 +220,7 @@ restore_backup() {
   # Restore prometheus data.
   if tar -tf "${input_path}" | grep $prometheus_dir_regex; then
     echo "Restoring prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}"
+    set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
     modify_service prometheus stop
     trap 'modify_service prometheus restart' RETURN
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
@@ -238,9 +240,9 @@ restore_backup() {
 }
 
 print_backup_usage() {
-  echo "Create: ${SCRIPT_NAME} create --output <output_path> [options]"
-  echo "<output_path> the directory that the platform backup tar.gz is written to"
+  echo "Create: ${SCRIPT_NAME} create [options]"
   echo "options:"
+  echo "  -o, --output                   the directory that the platform backup is written to (default: ${HOME})"
   echo "  -m, --exclude_prometheus       exclude prometheus metric data from backup (default: false)"
   echo "  -r, --exclude_releases         exclude Yugabyte releases from backup (default: false)"
   echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
@@ -257,7 +259,8 @@ print_restore_usage() {
   echo "Restore: ${SCRIPT_NAME} restore --input <input_path> [options]"
   echo "<input_path> the path to the platform backup tar.gz"
   echo "options:"
-  echo "  -d, --destination=DIRECTORY    where to un-tar the backup (default: /opt/yugabyte)"
+  echo "  -o, --destination=DIRECTORY    where to un-tar the backup (default: /opt/yugabyte)"
+  echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
   echo "  -v, --verbose                  verbose output of script (default: false)"
   echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
@@ -297,6 +300,7 @@ db_username=postgres
 db_host=localhost
 db_port=5432
 prometheus_host=localhost
+data_dir=/opt/yugabyte
 verbose=false
 
 case $command in
@@ -308,8 +312,7 @@ case $command in
     # Default create options.
     exclude_prometheus=false
     exclude_releases=false
-    data_dir=/opt/yugabyte
-    output_path=""
+    output_path="${HOME}"
 
     if [[ $# -eq 0 ]]; then
       print_backup_usage
@@ -326,7 +329,7 @@ case $command in
           exclude_prometheus=true
           shift
           ;;
-        -r|exclude_releases)
+        -r|--exclude_releases)
           exclude_releases=true
           shift
           ;;
@@ -367,12 +370,6 @@ case $command in
       esac
     done
 
-    if [[ -z "$output_path" ]]; then
-      echo "${SCRIPT_NAME}: output_path is required"
-      echo
-      print_backup_usage
-      exit 1
-    fi
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host"
     exit 0
@@ -393,8 +390,12 @@ case $command in
           input_path=$2
           shift 2
           ;;
-        -d|--destination)
+        -o|--destination)
           destination=$2
+          shift 2
+          ;;
+        -d|--data_dir)
+          data_dir=$2
           shift 2
           ;;
         -v|--verbose)
@@ -436,7 +437,7 @@ case $command in
       exit 1
     fi
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
-    "$prometheus_host"
+    "$prometheus_host" "$data_dir"
     exit 0
     ;;
   *)

@@ -8,16 +8,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.common.*;
 import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -47,7 +43,8 @@ public class AppInit {
                  ConfigHelper configHelper, ReleaseManager releaseManager,
                  AWSInitializer awsInitializer, CustomerTaskManager taskManager,
                  YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
-                 TaskGarbageCollector taskGC) throws ReflectiveOperationException {
+                 TaskGarbageCollector taskGC, PlatformBackupManager platformBackupManager
+  ) throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -132,6 +129,10 @@ public class AppInit {
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
+
+      // TODO: (Daniel) - Integrate this with runtime settings once #5975 has landed
+      // Start periodic platform backups
+      platformBackupManager.start();
 
       Logger.info("AppInit completed");
    }
