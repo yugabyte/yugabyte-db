@@ -136,6 +136,28 @@ typedef struct JHashState
 	JsonTokenType saved_token_type;
 } JHashState;
 
+/* State for json_validate_object_keys */
+typedef struct ValidateOkeysState
+{
+	JsonLexContext *lex;
+	/* The set of keys the json object should contain */
+	char	**expected_keys;
+
+	/*
+	 * For 'i' such that 'expected_keys' was found in the
+	 * json object being processed, found_key[i] will be set
+	 * to true, false otherwise.
+	 */
+	bool	*found_key;
+
+	/* Number of keys in 'expected_keys' */
+	int	 num_expected_keys;
+
+	/* The actual json being processed, convenience object
+	 * for printing descriptive error messages */
+	char	*json_text;
+} ValidateOkeysState;
+
 /* hashtable element */
 typedef struct JsonHashEntry
 {
@@ -335,6 +357,17 @@ static int	report_json_context(JsonLexContext *lex);
 static void okeys_object_field_start(void *state, char *fname, bool isnull);
 static void okeys_array_start(void *state);
 static void okeys_scalar(void *state, char *token, JsonTokenType tokentype);
+
+/* semantic action functions for json_validate_object_keys */
+
+/* Invoked whenever the parser encounters the start of a json object */
+static void validate_okeys_object_field_start(void *state, char *fname, bool isnull);
+/* Invoked whenever the parser encounters a json array */
+static void validate_okeys_array_start(void *state);
+/* Invoked whenever a json scalar is encountered by the parser */
+static void validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype);
+/* Invoked whenever a json object has been processed completely by the parser */
+static void validate_okeys_object_end(void *state);
 
 /* semantic action functions for json_get* functions */
 static void get_object_start(void *state);
@@ -808,6 +841,79 @@ okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("cannot call %s on a scalar",
 						"json_object_keys")));
+}
+
+static void
+validate_okeys_object_field_start(void *state, char *fname, bool isnull)
+{
+	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+
+	/* only verifying keys for the top level object */
+	if (_state->lex->lex_level != 1)
+		return;
+
+	/* Verify whether fname matches a key in expected_keys */
+	for (int i = 0; i < _state->num_expected_keys; i++)
+	{
+		if (strcmp(fname, _state->expected_keys[i]) == 0)
+		{
+			/* This is a valid key. Mark that this key is found */
+			_state->found_key[i] = true;
+			return;
+		}
+	}
+
+	ereport(ERROR,
+		(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		errmsg("Invalid key \"%s\" found in json object %s", fname, _state->json_text)));
+}
+
+static void
+validate_okeys_object_end(void *state)
+{
+	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+
+	/* Nothing to do for nested objects */
+	if (_state->lex->lex_level > 0)
+		return;
+
+	/* Since the entire object has been processed, check whether
+	 * all required keys have been found */
+	for (int i = 0; i < _state->num_expected_keys; i++)
+	{
+		if (!_state->found_key[i])
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("Required key \"%s\" not specified in json object: %s",
+					_state->expected_keys[i],
+					_state->json_text)));
+	}
+}
+
+static void
+validate_okeys_array_start(void *state)
+{
+	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+
+	/* top level must be a json object */
+	if (_state->lex->lex_level == 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("Found unexpected JSON array in json object %s",
+				_state->json_text)));
+}
+
+static void
+validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype)
+{
+	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+
+	/* top level must be a json object */
+	if (_state->lex->lex_level == 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("Found unexpected JSON scalar in json object %s",
+				_state->json_text)));
 }
 
 /*
@@ -5445,13 +5551,6 @@ transform_string_values_scalar(void *state, char *token, JsonTokenType tokentype
 }
 
 // Simple JSON text manipulation functions to be used as utility to parse json strings.
-bool
-json_key_exists(text *json, char *key)
-{
-	text *result = get_worker(json, &key, NULL, 1, false);
-	return result != NULL;
-}
-
 text*
 json_get_value(text *json, char *key)
 {
@@ -5466,26 +5565,58 @@ get_json_array_element(text *json, int index)
 
 int get_json_array_length(text *json)
 {
-	AlenState  *state;
+	/* Create a dummy fcinfo to invoke json_array_length */
+	FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(1));
+	fcinfo->args[0].value = PointerGetDatum(json);
+	Datum result = json_array_length(fcinfo);
+	return DatumGetInt32(result);
+}
+
+void validate_json_object_keys(text *json, char **expected_keys, int num_expected_keys)
+{
+	ValidateOkeysState  *state;
 	JsonLexContext *lex;
 	JsonSemAction *sem;
 
-	lex = makeJsonLexContext(json, false);
-	state = palloc0(sizeof(AlenState));
+	lex = makeJsonLexContext(json, true);
+	state = palloc0(sizeof(ValidateOkeysState));
 	sem = palloc0(sizeof(JsonSemAction));
 
-	/* palloc0 does this for us */
-	#if 0
-		state->count = 0;
-	#endif
 	state->lex = lex;
+	state->expected_keys = expected_keys;
+	state->found_key = (bool *) palloc0(num_expected_keys * sizeof(bool));
+	state->num_expected_keys = num_expected_keys;
+	state->json_text = text_to_cstring(json);
 
 	sem->semstate = (void *) state;
-	sem->object_start = alen_object_start;
-	sem->scalar = alen_scalar;
-	sem->array_element_start = alen_array_element_start;
+	/*
+	 * When arrays are encountered, throw error if it is a top level element
+	 * Only a JSON object is expected as of now
+	 */
+	sem->array_start = validate_okeys_array_start;
+
+	/* Throw error if top level json object is just a scalar */
+	sem->scalar = validate_okeys_scalar;
+
+	/*
+	 * When an object field is encountered, check whether the key
+	 * is part of 'expected_keys'
+	 */
+	sem->object_field_start = validate_okeys_object_field_start;
+
+	/*
+	 * When the top level object is completely processed,
+	 * check whether all the expected keys have been found.
+	 */
+	sem->object_end = validate_okeys_object_end;
 
 	pg_parse_json_or_ereport(lex, sem);
 
-	return state->count;
+	pfree(lex->strval->data);
+	pfree(lex->strval);
+	pfree(lex);
+	pfree(sem);
+	pfree(state->found_key);
+	pfree(state);
 }
+

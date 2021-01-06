@@ -119,21 +119,15 @@ validatePlacementConfiguration(const char *value)
 		ereport(ERROR,(errmsg("Invalid number of placement policies %d", length)));
 		return;
 	}
+	char *keys[4] = {"cloud", "region", "zone", "min_number_of_replicas"};
 	for (int i = 0; i < length; ++i) {
 		text *json_element = get_json_array_element(json_array, i);
 
 		// Each element in the array is a placement configuration.
-		// Verify that each such configuration contains all the keys, namely
-		// cloud, region, zone and min_number_of_replicas.
-		char *keys[4] = {"cloud", "region", "zone", "min_number_of_replicas"};
-		for (int j = 0; j < 4; ++j)
-		{
-			if (!json_key_exists(json_element, keys[j])) {
-				ereport(ERROR,(errmsg("Key %s must be defined in the placement policy",
-						      keys[j])));
-				return;
-			}
-		}
+		// Verify that each such configuration contains all the keys in 'keys'
+		// and contains no extraneous keys.
+		validate_json_object_keys(json_element, keys, 4);
+
 		// Validate that min replicas is a valid value.
 		char *min_replicas_str = text_to_cstring(json_get_value(json_element, keys[3]));
 		const int min_replicas = atoi(min_replicas_str);
@@ -146,7 +140,6 @@ validatePlacementConfiguration(const char *value)
 					" an integer > 0", min_replicas_str)));
 				return;
 		}
-		// TODO: Validate that extra keys are not passed?
 	}
 }
 
