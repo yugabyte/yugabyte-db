@@ -1313,6 +1313,10 @@ static Node *create_property_constraint_function(cypher_parsestate *cpstate,
         entity_name = entity->entity.node->name;
     else if (entity->type == ENT_VERTEX)
         entity_name = entity->entity.rel->name;
+    else
+	ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot create a property constraint on non vertex or edge agtype")));
 
     cr->fields = list_make2(makeString(entity_name), makeString("properties"));
 
@@ -2548,9 +2552,6 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
                 parser_errposition(pstate, param->location)));
     }
 
-    if (type != ENT_VERTEX && type != ENT_EDGE)
-        ereport(ERROR, (errmsg_internal("unreconized entity type")));
-
     if (props)
         properties = (Expr *)transform_cypher_expr(cpstate, props,
                                                    EXPR_KIND_INSERT_TARGET);
@@ -2560,6 +2561,8 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
     else if (type == ENT_EDGE)
         properties = (Expr *)build_column_default(
             label_relation, Anum_ag_label_edge_table_properties);
+    else
+	ereport(ERROR, (errmsg_internal("unreconized entity type")));
 
     // add a volatile wrapper call to prevent the optimizer from removing it
     return (Expr *)add_volatile_wrapper(properties);

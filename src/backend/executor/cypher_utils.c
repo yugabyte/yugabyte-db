@@ -138,7 +138,7 @@ static bool find_scan_state_walker(PlanState *p, void *context)
 HeapTuple get_heap_tuple(CustomScanState *node, char *var_name)
 {
     PlanState *ps = find_plan_state(node, var_name);
-    HeapTuple heap_tuple;
+    HeapTuple heap_tuple = NULL;;
 
     switch (ps->type)
     {

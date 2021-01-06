@@ -358,6 +358,11 @@ static void process_update_list(CustomScanState *node)
                                    CStringGetDatum(label_name),
                                    AGTYPE_P_GET_DATUM(agtype_value_to_agtype(altered_properties)));
         }
+	else
+	{
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("age %s clause can only update vertex and edges", clause_name)));
+	}
 
         // update the on-disc table
         heap_tuple = get_heap_tuple(node, update_item->var_name);
