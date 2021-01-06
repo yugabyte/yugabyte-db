@@ -87,8 +87,7 @@ class DownloadCertificateForm extends Component {
 class Certificates extends Component {
   state = {
     showSubmitting: false,
-    selectedCert: {},
-    certificateArray: []
+    selectedCert: {}
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -127,7 +126,7 @@ class Certificates extends Component {
   deleteRootCertificate = (certificateUUID) => {
     api.deleteCertificate(certificateUUID).then(
       () => {
-        this.getCertificateArray()
+        this.props.fetchCustomerCertificates();
       }
     ).catch(
       err => {
@@ -135,40 +134,6 @@ class Certificates extends Component {
       }
     )
   };
-
-  /**
-   * Lifecycle method to fetch iniial data required by compoenent
-   * i.e certificates attached to current user.
-   */
-  componentDidMount() {
-    this.getCertificateArray();
-  }
-
-  /**
-   * Fetch certificates attched to current user.
-   */
-  getCertificateArray = () => {
-    api.getCertificates().then(
-      response => {
-        const certificateArray  = response
-        ? response.map((cert) => {
-          return {
-            type: cert.certType,
-            uuid: cert.uuid,
-            name: cert.label,
-            expiryDate: cert.expiryDate,
-            certificate: cert.certificate,
-            creationTime: cert.startDate,
-            privateKey: cert.privateKey,
-            customCertInfo: cert.customCertInfo,
-            removable: cert.removable
-          };
-        })
-        : [];
-      this.setState({ certificateArray: certificateArray})
-      }
-    );
-  }
 
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
@@ -222,12 +187,28 @@ class Certificates extends Component {
 
   render() {
     const {
-      customer: { currentCustomer },
+      customer: { currentCustomer, userCertificates },
       modal: { showModal, visibleModal },
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting, certificateArray } = this.state;
+    const { showSubmitting } = this.state;
+
+    const certificateArray = getPromiseState(userCertificates).isSuccess()
+      ? userCertificates.data.map((cert) => {
+        return {
+          type: cert.certType,
+          uuid: cert.uuid,
+          name: cert.label,
+          expiryDate: cert.expiryDate,
+          certificate: cert.certificate,
+          creationTime: cert.startDate,
+          privateKey: cert.privateKey,
+          customCertInfo: cert.customCertInfo,
+          removable: cert.removable
+        };
+      })
+      : [];
 
     return (
       <div id="page-wrapper">
