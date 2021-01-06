@@ -15,7 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,9 +31,9 @@ public class InstanceType extends Model {
 
   public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of(
     "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
-  static final String YB_VOLUME_INFO_VOLUME_COUNT_KEY = "yb.volumeInfo.volume_count";
-  static final String YB_VOLUME_INFO_VOLUME_SIZE_GB_KEY = "yb.volumeInfo.volume_size_gb";
-  private ConfigFactory config;
+  static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
+  static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
+  private Config config;
 
   public enum VolumeType {
     @EnumValue("EBS")
@@ -50,7 +50,7 @@ public class InstanceType extends Model {
   }
 
   @Inject
-  public InstanceType(ConfigFactory config) {
+  public InstanceType(Config config) {
     this.config = config;
   }
 
@@ -181,8 +181,8 @@ public class InstanceType extends Model {
   private static void populateDefaultIfEmpty(InstanceType instanceType) {
     if (instanceType.instanceTypeDetailsJson.isEmpty()) {
       instanceType.instanceTypeDetails.setVolumeDetailsList(
-        instanceType.config.load().getInt(YB_VOLUME_INFO_VOLUME_COUNT_KEY),
-        instanceType.config.load().getInt(YB_VOLUME_INFO_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
+        instanceType.config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
+        instanceType.config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
     }
   }
 
