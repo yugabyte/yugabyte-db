@@ -186,8 +186,7 @@ components:
               play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               db {
-                default.url="jdbc:postgresql://{{repl HostPrivateIpAddress "db" "postgres" }}:5432/yugaware"
-                default.driver=org.postgresql.Driver
+                default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
@@ -230,7 +229,7 @@ components:
 
               yb {
                 devops.home = /opt/yugabyte/devops
-                metrics.url = "http://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090/api/v1"
+                metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
