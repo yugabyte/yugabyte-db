@@ -13,9 +13,12 @@ CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","z
 -- Invalid value for replication factor
 CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":"three"}]');
 
+-- Invalid keys in the placement policy.
+CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3,"invalid_key":"invalid_value"}]');
+
 -- Positive cases
 CREATE TABLESPACE x LOCATION '/data';
 CREATE TABLESPACE y WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_number_of_replicas":3}]');
 
 -- describe command
-\db+
+\db
