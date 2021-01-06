@@ -45,6 +45,7 @@ typedef struct
 	bool	isprimary;		/* are we building a primary index? */
 	double	index_tuples;	/* # of tuples inserted into index */
 	bool	is_backfill;	/* are we concurrently backfilling an index? */
+	uint64_t *write_time;	/* write time for rows written to index */
 } YBCBuildState;
 
 /*
@@ -111,7 +112,8 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 							  values,
 							  isnull,
 							  heapTuple->t_ybctid,
-							  buildstate->is_backfill);
+							  buildstate->is_backfill,
+							  buildstate->write_time);
 
 	buildstate->index_tuples += 1;
 }
@@ -152,6 +154,8 @@ ybcinbackfill(Relation heap,
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
 	buildstate.is_backfill = true;
+	/* Backfilled rows should be as if they happened at the time of backfill */
+	buildstate.write_time = read_time;
 	heap_tuples = IndexBackfillHeapRangeScan(heap,
 											 index,
 											 indexInfo,
@@ -184,7 +188,8 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 							  values,
 							  isnull,
 							  ybctid,
-							  false /* is_backfill */);
+							  false /* is_backfill */,
+							  NULL /* read_time */);
 
 	return index->rd_index->indisunique ? true : false;
 }
