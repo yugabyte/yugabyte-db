@@ -123,7 +123,7 @@ class Certificates extends Component {
    * 
    * @param certificateUUID Unique id of certificate.
    */
-  deleteRootCertificate = (certificateUUID) => {
+  deleteCertificate = (certificateUUID) => {
     api.deleteCertificate(certificateUUID).then(
       () => {
         this.props.fetchCustomerCertificates();
@@ -175,7 +175,7 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => { 
-            !deleteDisabled && this.deleteRootCertificate(payload?.uuid)
+            !deleteDisabled && this.deleteCertificate(payload?.uuid)
           }}
           disabled={deleteDisabled}
         >
