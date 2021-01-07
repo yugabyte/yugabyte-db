@@ -61,6 +61,7 @@
 #include "parser/parser.h"
 #include "parser/parse_expr.h"
 #include "storage/lmgr.h"
+#include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/numeric.h"
@@ -8246,7 +8247,7 @@ BackfillIndexStmt:
 						char *nptr = $6;
 						char *end;
 						errno = 0;
-						n->read_time = strtoul(nptr, &end, 10);
+						n->read_time = pg_strtouint64(nptr, &end, 10);
 						if (!(*nptr != '\0' && *end == '\0')
 								|| errno == ERANGE)
 							ereport(ERROR,

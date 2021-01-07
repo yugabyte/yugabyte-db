@@ -127,6 +127,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
@@ -2166,7 +2167,8 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     const CoarseTimePoint deadline,
     const HybridTime read_time,
     const HostPort& pgsql_proxy_bind_address,
-    const std::string& database_name) {
+    const std::string& database_name,
+    const uint64_t postgres_auth_key) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2181,14 +2183,16 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
         "YSQL index backfill does not support backfill_from, yet");
   }
 
-  // Construct connection string.
-  // TODO(jason): handle "yugabyte" role being password protected
+  // Construct connection string.  Note that the plain password in the connection string will be
+  // sent over the wire, but since it only goes over a unix-domain socket, there should be no
+  // eavesdropping/tampering issues.
   std::string conn_str = Format(
-      "dbname=$0 host=$1 port=$2 user=$3",
-      pgwrapper::PqEscapeLiteral(database_name),
-      pgsql_proxy_bind_address.host(),
+      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+      "postgres",
+      postgres_auth_key,
+      PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
       pgsql_proxy_bind_address.port(),
-      "yugabyte");
+      pgwrapper::PqEscapeLiteral(database_name));
   VLOG(1) << __func__ << ": libpq connection string: " << conn_str;
 
   // Construct query string.
