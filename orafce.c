@@ -42,7 +42,7 @@ _PG_init(void)
 									"GMT",
 									PGC_USERSET,
 									0,
-									check_timezone, NULL, show_timezone);
+									check_timezone, NULL, NULL);
 
 	DefineCustomBoolVariable("orafce.varchar2_null_safe_concat",
 									"Specify timezone used for sysdate function.",
