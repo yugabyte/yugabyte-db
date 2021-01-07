@@ -23,6 +23,7 @@
 #include <gflags/gflags.h>
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/common_flags.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -30,6 +31,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
@@ -242,10 +244,16 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
 
-  // Enforce a default hba configuration, so users don't lock themselves out.
+  // Enforce a default hba configuration so users don't lock themselves out.
   if (lines.empty()) {
     lines.push_back("host all all 0.0.0.0/0 trust");
     lines.push_back("host all all ::0/0 trust");
+  }
+
+  // Add comments to the hba config file noting the internally hardcoded config line.
+  if (!FLAGS_ysql_disable_index_backfill) {
+    lines.push_back("# Internal configuration:");
+    lines.push_back("# local all postgres yb-tserver-key");
   }
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
@@ -311,8 +319,6 @@ Status PgWrapper::Start() {
     "-D", conf_.data_dir,
     "-p", std::to_string(conf_.pg_port),
     "-h", conf_.listen_addresses,
-    // Disable listening on a UNIX domain socket
-    "-k", ""
   };
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
@@ -321,6 +327,22 @@ Status PgWrapper::Start() {
           << EXPR_VALUE_FOR_LOG(FLAGS_log_dir.empty()) << ", "
           << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
           << EXPR_VALUE_FOR_LOG(log_to_file);
+
+  // Configure UNIX domain socket.
+  argv.push_back("-k");
+  if (FLAGS_ysql_disable_index_backfill) {
+    // Disable listening on a UNIX domain socket.
+    argv.push_back("");
+  } else {
+    // Set up a unix domain socket for index backfill tserver-postgres communication.
+    const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
+    RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
+    argv.push_back(socket_dir);
+
+    // Also tighten permissions on the socket.
+    argv.push_back("-c");
+    argv.push_back("unix_socket_permissions=0700");
+  }
 
   if (log_to_file) {
     argv.push_back("-c");

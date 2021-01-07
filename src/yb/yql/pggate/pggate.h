@@ -101,6 +101,7 @@ class PgApiImpl {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion();
+  Result<uint64_t> GetSharedAuthKey();
 
   // Setup the table to store sequences data.
   CHECKED_STATUS CreateSequencesDataTable();

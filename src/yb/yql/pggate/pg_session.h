@@ -297,9 +297,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  // Returns the local tserver's catalog version stored in shared memory, or an error if
-  // the shared memory has not been initialized (e.g. in initdb).
+  // Return the local tserver's catalog version stored in shared memory or an error if the shared
+  // memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
+  // Return the local tserver's postgres authentication key stored in shared memory or an error if
+  // the shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedAuthKey();
 
   using YbctidReader =
       std::function<Result<std::vector<std::string>>(PgOid, const std::vector<Slice>&)>;

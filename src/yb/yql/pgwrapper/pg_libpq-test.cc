@@ -3013,39 +3013,53 @@ TEST_F_EX(PgLibPqTest,
   create_index_thread.join();
 }
 
-// Override the index backfill test to enable authentication.  Flags taken from
-// <https://docs.yugabyte.com/latest/secure/authentication/password-authentication/> and modified to
-// allow postgres role unconditionally.
+// Override the index backfill test to have different HBA config:
+// 1. if any user tries to access the authdb database, enforce md5 auth
+// 2. if the postgres user tries to access the yugabyte database, allow it
+// 3. if the yugabyte user tries to access the yugabyte database, allow it
+// 4. otherwise, disallow it
 class PgLibPqTestIndexBackfillAuth : public PgLibPqTestIndexBackfill {
  public:
   PgLibPqTestIndexBackfillAuth() {
-    more_tserver_flags.push_back("--ysql_hba_conf="
-                                 "host yugabyte postgres 0.0.0.0/0 trust,"
-                                 "host yugabyte postgres ::0/0 trust,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 md5,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 scram-sha-256,"
-                                 "host yugabyte yugabyte ::0/0 md5,"
-                                 "host yugabyte yugabyte ::0/0 scram-sha-256");
-    more_tserver_flags.push_back("--ysql_pg_conf=password_encryption=scram-sha-256");
+    more_tserver_flags.push_back(
+        Format(
+          "--ysql_hba_conf="
+          "host $0 all all md5,"
+          "host yugabyte postgres all trust,"
+          "host yugabyte yugabyte all trust",
+          kAuthDbName));
   }
+
+  const std::string kAuthDbName = "authdb";
 };
 
 // Test backfill on clusters where the yugabyte role has authentication enabled.
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(BackfillAuth),
           PgLibPqTestIndexBackfillAuth) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
+  const std::string& kTableName = "t";
 
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  LOG(INFO) << "create " << this->kAuthDbName << " database";
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", this->kAuthDbName));
+  }
 
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
+  LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
+  {
+    const std::string& host = pg_ts->bind_host();
+    const uint16_t port = pg_ts->pgsql_rpc_port();
 
-// TODO(jason): expect success when closing issue #5324.
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find(
-      "backfill query couldn't be sent") != std::string::npos) << status;
+    auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+        "yugabyte",
+        "yugabyte",
+        host,
+        port,
+        this->kAuthDbName)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+  }
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch

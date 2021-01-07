@@ -1234,6 +1234,10 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
 }
 
+Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
+  return pg_session_->GetSharedAuthKey();
+}
+
 // Transaction Control -----------------------------------------------------------------------------
 Status PgApiImpl::BeginTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
