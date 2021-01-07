@@ -6,9 +6,9 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import * as moment from 'moment';
 import { sortBy, values } from 'lodash';
 
-import { YBLoading } from '../../../../components/common/indicators';
-import TreeNode from '../../../../components/common/TreeNode';
-import { YBPanelItem } from '../../../../components/panels';
+import { YBLoading } from '../../../common/indicators';
+import TreeNode from '../../../common/TreeNode';
+import { YBPanelItem } from '../../../panels';
 import { Panel } from 'react-bootstrap';
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
@@ -17,7 +17,7 @@ import { isDisabled } from '../../../../utils/LayoutUtils';
 
 import './UniverseHealthCheckList.scss';
 
-const UniverseHealthCheckList = (props) => {
+export const UniverseHealthCheckList = (props) => {
   const {
     universe: { healthCheck, currentUniverse },
     currentCustomer
@@ -58,7 +58,7 @@ const UniverseHealthCheckList = (props) => {
 
   return (
     <YBPanelItem
-      className=" UniverseHealthCheckList"
+      className="UniverseHealthCheckList"
       header={
         <div className="clearfix">
           <Row>
@@ -273,5 +273,3 @@ const getNodesWithInactiveCrons = (universe) => {
 };
 
 const getKeyForCheck = (check) => `${check.node}-${check.process}-${check.message}`;
-
-export default UniverseHealthCheckList;
