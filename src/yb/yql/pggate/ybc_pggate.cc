@@ -893,6 +893,10 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
 
+YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
+  return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
+}
+
 int32_t YBCGetMaxReadRestartAttempts() {
   return FLAGS_ysql_max_read_restart_attempts;
 }
