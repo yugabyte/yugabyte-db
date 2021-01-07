@@ -36,6 +36,7 @@
         "editGFlags": "disabled",
         "readReplica": "disabled",
         "manageEncryption": "disabled",
+        "restartUniverse": "disabled",
         "metricsInterval": 15000,
         "editUniverse": "hidden",
         "deleteUniverse": "disabled"

@@ -100,7 +100,7 @@ export default class EncryptionKeyModal extends Component {
             submitLabel={'Submit'}
             cancelLabel={'Close'}
             showCancelButton={true}
-            title={'Manage Keys'}
+            title="Manage Encryption at-Rest"
           >
             <div className="manage-key-container">
               <Row>

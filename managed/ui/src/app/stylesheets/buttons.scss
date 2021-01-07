@@ -404,6 +404,10 @@ pre {
   li {
     a,
     div {
+      display: block;
+      clear: both;
+      color: $YB_TEXT_BLACK;
+      white-space: nowrap;
       padding: 15px 20px;
       height: 52px;
       font-weight: 300;
@@ -502,7 +506,7 @@ pre {
     border-collapse: separate;
     -webkit-transition: all .3s;
     transition: all .3s;
-  
+
     &:after {
       position: absolute;
       display: table;

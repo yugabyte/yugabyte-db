@@ -9,3 +9,15 @@
 .time-delay-container {
   width: 90%;
 }
+
+.modal-body .rolling-upgrade-form {
+  .form-item-label {
+    min-width: 165px;
+    padding: 0;
+    vertical-align: middle;
+  }
+
+  .yb-field-group {
+    padding: 4px 0;
+  }
+}

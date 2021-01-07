@@ -66,6 +66,12 @@ const mapDispatchToProps = (dispatch) => {
     showRunSampleAppsModal: () => {
       dispatch(openDialog('runSampleAppsModal'));
     },
+    showTLSConfigurationModal: () => {
+      dispatch(openDialog('tlsConfigurationModal'));
+    },
+    showRollingRestartModal: () => {
+      dispatch(openDialog('rollingRestart'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
       dispatch(closeUniverseDialog());
