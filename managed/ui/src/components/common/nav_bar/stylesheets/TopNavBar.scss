@@ -121,8 +121,8 @@
 }
 
 .dropdown-menu {
-  > li {
-    > a {
+  li {
+    a {
       &:hover,
       &:focus {
         color: $YB_TEXT_COLOR;
@@ -131,7 +131,7 @@
       }
     }
 
-    > div {
+    div {
       &,
       &:hover,
       &:focus {
@@ -141,14 +141,14 @@
     }
   }
 
-  > li.disabled {
+  li.disabled {
     i {
       color: $YB_GRAY_HOVER !important;
     }
   }
 
-  > .active {
-    > a {
+  .active {
+    a {
       background-color: inherit;
       color: $YB_TEXT_COLOR;
       &:hover,
@@ -158,7 +158,7 @@
       }
     }
   }
-  > .divider {
+  .divider {
     margin-top: 0;
     margin-bottom: 0;
   }
