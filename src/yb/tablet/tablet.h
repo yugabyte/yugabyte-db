@@ -206,7 +206,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const CoarseTimePoint deadline,
       const HybridTime read_time,
       const HostPort& pgsql_proxy_bind_address,
-      const std::string& database_name);
+      const std::string& database_name,
+      const uint64_t postgres_auth_key);
   Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
                                       const std::string& backfill_from,
                                       const CoarseTimePoint deadline,

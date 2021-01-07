@@ -58,6 +58,7 @@
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -414,6 +415,32 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
+
+	/*
+	 * For tserver-postgres libpq connection, only authorize certain queries.
+	 */
+	if (IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates() &&
+		MyProcPort->yb_is_tserver_auth_method)
+	{
+		switch (nodeTag(parsetree))
+		{
+			case T_BackfillIndexStmt:
+			{
+				BackfillIndexStmt *stmt = (BackfillIndexStmt *) parsetree;
+				BackfillIndex(stmt);
+			}
+			break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("yb-tserver cannot run this query: %s",
+								CreateCommandTag(parsetree))));
+		}
+		free_parsestate(pstate);
+		return;
+	}
 
 	switch (nodeTag(parsetree))
 	{
@@ -842,10 +869,13 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_BackfillIndexStmt:
-			{
-				BackfillIndexStmt *stmt = (BackfillIndexStmt *) parsetree;
-				BackfillIndex(stmt);
-			}
+			Assert(IsYugaByteEnabled());
+			Assert(!IsBootstrapProcessingMode());
+			Assert(!YBIsPreparingTemplates());
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("backfill can only be run internally by"
+							" yb-tserver")));
 			break;
 
 			/*

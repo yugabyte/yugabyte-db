@@ -776,15 +776,14 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
-    // TODO(jason): handle missing pgsql_proxy_bind_address (I think it is possible when disabling
-    // YSQL).
     resume_from = tablet.peer->tablet()->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
         deadline,
         read_at,
         server_->pgsql_proxy_bind_address(),
-        req->namespace_name());
+        req->namespace_name(),
+        server_->GetSharedMemoryPostgresAuthKey());
   } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
     resume_from = tablet.peer->tablet()->BackfillIndexes(
         indexes_to_backfill, req->start_key(), deadline, read_at);
