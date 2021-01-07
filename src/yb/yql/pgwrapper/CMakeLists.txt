@@ -13,10 +13,10 @@
 
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
-
 set(PGWRAPPER_LIBS
-    yb_util
-    yb_pggate_flags)
+    yb_common
+    yb_pggate_flags
+    yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
