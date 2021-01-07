@@ -136,6 +136,11 @@ export function isKubernetesUniverse(currentUniverse) {
   );
 }
 
+export const isOnpremUniverse = (universe) => {
+  const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
+  return cluster?.userIntent?.providerType === 'onprem';
+};
+
 // Reads file and passes content into Promise.resolve
 export const readUploadedFile = (inputFile, isRequired) => {
   const fileReader = new FileReader();
@@ -161,4 +166,4 @@ export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) =>
     href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
   }
   return href;
-}
+};
