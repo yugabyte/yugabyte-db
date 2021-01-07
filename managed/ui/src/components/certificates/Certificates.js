@@ -179,7 +179,7 @@ class Certificates extends Component {
           }}
           disabled={deleteDisabled}
         >
-          <i className="fa fa-trash"></i> Delete Root CA Cert
+          <i className="fa fa-trash"></i> Delete Cert
         </MenuItem>
       </DropdownButton>
     );
