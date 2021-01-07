@@ -14,6 +14,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The node can brought back to life on a new backing instance using the **Add Node** option from the **Actions** drop-down list for the `Decommissioned` node. For IaaS, like AWS and GCP, Yugabyte Platform will spawn with the existing node instance type in the correct/existing region and zone of that node. After the end of the operation, the node will have `yb-master` and `yb-tserver` processes running along with some data that is load balanced onto this node and status will be marked as `Live`. Note that the node name is reused and is part of the healthy cluster now.
+## Step 1
+From the main universe overview page click on **More** &rarr; *Edit Universe*
 
-![Add Node Actions](/images/ee/node-actions-add-node.png)
+![Add Node Actions](/images/ee/node-actions-add-node-1.png)
+
+## Step 2
+Under the nodes section, increase it buy the number of nodes you wish to add and click save at the bottom of the screen
+
+![Add Node Actions](/images/ee/node-actions-add-node-2.png)
+
+## Step 3
+Once done, go back to the nodes tab and you will see the node added to the cluster.  It will go through various stages such as installing the software, etc.  Once complete, the node will show as *Live*. 
+
+![Add Node Actions](/images/ee/node-actions-add-node-3.png)
