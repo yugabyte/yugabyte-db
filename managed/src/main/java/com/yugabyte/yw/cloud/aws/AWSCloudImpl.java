@@ -2,13 +2,15 @@ package com.yugabyte.yw.cloud.aws;
 
 import com.amazonaws.auth.*;
 import com.amazonaws.services.ec2.AmazonEC2;
+import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DescribeRegionsResult;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ec2.model.*;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,24 @@ class AWSCloudImpl implements CloudAPI {
       .withCredentials(credentialsProvider)
       .build();
   }
+
+  @Override
+  public boolean isAWSValidCredentials(Map<String, String> config) {
+    BasicAWSCredentials awsCreds = new BasicAWSCredentials(config.get("AWS_ACCESS_KEY_ID"),
+      config.get("AWS_SECRET_ACCESS_KEY"));
+    try {
+      AmazonEC2 ec2Client = AmazonEC2ClientBuilder
+        .standard()
+        .withCredentials(new AWSStaticCredentialsProvider(awsCreds))
+        .withRegion(Regions.US_EAST_1)
+        .build();
+      DescribeRegionsResult regions_response = ec2Client.describeRegions();
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
 
   // TODO: move to some common utils
   private static AWSCredentialsProvider getCredsOrFallbackToDefault(String accessKeyId,

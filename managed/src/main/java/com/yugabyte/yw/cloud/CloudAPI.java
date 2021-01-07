@@ -44,4 +44,12 @@ public interface CloudAPI {
     Provider provider,
     Map<Region, Set<String>> azByRegionMap,
     Set<String> instanceTypesFilter);
+
+  /**
+   * Check whether AWS credentials(AWS access key and Secret Key) are valid or not.
+   *
+   * @param config The AWS credentials info.
+   * @return true if credentials are valid otherwise return false.
+   */
+  boolean isAWSValidCredentials(Map<String, String> config);
 }
