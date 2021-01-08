@@ -63,7 +63,7 @@ public class UnivSetCertificate extends UniverseTaskBase {
       };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
-      saveUniverseDetails(updater);
+      Universe.saveDetails(taskParams().universeUUID, updater);
 
     } catch (Exception e) {
       String msg = getName() + " failed with exception "  + e.getMessage();
