@@ -21,7 +21,7 @@ const storageConfigTypes = {
     title: 'NFS Storage',
     fields: [
       {
-        id: 'NFS_BACKUP_LOCATION',
+        id: 'BACKUP_LOCATION',
         label: 'NFS Storage Path',
         placeHolder: 'NFS Storage Path'
       }
@@ -31,7 +31,7 @@ const storageConfigTypes = {
     title: 'GCS Storage',
     fields: [
       {
-        id: 'GCS_BACKUP_LOCATION',
+        id: 'BACKUP_LOCATION',
         label: 'GCS Bucket',
         placeHolder: 'GCS Bucket'
       },
@@ -46,7 +46,7 @@ const storageConfigTypes = {
     title: 'Azure Storage',
     fields: [
       {
-        id: 'AZ_BACKUP_LOCATION',
+        id: 'BACKUP_LOCATION',
         label: 'Container URL',
         placeHolder: 'Container URL'
       },
@@ -81,6 +81,7 @@ const getTabTitle = (configName) => {
 };
 
 class StorageConfiguration extends Component {
+
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
@@ -105,19 +106,49 @@ class StorageConfiguration extends Component {
   addStorageConfig = (values, action, props) => {
     const type =
       (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
-    Object.keys(values).forEach((key) => {
+      Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
     });
     const dataPayload = { ...values };
-    if (props.activeTab === 's3') {
-      if (values['IAM_INSTANCE_PROFILE']) {
+
+    // These conditions will remove all the non-required JSON keys from
+    // the respective tab.
+    switch (props.activeTab) {
+      case 'nfs':
         delete dataPayload['AWS_ACCESS_KEY_ID'];
         delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-      }
-      if ('IAM_INSTANCE_PROFILE' in dataPayload) {
-        dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
-      }
+        delete dataPayload['AWS_HOST_BASE'];
+        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
+        delete dataPayload['GCS_CREDENTIALS_JSON'];
+        break;
+
+      case 'gcs':
+        delete dataPayload['AWS_ACCESS_KEY_ID'];
+        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
+        delete dataPayload['AWS_HOST_BASE'];
+        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
+        break;
+
+      case 'az':
+        delete dataPayload['AWS_ACCESS_KEY_ID'];
+        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
+        delete dataPayload['AWS_HOST_BASE'];
+        delete dataPayload['GCS_CREDENTIALS_JSON'];
+        break;
+
+      default:
+        delete dataPayload['GCS_CREDENTIALS_JSON'];
+        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
+        if (values['IAM_INSTANCE_PROFILE']) {
+          delete dataPayload['AWS_ACCESS_KEY_ID'];
+          delete dataPayload['AWS_SECRET_ACCESS_KEY'];
+        }
+
+        if ('IAM_INSTANCE_PROFILE' in dataPayload) {
+          dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+        }
+        break;
     }
 
     return this.props
@@ -170,8 +201,15 @@ class StorageConfiguration extends Component {
       getPromiseState(customerConfigs).isEmpty()
     ) {
       const configs = [
-        <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
-          <AwsStorageConfiguration {...this.props} deleteStorageConfig={this.deleteStorageConfig} />
+        <Tab
+          eventKey={'s3'}
+          title={getTabTitle('S3')}
+          key={'s3-tab'}
+          unmountOnExit={true}>
+          <AwsStorageConfiguration
+            {...this.props}
+            deleteStorageConfig={this.deleteStorageConfig}
+          />
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
@@ -258,7 +296,6 @@ class StorageConfiguration extends Component {
               </Row>
             );
           });
-
           configs.push(this.wrapFields(configFields, configName));
         }
       });
