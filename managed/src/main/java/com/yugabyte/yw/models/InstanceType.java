@@ -33,7 +33,6 @@ public class InstanceType extends Model {
     "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
   static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
   static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
-  private Config config;
 
   public enum VolumeType {
     @EnumValue("EBS")
@@ -47,11 +46,6 @@ public class InstanceType extends Model {
 
     @EnumValue("NVME")
     NVME
-  }
-
-  @Inject
-  public InstanceType(Config config) {
-    this.config = config;
   }
 
   public InstanceType(){}
@@ -178,11 +172,11 @@ public class InstanceType extends Model {
     return p -> supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
   }
 
-  private static void populateDefaultIfEmpty(InstanceType instanceType) {
+  private static void populateDefaultIfEmpty(InstanceType instanceType, Config config) {
     if (instanceType.instanceTypeDetailsJson.isEmpty()) {
       instanceType.instanceTypeDetails.setVolumeDetailsList(
-        instanceType.config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
-        instanceType.config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
+        config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
+        config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
     }
   }
 
@@ -199,8 +193,21 @@ public class InstanceType extends Model {
       entries = entries.stream()
         .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
         .collect(Collectors.toList());
+    }
+
+    return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
+      entry.getInstanceTypeCode())).collect(Collectors.toList());
+  }
+
+  /**
+   * TODO: Please remove this method when we have helperMethod in place to get config details
+   * Query Helper to find supported instance types for a given cloud provider.
+   */
+  public static List<InstanceType> findByProvider(Provider provider, Config config) {
+    List<InstanceType> entries = findByProvider(provider);
+    if (provider.code.equals("aws")) {
       for (InstanceType instanceType : entries) {
-        populateDefaultIfEmpty(instanceType);
+        populateDefaultIfEmpty(instanceType, config);
       }
     }
 
