@@ -13,23 +13,21 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import java.util.UUID;
 
-import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
-public class UnivSetCertificate extends AbstractTaskBase {
+public class UnivSetCertificate extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UnivSetCertificate.class);
 
   // Parameters for marking universe update as a success.
-  public static class Params extends AbstractTaskParams {
-    // The universe against which the cert should be updated.
-    public UUID universeUUID;
+  public static class Params extends UniverseTaskParams {
     // The new cert.
     public UUID certUUID;
   }
@@ -65,7 +63,7 @@ public class UnivSetCertificate extends AbstractTaskBase {
       };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
-      Universe.saveDetails(taskParams().universeUUID, updater);
+      saveUniverseDetails(updater);
 
     } catch (Exception e) {
       String msg = getName() + " failed with exception "  + e.getMessage();

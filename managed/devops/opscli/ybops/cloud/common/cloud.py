@@ -185,6 +185,7 @@ class AbstractCloud(AbstractCommandParser):
     def compare_root_certs(self, extra_vars, ssh_options):
         has_openssl = True
         root_cert_path = extra_vars["root_cert_path"]
+        certs_node_dir = extra_vars["certs_node_dir"]
         yb_root_cert_path = os.path.join(certs_node_dir, self.ROOT_CERT_NAME)
         remote_shell = RemoteShell(ssh_options)
         try:
