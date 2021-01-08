@@ -53,13 +53,16 @@ export default class AZPlacementInfo extends Component {
     placementInfo: PropTypes.object.isRequired
   };
   render() {
-    const { placementInfo, placementCloud } = this.props;
-    if (!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) {
+    const { placementInfo, placementCloud, providerCode } = this.props;
+    let currentStatusType;
+
+    // If placementInfo and placementCloud is empty and provier is not onprem then return
+    if ((!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) && providerCode !== "onprem") {
       return <span />;
     }
 
     const replicationFactor = placementInfo.replicationFactor;
-    const regionList = placementCloud.regionList;
+    const regionList = placementCloud?.regionList;
     let multiRegion = true;
     let multiAz = true;
 
@@ -67,34 +70,36 @@ export default class AZPlacementInfo extends Component {
     // contains a majority of tablet replicas. This determines whether the current config will
     // result in a cluster that is resilient to AZ or Region level failures while still maintaining
     // quorum.
-    regionList.forEach((region) => {
-      const azList = region.azList;
-      let regionNumReplicas = 0;
-      azList.forEach((az) => {
-        regionNumReplicas += az.replicationFactor;
+    if (regionList) {
+      regionList.forEach((region) => {
+        const azList = region.azList;
+        let regionNumReplicas = 0;
+        azList.forEach((az) => {
+          regionNumReplicas += az.replicationFactor;
+          if (replicationFactor % 2 === 0) {
+            if (replicationFactor / 2 < az.replicationFactor) {
+              multiAz = false;
+            }
+          } else {
+            if ((replicationFactor - 1) / 2 < az.replicationFactor) {
+              multiAz = false;
+            }
+          }
+        });
+  
         if (replicationFactor % 2 === 0) {
-          if (replicationFactor / 2 < az.replicationFactor) {
-            multiAz = false;
+          if (replicationFactor / 2 < regionNumReplicas) {
+            multiRegion = false;
           }
         } else {
-          if ((replicationFactor - 1) / 2 < az.replicationFactor) {
-            multiAz = false;
+          if ((replicationFactor - 1) / 2 < regionNumReplicas) {
+            multiRegion = false;
           }
         }
       });
+    }
+    
 
-      if (replicationFactor % 2 === 0) {
-        if (replicationFactor / 2 < regionNumReplicas) {
-          multiRegion = false;
-        }
-      } else {
-        if ((replicationFactor - 1) / 2 < regionNumReplicas) {
-          multiRegion = false;
-        }
-      }
-    });
-
-    let currentStatusType;
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;
     } else if (replicationFactor === 1) {
