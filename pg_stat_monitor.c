@@ -2367,8 +2367,8 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 		memset(&walusage, 0, sizeof(WalUsage));
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
 		if (PGSM_ENABLED == 1)
-			pgss_store(query_string,				/* query text */
-						parse->queryId,				/* query id */
+			pgss_store(parse->queryId,				/* query id */
+						query_string,				/* query text */
 						0, 							/* error elevel */
 						0, 							/* error sqlcode */
 						NULL, 						/* error message */
