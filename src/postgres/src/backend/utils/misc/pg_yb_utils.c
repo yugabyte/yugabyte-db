@@ -923,9 +923,9 @@ YBDecrementDdlNestingLevel(bool success,
 	}
 }
 
-static bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                        bool *is_catalog_version_increment,
-                                        bool *is_breaking_catalog_change)
+bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
+                                 bool *is_catalog_version_increment,
+                                 bool *is_breaking_catalog_change)
 {
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
