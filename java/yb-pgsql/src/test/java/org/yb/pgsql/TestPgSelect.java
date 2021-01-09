@@ -323,7 +323,7 @@ public class TestPgSelect extends BasePgSQLTest {
                                              String stmt,
                                              boolean pushdown_expected) throws Exception {
     verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
-                          pushdown_expected ? 1 : 0, 1, true);
+                          pushdown_expected ? 1 : 0, 1, 1, true);
   }
 
   private Long getCountForTable(String metricName, String tableName) throws Exception {

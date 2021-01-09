@@ -84,7 +84,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
   protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
   protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
+  protected static final String BEGIN_STMT_METRIC = METRIC_PREFIX + "BeginStmt";
+  protected static final String COMMIT_STMT_METRIC = METRIC_PREFIX + "CommitStmt";
+  protected static final String ROLLBACK_STMT_METRIC = METRIC_PREFIX + "RollbackStmt";
   protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
+  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC =
+      METRIC_PREFIX + "Single_Shard_Transactions";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
@@ -632,19 +637,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Time execution of a query. */
   protected long verifyStatementMetric(
-    Statement statement, String query, String metricName,
-    int queryMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
+    Statement statement, String query, String metricName, int queryMetricDelta,
+    int singleShardTxnMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
     return verifyQuery(
       statement, query, validStmt,
+      new MetricCountChecker(
+          SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta),
       new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
       new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
   }
 
   protected void verifyStatementTxnMetric(
-    Statement statement, String query, int txnMetricDelta) throws Exception {
+    Statement statement, String query, int singleShardTxnMetricDelta) throws Exception {
     verifyQuery(
       statement, query,true,
-      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta));
+      new MetricCountChecker(
+          SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta));
   }
 
   protected void verifyStatementMetricRows(

@@ -55,6 +55,7 @@ typedef enum statementType
 	Commit,
 	Rollback,
 	Other,
+	Single_Shard_Transaction,
 	Transaction,
 	AggregatePushdown,
 	kMaxStatementType
@@ -72,6 +73,19 @@ static int statement_nesting_level = 0;
  * - Some state variables are set up for the top level block but not the nested blocks.
  */
 static int block_nesting_level = 0;
+
+/*
+ * Flag to determine whether a transaction block has been entered.
+ */
+static bool is_inside_transaction_block = false;
+
+/*
+ * Flag to determine whether a DML or Other statement type has been executed.
+ * Multiple statements will count as a single transaction within a transaction block.
+ * DDL statements which are autonomous will be counted as its own transaction
+ * even within a transaction block.
+ */
+static bool is_statement_executed = false;
 
 char *metric_node_name = NULL;
 struct WebserverWrapper *webserver = NULL;
@@ -157,6 +171,8 @@ set_metric_names(void)
   strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
   strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+  strcpy(ybpgm_table[Single_Shard_Transaction].name,
+         YSQL_METRIC_PREFIX "Single_Shard_Transactions");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
 }
@@ -529,6 +545,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
       break;
   }
 
+  is_statement_executed = true;
+
   /* Collecting metric.
    * - Only processing metric for top level statement in top level portal.
    *   For example, CURSOR execution can have many nested portal and nested statement. The metric
@@ -546,6 +564,9 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	ybpgm_Store(type, time, rows_count);
 
 	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
+	  ybpgm_Store(Single_Shard_Transaction, time, rows_count);
+
+	if (!is_inside_transaction_block)
 	  ybpgm_Store(Transaction, time, rows_count);
 
 	if (IsA(queryDesc->planstate, AggState) &&
@@ -660,6 +681,47 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
+
+    bool is_catalog_version_increment = false;
+    bool is_breaking_catalog_change = false;
+    if (IsTransactionalDdlStatement(pstmt,
+                                    &is_catalog_version_increment,
+                                    &is_breaking_catalog_change))
+    {
+      ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
+    }
+    else if (type == Other)
+    {
+      is_statement_executed = true;
+    }
+
+    if (type == Begin && !is_inside_transaction_block)
+    {
+      is_inside_transaction_block = true;
+      is_statement_executed = false;
+    }
+    if (type == Rollback)
+    {
+      is_inside_transaction_block = false;
+      is_statement_executed = false;
+    }
+    /*
+     * TODO: Once savepoint and rollback to specific transaction are supported,
+     * transaction block counter needs to be revisited.
+     * Current logic is to increment non-empty transaction block by 1
+     * if non-DDL statement types executed prior to committing.
+     */
+    if (type == Commit) {
+      if (strcmp(completionTag, "ROLLBACK") != 0 &&
+          is_inside_transaction_block &&
+          is_statement_executed)
+      {
+        ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
+      }
+      is_inside_transaction_block = false;
+      is_statement_executed = false;
+    }
+
     ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end), 0 /* rows */);
   }
   else
