@@ -216,17 +216,18 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
 }
 
 inline void MasterPathHandlers::TServerTable(std::stringstream* output,
-                                             bool tserver_clocks_view) {
+                                             TabletServersViewType viewType) {
   *output << "<table class='table table-striped'>\n";
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status & Uptime</th>\n";
 
-  if (tserver_clocks_view) {
+  if (viewType == kTServersClocksView) {
     *output << "      <th> Physical Time</th>\n"
             << "      <th> Hybrid Time</th>\n";
   } else {
+    DCHECK_EQ(viewType, kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
             << "      <th>RAM Used</th>\n"
             << "      <th>Num SST Files</th>\n"
@@ -240,7 +241,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n";
 
-  if (!tserver_clocks_view) {
+  if (viewType == kTServersDefaultView) {
     *output << "      <th>System Tablet-Peers / Leaders</th>\n"
             << "      <th>Active Tablet-Peers</th>\n";
   }
@@ -326,7 +327,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         TabletCountMap* tablet_map,
                                         std::stringstream* output,
                                         const int hide_dead_node_threshold_mins,
-                                        bool tserver_clocks_view) {
+                                        TabletServersViewType viewType) {
   // Copy vector to avoid changes to the reference descs passed
   std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
 
@@ -355,17 +356,18 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       auto tserver = tablet_map->find(desc->permanent_uuid());
       bool no_tablets = tserver == tablet_map->end();
 
-      if (tserver_clocks_view) {
+      if (viewType == kTServersClocksView) {
         // Render physical time.
         const Timestamp p_ts(desc->physical_time());
         *output << "    <td>" << p_ts.ToFormattedString() << "</td>";
 
         // Render the physical and logical components of the hybrid time.
-        const HybridTime ht(desc->hybrid_time());
+        const HybridTime ht = desc->hybrid_time();
         const Timestamp h_ts(ht.GetPhysicalValueMicros());
         *output << "    <td>" << h_ts.ToFormattedString()
                 << " / Logical: " << ht.GetLogicalValue() << "</td>";
       } else {
+        DCHECK_EQ(viewType, kTServersDefaultView);
         *output << "    <td>" << (no_tablets ? 0
                 : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
                 << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
@@ -381,7 +383,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
 
-      if (!tserver_clocks_view) {
+      if (viewType == kTServersDefaultView) {
         *output << "    <td>" << (no_tablets ? 0
                 : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
                 << " / " << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
@@ -513,7 +515,7 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
                                              Webserver::WebResponse* resp,
-                                             bool tserver_clocks_view) {
+                                             TabletServersViewType viewType) {
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -555,16 +557,16 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
             << live_id << "</h3>\n";
   }
 
-  TServerTable(output, tserver_clocks_view);
+  TServerTable(output, viewType);
   TServerDisplay(live_id, &descs, &tablet_map, output, hide_dead_node_threshold_override,
-                 tserver_clocks_view);
+                 viewType);
 
   for (const auto& read_replica_uuid : read_replica_uuids) {
     *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
-    TServerTable(output, tserver_clocks_view);
+    TServerTable(output, viewType);
     TServerDisplay(read_replica_uuid, &descs, &tablet_map, output, hide_dead_node_threshold_override,
-                   tserver_clocks_view);
+                   viewType);
   }
 
   ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
@@ -1817,12 +1819,12 @@ Status MasterPathHandlers::Register(Webserver* server) {
     "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
     is_on_nav_bar, "fa fa-home");
   Webserver::PathHandlerCallback cb =
-      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, false /* tserver_clocks_view */);
+      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, kTServersDefaultView);
   server->RegisterPathHandler(
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, true /* tserver_clocks_view */);
+  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, kTServersClocksView);
   server->RegisterPathHandler(
       "/tablet-server-clocks", "Tablet Server Clocks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,

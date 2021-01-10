@@ -84,6 +84,11 @@ class MasterPathHandlers {
     kNumTypes,
   };
 
+  enum TabletServersViewType {
+    kTServersDefaultView,
+    kTServersClocksView
+  };
+
   const string kSystemPlatformNamespace = "system_platform";
 
   struct TabletCounts {
@@ -120,14 +125,14 @@ class MasterPathHandlers {
 
   const string kNoPlacementUUID = "NONE";
 
-  static inline void TServerTable(std::stringstream* output, bool tserver_clocks_view);
+  static inline void TServerTable(std::stringstream* output, TabletServersViewType viewType);
 
   void TServerDisplay(const std::string& current_uuid,
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
                       TabletCountMap* tmap,
                       std::stringstream* output,
                       const int hide_dead_node_threshold_override,
-                      bool tserver_clocks_view);
+                      TabletServersViewType viewType);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(
@@ -149,7 +154,8 @@ class MasterPathHandlers {
   void RootHandler(const Webserver::WebRequest& req,
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
-                           Webserver::WebResponse* resp, bool tserver_clocks_view);
+                           Webserver::WebResponse* resp,
+                           TabletServersViewType viewType);
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
