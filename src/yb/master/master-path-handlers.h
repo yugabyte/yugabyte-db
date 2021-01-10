@@ -41,6 +41,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/server/webserver.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -55,6 +56,8 @@ class Master;
 struct TabletReplica;
 class TSDescriptor;
 class TSRegistrationPB;
+
+YB_DEFINE_ENUM(TServersViewType, (kTServersDefaultView)(kTServersClocksView));
 
 // Web page support for the master.
 class MasterPathHandlers {
@@ -82,11 +85,6 @@ class MasterPathHandlers {
     kColocatedParentTable,
     kSystemTable,
     kNumTypes,
-  };
-
-  enum TabletServersViewType {
-    kTServersDefaultView,
-    kTServersClocksView
   };
 
   const string kSystemPlatformNamespace = "system_platform";
@@ -125,14 +123,14 @@ class MasterPathHandlers {
 
   const string kNoPlacementUUID = "NONE";
 
-  static inline void TServerTable(std::stringstream* output, TabletServersViewType viewType);
+  static inline void TServerTable(std::stringstream* output, TServersViewType viewType);
 
   void TServerDisplay(const std::string& current_uuid,
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
                       TabletCountMap* tmap,
                       std::stringstream* output,
                       const int hide_dead_node_threshold_override,
-                      TabletServersViewType viewType);
+                      TServersViewType viewType);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(
@@ -155,7 +153,7 @@ class MasterPathHandlers {
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
                            Webserver::WebResponse* resp,
-                           TabletServersViewType viewType);
+                           TServersViewType viewType);
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);

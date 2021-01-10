@@ -216,18 +216,18 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
 }
 
 inline void MasterPathHandlers::TServerTable(std::stringstream* output,
-                                             TabletServersViewType viewType) {
+                                             TServersViewType viewType) {
   *output << "<table class='table table-striped'>\n";
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status & Uptime</th>\n";
 
-  if (viewType == kTServersClocksView) {
-    *output << "      <th> Physical Time</th>\n"
-            << "      <th> Hybrid Time</th>\n";
+  if (viewType == TServersViewType::kTServersClocksView) {
+    *output << "      <th>Physical Time</th>\n"
+            << "      <th>Hybrid Time</th>\n";
   } else {
-    DCHECK_EQ(viewType, kTServersDefaultView);
+    DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
             << "      <th>RAM Used</th>\n"
             << "      <th>Num SST Files</th>\n"
@@ -241,7 +241,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n";
 
-  if (viewType == kTServersDefaultView) {
+  if (viewType == TServersViewType::kTServersDefaultView) {
     *output << "      <th>System Tablet-Peers / Leaders</th>\n"
             << "      <th>Active Tablet-Peers</th>\n";
   }
@@ -327,7 +327,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         TabletCountMap* tablet_map,
                                         std::stringstream* output,
                                         const int hide_dead_node_threshold_mins,
-                                        TabletServersViewType viewType) {
+                                        TServersViewType viewType) {
   // Copy vector to avoid changes to the reference descs passed
   std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
 
@@ -356,7 +356,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       auto tserver = tablet_map->find(desc->permanent_uuid());
       bool no_tablets = tserver == tablet_map->end();
 
-      if (viewType == kTServersClocksView) {
+      if (viewType == TServersViewType::kTServersClocksView) {
         // Render physical time.
         const Timestamp p_ts(desc->physical_time());
         *output << "    <td>" << p_ts.ToFormattedString() << "</td>";
@@ -364,10 +364,13 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         // Render the physical and logical components of the hybrid time.
         const HybridTime ht = desc->hybrid_time();
         const Timestamp h_ts(ht.GetPhysicalValueMicros());
-        *output << "    <td>" << h_ts.ToFormattedString()
-                << " / Logical: " << ht.GetLogicalValue() << "</td>";
+        *output << "    <td>" << h_ts.ToFormattedString();
+        if (ht.GetLogicalValue()) {
+          *output << " / Logical: " << ht.GetLogicalValue();
+        }
+        *output << "</td>";
       } else {
-        DCHECK_EQ(viewType, kTServersDefaultView);
+        DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
         *output << "    <td>" << (no_tablets ? 0
                 : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
                 << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
@@ -383,7 +386,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
 
-      if (viewType == kTServersDefaultView) {
+      if (viewType == TServersViewType::kTServersDefaultView) {
         *output << "    <td>" << (no_tablets ? 0
                 : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
                 << " / " << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
@@ -515,7 +518,7 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
                                              Webserver::WebResponse* resp,
-                                             TabletServersViewType viewType) {
+                                             TServersViewType viewType) {
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -1819,12 +1822,14 @@ Status MasterPathHandlers::Register(Webserver* server) {
     "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
     is_on_nav_bar, "fa fa-home");
   Webserver::PathHandlerCallback cb =
-      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, kTServersDefaultView);
+      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
+                TServersViewType::kTServersDefaultView);
   server->RegisterPathHandler(
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2, kTServersClocksView);
+  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
+                 TServersViewType::kTServersClocksView);
   server->RegisterPathHandler(
       "/tablet-server-clocks", "Tablet Server Clocks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
