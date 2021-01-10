@@ -30,7 +30,8 @@ const panelTypes = {
       'network_packets',
       'network_bytes',
       'network_errors',
-      'system_load_over_time'
+      'system_load_over_time',
+      'node_clock_skew'
     ]
   },
   tserver: {
