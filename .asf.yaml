@@ -1,10 +1,15 @@
+notifications:
+    commits:      commits@age.apache.org
+    issues:       issues@age.apache.org
+    pullrequests: commits@age.apache.org
+
 github:
   features:
-    # Enable wiki for documentation
     wiki: true
-    # Enable issue management
     issues: true
-    # Enable projects for project management boards
     projects: true
-    # Enable disscussion for discussions
-    discussions: true
+
+  enabled_merge_buttons:
+    squash:  true
+    merge:   false
+    rebase:  true
