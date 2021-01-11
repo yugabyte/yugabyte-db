@@ -156,6 +156,12 @@ public class NodeManager extends DevopsBase {
             subCommand.add(customSecurityGroupId);
           }
       }
+
+      if (params instanceof AnsibleDestroyServer.Params &&
+          userIntent.providerType.equals(Common.CloudType.onprem)) {
+        subCommand.add("--install_node_exporter");
+      }
+
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
