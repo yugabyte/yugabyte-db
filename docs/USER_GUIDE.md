@@ -122,13 +122,21 @@ The following are some key features of pg_stat_monitor and usage examples.
 **`bucket_start_time`**: shows the start time of the bucket. 
 
 ```sql
-SELECT bucket, bucket_start_time, query FROM pg_stat_monitor;
- bucket |       bucket_start_time       |                            query                             
---------+-------------------------------+--------------------------------------------------------
-2       | 2020-05-23 13:24:44.652415+00 | select * from pg_stat_monitor_reset()
-3       | 2020-05-23 13:45:01.55658+00  | select bucket, bucket_start_time, query from pg_stat_monitor
-2       | 2020-05-23 13:24:44.652415+00 | SELECT * FROM foo
-(3 rows)
+postgres=# select bucket, bucket_start_time, query,calls from pg_stat_monitor order by bucket;
+
+bucket |  bucket_start_time  |                                                     query                                                     | calls 
+--------+---------------------+---------------------------------------------------------------------------------------------------------------+-------
+      3 | 11-01-2021 17:30:45 | copy pgbench_accounts from stdin                                                                              |     1
+      3 | 11-01-2021 17:30:45 | alter table pgbench_accounts add primary key (aid)                                                            |     1
+      3 | 11-01-2021 17:30:45 | vacuum analyze pgbench_accounts                                                                               |     1
+      3 | 11-01-2021 17:30:45 | vacuum analyze pgbench_tellers                                                                                |     1
+      3 | 11-01-2021 17:30:45 | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |   100
+      5 | 11-01-2021 17:31:15 | vacuum analyze pgbench_branches                                                                               |     1
+      5 | 11-01-2021 17:31:15 | copy pgbench_accounts from stdin                                                                              |     1
+      5 | 11-01-2021 17:31:15 | vacuum analyze pgbench_tellers                                                                                |     1
+      5 | 11-01-2021 17:31:15 | commit                                                                                                        |     1
+      6 | 11-01-2021 17:31:30 | alter table pgbench_branches add primary key (bid)                                                            |     1
+      6 | 11-01-2021 17:31:30 | vacuum analyze pgbench_accounts                                                                               |     1
 ```
 
 #### Query Information
