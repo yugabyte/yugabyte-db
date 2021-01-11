@@ -98,7 +98,7 @@ public class TestAudit extends BaseCQLTest {
       fail("These credentials should be invalid!");
     } catch (com.datastax.driver.core.exceptions.AuthenticationException ex) {
       List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "null", "LOGIN_ERROR", "AUTH",
                   null /* batchId */, null /* keyspace */, null /* scope */,
@@ -106,6 +106,25 @@ public class TestAudit extends BaseCQLTest {
           records);
     } catch (Exception ex) {
       throw ex;
+    }
+
+    // Plaintext password should be replaced by <REDACTED>.
+    {
+      // Just to use session for the first time - this gets called internally anyway.
+      useKeyspace("cql_test_keyspace");
+      discardAuditRecords();
+      session.execute("CREATE ROLE user2 WITH login = true AND pAsSWorD=  'hide me!'");
+      session.execute("ALTER ROLE user2 WITH PaSswORd   ='hide me too!'");
+      List<AuditLogEntry> records = fetchNewAuditRecords();
+      assertAuditRecords(
+          Arrays.asList(
+              new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "CREATE ROLE user2 WITH login = true AND pAsSWorD=  <REDACTED>"),
+              new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
+                  null /* batchId */, null /* keyspace */, null /* scope */,
+                  "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")),
+          records);
     }
   }
 
@@ -125,7 +144,7 @@ public class TestAudit extends BaseCQLTest {
       String oneLinerCql = StringUtils.joinWith("; ", startTxnCql, insertCql, insertCql, commitCql);
       session.execute(oneLinerCql);
       List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "BATCH", "DML",
                   null /* batchId */, null /* keyspace */, null /* scope */,
@@ -142,7 +161,7 @@ public class TestAudit extends BaseCQLTest {
       session.execute(insertCql);
       session.execute(commitCql);
       List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "BATCH", "DML",
                   null /* batchId */, null /* keyspace */, null /* scope */,
@@ -186,7 +205,7 @@ public class TestAudit extends BaseCQLTest {
     AuditLogEntry prepareEntry = new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
         null /* batchId */, DEFAULT_TEST_KEYSPACE, "batch_t",
         insertPrepCql);
-    assertEquals(
+    assertAuditRecords(
         Arrays.asList(
             prepareEntry, prepareEntry, prepareEntry,
             new AuditLogEntry('E', "cassandra", "BATCH", "DML",
@@ -219,7 +238,7 @@ public class TestAudit extends BaseCQLTest {
 
       List<AuditLogEntry> records = fetchNewAuditRecords();
       String batchId = getBatchId(records);
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "BATCH", "DML",
                   batchId, null /* keyspace */, null /* scope */,
@@ -244,7 +263,7 @@ public class TestAudit extends BaseCQLTest {
       List<AuditLogEntry> records = fetchNewAuditRecords();
       String batchId = getBatchId(records);
       // TODO: We probably shouldn't log an error here as the user doesn't receive it.
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "BATCH", "DML",
                   batchId, null /* keyspace */, null /* scope */,
@@ -272,7 +291,7 @@ public class TestAudit extends BaseCQLTest {
     {
       String insertCql = "INSERT INTO t (id, v) VALUES (1, 'v1')";
       session.execute(insertCql);
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
@@ -284,14 +303,14 @@ public class TestAudit extends BaseCQLTest {
     {
       String insertBindCql = "INSERT INTO t (id, v) VALUES (?, ?)";
       BoundStatement bound = session.prepare(insertBindCql).bind(1, "v1-1");
-      assertEquals(
+      assertAuditRecords(
           Collections.nCopies(3 /* One per node */,
               new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
                   insertBindCql)),
           fetchNewAuditRecords());
       session.execute(bound);
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
@@ -303,7 +322,7 @@ public class TestAudit extends BaseCQLTest {
     {
       String selectCql = "SELECT * FROM t";
       assertQueryRowsOrdered(selectCql, "Row[1, v1-1]");
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
@@ -315,7 +334,7 @@ public class TestAudit extends BaseCQLTest {
     {
       String updateCql = "UPDATE t SET v = 'v1-2' WHERE id = 1";
       session.execute(updateCql);
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
@@ -327,14 +346,14 @@ public class TestAudit extends BaseCQLTest {
     {
       String selectCql = "SELECT id, v FROM t WHERE id = ?";
       BoundStatement bound = session.prepare(selectCql).bind(1);
-      assertEquals(
+      assertAuditRecords(
           Collections.nCopies(3 /* One per node */,
               new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
                   selectCql)),
           fetchNewAuditRecords());
       assertQueryRowsOrdered(bound, Arrays.asList("Row[1, v1-2]"));
-      assertEquals(
+      assertAuditRecords(
           Arrays.asList(
               new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
@@ -407,6 +426,14 @@ public class TestAudit extends BaseCQLTest {
       }
     }
     LOG.info("Audit config applied in " + sw.getTime() + " ms");
+  }
+
+  private void assertAuditRecords(List<AuditLogEntry> expected, List<AuditLogEntry> actual) {
+    if (!Objects.equals(expected, actual)) {
+      fail(String.format("expected:<\n  %s\n> but was:<\n  %s\n>",
+          StringUtils.joinWith("\n  ", expected.toArray()),
+          StringUtils.joinWith("\n  ", actual.toArray())));
+    }
   }
 
   /**
