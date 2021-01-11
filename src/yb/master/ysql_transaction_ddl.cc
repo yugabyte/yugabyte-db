@@ -56,6 +56,10 @@ void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
     return;
   }
   auto client = master_->async_client_initializer().client();
+  if (!client) {
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction.ToString();
+    return;
+  }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
   *rpc_handle = client::GetTransactionStatus(
