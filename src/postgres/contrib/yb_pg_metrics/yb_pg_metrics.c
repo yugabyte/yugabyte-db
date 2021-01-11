@@ -679,6 +679,6 @@ static void
 ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
   struct ybpgmEntry *entry = &ybpgm_table[type];
   entry->total_time += time;
-  ++entry->calls;
+  entry->calls += 1;
   entry->rows += rows;
 }
