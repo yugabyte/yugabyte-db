@@ -27,7 +27,7 @@ import static java.util.stream.Collectors.*;
 public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
-  private Config config;
+  private final Config config;
 
   @Inject
   FormFactory formFactory;

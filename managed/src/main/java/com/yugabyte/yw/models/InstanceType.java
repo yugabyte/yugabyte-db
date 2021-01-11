@@ -159,8 +159,8 @@ public class InstanceType extends Model {
   /**
    * Delete Instance Types corresponding to given provider
    */
-  public static void deleteInstanceTypesForProvider(Provider provider) {
-    for (InstanceType instanceType : findByProvider(provider)) {
+  public static void deleteInstanceTypesForProvider(Provider provider, Config config) {
+    for (InstanceType instanceType : findByProvider(provider, config)) {
       instanceType.delete();
     }
   }
@@ -180,7 +180,7 @@ public class InstanceType extends Model {
   /**
    * Query Helper to find supported instance types for a given cloud provider.
    */
-  public static List<InstanceType> findByProvider(Provider provider) {
+  public static List<InstanceType> findByProvider(Provider provider, Config config) {
     List<InstanceType> entries = InstanceType.find.query().where()
       .eq("provider_code", provider.code)
       .eq("active", true)
@@ -190,19 +190,6 @@ public class InstanceType extends Model {
       entries = entries.stream()
         .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
         .collect(Collectors.toList());
-    }
-
-    return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
-      entry.getInstanceTypeCode())).collect(Collectors.toList());
-  }
-
-  /**
-   * TODO: Please remove this method when we have helperMethod in place to get config details
-   * Query Helper to find supported instance types for a given cloud provider.
-   */
-  public static List<InstanceType> findByProvider(Provider provider, Config config) {
-    List<InstanceType> entries = findByProvider(provider);
-    if (provider.code.equals("aws")) {
       for (InstanceType instanceType : entries) {
         populateDefaultIfEmpty(instanceType, config);
       }
