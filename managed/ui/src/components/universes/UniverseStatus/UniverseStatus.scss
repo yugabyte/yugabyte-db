@@ -18,6 +18,9 @@
   &.bad {
     color: $YB_FAIL_COLOR;
   }
+  &.warning {
+    color: $YB_WARNING_COLOR;
+  }
   &.unknown {
     color: $YB_PENDING_COLOR;
   }
