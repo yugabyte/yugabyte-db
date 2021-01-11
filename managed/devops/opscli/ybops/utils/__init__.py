@@ -46,9 +46,9 @@ from ybops.utils.remote_shell import RemoteShell
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT = 2
 DEFAULT_SSH_PORT = 22
-SSH_TIMEOUT = 15
+SSH_TIMEOUT = 5
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
