@@ -105,7 +105,7 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                  ProcessUtilityContext context,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
                                  DestReceiver *dest, char *completionTag);
-static void ybpgm_Store();
+static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
 
 /*
  * Function used for checking if the current statement is a top level statement.
@@ -539,19 +539,18 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
    *   use this not-null check for now.
    */
   if (isTopLevelStatement() && queryDesc->totaltime) {
-	uint64_t time;
-
 	InstrEndLoop(queryDesc->totaltime);
-	time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64 rows_count = queryDesc->estate->es_processed;
 
-	ybpgm_Store(type, time);
+	ybpgm_Store(type, time, rows_count);
 
 	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
-	  ybpgm_Store(Transaction, time);
+	  ybpgm_Store(Transaction, time, rows_count);
 
 	if (IsA(queryDesc->planstate, AggState) &&
 		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-	  ybpgm_Store(AggregatePushdown, time);
+	  ybpgm_Store(AggregatePushdown, time, rows_count);
   }
 
   IncStatementNestingLevel();
@@ -661,7 +660,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
-    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end));
+    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end), 0 /* rows */);
   }
   else
   {
@@ -677,7 +676,9 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-ybpgm_Store(statementType type, uint64_t time){
-  ybpgm_table[type].calls++;
-  ybpgm_table[type].total_time += time;
+ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
+  struct ybpgmEntry *entry = &ybpgm_table[type];
+  entry->total_time += time;
+  entry->calls += 1;
+  entry->rows += rows;
 }
