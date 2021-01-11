@@ -9,7 +9,6 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
-import javax.inject.Inject;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -47,8 +46,6 @@ public class InstanceType extends Model {
     @EnumValue("NVME")
     NVME
   }
-
-  public InstanceType(){}
 
   @EmbeddedId
   @Constraints.Required
