@@ -224,8 +224,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
           << "      <th>Status & Uptime</th>\n";
 
   if (viewType == TServersViewType::kTServersClocksView) {
-    *output << "      <th>Physical Time</th>\n"
-            << "      <th>Hybrid Time</th>\n";
+    *output << "      <th>Physical Time (UTC)</th>\n"
+            << "      <th>Hybrid Time (UTC)</th>\n";
   } else {
     DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
@@ -359,12 +359,12 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       if (viewType == TServersViewType::kTServersClocksView) {
         // Render physical time.
         const Timestamp p_ts(desc->physical_time());
-        *output << "    <td>" << p_ts.ToFormattedString() << "</td>";
+        *output << "    <td>" << p_ts.ToHumanReadableTime() << "</td>";
 
         // Render the physical and logical components of the hybrid time.
         const HybridTime ht = desc->hybrid_time();
         const Timestamp h_ts(ht.GetPhysicalValueMicros());
-        *output << "    <td>" << h_ts.ToFormattedString();
+        *output << "    <td>" << h_ts.ToHumanReadableTime();
         if (ht.GetLogicalValue()) {
           *output << " / Logical: " << ht.GetLogicalValue();
         }
