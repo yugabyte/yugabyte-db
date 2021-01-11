@@ -83,7 +83,10 @@ const LiveQueriesComponent = ({ location }) => {
 
   useEffect(() => {
     if (location.search) {
-      if ('nodeName' in location.query) {
+      if (
+        'nodeName' in location.query &&
+        location.query.nodeName.toLowerCase() !== 'all'
+      ) {
         setSearchTokens([
           {
             label: 'Node Name',
@@ -93,8 +96,7 @@ const LiveQueriesComponent = ({ location }) => {
         ]);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.search, location.query]);
 
   useEffect(() => {
     const searchDropdownHandler = (ev) => {
