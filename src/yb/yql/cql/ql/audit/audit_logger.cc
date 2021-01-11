@@ -464,7 +464,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   static const auto replacement = "<REDACTED>";
   // Using somewhat tricky code to account for escaped quotes ('') in a password.
   // We replace an entire string, including quotes.
-  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'");
+  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
   std::smatch m;
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
