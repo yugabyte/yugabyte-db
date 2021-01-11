@@ -23,6 +23,7 @@
 #include <math.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 
@@ -258,7 +259,7 @@ typedef struct pgssSharedState
 	int64			query_buf_size_bucket;
 	int32			relations[REL_LST];
 	char			cmdTag[CMD_LST][CMD_LEN];
-	Timestamp		bucket_start_time[MAX_BUCKETS];   	/* start time of the bucket */
+	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 
 #define ResetSharedState(x) \

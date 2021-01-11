@@ -1193,9 +1193,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 		else
 			values[i++] = CStringGetTextDatum(tmp.error.message);
-
-		values[i++] = TimestampGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
-
+		values[i++] = CStringGetTextDatum(pgss->bucket_start_time[entry->key.bucket_id]);
 		for (kind = 0; kind < PGSS_NUMKIND; kind++)
 		{
 			values[i++] = Int64GetDatumFast(tmp.calls[kind].calls);
@@ -1242,17 +1240,19 @@ get_next_wbucket(pgssSharedState *pgss)
 	uint64          current_usec;
 	uint64          bucket_id;
 	char            file_name[1024];
+	struct tm       *lt;
+	int             sec = 0;
 
 	gettimeofday(&tv,NULL);
-	current_usec = tv.tv_sec;
+	current_usec = tv.tv_usec;
 
-	if ((current_usec - pgss->prev_bucket_usec) > PGSM_BUCKET_TIME)
+	current_usec = (TimestampTz) tv.tv_sec - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+	current_usec = (current_usec * USECS_PER_SEC) + tv.tv_usec;
+
+	if ((current_usec - pgss->prev_bucket_usec) > (PGSM_BUCKET_TIME * 1000 * 1000))
 	{
 		unsigned char *buf;
-		bucket_id = pgss->current_wbucket + 1;
-		if (bucket_id == PGSM_MAX_BUCKETS)
-			bucket_id = 0;
-
+		bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 		buf = pgss_qbuf[bucket_id];
 		hash_entry_dealloc(bucket_id);
@@ -1264,7 +1264,11 @@ get_next_wbucket(pgssSharedState *pgss)
 		memset(buf, 0, sizeof (uint64));
 		LWLockRelease(pgss->lock);
 		pgss->prev_bucket_usec = current_usec;
-		pgss->bucket_start_time[bucket_id] = GetCurrentTimestamp();
+		lt = localtime(&tv.tv_sec);
+		sec = lt->tm_sec - (lt->tm_sec % PGSM_BUCKET_TIME);
+		if (sec < 0)
+			sec = 0;
+		snprintf(pgss->bucket_start_time[bucket_id], sizeof(pgss->bucket_start_time[bucket_id]), "%02d-%02d-%04d %02d:%02d:%02d", lt->tm_mday, lt->tm_mon + 1, lt->tm_year + 1900, lt->tm_hour, lt->tm_min, sec);
 		return bucket_id;
 	}
 	return pgss->current_wbucket;

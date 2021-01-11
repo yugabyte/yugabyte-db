@@ -28,7 +28,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
 	OUT elevel              int,
     OUT sqlcode             int,
     OUT message             text,
-    OUT bucket_start_time   timestamptz,
+    OUT bucket_start_time   text,
 
 	OUT plans          		int8,
     OUT plan_total_time     float8,
@@ -92,7 +92,7 @@ FROM pg_stat_monitor_settings();
 -- Register a view on the function for ease of use.
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
-	bucket_start_time,
+	bucket_start_time AS bucket_start_time,
     userid,
     dbid,
 	'0.0.0.0'::inet + client_ip AS client_ip,
