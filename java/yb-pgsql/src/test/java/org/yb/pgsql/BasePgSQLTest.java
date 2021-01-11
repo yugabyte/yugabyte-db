@@ -401,6 +401,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static class AgregatedValue {
     long count;
     double value;
+    long rows;
   }
 
   protected void resetStatementStat() throws Exception {
@@ -427,6 +428,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       if (ysqlStat != null) {
         value.count += ysqlStat.calls;
         value.value += ysqlStat.total_time;
+        value.rows += ysqlStat.rows;
       }
       scanner.close();
     }
@@ -511,6 +513,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
       value.count += metric.count;
       value.value += metric.sum;
+      value.rows += metric.rows;
     }
     return value;
   }
@@ -542,37 +545,111 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getMetric(metricName).count;
   }
 
-  /** Time execution of a query. */
-  protected long verifyStatementMetric(Statement stmt, String sql, String metricName,
-                                       int queryMetricDelta, int txnMetricDelta,
-                                       boolean validStmt) throws Exception {
-    long oldQueryMetricValue = metricName == null ? 0 : getMetricCounter(metricName);
-    long oldTxnMetricValue = getMetricCounter(TRANSACTIONS_METRIC);
+  private interface MetricFetcher {
+    AgregatedValue fetch(String name) throws Exception;
+  }
 
-    final long startTimeMillis = System.currentTimeMillis();
-    if (validStmt) {
-      stmt.execute(sql);
-    } else {
-      runInvalidQuery(stmt, sql, "ERROR");
+  private static abstract class QueryExecutionMetricChecker {
+    private MetricFetcher fetcher;
+    private String metricName;
+    private AgregatedValue oldValue;
+
+    public QueryExecutionMetricChecker(String metricName, MetricFetcher fetcher) {
+      this.fetcher = fetcher;
+      this.metricName = metricName;
     }
 
+    public void beforeQueryExecution() throws Exception {
+      oldValue = fetcher.fetch(metricName);
+    }
+
+    public void afterQueryExecution(String query) throws Exception {
+      check(query, metricName, oldValue, fetcher.fetch(metricName));
+    }
+
+    protected abstract void check(
+      String query, String metricName, AgregatedValue oldValue, AgregatedValue newValue);
+  }
+
+  private class MetricCountChecker extends QueryExecutionMetricChecker {
+    private long countDelta;
+
+    public MetricCountChecker(String name, MetricFetcher fetcher, long countDelta) {
+      super(name, fetcher);
+      this.countDelta = countDelta;
+    }
+
+    @Override
+    public void check(
+      String query, String metric, AgregatedValue oldValue, AgregatedValue newValue) {
+      assertEquals(
+        String.format("'%s' count delta assertion failed for query '%s'", metric, query),
+        countDelta, newValue.count - oldValue.count);
+    }
+  }
+
+  private class MetricRowsChecker extends MetricCountChecker {
+    private long rowsDelta;
+
+    public MetricRowsChecker(String name, MetricFetcher fetcher, long countDelta, long rowsDelta) {
+      super(name, fetcher, countDelta);
+      this.rowsDelta = rowsDelta;
+    }
+
+    @Override
+    public void check(
+      String query, String metric, AgregatedValue oldValue, AgregatedValue newValue) {
+      super.check(query, metric, oldValue, newValue);
+      assertEquals(
+        String.format("'%s' row count delta assertion failed for query '%s'", metric, query),
+        rowsDelta, newValue.rows - oldValue.rows);
+    }
+  }
+
+  /** Time execution of a query. */
+  private long verifyQuery(Statement statement,
+                           String query,
+                           boolean validStmt,
+                           QueryExecutionMetricChecker... checkers) throws Exception {
+    for (QueryExecutionMetricChecker checker : checkers) {
+      checker.beforeQueryExecution();
+    }
+    final long startTimeMillis = System.currentTimeMillis();
+    if (validStmt) {
+      statement.execute(query);
+    } else {
+      runInvalidQuery(statement, query, "ERROR");
+    }
     // Check the elapsed time.
-    long result = System.currentTimeMillis() - startTimeMillis;
-
-    long newValue = metricName == null ? 0 : getMetricCounter(metricName);
-    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
-
-    assertEquals("Metric '" + metricName + "' assertion failed for query '" + sql + "'",
-        oldQueryMetricValue + queryMetricDelta, newValue);
-    assertEquals("Metric '" + TRANSACTIONS_METRIC + "' assertion failed for query '" + sql + "'",
-        oldTxnMetricValue + txnMetricDelta, newTxnValue);
-
+    final long result = System.currentTimeMillis() - startTimeMillis;
+    for (QueryExecutionMetricChecker checker : checkers) {
+      checker.afterQueryExecution(query);
+    }
     return result;
   }
 
-  protected void verifyStatementTxnMetric(Statement statement, String sql,
-                                          int txnMetricDelta) throws Exception {
-    verifyStatementMetric(statement, sql, null, 0, txnMetricDelta, true);
+  /** Time execution of a query. */
+  protected long verifyStatementMetric(
+    Statement statement, String query, String metricName,
+    int queryMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
+    return verifyQuery(
+      statement, query, validStmt,
+      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
+      new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
+  }
+
+  protected void verifyStatementTxnMetric(
+    Statement statement, String query, int txnMetricDelta) throws Exception {
+    verifyQuery(
+      statement, query,true,
+      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta));
+  }
+
+  protected void verifyStatementMetricRows(
+    Statement statement, String query, String metricName,
+    int countDelta, int rowsDelta) throws Exception {
+    verifyQuery(statement, query, true,
+      new MetricRowsChecker(metricName, this::getMetric, countDelta, rowsDelta));
   }
 
   protected void executeWithTimeout(Statement statement, String sql)
