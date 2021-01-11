@@ -131,9 +131,10 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
     def __init__(self, base_command):
         super(OnPremDestroyInstancesMethod, self).__init__(base_command)
 
-    def get_ssh_user(self):
-        # Force destroy instances to use the "yugabyte" user.
-        return "yugabyte"
+    def add_extra_args(self):
+        super(OnPremDestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--install_node_exporter", action="store_true",
+                                 help='Check if node exporter should be stopped.')
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -141,7 +142,15 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
 
-        # Force destroy instances to use the "yugabyte" user.
+        # Run non-db related tasks.
+        self.update_ansible_vars_with_args(args)
+        if args.install_node_exporter:
+            logging.info(("[app] Running control script stop " +
+                          "against thirdparty services at {}").format(host_info['name']))
+            self.cloud.run_control_script(
+                "thirdparty", "stop-services", args, self.extra_vars, host_info)
+
+        # Force db-related commands to use the "yugabyte" user.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
         servers = ["master", "tserver"]

@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -48,6 +49,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
+  ShellResponse preflightSuccessResponse;
   YBClient mockClient;
   ModifyUniverseConfig modifyUC;
   AbstractModifyMasterClusterConfig amuc;
@@ -73,6 +75,10 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    preflightSuccessResponse = new ShellResponse();
+    preflightSuccessResponse.message = "{\"test\": true}";
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
+      .thenReturn(preflightSuccessResponse);
     // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
     // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
@@ -105,7 +111,6 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   }
 
   List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE = ImmutableList.of(
-      TaskType.PrecheckNode,
       TaskType.AnsibleSetupServer,
       TaskType.AnsibleUpdateNodeInfo,
       TaskType.AnsibleConfigureServers,
@@ -119,7 +124,6 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   );
 
   List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -172,7 +176,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
