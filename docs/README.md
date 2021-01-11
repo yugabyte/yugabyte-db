@@ -88,6 +88,7 @@ brew install npm
 Install node modules thus:
 
 ```
+cd docs
 npm ci
 ```
 
