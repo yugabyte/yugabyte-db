@@ -27,6 +27,8 @@ public enum TaskType {
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
+  
+  PauseUniverse("PauseUniverse"),
 
   DestroyKubernetesUniverse("DestroyKubernetesUniverse"),
 
@@ -82,6 +84,8 @@ public enum TaskType {
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
 
   AnsibleDestroyServer("subtasks.AnsibleDestroyServer"),
+  
+  AnsiblePauseServer("subtasks.AnsiblePauseServer"),
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 

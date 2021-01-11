@@ -54,6 +54,9 @@ public class CustomerTask extends Model {
   public enum TaskType {
     @EnumValue("Create")
     Create,
+    
+    @EnumValue("Create")
+    Pause,
 
     @EnumValue("Update")
     Update,

@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsiblePauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -70,7 +71,8 @@ public class NodeManager extends DevopsBase {
     Precheck,
     Tags,
     InitYSQL,
-    Disk_Update
+    Disk_Update,
+    Pause,
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -478,6 +480,7 @@ public class NodeManager extends DevopsBase {
         }
         break;
     }
+    System.out.println("hooooooooooooo           "+subcommand);
     return subcommand;
   }
 
@@ -612,6 +615,21 @@ public class NodeManager extends DevopsBase {
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
+      case Pause: {
+          if (!(nodeTaskParam instanceof AnsiblePauseServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsiblePauseServer.Params");
+          }
+          AnsiblePauseServer.Params taskParam = (AnsiblePauseServer.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          commandArgs.add("--node_ip");
+          commandArgs.add(taskParam.nodeIP);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
       case Control: {
         if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
@@ -669,7 +687,6 @@ public class NodeManager extends DevopsBase {
       }
     }
     commandArgs.add(nodeTaskParam.nodeName);
-
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
       commandArgs, getCloudArgs(nodeTaskParam));
   }

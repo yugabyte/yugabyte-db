@@ -78,6 +78,9 @@ public class UserTaskDetails {
     // Starting Node
     StartingNode,
 
+    // Pausing universe
+    PauseUniverse,
+
     // Start master and tserver processes on a node
     StartingNodeProcesses,
 
@@ -350,6 +353,10 @@ public class UserTaskDetails {
         title = "Updating number of nodes";
         description = "Update number of nodes.";
         break;
+      case PauseUniverse:
+          title = "Pause universe";
+          description = "Pause the universe";
+          break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
         return null;

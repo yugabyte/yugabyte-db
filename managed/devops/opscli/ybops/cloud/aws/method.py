@@ -136,6 +136,32 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
 
         super(AwsDestroyInstancesMethod, self).callback(args)
 
+class AwsPauseInstancesMethod(AbstractInstancesMethod):
+    """Subclass for pausing an instance in AWS, we fetch the host info and update the extra_vars
+    with necessary parameters
+    """
+    def __init__(self, base_command):
+        super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
+        
+    def add_extra_args(self):
+        super(AwsPauseInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
+        if not host_info:
+            logging.error("Host {} does not exists.".format(args.search_pattern))
+            return
+
+        self.extra_vars.update({
+            "cloud_subnet": host_info["subnet"],
+            "cloud_region": host_info["region"],
+            "private_ip": host_info['private_ip']
+        })
+        self.update_ansible_vars_with_args(args)
+        self.cloud.setup_ansible(args).run("pause-instance.yml", self.extra_vars)
+
 
 class AwsTagsMethod(AbstractInstancesMethod):
     def __init__(self, base_command):

@@ -52,6 +52,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -998,6 +999,47 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
     return Results.status(OK, universe.toJson());
+  }
+  
+  public Result pause(UUID customerUUID, UUID universeUUID) {
+	  Universe universe;
+	    try {
+	      universe = checkCallValid(customerUUID, universeUUID);
+	    } catch (RuntimeException e) {
+	      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+	    }
+	    Customer customer = Customer.get(customerUUID);
+
+	    LOG.info("Pause universe, customer uuid: {}, universe: {} [ {} ] ",
+	            customerUUID, universe.name, universeUUID);
+
+	    // Create the Commissioner task to pause the universe.
+	    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+	    taskParams.universeUUID = universeUUID;
+	    // There is no staleness of a delete request. Perform it even if the universe has changed.
+	    taskParams.expectedUniverseVersion = -1;
+	    taskParams.customerUUID = customerUUID;
+	    // Submit the task to destroy the universe.
+	    TaskType taskType = TaskType.PauseUniverse;
+	 
+	    UUID taskUUID = commissioner.submit(taskType, taskParams);
+	    LOG.info("Submitted pause universe for " + universeUUID + ", task uuid = " + taskUUID);
+
+	    // Add this task uuid to the user universe.
+	    CustomerTask.create(customer,
+	      universe.universeUUID,
+	      taskUUID,
+	      CustomerTask.TargetType.Universe,
+	      CustomerTask.TaskType.Pause,
+	      universe.name);
+
+	    LOG.info("Paused universe " + universeUUID + " for customer [" + customer.name + "]");
+
+	    ObjectNode response = Json.newObject();
+	    response.put("taskUUID", taskUUID.toString());
+	    Audit.createAuditEntry(ctx(), request(), taskUUID);
+	    return ApiResponse.success(response);
+
   }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
