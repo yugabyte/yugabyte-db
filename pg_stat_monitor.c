@@ -1196,6 +1196,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = CStringGetTextDatum(pgss->bucket_start_time[entry->key.bucket_id]);
 		for (kind = 0; kind < PGSS_NUMKIND; kind++)
 		{
+			if (tmp.calls[kind].calls == 0)
+				tmp.calls[kind].calls++;
 			values[i++] = Int64GetDatumFast(tmp.calls[kind].calls);
 			values[i++] = Float8GetDatumFast(tmp.time[kind].total_time);
 			values[i++] = Float8GetDatumFast(tmp.time[kind].min_time);
