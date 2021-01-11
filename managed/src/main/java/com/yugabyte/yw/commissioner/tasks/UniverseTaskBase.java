@@ -227,10 +227,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void unlockUniverseForUpdate() {
+    unlockUniverseForUpdate(null);
+  }
+
+  public void unlockUniverseForUpdate(String error) {
     if (!universeLocked) {
       LOG.warn("Unlock universe called when it was not locked.");
       return;
     }
+    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -244,6 +249,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = false;
+        universeDetails.errorString = err;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -1080,6 +1086,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       exists = false;
     }
     return exists;
+  }
+
+  // Perform preflight checks on the given node.
+  public String performPreflightCheck(NodeDetails node, NodeTaskParams taskParams) {
+    // Create the process to fetch information about the node from the cloud provider.
+    NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
+    LOG.info("Running preflight checks for node {}.", taskParams.nodeName);
+    ShellResponse response = nodeManager.nodeCommand(
+        NodeManager.NodeCommandType.Precheck, taskParams);
+    if (response.code == 0) {
+      JsonNode responseJson = Json.parse(response.message);
+      for (JsonNode nodeContent: responseJson) {
+        if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
+          String errString = "Failed preflight checks for node "
+            + taskParams.nodeName + ":\n" + response.message;
+          LOG.error(errString);
+          return response.message;
+        }
+      }
+    }
+    return null;
   }
 
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {

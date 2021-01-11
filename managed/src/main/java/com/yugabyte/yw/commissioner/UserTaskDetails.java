@@ -19,7 +19,7 @@ public class UserTaskDetails {
     Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
-    PreflightChecks(true),
+    PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
@@ -149,20 +149,6 @@ public class UserTaskDetails {
 
     // Rotate Node Certs.
     RotatingCert;
-
-    private boolean alwaysRunAll;
-
-    SubTaskGroupType() {
-      this.alwaysRunAll = false;
-    }
-
-    SubTaskGroupType(boolean alwaysRunAll) {
-      this.alwaysRunAll = alwaysRunAll;
-    }
-
-    public boolean getAlwaysRunAll() {
-      return this.alwaysRunAll;
-    }
   }
 
   public List<SubTaskDetails> taskDetails;

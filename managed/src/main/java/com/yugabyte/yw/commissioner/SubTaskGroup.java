@@ -172,7 +172,6 @@ public class SubTaskGroup implements Runnable {
 
   public boolean waitFor() {
     boolean hasErrored = false;
-    boolean alwaysRunAll = this.getSubTaskGroupType().getAlwaysRunAll();
     for (Future<?> future : futuresMap.keySet()) {
       TaskInfo taskInfo = futuresMap.get(future);
 
@@ -198,9 +197,6 @@ public class SubTaskGroup implements Runnable {
           details.put("errorString", errorString);
           taskInfo.setTaskDetails(details);
           taskInfo.save();
-          if (!alwaysRunAll) {
-            return false;
-          }
         }
       }
     }
