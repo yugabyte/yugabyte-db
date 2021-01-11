@@ -1,6 +1,5 @@
 notifications:
     commits:      commits@age.apache.org
-    issues:       issues@age.apache.org
     pullrequests: commits@age.apache.org
 
 github:
@@ -8,6 +7,7 @@ github:
     wiki: true
     issues: true
     projects: true
+    discussions: true
 
   enabled_merge_buttons:
     squash:  true
