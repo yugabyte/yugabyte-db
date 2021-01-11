@@ -32,6 +32,8 @@
 
 YB_INCLUDE_EXTENSIONS()
 
+allow_using_postgres_libraries()
+
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
@@ -53,6 +55,7 @@ target_link_libraries(integration-tests
   tserver
   tserver_test_util
   master
+  pq_utils
   ql_api
   ysck
   yb-admin_lib

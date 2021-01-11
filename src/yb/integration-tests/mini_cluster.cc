@@ -819,11 +819,11 @@ Status WaitForInitDb(MiniCluster* cluster) {
       LOG(INFO) << "IsInitDbDone failure: " << status;
       continue;
     }
-    if (resp.done()) {
-      return Status::OK();
-    }
     if (resp.has_initdb_error()) {
       return STATUS_FORMAT(RuntimeError, "Init DB failed: $0", resp.initdb_error());
+    }
+    if (resp.done()) {
+      return Status::OK();
     }
     std::this_thread::sleep_for(500ms);
   }
