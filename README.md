@@ -82,20 +82,18 @@ CREATE EXTENSION
 ```sql
 -- Select some of the query information, like client_ip, username and application_name etc.
 
-SELECT application_name, userid::regrole AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
-           FROM pg_stat_monitor, pg_database 
-           WHERE dbid = oid;
- 
- application_name  | user_name | database_name |                       query                       | calls | client_ip 
--------------------+-----------+---------------+---------------------------------------------------+-------+-----------
- psql              | vagrant   | postgres      | SELECT elevel, sqlcode, message from pg_stat_moni |     1 | 127.0.0.1
- psql              | vagrant   | postgres      | SELECT c.relchecks, c.relkind, c.relhasindex, c.r |     1 | 127.0.0.1
- pg_cron scheduler | vagrant   | postgres      | update cron.job_run_details set status = $1, retu |     1 | 127.0.0.1
- pgbench           | vagrant   | postgres      | vacuum analyze pgbench_accounts                   |     1 | 10.0.2.15
- pgbench           | vagrant   | postgres      | alter table pgbench_branches add primary key (bid |     1 | 10.0.2.15
- psql              | vagrant   | postgres      | SELECT pg_catalog.quote_ident(c.relname) FROM pg_ |     1 | 127.0.0.1
- psql              | vagrant   | postgres      | SELECT decode_error_level(elevel), sqlcode, messa |     2 | 127.0.0.1
-(37 rows)
+postgres=# SELECT application_name, userid AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
+           FROM pg_stat_monitor;
+ application_name | user_name | database_name |                       query                       | calls | client_ip 
+------------------+-----------+---------------+---------------------------------------------------+-------+-----------
+ psql             | vagrant   | postgres      | SELECT application_name, userid::regrole AS user_ |     1 | 127.0.0.1
+ psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     3 | 127.0.0.1
+ psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     1 | 127.0.0.1
+ psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     8 | 127.0.0.1
+ psql             | vagrant   | postgres      | SELECT bucket, substr(query,$1, $2) AS query, cmd |     1 | 127.0.0.1
+(5 rows)
+
+
 ```
 
 ```sql
