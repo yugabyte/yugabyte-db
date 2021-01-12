@@ -173,6 +173,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                                 primaryCluster.userIntent.universeName)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Create alert definitions.
+      createUnivCreateAlertDefinitionsTask()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

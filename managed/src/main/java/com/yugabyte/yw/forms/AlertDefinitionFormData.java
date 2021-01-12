@@ -14,36 +14,16 @@ import play.data.validation.Constraints;
 
 import java.util.UUID;
 
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
+
 /**
  * This class will be used by the API and UI Form Elements to validate constraints are met.
  */
 public class AlertDefinitionFormData {
-  public enum TemplateType {
-    REPLICATION_LAG("max by (node_prefix) (avg_over_time(async_replication_committed_lag_micros" +
-      "{node_prefix=\"__nodePrefix__\"}[10m]) or avg_over_time(async_replication_sent_lag_micros" +
-      "{node_prefix=\"__nodePrefix__\"}[10m])) / 1000 > __value__");
-
-    private String template;
-
-    public String buildQuery(String nodePrefix, double value) {
-      switch (this) {
-        case REPLICATION_LAG:
-          return template
-            .replaceAll("__nodePrefix__", nodePrefix)
-            .replaceAll("__value__", Double.toString(value));
-        default:
-          throw new RuntimeException("Invalid alert definition template provided");
-      }
-    }
-
-    TemplateType(String template) {
-      this.template = template;
-    }
-  }
 
   public UUID alertDefinitionUUID;
 
-  public TemplateType template;
+  public AlertDefinitionTemplate template;
 
   @Constraints.Required()
   public double value;
