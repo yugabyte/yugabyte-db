@@ -84,10 +84,6 @@ Checkout `REL_13_STABLE` branch (note that the stable branch may not exist for u
 ```
 git checkout REL_13_STABLE
 ```
-Build pgAudit and run regression tests:
-```
-make check USE_PGXS=1
-```
 Install pgAudit:
 ```
 make install USE_PGXS=1
