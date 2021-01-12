@@ -4,14 +4,17 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,14 +40,16 @@ public class CustomerConfigController extends AuthenticatedController {
     if (customerConfig == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
-    customerConfig.delete();
+    if (!customerConfig.delete()) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+          "Customer Configuration could not be deleted.");
+    }
     Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success("configUUID deleted");
   }
 
   public Result list(UUID customerUUID) {
-    List<CustomerConfig> configList = CustomerConfig.getAll(customerUUID);
-    return ApiResponse.success(configList);
+    return ApiResponse.success(CustomerConfig.getAll(customerUUID));
   }
 
   private ObjectNode validateFormData(JsonNode formData) {
