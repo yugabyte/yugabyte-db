@@ -1,8 +1,8 @@
 ---
-title: percent_rank(), cume_dist(), and ntile() on a normal distribution
-linkTitle: Analyzing a normal distribution
-headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
-description: Compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
+title: case study—compare percent_rank(), cume_dist(), and ntile() on a normal distribution
+linkTitle: case study—analyzing a normal distribution
+headerTitle: Case study—analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
+description: Case study to compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
