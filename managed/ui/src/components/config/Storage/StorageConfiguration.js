@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
+import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
@@ -9,12 +10,15 @@ import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
-import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
+import {
+  isNonEmptyObject,
+  isEmptyObject,
+  isDefinedNotNull
+} from '../../../utils/ObjectUtils';
 
 const storageConfigTypes = {
   NFS: {
@@ -81,7 +85,6 @@ const getTabTitle = (configName) => {
 };
 
 class StorageConfiguration extends Component {
-
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
@@ -106,47 +109,40 @@ class StorageConfiguration extends Component {
   addStorageConfig = (values, action, props) => {
     const type =
       (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
-      Object.keys(values).forEach((key) => {
+    Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
     });
-    const dataPayload = { ...values };
+    let dataPayload = { ...values };
 
-    // These conditions will remove all the non-required JSON keys from
-    // the respective tab.
+    // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
       case 'nfs':
-        delete dataPayload['AWS_ACCESS_KEY_ID'];
-        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-        delete dataPayload['AWS_HOST_BASE'];
-        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
-        delete dataPayload['GCS_CREDENTIALS_JSON'];
+        dataPayload = _.pick(dataPayload,['BACKUP_LOCATION']);
         break;
 
       case 'gcs':
-        delete dataPayload['AWS_ACCESS_KEY_ID'];
-        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-        delete dataPayload['AWS_HOST_BASE'];
-        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
         break;
 
       case 'az':
-        delete dataPayload['AWS_ACCESS_KEY_ID'];
-        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-        delete dataPayload['AWS_HOST_BASE'];
-        delete dataPayload['GCS_CREDENTIALS_JSON'];
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
         break;
 
       default:
-        delete dataPayload['GCS_CREDENTIALS_JSON'];
-        delete dataPayload['AZURE_STORAGE_SAS_TOKEN'];
         if (values['IAM_INSTANCE_PROFILE']) {
-          delete dataPayload['AWS_ACCESS_KEY_ID'];
-          delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-        }
-
-        if ('IAM_INSTANCE_PROFILE' in dataPayload) {
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+          dataPayload = _.pick(dataPayload, [
+            'BACKUP_LOCATION',
+            'AWS_HOST_BASE',
+            'IAM_INSTANCE_PROFILE']);
+        } else {
+           dataPayload = _.pick(dataPayload, [
+            'AWS_ACCESS_KEY_ID',
+            'AWS_SECRET_ACCESS_KEY',
+            'BACKUP_LOCATION',
+            'AWS_HOST_BASE'
+          ]);
         }
         break;
     }
