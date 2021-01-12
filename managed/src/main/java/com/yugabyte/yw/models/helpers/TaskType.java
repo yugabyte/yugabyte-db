@@ -179,7 +179,9 @@ public enum TaskType {
 
   WaitForEncryptionKeyInMemory("subtasks.WaitForEncryptionKeyInMemory"),
 
-  UnivSetCertificate("subtasks.UnivSetCertificate");
+  UnivSetCertificate("subtasks.UnivSetCertificate"),
+
+  CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
 
   private String relativeClassPath;
 
