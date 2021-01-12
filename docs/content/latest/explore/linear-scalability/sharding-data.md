@@ -59,7 +59,7 @@ Start a new local universe with a replication factor of 1 (RF=1). We are passing
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
 
 
-{{< note title="Note" >}}
+{{< note title="Warning" >}}
 Setting `memstore_size` to such a low value is not recommended in production and is only being used here to illustrate the point by forcing flushes to happen more quickly.
 {{< /note >}}
 
