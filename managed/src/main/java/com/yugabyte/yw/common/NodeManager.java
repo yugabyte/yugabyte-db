@@ -482,7 +482,7 @@ public class NodeManager extends DevopsBase {
   }
 
   public ShellResponse nodeCommand(NodeCommandType type,
-                                                       NodeTaskParams nodeTaskParam) throws RuntimeException {
+                                   NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     switch (type) {

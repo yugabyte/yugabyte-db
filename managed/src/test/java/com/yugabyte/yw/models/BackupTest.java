@@ -34,23 +34,13 @@ public class BackupTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
-
-  }
-
-  private Backup createBackup(UUID universeUUID) {
-    BackupTableParams params = new BackupTableParams();
-    params.storageConfigUUID = s3StorageConfig.configUUID;
-    params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
-    params.tableUUID = UUID.randomUUID();
-    return Backup.create(defaultCustomer.uuid, params);
   }
 
   @Test
   public void testCreate() {
     UUID universeUUID = UUID.randomUUID();
-    Backup b = createBackup(universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        universeUUID, s3StorageConfig.configUUID);
     assertNotNull(b);
     String storageRegex = "s3://foo/univ-" + universeUUID +
         "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
@@ -96,7 +86,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testFetchByUniverseWithValidUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    createBackup(u.universeUUID);
+    ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     List<Backup> backupList = Backup.fetchByUniverseUUID(defaultCustomer.uuid, u.universeUUID);
     assertEquals(1, backupList.size());
   }
@@ -104,7 +95,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testFetchByUniverseWithInvalidUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    createBackup(u.universeUUID);
+    ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     List<Backup> backupList = Backup.fetchByUniverseUUID(defaultCustomer.uuid, UUID.randomUUID());
     assertEquals(0, backupList.size());
   }
@@ -113,7 +105,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testFetchByTaskWithValidUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     UUID taskUUID = UUID.randomUUID();
     b.setTaskUUID(taskUUID);
     Backup fb = Backup.fetchByTaskUUID(taskUUID);
@@ -137,7 +130,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testFetchByTaskWithTargetType() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     CustomerTask ct = CustomerTask.create(
         defaultCustomer,
         b.backupUUID,
@@ -152,7 +146,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testGetWithValidCustomerUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     Backup fb = Backup.get(defaultCustomer.uuid, b.backupUUID);
     assertEquals(fb, b);
   }
@@ -160,7 +155,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testGetWithInvalidCustomerUUID() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     Backup fb = Backup.get(UUID.randomUUID(), b.backupUUID);
     assertNull(fb);
   }
@@ -169,7 +165,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testTransitionStateValid() throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     Date beforeUpdateTime  = b.getUpdateTime();
     assertNotNull(beforeUpdateTime);
     Thread.sleep(1);
@@ -184,7 +181,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testTransitionStateInvalid() throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     Date beforeUpdateTime  = b.getUpdateTime();
     assertNotNull(b.getUpdateTime());
     Thread.sleep(1);
@@ -198,7 +196,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testSetTaskUUIDWhenNull() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     UUID taskUUID = UUID.randomUUID();
     assertNull(b.taskUUID);
     b.setTaskUUID(taskUUID);
@@ -209,7 +208,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testSetTaskUUID() throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     UUID taskUUID1 = UUID.randomUUID();
     UUID taskUUID2 = UUID.randomUUID();
     ExecutorService service = Executors.newFixedThreadPool(2);
@@ -231,7 +231,8 @@ public class BackupTest extends FakeDBApplication {
   @Test
   public void testSetTaskUUIDWhenNotNull() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b = createBackup(u.universeUUID);
+    Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
+        u.universeUUID, s3StorageConfig.configUUID);
     b.setTaskUUID(UUID.randomUUID());
     UUID taskUUID = UUID.randomUUID();
     assertNotNull(b.taskUUID);
