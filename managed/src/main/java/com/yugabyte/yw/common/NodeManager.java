@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsiblePauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -73,6 +74,7 @@ public class NodeManager extends DevopsBase {
     InitYSQL,
     Disk_Update,
     Pause,
+    Resume,
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -620,6 +622,21 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsiblePauseServer.Params");
           }
           AnsiblePauseServer.Params taskParam = (AnsiblePauseServer.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          commandArgs.add("--node_ip");
+          commandArgs.add(taskParam.nodeIP);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
+        case Resume: {
+          if (!(nodeTaskParam instanceof AnsibleResumeServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleResumeServer.Params");
+          }
+          AnsibleResumeServer.Params taskParam = (AnsibleResumeServer.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--node_ip");

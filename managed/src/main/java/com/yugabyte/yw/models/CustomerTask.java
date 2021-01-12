@@ -55,8 +55,11 @@ public class CustomerTask extends Model {
     @EnumValue("Create")
     Create,
     
-    @EnumValue("Create")
+    @EnumValue("Pause")
     Pause,
+
+    @EnumValue("Resume")
+    Resume,
 
     @EnumValue("Update")
     Update,

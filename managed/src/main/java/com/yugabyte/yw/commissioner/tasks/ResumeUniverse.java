@@ -21,8 +21,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 
-public class PauseUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(PauseUniverse.class);
+public class ResumeUniverse extends UniverseTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(ResumeUniverse.class);
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -44,16 +44,16 @@ public class PauseUniverse extends UniverseTaskBase {
       universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
-        // Create tasks to pause the existing nodes.
-        createPauseServerTasks(
+        // Create tasks to resume the existing nodes.
+        createResumeServerTasks(
           universe.getNodes()
-        ).setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+        ).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       }
 
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      // If for any reason pause universe fails we would just unlock the universe for update
+      // If for any reason resume universe fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();
       } catch (Throwable t1) {

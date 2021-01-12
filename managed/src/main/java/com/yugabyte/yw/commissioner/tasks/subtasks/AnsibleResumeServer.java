@@ -25,7 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-public class AnsiblePauseServer extends NodeTaskBase {
+public class AnsibleResumeServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     // IP of node to be deleted.
@@ -33,13 +33,13 @@ public class AnsiblePauseServer extends NodeTaskBase {
   }
 
   @Override
-  protected AnsiblePauseServer.Params taskParams() {
-    return (AnsiblePauseServer.Params)taskParams;
+  protected AnsibleResumeServer.Params taskParams() {
+    return (AnsibleResumeServer.Params)taskParams;
   }
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsiblePauseServer.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AnsibleResumeServer.class);
 
-  private void pauseUniverse(final String nodeName) {
+  private void resumeUniverse(final String nodeName) {
     Universe u = Universe.get(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
       LOG.error("No node in universe with name " + nodeName);
@@ -50,7 +50,7 @@ public class AnsiblePauseServer extends NodeTaskBase {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        LOG.debug("Pausing node " + nodeName + " from universe " + taskParams().universeUUID);
+        LOG.debug("Resuming node " + nodeName + " from universe " + taskParams().universeUUID);
       }
     };
 
@@ -59,12 +59,12 @@ public class AnsiblePauseServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as pausing..
-    setNodeState(NodeDetails.NodeState.Stopping);
+    // Update the node state as resuming..
+    setNodeState(NodeDetails.NodeState.Starting);
     // Execute the ansible command.
     try {
       ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Pause, taskParams());
+        NodeManager.NodeCommandType.Resume, taskParams());
       processShellResponse(response);
     } catch (Exception e) {
         throw e;
