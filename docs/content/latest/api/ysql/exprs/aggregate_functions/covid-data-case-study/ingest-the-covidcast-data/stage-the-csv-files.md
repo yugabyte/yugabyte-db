@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## First, create a dedicated ordinary user for the project
 
-It isn't essential to do this. It's very unlikely that the names of the objects that are created for your COVIDcast use case project will collide with those of any objects that you might already have (and might care about). But the scripts that create them follow usual practice and start by dropping them. So there is a risk—at least in principle. Anyway, it makes sense to create a dedicated ordinary user for this project for all the usual reasons. For example, when all the project objects are owned by a user that owns no other objects (and are all in the same schema), it's easy to list all of the objects (and only these).
+It isn't essential to do this. It's very unlikely that the names of the objects that are created for your COVIDcast case study project will collide with those of any objects that you might already have (and might care about). But the scripts that create them follow usual practice and start by dropping them. So there is a risk—at least in principle. Anyway, it makes sense to create a dedicated ordinary user for this project for all the usual reasons. For example, when all the project objects are owned by a user that owns no other objects (and are all in the same schema), it's easy to list all of the objects (and only these).
 
 ## Create and populate the "covidcast_names" table
 

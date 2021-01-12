@@ -1,8 +1,8 @@
 ---
-title: Aggregate functions case study—the 68–95–99.7 rule
-linkTitle: percentile_cont() use case
-headerTitle: Aggregate functions case study—the "68–95–99.7" rule
-description: Shows the use of percentile_cont() to illustrate a well-known rule about a normal distribution. 
+title: case study—using aggregate functions to demonstrate the "68–95–99.7" rule
+linkTitle: case study—percentile_cont() and the "68–95–99.7" rule
+headerTitle: Case study—using aggregate functions to demonstrate the "68–95–99.7" rule
+description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution. 
 menu:
   latest:
     identifier: case-study-the-68–95–997-rule
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study  focuses on just one part of the rule:
+This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study  focuses on just one part of the rule:
 
 - 68.27% of the values in a normal distribution lie within one standard deviation each side of the mean.
 

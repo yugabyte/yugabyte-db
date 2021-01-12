@@ -1,8 +1,8 @@
 ---
-title: Recursive WITH substatement—SQL syntax and semantics
+title: WITH clause recursive substatement—SQL syntax and semantics
 linkTitle: recursive WITH
-headerTitle: The recursive WITH substatement
-description: This section specifies the syntax and semantics of the recursive WITH substatement
+headerTitle: The WITH clause recursive substatement
+description: This section specifies the syntax and semantics of the WITH clause recursive substatement
 menu:
   latest:
     identifier: recursive-with
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The optional `RECURSIVE` keyword fundamentally changes the meaning of a `WITH` clause substatement. The recursive variant lets you implement SQL solutions that, without it, at best require verbose formulations involving, for example, self-joins. In the limit, the recursive `WITH` clause lets you implement SQL solutions that otherwise would require procedural programming.
+The optional `RECURSIVE` keyword fundamentally changes the meaning of a `WITH` clause substatement. The recursive variant lets you implement SQL solutions that, without it, at best require verbose formulations involving, for example, self-joins. In the limit, the `WITH` clause recursive substatement lets you implement SQL solutions that otherwise would require procedural programming.
 
 ## Syntax
 
@@ -22,7 +22,7 @@ When the optional `RECURSIVE` keyword is used, the [`with_clause_substatement_de
 with
   recursive <name>(c1, c2, ...) as (
 
-    -- Non recursive term.
+    -- Non-recursive term.
     (
       select ...
     )
@@ -58,7 +58,7 @@ with
   )
 select n from r order by n;
 ```
-Notice that the parentheses that surround the non-recursive term and the recursive term are not required. They are used for clarity. See the section [The recursive term must be parenthesised to allow this to use a WITH clause](#the-recursive-term-must-be-parenthesised-to-allow-this-to-use-a-with-clause) for a scenario where the parentheses _are_ essential.
+Notice that the parentheses that surround the _non-recursive term_ and the _recursive term_ are not required. They are used for clarity. See the section [The _recursive term_ must be parenthesised to allow this to use a WITH clause](#the-recursive-term-must-be-parenthesised-to-allow-this-to-use-a-with-clause) for a scenario where the parentheses _are_ essential.
 
 This is the result:
 
@@ -72,11 +72,11 @@ This is the result:
  5
 ```
 
-The [Semantics](#semantics) section explains how a recursive `WITH` substatement is evaluated. When you understand this, you can predict the result of this minimal example and, by induction, the result of any arbitrarily complex example.
+The [Semantics](#semantics) section explains how a `WITH` recursive substatement is evaluated. When you understand this, you can predict the result of this minimal example and, by induction, the result of any arbitrarily complex example.
 
 ## Restrictions
 
-### Maximum one recursive WITH clause substatement
+### Maximum one WITH clause recursive substatement
 
 The attempt to define more than one recursive substatement within a particular `WITH` clause causes a generic _42601_ syntax error. You can work around this restriction by pushing it down by one level of nesting, thus:
 
@@ -125,7 +125,7 @@ This is the result:
   1
 ```
 
-### The recursive WITH clause substatement must be first in the clause
+### The WITH clause recursive substatement must be first in the clause
 
 This code:
 
@@ -175,7 +175,7 @@ then the statement executes without error to produce this result:
   1
 ```
 
-Alternatively, you can push down the recursive `WITH` clause substatement one level as shown above.
+Alternatively, you can push down the `WITH` clause recursive substatement one level as shown above.
 
 ### The recursive term must be parenthesised to allow this to use a WITH clause
 
@@ -215,7 +215,7 @@ Notice that this is simply a _syntax_ example. Using `WITH` clauses within the r
  5
 ```
 
-Next, first, remove the parenthesis pair that surrounds the non-recursive term. The statement runs without error to produce the same result. Now, re-instate this pair and remove the parenthesis pair that surrounds the recursive term. You get the generic _42601_ syntax error, reported for this line:
+Next, first, remove the parenthesis pair that surrounds the _non-recursive term_. The statement runs without error to produce the same result. Now, re-instate this pair and remove the parenthesis pair that surrounds the _recursive term_. You get the generic _42601_ syntax error, reported for this line:
 
 ```
 with a2(n) as (
@@ -289,37 +289,40 @@ This is the results:
 
 ## Semantics
 
-You can find various formulations of the following explanation by Internet search. In particular, here is a version in the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html).
+You can find various formulations of the following explanation by Internet search. In particular, here is a version in the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4).
 
 In informal prose:
 
-- The non-recursive term is invoked just once and establishes a starting relation.
-- The recursive term is invoked time and again. On its first invocation, it acts on the relation produced by the evaluation of the non-recursive term. On subsequent invocations, it acts on the relation produced by its previous invocation.
+- The _non-recursive term_ is invoked just once and establishes a starting relation.
+- The _recursive term_ is invoked time and again. On its first invocation, it acts on the relation produced by the evaluation of the _non-recursive term_. On subsequent invocations, it acts on the relation produced by its previous invocation.
 - Each successive term evaluation appends its output to the growing result of the recursive substatement.
-- The repeating invocation of the recursive term stops when it produces an empty relation.
+- The repeating invocation of the _recursive term_ stops when it produces an empty relation.
 
-A compact, and exact, formulation is given by using pseudocode. The `RECURSIVE_WITH_RESULTS` table and the `WORKING_RESULTS` table are transient, statement-duration, structures.
+### Pseudocode definition of the semantics
 
-```
-Evaluate the non-recursive term.
+A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_WITH_RESULTS"_ table, the _"WORKING_RESULTS"_ table, and the _"TEMP_RESULTS"_ table are transient, statement-duration, structures.
 
-Initialize the RECURSIVE_WITH_RESULTS table with the result rows.
+> - **Purge the RECURSIVE_WITH_RESULTS table and the WORKING_RESULTS table.**
+>
+> - **Evaluate the non-recursive term, inserting the resulting rows into the WORKING_RESULTS table.**
+>
+> - **Insert the contents of the WORKING_RESULTS table into the RECURSIVE_WITH_RESULTS table.**
+>
+> - **while the WORKING_RESULTS table is not empty loop**
+>
+>   - **Purge the TEMP_RESULTS table.**
+>   
+>   - **Evaluate the recursive term using the current contents of the WORKING_RESULTS table for the recursive self-reference, inserting the resulting rows into the TEMP_RESULTS table.**
+>   
+>   - **Purge the WORKING_RESULTS table and insert the contents of the TEMP_RESULTS table.**
+>   
+>   - **Append the contents of the TEMP_RESULTS table into the RECURSIVE_WITH_RESULTS table.**
+>   
+>- **end loop**
+> 
+>- **Deliver the present contents of the RECURSIVE_WITH_RESULTS table as the final result.**
 
-Initialize the WORKING_RESULTS table with the result rows.
-
-while WORKING_RESULTS table is not empty loop
-
-  Evaluate the recursive term, substituting the current contents of the WORKING_RESULTS
-  table for the recursive self-reference.
-
-  Append the result rows into the RECURSIVE_WITH_RESULTS table.
-
-  Truncate the WORKING_RESULTS table and insert the result rows into this.
-
-end loop
-```
-
-### Pseudocode implementation: example 1
+### PL/pgSQL procedure implementation of the pseudocode : example 1
 
 This pseudocode can be easily implemented, as a PL/pgSQL procedure, for the minimal example shown in the [Syntax](#syntax) section above. First, do this set-up:
 
@@ -329,53 +332,47 @@ set client_min_messages = warning;
 drop procedure if exists recursive_with_semantics_1 cascade;
 drop table if exists recursive_with_results cascade;
 drop table if exists working_results cascade;
+drop table if exists temp_results cascade;
 
 create table recursive_with_results(n int primary key);
 create table working_results(n int primary key);
+create table temp_results(n int primary key);
 ```
 Now create the procedure:
 
-```plggsql
+```plpgsql
 create procedure recursive_with_semantics_1(max_n in int)
   language plpgsql
 as $body$
-<<b>>declare
-  n    int not null := 0;
-  lvl  int not null := 0;
 begin
   -- Emulate the non-recursive term.
-  truncate table recursive_with_results;
-  truncate table working_results;
-  insert into recursive_with_results(n) values (1);
-  insert into working_results       (n) values (1);
+  delete from recursive_with_results;
+  delete from working_results;
+  insert into working_results(n) values(1);
+  insert into recursive_with_results(n) select n from working_results;
 
   -- Emulate the recursive term.
   while ((select count(*) from working_results) > 0) loop
-    lvl := lvl + 1;
-    -- This "select into" works only for the present special case
-    -- where just one row is accumulated with each iteration.
-    -- Notice the use of "strict". An error will be drawn if
-    -- the "one row per trip" assumption doesn't hold.
-    select a.n + 1 into strict b.n from working_results a;
+    delete from temp_results;
+    insert into temp_results
+    select n + 1 from working_results
+    where n < max_n;
 
-    truncate table working_results;
-
-    if n <= max_n then
-      insert into recursive_with_results(n) values(b.n);
-      insert into working_results       (n) values(b.n);
-    end if;
+    delete from working_results;
+    insert into working_results(n) select n from temp_results;
+    insert into recursive_with_results(n) select n from temp_results;
   end loop;
-end b;
+end;
 $body$;
 ```
 
-Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html) says this:
+Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4) says this:
 
 > Strictly speaking, this process is iteration not recursion, but RECURSIVE is the terminology chosen by the SQL standards committee.
 
 This is a somewhat dubious claim because, in any language, recursion is implemented at a lower level in the hierarchy of abstractions, as iteration. The code of the PL/pgSQL procedure, because it uses a `WHILE` loop, makes this point explicitly.
 
-Now invoke the procedure and observe the contents of the `RECURSIVE_WITH_RESULTS` table:
+Now invoke the procedure and observe the contents of the _"RECURSIVE_WITH_RESULTS"_ table:
 
 ```plpgsql
 call recursive_with_semantics_1(5);
@@ -384,83 +381,59 @@ select n from recursive_with_results order by 1;
 
 The result is identical to that produced by the SQL implementation that it emulates (shown in the [Syntax](#syntax) section above).
 
-### Pseudo code implementation: example 2
+### PL/pgSQL procedure implementation of the pseudocode : example 2
 
 Try this extended version of the minimal example:
 
 ```plpgsql
 with
-  recursive r(lvl, n) as (
+  recursive r(c1, c2) as (
 
     -- Non-recursive term.
     (
-      values (0, 1), (0, 11), (0, 21)
+      values (0, 1), (0, 2), (0, 3)
     )
 
     union all
 
     -- Recursive term.
     (
-      select lvl + 1, n + 1
+      select c1 + 1, c2 + 1
       from r
-      where n < 25
+      where c1 < 4
     )
   )
-select lvl, n from r order by lvl, n;
+select c1, c2 from r order by c1, c2;
 ```
 This is the result:
 
 ```
- lvl | n  
------+----
-   0 |  1
-   0 | 11
-   0 | 21
-   1 |  2
-   1 | 12
-   1 | 22
-   2 |  3
-   2 | 13
-   2 | 23
-   3 |  4
-   3 | 14
-   3 | 24
-   4 |  5
-   4 | 15
-   4 | 25
-   5 |  6
-   5 | 16
-   6 |  7
-   6 | 17
-   7 |  8
-   7 | 18
-   8 |  9
-   8 | 19
-   9 | 10
-   9 | 20
-  10 | 11
-  10 | 21
-  11 | 12
-  11 | 22
-  12 | 13
-  12 | 23
-  13 | 14
-  13 | 24
-  14 | 15
-  14 | 25
-  15 | 16
-  16 | 17
-  17 | 18
-  18 | 19
-  19 | 20
-  20 | 21
-  21 | 22
-  22 | 23
-  23 | 24
-  24 | 25
+ c1 | c2 
+----+----
+  0 |  1
+  0 |  2
+  0 |  3
+  
+  1 |  2
+  1 |  3
+  1 |  4
+  
+  2 |  3
+  2 |  4
+  2 |  5
+  
+  3 |  4
+  3 |  5
+  3 |  6
+  
+  4 |  5
+  4 |  6
+  4 |  7
 ```
 
-The procedural implementation that emulates the pseudocode is a natural extension of the [first example](#pseudo-code-implementation-example-1). First, do this set-up:
+The whitespace was added by hand to group the results into those produced first by evaluating the _non-recursive term_ and then those produced by each successive repeat evaluation of the _recursive term_.
+
+The procedural implementation that emulates the pseudocode is a natural extension of the [first example](#pl-pgsql-procedure-implementation-of-the-pseudocode-example-1). First, do this set-up:
 
 ```plpgsql
 set client_min_messages = warning;
@@ -468,57 +441,70 @@ set client_min_messages = warning;
 drop procedure if exists recursive_with_semantics_2 cascade;
 drop table if exists recursive_with_results cascade;
 drop table if exists working_results cascade;
+drop table if exists temp_results cascade;
 
 create table recursive_with_results(
-  lvl int not null,
-  n int not null,
-  constraint recursive_with_results_pk primary key(lvl, n));
+  c1 int not null,
+  c2 int not null,
+  constraint recursive_with_results_pk primary key(c1, c2));
 
 create table working_results(
-  lvl int not null,
-  n int not null,
-  constraint working_results_pk primary key(lvl, n));
+  c1 int not null,
+  c2 int not null,
+  constraint working_results_pk primary key(c1, c2));
+
+create table temp_results(
+  c1 int not null,
+  c2 int not null,
+  constraint temp_results_pk primary key(c1, c2));
 ```
 Now create the procedure:
 
 ```plggsql
-create procedure recursive_with_semantics_2(max_n in int)
+create procedure recursive_with_semantics_2(max_c1 in int)
   language plpgsql
 as $body$
-<<b>>declare
-  r   working_results   not null := (0, 0);
-  arr working_results[] not null := '{}';
 begin
   -- Emulate the non-recursive term.
-  truncate table recursive_with_results;
-  truncate table working_results;
-  insert into recursive_with_results(lvl, n) values (0, 1), (0, 11), (0, 21);
-  insert into working_results       (lvl, n) values (0, 1), (0, 11), (0, 21);
+  delete from recursive_with_results;
+  delete from working_results;
+  insert into working_results(c1, c2) values (0, 1), (0, 2), (0, 3);
+  insert into recursive_with_results(c1, c2) select c1, c2 from working_results;
 
   -- Emulate the recursive term.
   while ((select count(*) from working_results) > 0) loop
-    select array_agg((a.lvl + 1, a.n + 1)) into strict b.arr from working_results a;
+    delete from temp_results;
+    insert into temp_results
+    select c1 + 1, c2 + 1 from working_results
+    where c1 < max_c1;
 
-    truncate table working_results;
-
-    foreach r in array arr loop
-      if r.n <= max_n then
-        insert into recursive_with_results(lvl, n) values(r.lvl, r.n);
-        insert into working_results       (lvl, n) values(r.lvl, r.n);
-      end if;
-    end loop;
+    delete from working_results;
+    insert into working_results(c1, c2) select c1, c2 from temp_results;
+    insert into recursive_with_results(c1, c2) select c1, c2 from temp_results;
   end loop;
-end b;
+end;
 $body$;
 ```
 
-Notice that, here, each iteration accumulates _three_ rows. So the logic needs to be correspondingly more elaborate.
+Notice that, here, each iteration accumulates _three_ rows.
 
-Now invoke the procedure and observe the contents of the `RECURSIVE_WITH_RESULTS` table:
+Now invoke the procedure and observe the contents of the _"RECURSIVE_WITH_RESULTS"_ table:
 
 ```plpgsql
-call recursive_with_semantics_2(25);
-select lvl, n from recursive_with_results order by lvl, n;
+call recursive_with_semantics_2(4);
+select c1, c2 from recursive_with_results order by c1, c2;
 ```
 
 The result is identical to that produced by the SQL implementation that it emulates.
+
+The section [Using a WITH clause recursive substatement to traverse graphs of all kinds](../traversing-general-graphs/) shows how to do graph traversal of undirected and directed graphs using application-agnostic examples. When the graph is cyclic, it shows how to detect and prevent endless repetition.
+
+## Case studies
+
+The following two sections describe how to use a `WITH` clause recursive substatement to implement two practical cases:
+
+- [Case study—using a WITH clause recursive substatement to traverse a hierarchy](../emps-hierarchy) describes the use case (traversing an employee hierarchy) that is most commonly used to illustrate a practical application of the `WITH` clause recursive substatement. Different SQL databases with different variants of SQL use importantly different approaches. PostgreSQL, and therefore YSQL, have only standard SQL features here (and not, therefore, the `CONNECT BY PRIOR` feature that is typically used with Oracle Database). Neither do they have dedicated syntax to ask for breadth-first or depth-first traversal. Rather, these two kinds of traversal must be programmed explicitly. The explicit solutions use array functionality and are straightforward. Moreover, using this approach allows various second-order display choices easily to be implemented.
+- [Using a `WITH` clause recursive substatement to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Computing Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the `WITH` clause recursive substatement implements using explicit SQL. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
+
+
+
