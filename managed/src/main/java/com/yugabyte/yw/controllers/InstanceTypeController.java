@@ -28,17 +28,16 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
   private final Config config;
-
-  @Inject
-  FormFactory formFactory;
-
-  @Inject
-  CloudAPI.Factory cloudAPIFactory;
+  private final FormFactory formFactory;
+  private final CloudAPI.Factory cloudAPIFactory;
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(Config config) {
+  public InstanceTypeController(Config config, FormFactory formFactory,
+                                CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
+    this.formFactory = formFactory;
+    this.cloudAPIFactory = cloudAPIFactory;
   }
 
   /**

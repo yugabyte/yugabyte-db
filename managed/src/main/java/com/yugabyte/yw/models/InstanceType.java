@@ -169,12 +169,22 @@ public class InstanceType extends Model {
     return p -> supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
   }
 
-  private static void populateDefaultIfEmpty(InstanceType instanceType, Config config) {
-    if (instanceType.instanceTypeDetailsJson.isEmpty()) {
-      instanceType.instanceTypeDetails.setVolumeDetailsList(
-        config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
-        config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
+  private static List<InstanceType> populateDefaultsIfEmpty(List<InstanceType> entries,
+                                                            Config config) {
+    // For AWS, we would filter and show only supported instance prefixes
+    entries = entries.stream()
+      .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
+      .collect(Collectors.toList());
+    for (InstanceType instanceType : entries) {
+      if (instanceType.instanceTypeDetailsJson.isEmpty()) {
+        InstanceTypeDetails instanceTypeDetailsObj = new InstanceTypeDetails();
+        instanceTypeDetailsObj.setVolumeDetailsList(
+          config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
+          config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
+        instanceType.instanceTypeDetails = instanceTypeDetailsObj;
+      }
     }
+    return entries;
   }
 
   /**
@@ -186,13 +196,7 @@ public class InstanceType extends Model {
       .eq("active", true)
       .findList();
     if (provider.code.equals("aws")) {
-      // For AWS, we would filter and show only supported instance prefixes
-      entries = entries.stream()
-        .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
-        .collect(Collectors.toList());
-      for (InstanceType instanceType : entries) {
-        populateDefaultIfEmpty(instanceType, config);
-      }
+      entries = populateDefaultsIfEmpty(entries, config);
     }
 
     return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),

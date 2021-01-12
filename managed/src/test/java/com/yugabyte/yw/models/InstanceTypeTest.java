@@ -16,6 +16,7 @@ import java.util.Set;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
 
@@ -30,13 +31,12 @@ public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
   private Customer defaultCustomer;
   private InstanceType.InstanceTypeDetails defaultDetails;
-
-  @Mock
-  Config mockConfig;
+  private Config config;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    config = ConfigFactory.load();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
     volumeDetails.volumeSizeGB = 100;
@@ -95,7 +95,7 @@ public class InstanceTypeTest extends FakeDBApplication {
     instanceType.setActive(false);
     instanceType.save();
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, config);
     assertNotNull(instanceTypeList);
     assertEquals(2, instanceTypeList.size());
     Set<String> possibleTypes = new HashSet<>();
@@ -110,7 +110,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testFindByProviderWithUnSupportedInstances() {
     InstanceType.upsert(defaultProvider.code, "t2.medium", 3, 10.0, defaultDetails);
     InstanceType.upsert(defaultProvider.code, "c3.medium", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, config);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
     assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
@@ -121,8 +121,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
-    InstanceType.deleteInstanceTypesForProvider(newProvider, mockConfig);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
+    InstanceType.deleteInstanceTypesForProvider(newProvider, config);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, config);
     assertEquals(0, instanceTypeList.size());
   }
 
