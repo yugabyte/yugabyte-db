@@ -14,8 +14,6 @@ Vagrant.configure(2) do |config|
 
         # Install PostgreSQL
         rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-        # Enable PG13 repo (can be removed after the official release)
-        yum-config-manager --enable pgdg13-updates-testing
         yum install -y postgresql${PG_VERSION?}-server
 
         # Compile & install pgaudit
