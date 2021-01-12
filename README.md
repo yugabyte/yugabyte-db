@@ -72,6 +72,8 @@ pgAudit versions relate to PostgreSQL major versions as follows:
 
 pgAudit can be compiled against an installed copy of PostgreSQL with development packages using `PGXS`.
 
+The following instructions are for RHEL 7.
+
 Clone the pgAudit extension:
 ```
 git clone https://github.com/pgaudit/pgaudit.git
@@ -84,11 +86,11 @@ Checkout `REL_13_STABLE` branch (note that the stable branch may not exist for u
 ```
 git checkout REL_13_STABLE
 ```
-Install pgAudit:
+Build and install pgAudit:
 ```
-make install USE_PGXS=1
+make install USE_PGXS=1 PG_CONFIG=/usr/pgsql-13/bin/pg_config
 ```
-Detailed instructions can be found in `test/Vagrantfile`.
+Detailed instructions for testing and development may be found in `test/Vagrantfile`.
 
 ## Settings
 
