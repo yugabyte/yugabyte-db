@@ -34,6 +34,17 @@ The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is o
 ## Installation
 ``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions. 
 
+### Installing from PGXN
+
+You can install ``pg_stat_monitor`` from PGXN (PostgreSQL Extensions Network) using the [PGXN client](https://pgxn.github.io/pgxnclient/). 
+
+
+Use the following command:
+
+```sh
+pgxn install pg_stat_monitor
+```
+
 ### Installing from source code
 
 You can download the source code of the latest release of ``pg_stat_monitor``  from [this GitHub page](https://github.com/Percona/pg_stat_monitor/releases) or using git:
