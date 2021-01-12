@@ -113,6 +113,8 @@ DECLARE_int32(replication_factor);
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
+DECLARE_bool(TEST_force_master_lookup_all_tablets);
+DECLARE_double(TEST_simulate_lookup_timeout_probability);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -196,6 +198,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
+  static const YBTableName kTable3Name;
 
   string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
@@ -415,6 +418,40 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return rpc::MessengerBuilder(name).Build();
   }
 
+  void VerifyKeyRangeFiltering(const std::vector<string>& sorted_partitions,
+                               const std::vector<internal::RemoteTabletPtr>& tablets,
+                               const string& start_key, const string& end_key) {
+    auto start_idx = FindPartitionStartIndex(sorted_partitions, start_key);
+    auto end_idx = FindPartitionStartIndexExclusiveBound(sorted_partitions, end_key);
+    auto filtered_tablets =
+        ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, start_key, end_key));
+    std::vector<string> filtered_partitions;
+    std::transform(filtered_tablets.begin(), filtered_tablets.end(),
+                   std::back_inserter(filtered_partitions),
+                   [](const auto& tablet) { return tablet->partition().partition_key_start(); });
+    std::sort(filtered_partitions.begin(), filtered_partitions.end());
+
+    ASSERT_EQ(filtered_partitions,
+              std::vector<string>(&sorted_partitions[start_idx], &sorted_partitions[end_idx + 1]));
+  }
+
+  size_t FindPartitionStartIndexExclusiveBound(
+    const std::vector<std::string>& partitions,
+    const std::string& partition_key) {
+    if (partition_key.empty()) {
+      return partitions.size() - 1;
+    }
+
+    auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
+    if (it == partitions.end() || *it >= partition_key) {
+      if (it == partitions.begin()) {
+        return 0;
+      }
+      --it;
+    }
+    return it - partitions.begin();
+  }
+
   enum WhichServerToKill {
     DEAD_MASTER,
     DEAD_TSERVER
@@ -427,12 +464,14 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;
+  TableHandle client_table3_;
 };
 
 
 const string ClientTest::kKeyspaceName("my_keyspace");
 const YBTableName ClientTest::kTableName(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb");
 const YBTableName ClientTest::kTable2Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb2");
+const YBTableName ClientTest::kTable3Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb3");
 
 namespace {
 
@@ -476,6 +515,131 @@ void CheckRowCount(const TableHandle& table) {
 }
 
 } // namespace
+
+constexpr int kLookupWaitTimeSecs = 30;
+constexpr int kNumTabletsPerTable = 8;
+constexpr int kNumIterations = 1000;
+
+class ClientTestForceMasterLookup :
+    public ClientTest, public ::testing::WithParamInterface<bool /* force_master_lookup */> {
+ public:
+  void SetUp() override {
+    ClientTest::SetUp();
+    // Do we want to force going to the master instead of using cache.
+    SetAtomicFlag(GetParam(), &FLAGS_TEST_force_master_lookup_all_tablets);
+    SetAtomicFlag(0.5, &FLAGS_TEST_simulate_lookup_timeout_probability);
+  }
+
+
+  void PerformManyLookups(const std::shared_ptr<const YBTable>& table, bool point_lookup) {
+    for (int i = 0; i < kNumIterations; i++) {
+      if (point_lookup) {
+          auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+          ASSERT_NOTNULL(key_rt);
+      } else {
+        auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
+            table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
+        ASSERT_EQ(tablets.size(), kNumTabletsPerTable);
+      }
+    }
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(ForceMasterLookup, ClientTestForceMasterLookup, ::testing::Bool());
+
+TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, kNumTabletsPerTable, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(cluster_->leader_mini_master()->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto t1 = std::thread([&]() { ASSERT_NO_FATALS(
+      PerformManyLookups(table, true /* point_lookup */)); });
+  auto t2 = std::thread([&]() { ASSERT_NO_FATALS(
+      PerformManyLookups(table, false /* point_lookup */)); });
+
+  t1.join();
+  t2.join();
+}
+
+TEST_F(ClientTest, TestLookupAllTablets) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, kNumTabletsPerTable, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(cluster_->leader_mini_master()->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto future = client_->LookupAllTabletsFuture(
+      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs));
+
+  auto tablets = ASSERT_RESULT(future.get());
+  ASSERT_EQ(tablets.size(), 8);
+}
+
+TEST_F(ClientTest, TestPointThenRangeLookup) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, kNumTabletsPerTable, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(cluster_->leader_mini_master()->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+  ASSERT_NOTNULL(key_rt);
+
+  auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
+      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
+
+  ASSERT_EQ(tablets.size(), kNumTabletsPerTable);
+}
+
+TEST_F(ClientTest, TestKeyRangeFiltering) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(cluster_->leader_mini_master()->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
+      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
+  // First, verify, that using empty bounds on both sides returns all tablets.
+  auto filtered_tablets =
+      ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, std::string(), std::string()));
+  ASSERT_EQ(kNumTabletsPerTable, filtered_tablets.size());
+
+  std::vector<std::string> partition_starts;
+  for (const auto& tablet : tablets) {
+    partition_starts.push_back(tablet->partition().partition_key_start());
+  }
+  std::sort(partition_starts.begin(), partition_starts.end());
+
+  auto start_key = partition_starts[0];
+  auto end_key = partition_starts[2];
+  ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets, start_key, end_key));
+
+  start_key = partition_starts[5];
+  end_key = partition_starts[7];
+  ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets, start_key, end_key));
+
+  auto fixed_key = PartitionSchema::EncodeMultiColumnHashValue(10);
+  ASSERT_NOK(FilterTabletsByHashPartitionKeyRange(tablets, fixed_key, fixed_key));
+
+  for (int i = 0; i < kNumIterations; i++) {
+    auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);
+    auto end_idx = RandomUniformInt(start_idx + 1, PartitionSchema::kMaxPartitionKey);
+    ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets,
+                     PartitionSchema::EncodeMultiColumnHashValue(start_idx),
+                     PartitionSchema::EncodeMultiColumnHashValue(end_idx)));
+  }
+}
 
 TEST_F(ClientTest, TestListTables) {
   auto tables = ASSERT_RESULT(client_->ListTables());

@@ -180,9 +180,6 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-DEFINE_test_flag(bool, pause_before_post_split_compation, false,
-                 "Pause before triggering post split compaction.");
-
 namespace {
 
 constexpr int kDbCacheSizeUsePercentage = -1;
@@ -222,7 +219,6 @@ DEFINE_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
-
 
 DEFINE_int32(post_split_trigger_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for post_split_trigger_compaction_pool_. This "
@@ -1534,17 +1530,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  if (tablet->MightHaveNonRelevantData()) {
-    WARN_NOT_OK(
-      post_split_trigger_compaction_pool_->SubmitFunc(
-          std::bind(&TSTabletManager::CompactPostSplitTablet, this, tablet)),
+  WARN_NOT_OK(
+      tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+        return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+      }),
       "Failed to submit compaction for post-split tablet.");
-  }
-}
-
-void TSTabletManager::CompactPostSplitTablet(tablet::TabletPtr tablet) {
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
-  WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
 }
 
 void TSTabletManager::StartShutdown() {
@@ -1740,7 +1730,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   SharedLock<RWMutex> shared_lock(mutex_);
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
-    for (const auto peer : *tablet_peers) {
+    for (const auto& peer : *tablet_peers) {
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);

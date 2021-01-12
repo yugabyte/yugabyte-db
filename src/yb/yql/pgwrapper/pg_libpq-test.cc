@@ -10,7 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <thread>
+
 #include "yb/gutil/strings/join.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -2671,6 +2674,141 @@ TEST_F_EX(PgLibPqTest,
   thread_holder.Stop();
 }
 
+// Simulate this situation:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (i, j, PRIMARY KEY (i))
+//                                                INSERT (1, 'a')
+//   CREATE UNIQUE INDEX (j)
+//   - DELETE_ONLY perm
+//                                                DELETE (1, 'a')
+//                                                (delete (1, 'a') to index)
+//                                                INSERT (2, 'a')
+//   - WRITE_DELETE perm
+//   - BACKFILL perm
+//     - get safe time for read
+//                                                INSERT (3, 'a')
+//                                                (insert (3, 'a') to index)
+//     - do the actual backfill
+//                                                (insert (2, 'a') to index--detect conflict)
+//   - READ_WRITE_DELETE perm
+// This test is for issue #6208.
+TEST_F_EX(
+    PgLibPqTest,
+    CreateUniqueIndexWriteAfterSafeTime,
+    PgLibPqTestIndexBackfillSlow) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const std::string& kIndexName = "i";
+  const std::string& kNamespaceName = "yugabyte";
+  const std::string& kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j char, PRIMARY KEY (i))", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'a')", kTableName));
+
+  std::thread create_index_thread([&] {
+    LOG(INFO) << "Creating index";
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    Status s = conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName);
+    ASSERT_NOK(s);
+    ASSERT_TRUE(s.IsNetworkError());
+    ASSERT_TRUE(s.message().ToBuffer().find("duplicate key value")
+                != std::string::npos) << s;
+  });
+
+  {
+    std::map<std::string, bool> index_state_flags = {
+      {"indislive", true},
+      {"indisready", false},
+      {"indisvalid", false},
+    };
+
+    LOG(INFO) << "Wait for indislive index state flag";
+    // Deadline is 3s
+    ASSERT_OK(WaitFor(
+        std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
+        3s,
+        Format("Wait for index state flags to hit target: $0", index_state_flags)));
+
+    LOG(INFO) << "Do insert and delete";
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'a')", kTableName));
+
+    LOG(INFO) << "Check we're not yet at indisready index state flag";
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
+  }
+
+  {
+    std::map<std::string, bool> index_state_flags = {
+      {"indislive", true},
+      {"indisready", true},
+      {"indisvalid", false},
+    };
+
+    LOG(INFO) << "Wait for indisready index state flag";
+    // Deadline is
+    //   7s for sleep between indislive and indisready
+    // + 3s for extra
+    // = 10s
+    ASSERT_OK(WaitFor(
+        std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
+        10s,
+        Format("Wait for index state flags to hit target: $0", index_state_flags)));
+  }
+
+  {
+    LOG(INFO) << "Wait for backfill (approx)";
+    // 7s for sleep between indisready and backfill
+    SleepFor(7s);
+
+    LOG(INFO) << "Wait to get safe time for backfill (approx)";
+    //   7s for sleep between get safe time and do backfill
+    // / 2 to get the middle
+    // = 3s
+    SleepFor(3s);
+
+    LOG(INFO) << "Do insert";
+    // Deadline is
+    //   4s for remainder of 7s sleep between get safe time and do backfill
+    // + 3s for extra
+    // = 7s
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 7s, CoarseMonoClock::Duration::max());
+    while (true) {
+      Status status = conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 'a')", kTableName);
+      LOG(INFO) << "Got " << yb::ToString(status);
+      if (status.ok()) {
+        break;
+      } else {
+        ASSERT_FALSE(status.IsIllegalState() &&
+                     status.message().ToBuffer().find("Duplicate value") != std::string::npos)
+            << "The insert should come before backfill, so it should not cause duplicate conflict.";
+        ASSERT_TRUE(waiter.Wait());
+      }
+    }
+  }
+
+  LOG(INFO) << "Wait for CREATE INDEX to finish";
+  create_index_thread.join();
+
+  // Check.
+  {
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 10s, CoarseMonoClock::Duration::max());
+    while (true) {
+      auto result = conn.FetchFormat("SELECT count(*) FROM $0", kTableName);
+      if (result.ok()) {
+        auto res = ASSERT_RESULT(result);
+        const int64_t main_table_size = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+        ASSERT_EQ(main_table_size, 2);
+        break;
+      }
+      ASSERT_TRUE(result.status().IsQLError()) << result.status();
+      ASSERT_TRUE(result.status().message().ToBuffer().find("schema version mismatch")
+                  != std::string::npos) << result.status();
+      ASSERT_TRUE(waiter.Wait());
+    }
+  }
+}
+
 // Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.
 class PgLibPqTestIndexBackfillSlowSmallClientDeadline : public PgLibPqTestIndexBackfillSlow {
  public:
@@ -2875,39 +3013,53 @@ TEST_F_EX(PgLibPqTest,
   create_index_thread.join();
 }
 
-// Override the index backfill test to enable authentication.  Flags taken from
-// <https://docs.yugabyte.com/latest/secure/authentication/password-authentication/> and modified to
-// allow postgres role unconditionally.
+// Override the index backfill test to have different HBA config:
+// 1. if any user tries to access the authdb database, enforce md5 auth
+// 2. if the postgres user tries to access the yugabyte database, allow it
+// 3. if the yugabyte user tries to access the yugabyte database, allow it
+// 4. otherwise, disallow it
 class PgLibPqTestIndexBackfillAuth : public PgLibPqTestIndexBackfill {
  public:
   PgLibPqTestIndexBackfillAuth() {
-    more_tserver_flags.push_back("--ysql_hba_conf="
-                                 "host yugabyte postgres 0.0.0.0/0 trust,"
-                                 "host yugabyte postgres ::0/0 trust,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 md5,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 scram-sha-256,"
-                                 "host yugabyte yugabyte ::0/0 md5,"
-                                 "host yugabyte yugabyte ::0/0 scram-sha-256");
-    more_tserver_flags.push_back("--ysql_pg_conf=password_encryption=scram-sha-256");
+    more_tserver_flags.push_back(
+        Format(
+          "--ysql_hba_conf="
+          "host $0 all all md5,"
+          "host yugabyte postgres all trust,"
+          "host yugabyte yugabyte all trust",
+          kAuthDbName));
   }
+
+  const std::string kAuthDbName = "authdb";
 };
 
 // Test backfill on clusters where the yugabyte role has authentication enabled.
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(BackfillAuth),
           PgLibPqTestIndexBackfillAuth) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
+  const std::string& kTableName = "t";
 
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  LOG(INFO) << "create " << this->kAuthDbName << " database";
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", this->kAuthDbName));
+  }
 
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
+  LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
+  {
+    const std::string& host = pg_ts->bind_host();
+    const uint16_t port = pg_ts->pgsql_rpc_port();
 
-// TODO(jason): expect success when closing issue #5324.
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find(
-      "backfill query couldn't be sent") != std::string::npos) << status;
+    auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+        "yugabyte",
+        "yugabyte",
+        host,
+        port,
+        this->kAuthDbName)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+  }
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch

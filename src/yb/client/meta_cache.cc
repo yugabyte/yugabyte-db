@@ -61,6 +61,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/random_util.h"
 
 using std::map;
 using std::shared_ptr;
@@ -82,6 +83,13 @@ DEFINE_int64(meta_cache_lookup_throttling_step_ms, 5,
 
 DEFINE_int64(meta_cache_lookup_throttling_max_delay_ms, 1000,
              "Max delay between calls during lookup throttling.");
+
+DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
+                 "If set, force the client to go to the master for all tablet lookup "
+                 "instead of reading from cache.");
+
+DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0.0,
+                 "If set, mark an RPC as failed and force retry on the first attempt.");
 
 METRIC_DEFINE_histogram(
   server, dns_resolve_latency_during_init_proxy,
@@ -108,6 +116,9 @@ using tserver::TabletServerServiceProxy;
 namespace client {
 
 namespace internal {
+
+using ProcessedTablesMap =
+    std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;
 
 namespace {
 
@@ -609,8 +620,7 @@ class LookupRpc : public Rpc, public RequestCleanup {
   }
 
   template <class Response>
-  void DoFinished(const Status& status, const Response& resp,
-                  const std::string* partition_group_start);
+  void DoFinished(const Status& status, const Response& resp);
 
   std::string LogPrefix() const {
     return yb::ToString(this) + ": ";
@@ -628,10 +638,26 @@ class LookupRpc : public Rpc, public RequestCleanup {
     return table_;
   }
 
+  // When we recieve a response for a key lookup or full table rpc, add callbacks to be fired off
+  // to the to_notify set corresponding to the rpc type. Modify tables pointer by removing lookups
+  // as we add to the to_notify set.
+  virtual void AddCallbacksToBeNotified(
+      const ProcessedTablesMap& processed_tables,
+      std::unordered_map<TableId, TableData>* tables,
+      std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) = 0;
+
+  // When looking up by key or full table, update the processe table with the returned location.
+  virtual void UpdateProcessedTable(const TabletLocationsPB& loc,
+                                    RemoteTabletPtr remote,
+                                    ProcessedTablesMap::mapped_type* processed_table) = 0;
+
  private:
   virtual void DoSendRpc() = 0;
 
   void NewLeaderMasterDeterminedCb(const Status& status);
+
+  virtual CHECKED_STATUS ProcessTabletLocations(
+     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) = 0;
 
   const int64_t request_no_;
 
@@ -724,11 +750,7 @@ CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTableLocationsRespons
 } // namespace
 
 template <class Response>
-void LookupRpc::DoFinished(
-    const Status& status, const Response& resp, const std::string* partition_group_start) {
-  VLOG_WITH_FUNC(4) << "partition_group_start: "
-                    << (partition_group_start ? Slice(*partition_group_start).ToDebugHexString()
-                                              : "None");
+void LookupRpc::DoFinished(const Status& status, const Response& resp) {
   if (status.ok() && resp.has_error()) {
     LOG_WITH_PREFIX(INFO)
         << "Failed, got resp error " << master::MasterErrorPB::Code_Name(resp.error().code());
@@ -802,8 +824,12 @@ void LookupRpc::DoFinished(
   auto retained_self = meta_cache_->rpcs_.Unregister(&retained_self_);
 
   if (new_status.ok()) {
-    new_status = meta_cache_->ProcessTabletLocations(
-        resp.tablet_locations(), partition_group_start, this);
+    if (RandomActWithProbability(FLAGS_TEST_simulate_lookup_timeout_probability)) {
+      const auto s = STATUS(TimedOut, "Simulate timeout for test.");
+      NotifyFailure(s);
+      return;
+    }
+    new_status = ProcessTabletLocations(resp.tablet_locations());
   }
   if (!new_status.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << new_status;
@@ -859,11 +885,23 @@ class TablePartitionLookup : public ToStringable {
   const std::string& partition_group_start_;
 };
 
+class FullTableLookup : public ToStringable {
+ public:
+  explicit FullTableLookup(const TableId& table_id)
+      : table_id_(table_id) {}
+
+  std::string ToString() const override {
+    return Format("FullTableLookup: $0", table_id_);
+  }
+ private:
+  const TableId& table_id_;
+};
+
 } // namespace
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    const PartitionGroupKey* partition_group_start, RequestCleanup* cleanup) {
+    const PartitionGroupKey* partition_group_start, LookupRpc* lookup_rpc) {
   if (VLOG_IS_ON(2)) {
     auto group_start =
         partition_group_start ? Slice(*partition_group_start).ToDebugHexString() : "<NULL>";
@@ -877,11 +915,10 @@ Status MetaCache::ProcessTabletLocations(
 
   RETURN_NOT_OK(CheckTabletLocations(locations));
 
-  std::vector<std::pair<LookupTabletCallback, internal::RemoteTabletPtr>> to_notify;
+  std::vector<std::pair<LookupCallback, LookupCallbackVisitor>> to_notify;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
-
-    std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>> processed_tables;
+    ProcessedTablesMap processed_tables;
 
     for (const TabletLocationsPB& loc : locations) {
       const std::string& tablet_id = loc.tablet_id();
@@ -944,52 +981,28 @@ Status MetaCache::ProcessTabletLocations(
         }
         remote->Refresh(ts_cache_, loc.replicas());
         remote->SetExpectedReplicas(loc.expected_live_replicas(), loc.expected_read_replicas());
-        if (partition_group_start) {
-          processed_table.emplace(loc.partition().partition_key_start(), remote);
+        if (lookup_rpc) {
+          lookup_rpc->UpdateProcessedTable(loc, remote, &processed_table);
         }
       }
 
       auto it = tablet_lookups_by_id_.find(tablet_id);
       if (it != tablet_lookups_by_id_.end()) {
         while (auto* lookup = it->second.lookups.Pop()) {
-          to_notify.emplace_back(std::move(lookup->callback), remote);
+          to_notify.emplace_back(std::move(lookup->callback),
+                                 LookupCallbackVisitor(remote));
           delete lookup;
         }
       }
     }
-
-    if (partition_group_start) {
-      for (const auto& processed_table : processed_tables) {
-        auto& table_data = tables_[processed_table.first];
-        const auto lookup_by_group_iter =
-            table_data.tablet_lookups_by_group.find(*partition_group_start);
-        if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
-          VLOG_WITH_FUNC(4) << "Checking tablet_lookups_by_group for partition_group_start: "
-                            << Slice(*partition_group_start).ToDebugHexString();
-          auto& lookups_group = lookup_by_group_iter->second;
-          while (auto* lookup = lookups_group.lookups.Pop()) {
-            auto remote_it = processed_table.second.find(*lookup->partition_start);
-            to_notify.emplace_back(
-                std::move(lookup->callback),
-                remote_it != processed_table.second.end() ? remote_it->second : nullptr);
-            delete lookup;
-          }
-        }
-      }
-    }
-
-    if (cleanup) {
-      cleanup->CleanupRequest();
+    if (lookup_rpc) {
+      lookup_rpc->AddCallbacksToBeNotified(processed_tables, &tables_, &to_notify);
+      lookup_rpc->CleanupRequest();
     }
   }
 
-  for (const auto& callback_and_remote_tablet : to_notify) {
-    if (callback_and_remote_tablet.second) {
-      callback_and_remote_tablet.first(callback_and_remote_tablet.second);
-    } else {
-      static auto status = STATUS(TryAgain, "Tablet for requested partition is not yet running");
-      callback_and_remote_tablet.first(status);
-    }
+  for (const auto& callback_and_param : to_notify) {
+    boost::apply_visitor(callback_and_param.second, callback_and_param.first);
   }
 
   return Status::OK();
@@ -1031,7 +1044,7 @@ void MetaCache::MaybeUpdateClientRequests(const TableData& table_data, const Rem
 void MetaCache::InvalidateTableCache(const TableId& table_id) {
   VLOG_WITH_FUNC(1) << "table: " << table_id;
 
-  std::vector<LookupTabletCallback> to_notify;
+  std::vector<LookupCallback> to_notify;
 
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -1042,6 +1055,10 @@ void MetaCache::InvalidateTableCache(const TableId& table_id) {
       // info about tablets serving partitions.
       for (auto& tablet : table_data.tablets_by_partition) {
         tablet.second->MarkStale();
+      }
+
+      for (auto& tablet : table_data.all_tablets) {
+        tablet->MarkStale();
       }
       // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
       // detect which need to be retried by GetTableLocationsResponsePB.partitions_version.
@@ -1055,7 +1072,9 @@ void MetaCache::InvalidateTableCache(const TableId& table_id) {
     }
   }
   for (const auto& callback : to_notify) {
-    callback(STATUS_FORMAT(TryAgain, "MetaCache for table $0 has been invalidated.", table_id));
+    const auto s =
+        STATUS_FORMAT(TryAgain, "MetaCache for table $0 has been invalidated.", table_id);
+    boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
 }
 
@@ -1063,35 +1082,29 @@ class MetaCache::CallbackNotifier {
  public:
   explicit CallbackNotifier(const Status& status) : status_(status) {}
 
-  void Add(LookupTabletCallback&& callback) {
+  void Add(LookupCallback&& callback) {
     callbacks_.push_back(std::move(callback));
   }
 
   ~CallbackNotifier() {
     for (const auto& callback : callbacks_) {
-      callback(status_);
+      boost::apply_visitor(LookupCallbackVisitor(status_), callback);
     }
   }
  private:
-  std::vector<LookupTabletCallback> callbacks_;
+  std::vector<LookupCallback> callbacks_;
   Status status_;
 };
 
-template <class Key>
 CoarseTimePoint MetaCache::LookupFailed(
-    const Key& key, const Status& status, int64_t request_no, const ToStringable& lookup_id,
-    std::unordered_map<Key, LookupDataGroup>* key_to_group_lookup_data,
+    const Status& status, int64_t request_no, const ToStringable& lookup_id,
+    LookupDataGroup* lookup_data_group,
     CallbackNotifier* notifier) {
-  auto key_to_group_lookup_data_iterator = key_to_group_lookup_data->find(key);
-  if (key_to_group_lookup_data_iterator == key_to_group_lookup_data->end()) {
-    return CoarseTimePoint();
-  }
-  auto& lookup_data_group = key_to_group_lookup_data_iterator->second;
   std::vector<LookupData*> retry;
   auto now = CoarseMonoClock::Now();
   CoarseTimePoint max_deadline;
 
-  while (auto* lookup = lookup_data_group.lookups.Pop()) {
+  while (auto* lookup = lookup_data_group->lookups.Pop()) {
     if (!status.IsTimedOut() || lookup->deadline <= now) {
       notifier->Add(std::move(lookup->callback));
       delete lookup;
@@ -1102,10 +1115,10 @@ CoarseTimePoint MetaCache::LookupFailed(
   }
 
   if (retry.empty()) {
-    lookup_data_group.Finished(request_no, lookup_id);
+    lookup_data_group->Finished(request_no, lookup_id);
   } else {
     for (auto* lookup : retry) {
-      lookup_data_group.lookups.Push(lookup);
+      lookup_data_group->lookups.Push(lookup);
     }
   }
 
@@ -1160,9 +1173,23 @@ class LookupByIdRpc : public LookupRpc {
         std::bind(&LookupByIdRpc::Finished, this, Status::OK()));
   }
 
+  void AddCallbacksToBeNotified(
+    const ProcessedTablesMap& processed_tables,
+    std::unordered_map<TableId, TableData>* tables,
+    std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
+    // Nothing to do when looking up by id.
+    return;
+  }
+
+  void UpdateProcessedTable(const TabletLocationsPB& loc,
+                            RemoteTabletPtr remote,
+                            ProcessedTablesMap::mapped_type* processed_table) override {
+    return;
+  }
+
  private:
   void Finished(const Status& status) override {
-    DoFinished(status, resp_, nullptr /* partition_group_start */);
+    DoFinished(status, resp_);
   }
 
   void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
@@ -1180,6 +1207,11 @@ class LookupByIdRpc : public LookupRpc {
     meta_cache()->LookupByIdFailed(tablet_id_, table(), request_no(), status);
   }
 
+  Status ProcessTabletLocations(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) override {
+    return meta_cache()->ProcessTabletLocations(locations, nullptr, this);
+  }
+
   // Tablet to lookup.
   const TabletId tablet_id_;
 
@@ -1192,11 +1224,88 @@ class LookupByIdRpc : public LookupRpc {
   MonoDelta send_delay_;
 };
 
+class LookupFullTableRpc : public LookupRpc {
+ public:
+  LookupFullTableRpc(const scoped_refptr<MetaCache>& meta_cache,
+                     const std::shared_ptr<const YBTable>& table,
+                     int64_t request_no,
+                     CoarseTimePoint deadline)
+      : LookupRpc(meta_cache, table, request_no, deadline) {
+  }
+
+  std::string ToString() const override {
+    return Format("LookupFullTableRpc($0, $1)", table()->name(), num_attempts());
+  }
+
+  void DoSendRpc() override {
+    // Fill out the request.
+    req_.mutable_table()->set_table_id(table()->id());
+    // The end partition key is left unset intentionally so that we'll prefetch
+    // some additional tablets.
+    master_proxy()->GetTableLocationsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&LookupFullTableRpc::Finished, this, Status::OK()));
+  }
+
+  void AddCallbacksToBeNotified(
+      const ProcessedTablesMap& processed_tables,
+      std::unordered_map<TableId, TableData>* tables,
+      std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
+    for (const auto& processed_table : processed_tables) {
+      // Handle tablet range
+      auto& table_data = (*tables)[processed_table.first];
+      auto& full_table_lookups = table_data.full_table_lookups;
+      while (auto* lookup = full_table_lookups.lookups.Pop()) {
+        std::vector<internal::RemoteTabletPtr> remote_tablets;
+        for (const auto& entry : processed_table.second) {
+          remote_tablets.push_back(entry.second);
+        }
+        table_data.all_tablets = remote_tablets;
+        to_notify->emplace_back(std::move(lookup->callback),
+                                LookupCallbackVisitor(std::move(remote_tablets)));
+        delete lookup;
+      }
+    }
+  }
+
+  void UpdateProcessedTable(const TabletLocationsPB& loc,
+                            RemoteTabletPtr remote,
+                            ProcessedTablesMap::mapped_type* processed_table) override {
+    processed_table->emplace(loc.partition().partition_key_start(), remote);
+  }
+
+ private:
+  void Finished(const Status& status) override {
+    DoFinished(status, resp_);
+  }
+
+  void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
+    auto& table_data = meta_cache()->tables_[table()->id()];
+    auto full_table_lookup = FullTableLookup(table()->id());
+    table_data.full_table_lookups.Finished(request_no(), full_table_lookup, false);
+  }
+
+  void NotifyFailure(const Status& status) override {
+    meta_cache()->LookupFullTableFailed(table(), request_no(), status);
+  }
+
+  Status ProcessTabletLocations(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) override {
+    return meta_cache()->ProcessTabletLocations(locations, nullptr, this);
+  }
+
+  // Request body.
+  GetTableLocationsRequestPB req_;
+
+  // Response body.
+  GetTableLocationsResponsePB resp_;
+};
+
 class LookupByKeyRpc : public LookupRpc {
  public:
   LookupByKeyRpc(const scoped_refptr<MetaCache>& meta_cache,
                  const std::shared_ptr<const YBTable>& table,
-                 const MetaCache::PartitionGroupKey& partition_group_start,
+                 const PartitionGroupKey& partition_group_start,
                  int64_t request_no,
                  CoarseTimePoint deadline)
       : LookupRpc(meta_cache, table, request_no, deadline),
@@ -1228,9 +1337,38 @@ class LookupByKeyRpc : public LookupRpc {
         std::bind(&LookupByKeyRpc::Finished, this, Status::OK()));
   }
 
+  void AddCallbacksToBeNotified(
+      const ProcessedTablesMap& processed_tables,
+      std::unordered_map<TableId, TableData>* tables,
+      std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
+    for (const auto& processed_table : processed_tables) {
+      auto& table_data = (*tables)[processed_table.first];
+      const auto lookup_by_group_iter =
+          table_data.tablet_lookups_by_group.find(partition_group_start_);
+      if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
+        VLOG_WITH_FUNC(4) << "Checking tablet_lookups_by_group for partition_group_start: "
+                          << Slice(partition_group_start_).ToDebugHexString();
+        auto& lookups_group = lookup_by_group_iter->second;
+        while (auto* lookup = lookups_group.lookups.Pop()) {
+          auto remote_it = processed_table.second.find(*lookup->partition_start);
+          auto lookup_visitor = LookupCallbackVisitor(
+              remote_it != processed_table.second.end() ? remote_it->second : nullptr);
+          to_notify->emplace_back(std::move(lookup->callback), lookup_visitor);
+          delete lookup;
+        }
+      }
+    }
+  }
+
+  void UpdateProcessedTable(const TabletLocationsPB& loc,
+                            RemoteTabletPtr remote,
+                            ProcessedTablesMap::mapped_type* processed_table) override {
+    processed_table->emplace(loc.partition().partition_key_start(), remote);
+  }
+
  private:
   void Finished(const Status& status) override {
-    DoFinished(status, resp_, &partition_group_start_);
+    DoFinished(status, resp_);
   }
 
   void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
@@ -1250,8 +1388,14 @@ class LookupByKeyRpc : public LookupRpc {
     meta_cache()->LookupByKeyFailed(table(), partition_group_start_, request_no(), status);
   }
 
+  Status ProcessTabletLocations(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) override {
+    return meta_cache()->ProcessTabletLocations(
+        locations, &partition_group_start_, this);
+  }
+
   // Encoded partition key to lookup.
-  MetaCache::PartitionGroupKey partition_group_start_;
+  PartitionGroupKey partition_group_start_;
 
   // Request body.
   GetTableLocationsRequestPB req_;
@@ -1275,15 +1419,41 @@ void MetaCache::LookupByKeyFailed(
       return;
     }
 
-    max_deadline = LookupFailed(
-        partition_group_start, status, request_no,
-        TablePartitionLookup(table->id(), partition_group_start),
-        &it->second.tablet_lookups_by_group, &notifier);
+    auto key_lookup_iterator = it->second.tablet_lookups_by_group.find(partition_group_start);
+    if (key_lookup_iterator != it->second.tablet_lookups_by_group.end()) {
+      auto& lookup_data_group = key_lookup_iterator->second;
+      max_deadline = LookupFailed(status, request_no,
+                                  TablePartitionLookup(table->id(), partition_group_start),
+                                  &lookup_data_group, &notifier);
+    }
   }
 
   if (max_deadline != CoarseTimePoint()) {
     auto rpc = std::make_shared<LookupByKeyRpc>(
         this, table, partition_group_start, request_no, max_deadline);
+    rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  }
+}
+
+void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& table,
+                                      int64_t request_no, const Status& status) {
+  VLOG(1) << "Lookup for table " << table->id() << " failed with: " << status;
+
+  CallbackNotifier notifier(status);
+  CoarseTimePoint max_deadline;
+  {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    auto it = tables_.find(table->id());
+    if (it == tables_.end()) {
+      return;
+    }
+
+    max_deadline = LookupFailed(status, request_no, FullTableLookup(table->id()),
+                                &it->second.full_table_lookups, &notifier);
+  }
+
+  if (max_deadline != CoarseTimePoint()) {
+    auto rpc = std::make_shared<LookupFullTableRpc>(this, table, request_no, max_deadline);
     rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
@@ -1297,8 +1467,12 @@ void MetaCache::LookupByIdFailed(
   CoarseTimePoint max_deadline;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
-    max_deadline = LookupFailed(tablet_id, status, request_no, TabletIdLookup(tablet_id),
-                                &tablet_lookups_by_id_, &notifier);
+    auto table_lookup_iterator = tablet_lookups_by_id_.find(tablet_id);
+    if (table_lookup_iterator != tablet_lookups_by_id_.end()) {
+      auto& lookup_data_group = table_lookup_iterator->second;
+      max_deadline = LookupFailed(status, request_no, TabletIdLookup(tablet_id),
+                                  &lookup_data_group, &notifier);
+    }
   }
 
   if (max_deadline != CoarseTimePoint()) {
@@ -1338,6 +1512,28 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(
   return nullptr;
 }
 
+boost::optional<std::vector<RemoteTabletPtr>> MetaCache::FastLookupAllTabletsUnlocked(
+    const std::shared_ptr<const YBTable>& table) {
+  auto tablets = std::vector<RemoteTabletPtr>();
+  auto it = tables_.find(table->id());
+  if (PREDICT_FALSE(it == tables_.end())) {
+    // No cache available for this table.
+    return boost::none;
+  }
+
+  for (const auto& tablet : it->second.all_tablets) {
+    if (tablet->stale()) {
+      return boost::none;
+    }
+    tablets.push_back(tablet);
+  }
+
+  if (tablets.empty()) {
+    return boost::none;
+  }
+  return tablets;
+}
+
 // We disable thread safety analysis in this function due to manual conditional locking.
 RemoteTabletPtr MetaCache::FastLookupTabletByKeyUnlocked(
     const std::shared_ptr<const YBTable>& table,
@@ -1353,12 +1549,12 @@ RemoteTabletPtr MetaCache::FastLookupTabletByKeyUnlocked(
 }
 
 template <class Mutex>
-bool IsUniqueLock(std::lock_guard<Mutex>*) {
+bool IsUniqueLock(const std::lock_guard<Mutex>*) {
   return true;
 }
 
 template <class Mutex>
-bool IsUniqueLock(SharedLock<Mutex>*) {
+bool IsUniqueLock(const SharedLock<Mutex>*) {
   return false;
 }
 
@@ -1380,19 +1576,21 @@ bool MetaCache::DoLookupTabletByKey(
     if (tablet) {
       return true;
     }
-
     if (!*partition_group_start) {
       *partition_group_start = table->FindPartitionStart(*partition_start, kPartitionGroupSize);
     }
 
     auto table_it = tables_.find(table->id());
+    TableData* table_data;
     if (table_it == tables_.end()) {
       if (!IsUniqueLock(&lock)) {
         return false;
       }
-      table_it = tables_.emplace(table->id(), TableData()).first;
+      table_data = &tables_[table->id()];
+    } else {
+      table_data = &table_it->second;
     }
-    auto& tablet_lookups_by_group = table_it->second.tablet_lookups_by_group;
+    auto& tablet_lookups_by_group = table_data->tablet_lookups_by_group;
     LookupDataGroup* lookups_group;
     {
       auto lookups_group_it = tablet_lookups_by_group.find(**partition_group_start);
@@ -1405,7 +1603,7 @@ bool MetaCache::DoLookupTabletByKey(
         lookups_group = &lookups_group_it->second;
       }
     }
-    lookups_group->lookups.Push(new LookupData(callback, deadline, partition_start));
+    lookups_group->lookups.Push(new LookupData(*callback, deadline, partition_start));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
     if (!lookups_group->running_request_number.compare_exchange_strong(
@@ -1423,6 +1621,47 @@ bool MetaCache::DoLookupTabletByKey(
 
   auto rpc = std::make_shared<LookupByKeyRpc>(
       this, table, **partition_group_start, request_no, deadline);
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  return true;
+}
+
+template <class Lock>
+bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                                   CoarseTimePoint deadline,
+                                   LookupTabletRangeCallback* callback) {
+  LOG(INFO) << "DoLookupAllTablets()";
+  int64_t request_no;
+  {
+    Lock lock(mutex_);
+    if (PREDICT_TRUE(!FLAGS_TEST_force_master_lookup_all_tablets)) {
+      auto tablets = FastLookupAllTabletsUnlocked(table);
+      if (tablets.has_value()) {
+        LOG(INFO) << "tablets has value";
+        (*callback)(*tablets);
+        return true;
+      }
+    }
+
+    if (!IsUniqueLock(&lock)) {
+      return false;
+    }
+    TableData* table_data = &tables_[table->id()];
+    auto& full_table_lookups = table_data->full_table_lookups;
+    full_table_lookups.lookups.Push(new LookupData(*callback, deadline, nullptr));
+    request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
+    int64_t expected = 0;
+    if (!full_table_lookups.running_request_number.compare_exchange_strong(
+        expected, request_no, std::memory_order_acq_rel)) {
+      VLOG_WITH_FUNC(4)
+          << "Lookup is already running for table: " << table->ToString();
+      return true;
+    }
+  }
+
+  VLOG_WITH_FUNC(4)
+      << "Start lookup for table: " << table->ToString();
+
+  auto rpc = std::make_shared<LookupFullTableRpc>(this, table, request_no, deadline);
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
@@ -1448,6 +1687,21 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
   LOG_IF(DFATAL, !result)
       << "Lookup was not started for table " << table->ToString()
       << ", partition_key: " << Slice(partition_key).ToDebugHexString();
+}
+
+void MetaCache::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                                 CoarseTimePoint deadline,
+                                 LookupTabletRangeCallback callback) {
+  // We first want to check the cache in read-only mode, and only if we can't find anything
+  // do a lookup in write mode.
+  if (DoLookupAllTablets<SharedLock<boost::shared_mutex>>(table, deadline, &callback)) {
+    return;
+  }
+
+  bool result = DoLookupAllTablets<std::lock_guard<boost::shared_mutex>>(
+      table, deadline, &callback);
+  LOG_IF(DFATAL, !result)
+      << "Full table lookup was not started for table " << table->ToString();
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id) {
@@ -1496,7 +1750,7 @@ bool MetaCache::DoLookupTabletById(
         lookup = &lookup_it->second;
       }
     }
-    lookup->lookups.Push(new LookupData(callback, deadline, nullptr));
+    lookup->lookups.Push(new LookupData(*callback, deadline, nullptr));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
     if (!lookup->running_request_number.compare_exchange_strong(
@@ -1554,7 +1808,7 @@ void MetaCache::ReleaseMasterLookupPermit() {
   master_lookup_sem_.Release();
 }
 
-void MetaCache::LookupDataGroup::Finished(
+void LookupDataGroup::Finished(
     int64_t request_no, const ToStringable& id, bool allow_absence) {
   int64_t expected = request_no;
   if (running_request_number.compare_exchange_strong(expected, 0, std::memory_order_acq_rel)) {

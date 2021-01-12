@@ -39,11 +39,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -62,29 +57,35 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/abstract_tablet.h"
-#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/mvcc.h"
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/enums.h"
-
-#include "yb/gutil/thread_annotations.h"
-
-#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/threadpool.h"
+
+
 
 namespace rocksdb {
 class DB;
@@ -205,7 +206,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const CoarseTimePoint deadline,
       const HybridTime read_time,
       const HostPort& pgsql_proxy_bind_address,
-      const std::string& database_name);
+      const std::string& database_name,
+      const uint64_t postgres_auth_key);
   Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
                                       const std::string& backfill_from,
                                       const CoarseTimePoint deadline,
@@ -521,9 +523,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_participant_.get();
   }
 
-  // Returns true if this tablet may have large contiguous ranges of data which are not relevant,
-  // e.g. in the case of a recent tablet split where no compaction has occurred yet.
-  bool MightHaveNonRelevantData();
+  // Returns true if the tablet was created after a split but it has not yet had data from it's
+  // parent which are now outside of its key range removed.
+  bool StillHasParentDataAfterSplit();
 
   void ForceRocksDBCompactInTest();
 
@@ -642,6 +644,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return retention_policy_.get();
   }
 
+  // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
+  // compacted. Assumes ownership of the provided thread pool token, and uses it to submit the
+  // compaction task. It is an error to call this method if a post-split compaction has been
+  // triggered previously by this tablet.
+  CHECKED_STATUS TriggerPostSplitCompactionIfNeeded(
+    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -703,6 +712,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Creates a new shared pointer of the object managed by metadata_cache_. This is done
   // atomically to avoid race conditions.
   std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
+
+  void TriggerPostSplitCompactionSync();
 
   const Schema key_schema_;
 
@@ -875,6 +886,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
+
+  // Thread pool token for manually triggering compactions for tablets created from a split. This
+  // member is set when a post-split compaction is triggered on this tablet as the result of a call
+  // to TriggerPostSplitCompactionIfNeeded. It is an error to attempt to trigger another post-split
+  // compaction if this member is already set, as the existence of this member implies that such a
+  // compaction has already been triggered for this instance.
+  std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

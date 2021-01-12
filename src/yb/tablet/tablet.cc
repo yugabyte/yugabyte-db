@@ -127,6 +127,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
@@ -217,6 +218,9 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
+
+DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+                 "Pause before triggering post split compaction.");
 
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -928,6 +932,10 @@ bool Tablet::StartShutdown() {
 
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
+  }
+
+  if (post_split_compaction_task_pool_token_) {
+    post_split_compaction_task_pool_token_->Shutdown();
   }
 
   return true;
@@ -2159,7 +2167,8 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     const CoarseTimePoint deadline,
     const HybridTime read_time,
     const HostPort& pgsql_proxy_bind_address,
-    const std::string& database_name) {
+    const std::string& database_name,
+    const uint64_t postgres_auth_key) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2174,14 +2183,16 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
         "YSQL index backfill does not support backfill_from, yet");
   }
 
-  // Construct connection string.
-  // TODO(jason): handle "yugabyte" role being password protected
+  // Construct connection string.  Note that the plain password in the connection string will be
+  // sent over the wire, but since it only goes over a unix-domain socket, there should be no
+  // eavesdropping/tampering issues.
   std::string conn_str = Format(
-      "dbname=$0 host=$1 port=$2 user=$3",
-      pgwrapper::PqEscapeLiteral(database_name),
-      pgsql_proxy_bind_address.host(),
+      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+      "postgres",
+      postgres_auth_key,
+      PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
       pgsql_proxy_bind_address.port(),
-      "yugabyte");
+      pgwrapper::PqEscapeLiteral(database_name));
   VLOG(1) << __func__ << ": libpq connection string: " << conn_str;
 
   // Construct query string.
@@ -3037,7 +3048,7 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-bool Tablet::MightHaveNonRelevantData() {
+bool Tablet::StillHasParentDataAfterSplit() {
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
@@ -3322,6 +3333,25 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
   }
   return middle_key;
+}
+
+Status Tablet::TriggerPostSplitCompactionIfNeeded(
+    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction) {
+  if (post_split_compaction_task_pool_token_) {
+    return STATUS(
+        IllegalState, "Already triggered post split compaction for this tablet instance.");
+  }
+  if (StillHasParentDataAfterSplit()) {
+    post_split_compaction_task_pool_token_ = get_token_for_compaction();
+    return post_split_compaction_task_pool_token_->SubmitFunc(
+        std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
+  }
+  return Status::OK();
+}
+
+void Tablet::TriggerPostSplitCompactionSync() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
 }
 
 // ------------------------------------------------------------------------------------------------

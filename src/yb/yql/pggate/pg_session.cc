@@ -1085,6 +1085,14 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   }
 }
 
+Result<uint64_t> PgSession::GetSharedAuthKey() {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).postgres_auth_key();
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
 Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
                                                   const Slice& ybctid,
                                                   const YbctidReader& reader) {

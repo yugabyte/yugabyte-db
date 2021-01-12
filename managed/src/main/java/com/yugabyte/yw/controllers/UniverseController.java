@@ -112,10 +112,6 @@ public class UniverseController extends AuthenticatedController {
   @Inject
   YcqlQueryExecutor ycqlQueryExecutor;
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
-
-
   // The YB client to use.
   public YBClientService ybService;
 
@@ -1309,6 +1305,27 @@ public class UniverseController extends AuthenticatedController {
           if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
             return ApiResponse.error(
                 BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+          }
+          break;
+        case Certs:
+          customerTaskType = CustomerTask.TaskType.UpdateCert;
+          if (taskParams.certUUID == null) {
+            return ApiResponse.error(BAD_REQUEST,
+                "certUUID is required for taskType: " + taskParams.taskType);
+          }
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Certs can only be rotated for onprem." + taskParams.taskType);
+          }
+          CertificateInfo cert = CertificateInfo.get(taskParams.certUUID);
+          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Need a custom cert. Cannot use self-signed." + taskParams.taskType);
+          }
+          cert = CertificateInfo.get(universe.getUniverseDetails().rootCA);
+          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Only custom certs can be rotated." + taskParams.taskType);
           }
       }
 
