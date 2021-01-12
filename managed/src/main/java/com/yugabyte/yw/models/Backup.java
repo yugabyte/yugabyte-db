@@ -204,9 +204,25 @@ public class Backup extends Model {
     // We only allow state transition from InProgress to a valid state
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState) ||
-        (this.state == BackupState.Completed && newState == BackupState.Deleted)) {
+        (this.state == BackupState.Completed && newState == BackupState.Deleted) ||
+        // This condition is for the case in which the delete fails and we need
+        // to reset the state.
+        (this.state == BackupState.Deleted && newState == BackupState.Completed)) {
       this.state = newState;
       save();
     }
+  }
+
+  public static boolean existsStorageConfig(UUID customerConfigUUID) {
+    List<Backup> backupList = find.query().where()
+        .or()
+          .eq("state", BackupState.Completed)
+          .eq("state", BackupState.InProgress)
+        .endOr()
+        .findList();
+    backupList = backupList.stream()
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+        .collect(Collectors.toList());
+    return backupList.size() != 0;
   }
 }
