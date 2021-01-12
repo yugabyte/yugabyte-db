@@ -996,6 +996,8 @@ static void pgss_store(uint64 queryId,
 		e->counters.info.host = pg_get_client_addr();
 		e->counters.sysinfo.utime = utime;
 		e->counters.sysinfo.stime = stime;
+		if (sqlcode != 0)
+			memset(&entry->counters.blocks, 0, sizeof(entry->counters.blocks));
 		SpinLockRelease(&e->mutex);
 		}
 	}

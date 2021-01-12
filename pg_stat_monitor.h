@@ -171,8 +171,8 @@ typedef struct QueryInfo
 
 typedef struct ErrorInfo
 {
-	unsigned char	elevel;							/* error elevel */
-	unsigned char	sqlcode;						/* error sqlcode  */
+	int64	elevel;							/* error elevel */
+	int64	sqlcode;						/* error sqlcode  */
 	char			message[ERROR_MESSAGE_LEN];   	/* error message text */
 } ErrorInfo;
 
