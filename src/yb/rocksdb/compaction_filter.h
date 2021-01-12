@@ -123,6 +123,9 @@ class CompactionFilter {
     return false;
   }
 
+  virtual void CompactionFinished() {
+  }
+
   // By default, compaction will only call Filter() on keys written after the
   // most recent call to GetSnapshot(). However, if the compaction filter
   // overrides IgnoreSnapshots to make it return false, the compaction filter
