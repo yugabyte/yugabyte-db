@@ -401,6 +401,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	float   utime;
 	float   stime;
 	uint64	queryId = queryDesc->plannedstmt->queryId;
+	pgssSharedState *pgss = pgsm_get_ss();
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
 	{
@@ -437,7 +438,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		prev_ExecutorEnd(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
-
+	memset(pgss->relations, 0x0, sizeof(pgss->relations));
+	memset(pgss->cmdTag, 0x0, sizeof(pgss->cmdTag));
 }
 
 static bool
@@ -450,6 +452,7 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	memset(pgss->cmdTag, 0x0, sizeof(pgss->cmdTag));
+	memset(pgss->relations, 0x0, sizeof(pgss->relations));
 
 	foreach(lr, rt)
     {
@@ -838,10 +841,7 @@ static void pgss_store(uint64 queryId,
 
 	/* Set up key for hashtable search */
 	key.bucket_id = bucket_id;
-	if (elevel == 0)
-		key.userid = GetUserId();
-	else
-		key.userid = 1;
+	key.userid = GetUserId();
 	key.dbid = MyDatabaseId;
 	key.queryid = queryId;
 	key.ip = pg_get_client_addr();
@@ -947,6 +947,7 @@ static void pgss_store(uint64 queryId,
 		for (i = 0; i < application_name_len; i++)
 				e->counters.info.application_name[i] = application_name[i];
 
+		found = false;
 		for (i = 0; i < REL_LST; i++)
 			if (e->counters.info.relations[i] != 0)
 				found = true;

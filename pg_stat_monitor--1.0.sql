@@ -93,13 +93,13 @@ FROM pg_stat_monitor_settings();
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid,
-    dbid,
+    userid::regrole,
+    datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
     queryid,
     query,
 	application_name,
-	(string_to_array(relations, ',')) AS relations,
+	(string_to_array(relations, ','))::oid[]::regclass[] AS relations,
 	CASE
 			WHEN query like 'BEGIN' THEN  ''
             WHEN query like 'END' THEN ''
@@ -110,7 +110,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	message,
 	plans,
 	round( CAST(plan_total_time as numeric), 2)::float8 as plan_total_time,
-	round( CAST(plan_min_time as numeric), 2)::float8 as plan_min_timei,
+	round( CAST(plan_min_time as numeric), 2)::float8 as plan_min_time,
 	round( CAST(plan_max_time as numeric), 2)::float8 as plan_max_time,
 	round( CAST(plan_mean_time as numeric), 2)::float8 as plan_mean_time,
 	round( CAST(plan_stddev_time as numeric), 2)::float8 as plan_stddev_time,
@@ -136,7 +136,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(resp_calls, ',')) resp_calls,
     cpu_user_time,
     cpu_sys_time
-FROM pg_stat_monitor(TRUE);
+FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid;
 
 CREATE FUNCTION decode_error_level(elevel int)
 RETURNS  text
