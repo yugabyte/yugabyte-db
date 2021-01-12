@@ -136,12 +136,11 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
-
       AlertDefinition definition = AlertDefinition.create(
         customerUUID,
         universeUUID,
         data.name,
-        data.template.buildQuery(universe.getUniverseDetails().nodePrefix, data.value),
+        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
         data.isActive
       );
 
@@ -188,7 +187,7 @@ public class AlertController extends AuthenticatedController {
       AlertDefinitionFormData data = formData.get();
       definition = AlertDefinition.update(
         definition.uuid,
-        data.template.buildQuery(universe.getUniverseDetails().nodePrefix, data.value),
+        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix, data.value),
         data.isActive
       );
 

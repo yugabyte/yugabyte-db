@@ -152,6 +152,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskType.SetNodeState,
     TaskType.AnsibleConfigureServers,
     TaskType.SetNodeState,
+    TaskType.AnsibleConfigureServers,
+    TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
     TaskType.SwamperTargetsFileUpdate,
@@ -165,6 +167,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Json.toJson(ImmutableMap.of("state", "Adding")),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
+    Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
@@ -183,6 +187,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
     TaskType.ChangeMasterConfig,
+    TaskType.AnsibleConfigureServers,
+    TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
     TaskType.SwamperTargetsFileUpdate,
@@ -205,6 +211,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
@@ -253,7 +261,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -269,7 +277,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 4);
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -294,7 +302,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, DEFAULT_NODE_NAME);
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, DEFAULT_NODE_NAME, 4);
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
         .collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -312,7 +320,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, "yb-tserver-0");
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, "yb-tserver-0", 4);
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
         .collect(Collectors.groupingBy(w -> w.getPosition()));

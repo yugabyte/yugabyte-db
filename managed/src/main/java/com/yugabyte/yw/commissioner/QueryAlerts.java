@@ -11,10 +11,13 @@
 package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.config.ConfigSubstitutor;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 
@@ -43,17 +46,21 @@ public class QueryAlerts {
 
   private final int YB_QUERY_ALERTS_INTERVAL = 1;
 
+  private final RuntimeConfigFactory configFactory;
+
   @Inject
   public QueryAlerts(
     ExecutionContext executionContext,
     ActorSystem actorSystem,
     AlertManager alertManager,
-    MetricQueryHelper queryHelper
+    MetricQueryHelper queryHelper,
+    RuntimeConfigFactory configFactory
   ) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertManager = alertManager;
+    this.configFactory = configFactory;
     this.initialize();
   }
 
@@ -73,8 +80,10 @@ public class QueryAlerts {
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
-      if (!queryHelper.queryDirect(definition.query).isEmpty()) {
-        Universe universe = Universe.get(definition.universeUUID);
+      Universe universe = Universe.get(definition.universeUUID);
+      ConfigSubstitutor config = new ConfigSubstitutor(configFactory.forUniverse(universe));
+      String query = config.replace(definition.query);
+      if (!queryHelper.queryDirect(query).isEmpty()) {
         Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
         // Create an alert to activate if it doesn't exist already
         if (existingAlert == null) {
