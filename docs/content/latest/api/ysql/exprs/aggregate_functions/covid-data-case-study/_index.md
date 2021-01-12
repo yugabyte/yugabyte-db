@@ -1,8 +1,8 @@
 ---
-title: Linear regression analysis of COVID data
-linkTitle: Linear regression on COVID data use case
-headerTitle: Linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
-description: Using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast
+title: Case study—linear regression analysis of COVID data
+linkTitle: case study—linear regression on COVID data
+headerTitle: Case study—linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
+description: Case study—using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -68,7 +68,7 @@ After unzipping it on a convenient new directory, you'll see a `README.txt`. It 
 \i synthetic-data.sql
 ```
 
-Simply start it in ysqlsh. You can run it time and again. It always finishes silently. You can see the reports that it produces on the _"analysis-results"_ directory and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
+Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the reports that it produces on the _"analysis-results"_ directory and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
 {{< /tip >}}
 
 ## Conclusion
