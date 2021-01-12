@@ -306,11 +306,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Create a task to create default alert definitions on a universe.
+   */
+  public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    CreateAlertDefinitions task = new CreateAlertDefinitions();
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to destroy nodes and adds it to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be removed
+   * @param nodes         : a collection of nodes that need to be removed
    * @param isForceDelete if this is true, ignore ansible errors
-   * @param deleteNode if true, the node info is deleted from the universe db.
+   * @param deleteNode    if true, the node info is deleted from the universe db.
    */
   public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes,
                                                boolean isForceDelete,

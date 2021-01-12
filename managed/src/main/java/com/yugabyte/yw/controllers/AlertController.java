@@ -17,6 +17,7 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.forms.AlertFormData;
@@ -37,6 +38,9 @@ public class AlertController extends AuthenticatedController {
 
   @Inject
   FormFactory formFactory;
+
+  @Inject
+  private RuntimeConfigFactory configFactory;
 
   /**
    * Lists alerts for given customer.
@@ -121,9 +125,23 @@ public class AlertController extends AuthenticatedController {
     return ok();
   }
 
+  /**
+   * Saves a value to customer's configuration with name 'paramName'. The saved
+   * double value is normalized (removed trailing '.0').
+   *
+   * @param customer
+   * @param paramName
+   * @param value
+   */
+  private void updateAlertDefinitionParameter(Customer customer, String paramName, double value) {
+    String valueStr = value == (int) value ? String.valueOf((int) value) : String.valueOf(value);
+    configFactory.forCustomer(customer).setValue(paramName, valueStr);
+  }
+
   public Result createDefinition(UUID customerUUID, UUID universeUUID) {
     try {
-      if (Customer.get(customerUUID) == null) {
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
@@ -137,11 +155,12 @@ public class AlertController extends AuthenticatedController {
 
       AlertDefinitionFormData data = formData.get();
 
+      updateAlertDefinitionParameter(customer, data.template.getParameterName(), data.value);
       AlertDefinition definition = AlertDefinition.create(
         customerUUID,
         universeUUID,
         data.name,
-        data.template.buildQuery(universe.getUniverseDetails().nodePrefix, data.value),
+        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
         data.isActive
       );
 
@@ -153,7 +172,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   public Result getAlertDefinition(UUID customerUUID, UUID universeUUID, String name) {
-    if (Customer.get(customerUUID) == null) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
@@ -162,13 +182,14 @@ public class AlertController extends AuthenticatedController {
     if (definition == null) {
       return ApiResponse.error(BAD_REQUEST, "Could not find Alert Definition");
     }
-
+    definition.query = configFactory.forCustomer(customer).apply(definition.query);
     return ok(Json.toJson(definition));
   }
 
   public Result updateAlertDefinition(UUID customerUUID, UUID alertDefinitionUUID) {
     try {
-      if (Customer.get(customerUUID) == null) {
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
@@ -186,9 +207,11 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
+
+      updateAlertDefinitionParameter(customer, data.template.getParameterName(), data.value);
       definition = AlertDefinition.update(
         definition.uuid,
-        data.template.buildQuery(universe.getUniverseDetails().nodePrefix, data.value),
+        data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
         data.isActive
       );
 
