@@ -152,56 +152,26 @@ bucket |  bucket_start_time  |                                                  
 **`calls`**: Number of calls of that particular query.
 
 
-##### Example 1: Shows the userid, dbid, unique queryid hash, query, and the total number of calls of that query.
+##### Example 1: Shows the usename, database name, unique queryid hash, query, and the total number of calls of that query.
 ```sql
-SELECT userid,  dbid, queryid, substr(query,0, 50) AS query, calls FROM pg_stat_monitor;
- userid | dbid  |     queryid      |                       query                       | calls 
---------+-------+------------------+---------------------------------------------------+-------
-     10 | 12709 | 214646CE6F9B1A85 | BEGIN                                             |  1577
-     10 | 12709 | 8867FEEB8A5388AC | vacuum pgbench_branches                           |     1
-     10 | 12709 | F47D95C9DF863E43 | UPDATE pgbench_branches SET bbalance = bbalance + |  1577
-     10 | 12709 | 2FE0A6ABDC20623  | select substr(query,$1, $2) as query, cmd_type fr |     7
-     10 | 12709 | A83503D3E1F99139 | select userid,  dbid, queryid, substr(query,$1, $ |     1
-     10 | 12709 | D4B1243AC3268B9B | select count(*) from pgbench_branches             |     1
-     10 | 12709 | 2FE0A6ABDC20623  | select substr(query,$1, $2) as query, cmd_type fr |     1
-     10 | 12709 | 1D9BDBBCFB89F096 | UPDATE pgbench_accounts SET abalance = abalance + |  1577
-     10 | 12709 | 15343084284782B  | update test SET a = $1                            |     2
-     10 | 12709 | 939C2F56E1F6A174 | END                                               |  1577
-      1 | 12709 | DAE6D269D27F2EC4 | SELECT FOR UPDATE test SET a = 1;                 |     1
-     10 | 12709 | 2B50C2406BFAC907 | INSERT INTO pgbench_history (tid, bid, aid, delta |  1577
-     10 | 12709 | F6DA9838660825CA | vacuum pgbench_tellers                            |     1
-     10 | 12709 | 3AFB8B2452721F9  | SELECT a from test for update                     |     1
-     10 | 12709 | A5CD0AF80D28363  | SELECT abalance FROM pgbench_accounts WHERE aid = |  1577
-     10 | 12709 | E445DD36B9189C53 | UPDATE pgbench_tellers SET tbalance = tbalance +  |  1577
-     10 | 12709 | 4876BBA9A8FCFCF9 | truncate pgbench_history                          |     1
-     10 | 12709 | D3C2299FD9E7348C | select userid,  dbid, queryid, query, calls from  |     1
-(18 rows)
-```
+postgres=# SELECT userid,  datname, queryid, substr(query,0, 50) AS query, calls FROM pg_stat_monitor;
+ userid  | datname  |     queryid      |                       query                       | calls 
+---------+----------+------------------+---------------------------------------------------+-------
+ vagrant | postgres | 939C2F56E1F6A174 | END                                               |   561
+ vagrant | postgres | 2A4437C4905E0E23 | SELECT abalance FROM pgbench_accounts WHERE aid = |   561
+ vagrant | postgres | 4EE9ED0CDF143477 | SELECT userid,  datname, queryid, substr(query,$1 |     1
+ vagrant | postgres | 8867FEEB8A5388AC | vacuum pgbench_branches                           |     1
+ vagrant | postgres | 41D1168FB0733CAB | select count(*) from pgbench_branches             |     1
+ vagrant | postgres | E5A889A8FF37C2B1 | UPDATE pgbench_accounts SET abalance = abalance + |   561
+ vagrant | postgres | 4876BBA9A8FCFCF9 | truncate pgbench_history                          |     1
+ vagrant | postgres | 22B76AE84689E4DC | INSERT INTO pgbench_history (tid, bid, aid, delta |   561
+ vagrant | postgres | F6DA9838660825CA | vacuum pgbench_tellers                            |     1
+ vagrant | postgres | 214646CE6F9B1A85 | BEGIN                                             |   561
+ vagrant | postgres | 27462943E814C5B5 | UPDATE pgbench_tellers SET tbalance = tbalance +  |   561
+ vagrant | postgres | 4F66D46F3D4151E  | SELECT userid,  dbid, queryid, substr(query,0, 50 |     1
+ vagrant | postgres | 6A02C123488B95DB | UPDATE pgbench_branches SET bbalance = bbalance + |   561
+(13 rows)
 
-##### Example 2: Shows different usernames for the query. 
-
-```
-SELECT userid::regrole, datname, substr(query,0, 50) AS query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
-  userid  | datname  |                       query                       | calls 
-----------+----------+---------------------------------------------------+-------
- vagrant  | postgres | select userid::regrole, datname, substr(query,$1, |     1
- vagrant  | test_db  | insert into bar values($1)                        |     1
- vagrant  | postgres | insert into bar values($1)                        |     1
- vagrant  | test_db  | select * from bar                                 |     1
- postgres | postgres | insert into bar values($1)                        |     1
-(5 rows)
-```
-
-##### Example 3: Shows the different databases involved in the queries.
-
-```
-SELECT userid::regrole, datname, substr(query,0, 50) as query, calls from pg_stat_monitor, pg_database WHERE dbid = oid;
- userid  | datname  |                       query                       | calls 
----------+----------+---------------------------------------------------+-------
- vagrant | postgres | select userid::regrole, datname, substr(query,$1, |     0
- vagrant | test_db  | insert into bar values($1)                        |     1
- vagrant | test_db  | select * from bar                                 |     1
-(3 rows)
 ```
 
 ##### Example 4: Shows the connected application_name.
@@ -307,16 +277,22 @@ There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_s
 
 ##### Example 1: List all the table names involved in the query.
 ```sql
-SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
-     relations      |                                                query                                                 
---------------------+------------------------------------------------------------------------------------------------------
- {pgbench_accounts} | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2
- {pgbench_accounts} | SELECT abalance FROM pgbench_accounts WHERE aid = $1
- {pg_stat_monitor}  | select relations::oid[]::regclass[], cmd_type,resp_calls,query from pg_stat_monitor
- {pgbench_branches} | select count(*) from pgbench_branches
- {pgbench_history}  | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
- {foo,bar}          | select * from foo,bar
-(5 rows)
+postgres=# SELECT relations,query FROM pg_stat_monitor;
+           relations           |                                                query                                                 
+-------------------------------+------------------------------------------------------------------------------------------------------
+                               | END
+ {pgbench_accounts}            | SELECT abalance FROM pgbench_accounts WHERE aid = $1
+                               | vacuum pgbench_branches
+ {pgbench_branches}            | select count(*) from pgbench_branches
+ {pgbench_accounts}            | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2
+                               | truncate pgbench_history
+ {pgbench_history}             | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+ {pg_stat_monitor,pg_database} | SELECT relations query FROM pg_stat_monitor
+                               | vacuum pgbench_tellers
+                               | BEGIN
+ {pgbench_tellers}             | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2
+ {pgbench_branches}            | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2
+(12 rows)
 ```
 
 ##### Example 2: List all the views and the name of the table in the view. Here we have a view "test_view"
@@ -336,7 +312,7 @@ View definition:
 
 Now when we query the pg_stat_monitor, it will show the view name and also all the table names in the view.
 ```sql
-SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
+SELECT relations, query FROM pg_stat_monitor;
       relations      |                                                query                                                 
 ---------------------+------------------------------------------------------------------------------------------------------
  {test_view,foo,bar} | select * from test_view
@@ -349,20 +325,22 @@ SELECT relations::oid[]::regclass[], query FROM pg_stat_monitor;
 **`cmd_type`**: List the command type of the query.
 
 ```sql
-SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
- bucket |                       query                       | cmd_type
+postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
+ bucket |                       query                       | cmd_type 
 --------+---------------------------------------------------+----------
-      1 | vacuum analyze pgbench_history                    |
-      1 | alter table pgbench_tellers add primary key (tid) |
-      1 | insert into pgbench_tellers(tid,bid,tbalance) val | INSERT
-      1 | select * from tt for update                       | UPDATE
-      1 | update tt set a = $1                              | UPDATE
-      1 | delete from tt                                    | DELETE
-      1 | insert into pgbench_branches(bid,bbalance) values | INSERT
-      1 | begin                                             |
-      1 | drop table if exists pgbench_accounts, pgbench_br |
-      1 | copy pgbench_accounts from stdin                  | INSERT
-      1 | create table pgbench_history(tid int,bid int,aid  |
-      1 | SELECT bucket, substr(query,$1, $2) AS query, cmd | SELECT
-(12 rows)
+      4 | END                                               | 
+      4 | SELECT abalance FROM pgbench_accounts WHERE aid = | SELECT
+      4 | vacuum pgbench_branches                           | 
+      4 | select count(*) from pgbench_branches             | SELECT
+      4 | UPDATE pgbench_accounts SET abalance = abalance + | UPDATE
+      4 | truncate pgbench_history                          | 
+      4 | INSERT INTO pgbench_history (tid, bid, aid, delta | INSERT
+      5 | SELECT relations query FROM pg_stat_monitor       | SELECT
+      9 | SELECT bucket, substr(query,$1, $2) AS query, cmd | 
+      4 | vacuum pgbench_tellers                            | 
+      4 | BEGIN                                             | 
+      5 | SELECT relations,query FROM pg_stat_monitor       | SELECT
+      4 | UPDATE pgbench_tellers SET tbalance = tbalance +  | UPDATE
+      4 | UPDATE pgbench_branches SET bbalance = bbalance + | UPDATE
+(14 rows)
 ```
