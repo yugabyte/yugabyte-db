@@ -575,7 +575,7 @@ export default class ClusterFields extends Component {
     //hook from parent universeForm to check if any fields was changed
     const nodeDetailsSet =
       getPromiseState(currentUniverse).isSuccess() &&
-        getPromiseState(universeConfigTemplate).isSuccess()
+      getPromiseState(universeConfigTemplate).isSuccess()
         ? universeConfigTemplate.data.nodeDetailsSet
         : [];
     if (type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists)) {
@@ -1497,7 +1497,8 @@ export default class ClusterFields extends Component {
         });
     }
 
-    let placementStatus, placementStatusOnprem = null;
+    let placementStatus = null;
+    let placementStatusOnprem = null;
     const cluster =
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
@@ -1523,7 +1524,8 @@ export default class ClusterFields extends Component {
       !(this.state.numNodes <= this.state.maxNumNodes)
       && self.props.universe.currentPlacementStatus
       && isNonEmptyArray(formValues[clusterType].regionList)
-      && isNonEmptyString(formValues[clusterType].provider)) {
+      && isNonEmptyString(formValues[clusterType].provider)
+    ) {
       placementStatusOnprem = (
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
@@ -1725,8 +1727,14 @@ export default class ClusterFields extends Component {
               )}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
-              {(isNonEmptyArray(formValues[clusterType]?.regionList) && isNonEmptyString(formValues[clusterType]?.provider))
-                && placementStatusOnprem ? placementStatusOnprem : (isNonEmptyArray(formValues[clusterType]?.regionList) && isNonEmptyString(formValues[clusterType]?.provider)) ? azSelectorTable : null}
+              {(isNonEmptyArray(formValues[clusterType]?.regionList)
+                && isNonEmptyString(formValues[clusterType]?.provider)
+              )
+                && placementStatusOnprem ? placementStatusOnprem
+                : (isNonEmptyArray(formValues[clusterType]?.regionList)
+                  && isNonEmptyString(formValues[clusterType]?.provider)
+                ) ? azSelectorTable : null
+              }
             </Col>
           </Row>
         </div>
