@@ -22,39 +22,10 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/doc_kv_util.h"
 
 namespace yb {
 namespace docdb {
-
-namespace {
-
-Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice) {
-  if (key_slice.empty() || key_slice.size() > kMaxBytesPerEncodedHybridTime + 1) {
-    return STATUS_FORMAT(
-        Corruption,
-        "Invalid doc hybrid time in reverse intent record suffix: $0",
-        key_slice.ToDebugHexString());
-  }
-  size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
-  memcpy(doc_ht_buffer, key_slice.data(), key_slice.size());
-  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
-    doc_ht_buffer[i] = ~doc_ht_buffer[i];
-  }
-  key_slice = Slice(pointer_cast<char*>(doc_ht_buffer), key_slice.size());
-
-  if (static_cast<ValueType>(key_slice[0]) != ValueType::kHybridTime) {
-    return STATUS_FORMAT(
-        Corruption,
-        "Invalid prefix of doc hybrid time in reverse intent record decoded suffix: $0",
-        key_slice.ToDebugHexString());
-  }
-  key_slice.consume_byte();
-  DocHybridTime doc_ht;
-  RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
-  return doc_ht;
-}
-
-} // namespace
 
 Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
   auto key_type = GetKeyType(key_slice, db_type);
