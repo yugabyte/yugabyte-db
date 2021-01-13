@@ -1820,7 +1820,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	Datum computedCacheValue = (cacheOptionOrLastCache > cacheFlag) ? cacheOptionOrLastCache : cacheFlag;
 
 	if (cache_value != NULL && cacheOptionOrLastCache < cacheFlag)
-		ereport(INFO,
+		ereport(NOTICE,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("Overriding cache option with cache flag or previous cache value."),
 				 errhint("Cache option cannot be set lower than "
