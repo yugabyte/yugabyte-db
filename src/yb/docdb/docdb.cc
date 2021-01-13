@@ -392,17 +392,6 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
 
 namespace {
 
-struct ExternalTxnApplyStateData {
-  HybridTime commit_ht;
-  IntraTxnWriteId write_id = 0;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, write_id);
-  }
-};
-
-using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
-
 CHECKED_STATUS NotEnoughBytes(size_t present, size_t required, const Slice& full) {
   return STATUS_FORMAT(
       Corruption, "Not enough bytes in external intents $0 while $1 expected, full: $2",
@@ -416,8 +405,16 @@ CHECKED_STATUS PrepareApplyExternalIntentsBatch(
     IntraTxnWriteId* write_id) {
   auto input_value = original_input_value;
   DocHybridTimeBuffer doc_ht_buffer;
-  while (!input_value.empty()) {
+  RETURN_NOT_OK(input_value.consume_byte(ValueTypeAsChar::kUuid));
+  Uuid status_tablet;
+  RETURN_NOT_OK(status_tablet.FromSlice(input_value.Prefix(kUuidSize)));
+  input_value.remove_prefix(kUuidSize);
+  RETURN_NOT_OK(input_value.consume_byte(ValueTypeAsChar::kExternalIntents));
+  for (;;) {
     auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
+    if (key_size == 0) {
+      break;
+    }
     if (input_value.size() < key_size) {
       return NotEnoughBytes(input_value.size(), key_size, original_input_value);
     }
@@ -514,6 +511,72 @@ ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchP
 
 } // namespace
 
+void AddPairToWriteBatch(
+    const KeyValuePairPB& kv_pair,
+    HybridTime hybrid_time,
+    int write_id,
+    ExternalTxnApplyState* apply_external_transactions,
+    rocksdb::WriteBatch* regular_write_batch,
+    rocksdb::WriteBatch* intents_write_batch) {
+  DocHybridTimeBuffer doc_ht_buffer;
+  size_t inverted_doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
+
+  CHECK(!kv_pair.key().empty());
+  CHECK(!kv_pair.value().empty());
+
+  bool regular_entry = kv_pair.key()[0] != ValueTypeAsChar::kExternalTransactionId;
+
+#ifndef NDEBUG
+  // Debug-only: ensure all keys we get in Raft replication can be decoded.
+  if (regular_entry) {
+    SubDocKey subdoc_key;
+    Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
+    CHECK(s.ok())
+        << "Failed decoding key: " << s.ToString() << "; "
+        << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
+        << "value: " << FormatBytesAsStr(kv_pair.value());
+  }
+#endif
+
+  // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
+  // The reason for this is that the HybridTime timestamp is only picked at the time of
+  // appending  an entry to the tablet's Raft log. Also this is a good way to save network
+  // bandwidth.
+  //
+  // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
+  // DocHybridTime encoding) that helps disambiguate between different updates to the
+  // same key (row/column) within a transaction. We set it based on the position of the write
+  // operation in its write batch.
+
+  hybrid_time = kv_pair.has_external_hybrid_time() ?
+      HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
+  std::array<Slice, 2> key_parts = {{
+      Slice(kv_pair.key()),
+      doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
+  }};
+  Slice key_value = kv_pair.value();
+  rocksdb::WriteBatch* batch;
+  if (regular_entry) {
+    batch = regular_write_batch;
+  } else {
+    // This entry contains external intents.
+    Slice key = kv_pair.key();
+    key.consume_byte();
+    auto txn_id = CHECK_RESULT(DecodeTransactionId(&key));
+    auto it = apply_external_transactions->find(txn_id);
+    if (it != apply_external_transactions->end()) {
+      // The same write operation could contain external intents and instruct us to apply them.
+      CHECK_OK(PrepareApplyExternalIntentsBatch(
+          it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
+      return;
+    }
+    batch = intents_write_batch;
+    key_parts[1] = InvertedDocHt(key_parts[1], inverted_doc_ht_buffer);
+  }
+  constexpr size_t kNumValueParts = 1;
+  batch->Put(key_parts, { &key_value, kNumValueParts });
+}
+
 // Usually put_batch contains only records that should be applied to regular DB.
 // So apply_external_transactions will be empty and regular_entry will be true.
 //
@@ -544,65 +607,10 @@ void PrepareNonTransactionWriteBatch(
   CHECK_OK(PrepareApplyExternalIntents(
       &apply_external_transactions, regular_write_batch, intents_db, intents_write_batch));
 
-  DocHybridTimeBuffer doc_ht_buffer;
-  size_t inverted_doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
   for (int write_id = 0; write_id < put_batch.write_pairs_size(); ++write_id) {
-    const auto& kv_pair = put_batch.write_pairs(write_id);
-    CHECK(!kv_pair.key().empty());
-    CHECK(!kv_pair.value().empty());
-
-    bool regular_entry = kv_pair.key()[0] != ValueTypeAsChar::kExternalTransactionId;
-
-#ifndef NDEBUG
-    // Debug-only: ensure all keys we get in Raft replication can be decoded.
-    if (regular_entry) {
-      SubDocKey subdoc_key;
-      Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
-      CHECK(s.ok())
-          << "Failed decoding key: " << s.ToString() << "; "
-          << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-          << "value: " << FormatBytesAsStr(kv_pair.value()) << "\n"
-          << "put_batch:\n" << put_batch.DebugString();
-    }
-#endif
-
-    // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
-    // The reason for this is that the HybridTime timestamp is only picked at the time of
-    // appending  an entry to the tablet's Raft log. Also this is a good way to save network
-    // bandwidth.
-    //
-    // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
-    // DocHybridTime encoding) that helps disambiguate between different updates to the
-    // same key (row/column) within a transaction. We set it based on the position of the write
-    // operation in its write batch.
-
-    hybrid_time = kv_pair.has_external_hybrid_time() ?
-        HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
-    std::array<Slice, 2> key_parts = {{
-        Slice(kv_pair.key()),
-        doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
-    }};
-    Slice key_value = kv_pair.value();
-    rocksdb::WriteBatch* batch;
-    if (regular_entry) {
-      batch = regular_write_batch;
-    } else {
-      // This entry contains external intents.
-      Slice key = kv_pair.key();
-      key.consume_byte();
-      auto txn_id = CHECK_RESULT(DecodeTransactionId(&key));
-      auto it = apply_external_transactions.find(txn_id);
-      if (it != apply_external_transactions.end()) {
-        // The same write operation could contain external intents and instruct us to apply them.
-        CHECK_OK(PrepareApplyExternalIntentsBatch(
-            it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
-        continue;
-      }
-      batch = intents_write_batch;
-      key_parts[1] = InvertedDocHt(key_parts[1], inverted_doc_ht_buffer);
-    }
-    constexpr size_t kNumValueParts = 1;
-    batch->Put(key_parts, { &key_value, kNumValueParts });
+    AddPairToWriteBatch(
+        put_batch.write_pairs(write_id), hybrid_time, write_id, &apply_external_transactions,
+        regular_write_batch, intents_write_batch);
   }
 }
 
@@ -1211,16 +1219,20 @@ void CombineExternalIntents(
   // where size is encoded as varint.
 
   docdb::KeyBytes buffer;
-  buffer.AppendValueType(docdb::ValueType::kExternalTransactionId);
+  buffer.AppendValueType(ValueType::kExternalTransactionId);
   buffer.AppendRawBytes(txn_id.AsSlice());
   provider->SetKey(buffer.AsSlice());
   buffer.Clear();
+  buffer.AppendValueType(ValueType::kUuid);
+  buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
+  buffer.AppendValueType(ValueType::kExternalIntents);
   while (auto key_value = provider->Next()) {
     buffer.AppendUInt64AsVarInt(key_value->first.size());
     buffer.AppendRawBytes(key_value->first);
     buffer.AppendUInt64AsVarInt(key_value->second.size());
     buffer.AppendRawBytes(key_value->second);
   }
+  buffer.AppendUInt64AsVarInt(0);
   provider->SetValue(buffer.AsSlice());
 }
 

@@ -112,7 +112,7 @@ namespace enterprise {
 
 constexpr static const char* const kKeyColumnName = "key";
 
-class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<int> {
+class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>>
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
@@ -126,7 +126,8 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<i
     FLAGS_master_auto_run_initdb = true;
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_pggate_rpc_timeout_secs = 120;
-    FLAGS_cdc_max_apply_batch_num_records = GetParam();
+    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+    FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;
@@ -365,7 +366,9 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<i
   }
 };
 
-INSTANTIATE_TEST_CASE_P(BatchSize, TwoDCYsqlTest, ::testing::Values(1, 100));
+INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
+                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
+                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
 
 TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SetupUniverseReplication)) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));

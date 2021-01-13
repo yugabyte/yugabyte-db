@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -28,6 +29,7 @@ import play.test.WithApplication;
 
 import java.io.File;
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -45,6 +47,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 import static org.mockito.Mockito.when;
 import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
@@ -195,11 +198,13 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateCustomCertificate() {
+  public void testUpdateCustomCertificate() throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
+    new File(TestHelper.TMP_PATH).mkdirs();
+    createTempFile("ca.crt", "test-cert");
     CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           "/tmp", null);
+                           TestHelper.TMP_PATH + "/ca.crt", null);
     CertificateParams.CustomCertInfo customCertInfo =
         CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNull(customCertInfo);
@@ -221,15 +226,17 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateCustomCertificateFailure() {
+  public void testUpdateCustomCertificateFailure() throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
     CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
+    new File(TestHelper.TMP_PATH).mkdirs();
+    createTempFile("ca.crt", "test-cert");
     CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           "/tmp", customCertInfo);
+                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);
     ObjectNode bodyJson = Json.newObject();

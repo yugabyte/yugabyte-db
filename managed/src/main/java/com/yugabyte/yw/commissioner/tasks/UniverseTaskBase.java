@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
 
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.typesafe.config.Config;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.Common;
 import org.yb.client.YBClient;
@@ -42,6 +44,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
+
+  protected Config config;
 
   // The task params.
   @Override
@@ -182,6 +186,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     super.initialize(params);
     // Create the threadpool for the subtasks to use.
     createThreadpool();
+    this.config = Play.current().injector().instanceOf(Config.class);
   }
 
   @Override
@@ -274,6 +279,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UpdateSoftwareVersion task = new UpdateSoftwareVersion();
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a task to mark the updated cert on a universe.
+   */
+  public SubTaskGroup createUnivSetCertTask(UUID certUUID) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    UnivSetCertificate.Params params = new UnivSetCertificate.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.certUUID = certUUID;
+    UnivSetCertificate task = new UnivSetCertificate();
+    task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
@@ -519,29 +539,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
+    return createWaitForServersTasks(
+      nodes,
+      type,
+      config.getDuration("yb.wait_for_server_timeout") /* default timeout */
+    );
+  }
+
   /**
    * Create a task list to ping all servers until they are up.
    *
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type  : Master or tserver type server running on these nodes.
-   * @param timeoutMillis : time to wait for each rpc call to the server, in millisec.
+   * @param timeout : time to wait for each rpc call to the server.
    */
-  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
-    return createWaitForServersTasks(nodes, type, -1 /* default timeout */);
-  }
-
-  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes,
-                                                ServerType type,
-                                                long timeoutMillis) {
+  public SubTaskGroup createWaitForServersTasks(
+    Collection<NodeDetails> nodes,
+    ServerType type,
+    Duration timeout
+  ) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
       params.nodeName = node.nodeName;
       params.serverType = type;
-      if (timeoutMillis > 0) {
-        params.serverWaitTimeoutMs = timeoutMillis;
-      }
+      params.serverWaitTimeoutMs = timeout.toMillis();
       WaitForServer task = new WaitForServer();
       task.initialize(params);
       subTaskGroup.addTask(task);

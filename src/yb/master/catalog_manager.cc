@@ -125,7 +125,6 @@
 #include "yb/master/yql_views_vtable.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
@@ -552,6 +551,8 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
       (!is_transactional && GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
   return !disabled;
 }
+
+constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
 }  // anonymous namespace
 
@@ -1460,6 +1461,8 @@ bool CatalogManager::StartShutdown() {
     state_ = kClosing;
   }
 
+  refresh_yql_partitions_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -1469,6 +1472,7 @@ bool CatalogManager::StartShutdown() {
 
 void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
+  refresh_yql_partitions_task_.CompleteShutdown();
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -6869,6 +6873,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
   // Add bg thread to rebuild the system partitions thread.
+  refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
   return Status::OK();
@@ -8742,23 +8747,16 @@ void CatalogManager::RebuildYQLSystemPartitions() {
     }
   }
 
-  while (true) {
-    // Allow for FLAGS_partitions_vtable_cache_refresh_secs to be changed on the fly. If set to 0,
-    // then this thread will sleep and awake every kDefaultYQLPartitionsRefreshBgTaskSleepSecs to
-    // check if the flag has changed again.
-    int sleep_secs = FLAGS_partitions_vtable_cache_refresh_secs;
-    if (sleep_secs <= 0) {
-      sleep_secs = kDefaultYQLPartitionsRefreshBgTaskSleepSecs;
-    }
-    SleepFor(MonoDelta::FromSeconds(sleep_secs));
-    const auto s = background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&CatalogManager::RebuildYQLSystemPartitions, this));
-    if (s.ok() || s.IsServiceUnavailable()) {
-      // Either succesfully started new task, or we are shutting down.
-      return;
-    }
-    LOG(WARNING) << "Could not submit RebuildYQLSystemPartitions to thread pool: " << s.ToString();
+  auto wait_time = FLAGS_partitions_vtable_cache_refresh_secs * 1s;
+  if (wait_time <= 0s) {
+    wait_time = kDefaultYQLPartitionsRefreshBgTaskSleep;
   }
+  refresh_yql_partitions_task_.Schedule([this](const Status& status) {
+    WARN_NOT_OK(
+        background_tasks_thread_pool_->SubmitFunc(
+            std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)),
+        "Failed to schedule: RebuildYQLSystemPartitions");
+  }, wait_time);
 }
 
 }  // namespace master

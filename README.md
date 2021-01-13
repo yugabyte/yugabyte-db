@@ -20,24 +20,24 @@
 
 # What is YugabyteDB?
 
-**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best fit for **cloud-native OLTP (i.e. real-time, business critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, globally-distributed deployments.**
+**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, globally-distributed deployments.**
 
 
 The core features of YugabyteDB include:
 
 * **Powerful RDBMS capabilities** Yugabyte SQL (*YSQL* for short) reuses the query layer of PostgreSQL (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc). Here is a detailed [list of features currently supported by YSQL](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md).
 
-* **Distributed transactions** The transactions design is based on the Google Spanner architecture. Strongly consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot* and *serializable* isolation levels are supported.  Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read-replicas.
+* **Distributed transactions** The transaction design is based on the Google Spanner architecture. Strongly consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot* and *serializable* isolation levels are supported.  Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read-replicas.
 
-* **Continuous availability** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, node, zone, region and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on a failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
+* **Continuous availability** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, node, zone, region and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
 
-* **Horizontal scalability** Scaling a YugabyteDB cluster in order to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
+* **Horizontal scalability** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
 
 * **Geo-distributed, multi-cloud** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations that can be leveraged in two-region deployments. To serve (stale) data with low latencies, read replicas are also a supported feature.
 
 * **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
-* **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features distributed backups, encryption of data at-rest, in-flight TLS encryption, change data capture, read replicas and others.
+* **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features distributed backups, encryption of data-at-rest, in-flight TLS encryption, change data capture, read replicas and others.
 
 Read more about YugabyteDB in our [Docs](https://docs.yugabyte.com/latest/introduction/).
 
@@ -55,7 +55,7 @@ Cannot find what you are looking for? Have a question? Please post your question
 
 # Build Apps
 
-YugabyteDB supports a number of languages and client drivers. Below is a brief list.
+YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 | Language  | ORM | YSQL Drivers | YCQL Drivers |
 | --------- | --- | ------------ | ------------ |
@@ -95,7 +95,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
 
 
-## Planned additions to roadmap
+## Planned additions to the roadmap
 
 The following items are being planned as additions to the roadmap
 
@@ -141,7 +141,7 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/arch
 
 # Contribute
 
-As an open source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our Forum](https://forum.yugabyte.com).
+As an an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our Forum](https://forum.yugabyte.com).
 
 # License
 
