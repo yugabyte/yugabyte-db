@@ -120,6 +120,18 @@ public class UniverseController extends AuthenticatedController {
     this.ybService = service;
   }
 
+  private boolean validateEncryption(ObjectNode formData) {
+    for (JsonNode cluster : formData.get("clusters")) {
+      JsonNode nodeToNodeEncryption = cluster.get("userIntent").get("enableNodeToNodeEncrypt");
+      JsonNode clientToNodeEncryption = cluster.get("userIntent").get("enableClientToNodeEncrypt");
+
+      if (!nodeToNodeEncryption.asBoolean() && clientToNodeEncryption.asBoolean()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private Universe checkCallValid(UUID customerUUID, UUID universeUUID) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.get(customerUUID);
@@ -459,6 +471,11 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       formData = (ObjectNode) request().body().asJson();
+
+      if (!validateEncryption(formData))
+      {
+        return ApiResponse.error(BAD_REQUEST, "It is imperative that the NodeToNode TLS encryption should be enabled for enabling the ClientToNode TLS encryption.");
+      }
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
