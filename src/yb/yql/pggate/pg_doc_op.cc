@@ -748,6 +748,9 @@ void PgDocReadOp::SetReadTime() {
   PgDocOp::SetReadTime();
   if (read_time_) {
     template_op_->SetReadTime(ReadHybridTime::FromUint64(read_time_));
+    // TODO(jason): don't assume that read_time being set means it's always for backfill
+    // (issue #6854).
+    template_op_->SetIsForBackfill(true);
   }
 }
 
