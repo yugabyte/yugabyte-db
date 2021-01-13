@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
+import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
@@ -9,12 +10,15 @@ import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
-import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
+import {
+  isNonEmptyObject,
+  isEmptyObject,
+  isDefinedNotNull
+} from '../../../utils/ObjectUtils';
 
 const storageConfigTypes = {
   NFS: {
@@ -109,15 +113,39 @@ class StorageConfiguration extends Component {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
     });
-    const dataPayload = { ...values };
-    if (props.activeTab === 's3') {
-      if (values['IAM_INSTANCE_PROFILE']) {
-        delete dataPayload['AWS_ACCESS_KEY_ID'];
-        delete dataPayload['AWS_SECRET_ACCESS_KEY'];
-      }
-      if ('IAM_INSTANCE_PROFILE' in dataPayload) {
-        dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
-      }
+    let dataPayload = { ...values };
+
+    // These conditions will pick only the required JSON keys from the respective tab.
+    switch (props.activeTab) {
+      case 'nfs':
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
+        break;
+
+      case 'gcs':
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
+        break;
+
+      case 'az':
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
+        break;
+
+      default:
+        if (values['IAM_INSTANCE_PROFILE']) {
+          dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+          dataPayload = _.pick(dataPayload, [
+            'BACKUP_LOCATION',
+            'AWS_HOST_BASE',
+            'IAM_INSTANCE_PROFILE'
+          ]);
+        } else {
+           dataPayload = _.pick(dataPayload, [
+            'AWS_ACCESS_KEY_ID',
+            'AWS_SECRET_ACCESS_KEY',
+            'BACKUP_LOCATION',
+            'AWS_HOST_BASE'
+          ]);
+        }
+        break;
     }
 
     return this.props
@@ -170,8 +198,15 @@ class StorageConfiguration extends Component {
       getPromiseState(customerConfigs).isEmpty()
     ) {
       const configs = [
-        <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
-          <AwsStorageConfiguration {...this.props} deleteStorageConfig={this.deleteStorageConfig} />
+        <Tab
+          eventKey={'s3'}
+          title={getTabTitle('S3')}
+          key={'s3-tab'}
+          unmountOnExit={true}>
+          <AwsStorageConfiguration
+            {...this.props}
+            deleteStorageConfig={this.deleteStorageConfig}
+          />
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
@@ -258,7 +293,6 @@ class StorageConfiguration extends Component {
               </Row>
             );
           });
-
           configs.push(this.wrapFields(configFields, configName));
         }
       });
