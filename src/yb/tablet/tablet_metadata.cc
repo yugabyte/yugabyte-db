@@ -399,7 +399,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     tablet_data_state_ = delete_type;
-    if (last_logged_opid) {
+    if (!last_logged_opid.empty()) {
       tombstone_last_logged_opid_ = last_logged_opid;
     }
   }
@@ -592,6 +592,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
+    is_under_twodc_replication_ = superblock.is_under_twodc_replication();
   }
 
   return Status::OK();
@@ -668,13 +669,14 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 
   pb.set_wal_dir(wal_dir_);
   pb.set_tablet_data_state(tablet_data_state_);
-  if (tombstone_last_logged_opid_) {
+  if (!tombstone_last_logged_opid_.empty()) {
     tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
   }
 
   pb.set_primary_table_id(primary_table_id_);
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
+  pb.set_is_under_twodc_replication(is_under_twodc_replication_);
 
   superblock->Swap(&pb);
 }
@@ -841,6 +843,19 @@ Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_
 int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return cdc_min_replicated_index_;
+}
+
+Status RaftGroupMetadata::set_is_under_twodc_replication(bool is_under_twodc_replication) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    is_under_twodc_replication_ = is_under_twodc_replication;
+  }
+  return Flush();
+}
+
+bool RaftGroupMetadata::is_under_twodc_replication() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return is_under_twodc_replication_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {

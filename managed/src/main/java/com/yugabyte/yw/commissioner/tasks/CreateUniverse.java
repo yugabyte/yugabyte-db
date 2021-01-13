@@ -12,17 +12,17 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Set;
 
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.Common;
 import org.yb.client.YBClient;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -52,8 +52,21 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Select master nodes.
       selectMasters();
 
-      // Update the user intent.
-      writeUserIntentToUniverse();
+      if (taskParams().firstTry) {
+        // Update the user intent.
+        writeUserIntentToUniverse();
+      }
+
+      // Update the universe to the latest state and
+      // check if the nodes already exist in the cloud provider, if so,
+      // fail the universe creation.
+      universe = Universe.get(universe.universeUUID);
+      checkIfNodesExist(universe);
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+
+      // Check if nodes are able to be provisioned/configured properly.
+      createPrecheckTasks(taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(taskParams().nodeDetailsSet)
@@ -68,27 +81,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       // Override master flags (on primary cluster) and tserver flags as necessary.
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
 
-      // Explicitly set webserver ports for each dql
-      primaryCluster.userIntent.tserverGFlags.put(
-        "redis_proxy_webserver_port",
-        Integer.toString(taskParams().communicationPorts.redisServerHttpPort)
-      );
-      primaryCluster.userIntent.tserverGFlags.put(
-        "cql_proxy_webserver_port",
-        Integer.toString(taskParams().communicationPorts.yqlServerHttpPort)
-      );
-      if (primaryCluster.userIntent.enableYSQL) {
-        primaryCluster.userIntent.tserverGFlags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort)
-        );
-      }
-
+      // Set default gflags
+      addDefaultGFlags(primaryCluster.userIntent);
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
@@ -135,9 +133,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
-      // Create a simple redis table.
-      createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      if (primaryCluster.userIntent.enableYEDIS) {
+        // Create a simple redis table.
+        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Update the DNS entry for all the nodes once, using the primary cluster type.
       createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
@@ -161,5 +161,29 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
+  }
+
+  private void checkIfNodesExist(Universe universe) {
+    String errMsg;
+    for (NodeDetails node : universe.getNodes()) {
+      if (node.placementUuid == null) {
+        errMsg = String.format("Node %s does not have placement.", node.nodeName);
+        throw new RuntimeException(errMsg);
+      }
+      Cluster cluster = universe.getCluster(node.placementUuid);
+      if (!cluster.userIntent.providerType.equals(CloudType.onprem)) {
+        NodeTaskParams nodeParams = new NodeTaskParams();
+        nodeParams.universeUUID = universe.universeUUID;
+        nodeParams.expectedUniverseVersion = universe.version;
+        nodeParams.nodeName = node.nodeName;
+        nodeParams.azUuid = node.azUuid;
+        nodeParams.placementUuid = node.placementUuid;
+        if (instanceExists(nodeParams)){
+          errMsg = String.format("Node %s already exist. Pick different universe name.",
+                                 node.nodeName);
+          throw new RuntimeException(errMsg);
+        }
+      }
+    }
   }
 }

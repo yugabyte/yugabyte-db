@@ -117,6 +117,9 @@ DEFINE_int32(consensus_lagging_follower_threshold, 10,
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
 TAG_FLAG(consensus_lagging_follower_threshold, runtime);
 
+DEFINE_test_flag(bool, disallow_lmp_failures, false,
+                 "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -180,6 +183,12 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
   leader_lease_expiration.Reset();
   leader_ht_lease_expiration.Reset();
+}
+
+void PeerMessageQueue::TrackedPeer::ResetLastRequest() {
+  // Reset so that next transmission is not considered a re-transmission.
+  last_num_messages_sent = -1;
+  current_retransmissions = -1;
 }
 
 #define INSTANTIATE_METRIC(x) \
@@ -417,25 +426,30 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   return Status::OK();
 }
 
+uint64_t GetNumMessagesToSendWithBackoff(int64_t last_num_messages_sent) {
+  return std::max<int64_t>((last_num_messages_sent >> 1) - 1, 0);
+}
+
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
                                         ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
+  static constexpr uint64_t kSendUnboundedLogOps = std::numeric_limits<uint64_t>::max();
   DCHECK(request->ops().empty()) << request->ShortDebugString();
 
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
   bool is_voter = false;
   bool is_new;
-  int64_t next_index;
-  int64_t to_index;
+  int64_t previously_sent_index;
+  uint64_t num_log_ops_to_send;
   HybridTime propagated_safe_time;
 
   // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
   if (context_) {
-    propagated_safe_time = context_->PreparePeerRequest();
+    propagated_safe_time = VERIFY_RESULT(context_->PreparePeerRequest());
   }
 
   {
@@ -474,19 +488,21 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       peer->leader_lease_expiration.last_sent =
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->leader_ht_lease_expiration.last_sent = ht_lease_expiration_micros;
+      preceding_id = peer->last_received;
     } else {
       now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
       peer->leader_lease_expiration.Reset();
       peer->leader_ht_lease_expiration.Reset();
+
+      // This is initialized to the queue's last appended op but gets set to the id of the
+      // log entry preceding the first one in 'messages' if messages are found for the peer.
+      // Just because we don't know actual state of a new peer.
+      preceding_id = queue_state_.last_appended;
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
-
-    // This is initialized to the queue's last appended op but gets set to the id of the
-    // log entry preceding the first one in 'messages' if messages are found for the peer.
-    preceding_id = queue_state_.last_appended;
 
     // NOTE: committed_op_id may be overwritten later.
     queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
@@ -498,15 +514,15 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
 
-    next_index = peer->next_index;
+    previously_sent_index = peer->next_index - 1;
     if (FLAGS_enable_consensus_exponential_backoff && peer->last_num_messages_sent >= 0) {
       // Previous request to peer has not been acked. Reduce number of entries to be sent
       // in this attempt using exponential backoff. Note that to_index is inclusive.
-      to_index = next_index + std::max<int64_t>((peer->last_num_messages_sent >> 1) - 1, 0);
+      num_log_ops_to_send = GetNumMessagesToSendWithBackoff(peer->last_num_messages_sent);
     } else {
       // Previous request to peer has been acked or a heartbeat response has been received.
       // Transmit as many entries as allowed.
-      to_index = 0;
+      num_log_ops_to_send = kSendUnboundedLogOps;
     }
 
     peer->current_retransmissions++;
@@ -538,12 +554,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   *needs_remote_bootstrap = false;
 
   // If we've never communicated with the peer, we don't know what messages to send, so we'll send a
-  // status-only request. Otherwise, we grab requests from the log starting at the last_received
-  // point.
-  if (!is_new) {
+  // status-only request. If the peer has not responded to the point that our to_index == next_index
+  // due to exponential backoff of replicated segment size, we also send a status-only request.
+  // Otherwise, we grab requests from the log starting at the last_received point.
+  if (!is_new && num_log_ops_to_send > 0) {
     // The batch of messages to send to the peer.
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
-    auto result = ReadFromLogCache(next_index - 1, to_index, max_batch_size, uuid);
+    auto to_index = num_log_ops_to_send == kSendUnboundedLogOps ?
+        0 : previously_sent_index + num_log_ops_to_send;
+    auto result = ReadFromLogCache(previously_sent_index, to_index, max_batch_size, uuid);
+
     if (PREDICT_FALSE(!result.ok())) {
       if (PREDICT_TRUE(result.status().IsNotFound())) {
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
@@ -552,19 +572,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
       }
       return result.status();
-    }
-
-    if (!result->messages.empty()) {
-      // All entries committed at leader may not be available at lagging follower.
-      // `commited_op_id` in this request may make a lagging follower aware of the
-      // highest committed op index at the leader. We have a sanity check during tablet
-      // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
-      // committed operation. Hence avoid sending a committed op id that is too large
-      // to such a lagging follower.
-      const auto& msg = result->messages.back();
-      if (msg->id().index() < request->mutable_committed_op_id()->index()) {
-        *request->mutable_committed_op_id() = msg->id();
-      }
     }
 
     preceding_id = result->preceding_op;
@@ -592,7 +599,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *msgs_holder = ReplicateMsgsHolder(
         request->mutable_ops(), std::move(result->messages), std::move(consumption));
 
-    if (propagated_safe_time && !result->have_more_messages && to_index == 0) {
+    if (propagated_safe_time &&
+        !result->have_more_messages &&
+        num_log_ops_to_send == kSendUnboundedLogOps) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
@@ -601,6 +610,24 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   preceding_id.ToPB(request->mutable_preceding_id());
+
+  // All entries committed at leader may not be available at lagging follower.
+  // `commited_op_id` in this request may make a lagging follower aware of the
+  // highest committed op index at the leader. We have a sanity check during tablet
+  // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
+  // committed operation. Hence avoid sending a committed op id that is too large
+  // to such a lagging follower.
+  // If we send operations to it, then last know operation to this follower will be last sent
+  // operation. If we don't send any operation, then last known operation will be preceding
+  // operation.
+  // We don't have to change committed_op_id when it is less than max_allowed_committed_op_id,
+  // because it will have actual committed_op_id value and this operation is known to the
+  // follower.
+  const auto max_allowed_committed_op_id = !request->ops().empty()
+      ? OpId::FromPB(request->ops().rbegin()->id()) : preceding_id;
+  if (max_allowed_committed_op_id.index < request->committed_op_id().index()) {
+    max_allowed_committed_op_id.ToPB(request->mutable_committed_op_id());
+  }
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     if (request->ops_size() > 0) {
@@ -619,7 +646,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   return Status::OK();
 }
 
-Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t from_index,
+Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
                                                          int64_t to_index,
                                                          int max_batch_size,
                                                          const std::string& peer_uuid) {
@@ -627,7 +654,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t from_index,
 
   // We try to get the follower's next_index from our log.
   // Note this is not using "term" and needs to change
-  auto result = log_cache_.ReadOps(from_index, to_index, max_batch_size);
+  auto result = log_cache_.ReadOps(after_index, to_index, max_batch_size);
   if (PREDICT_FALSE(!result.ok())) {
     auto s = result.status();
     if (PREDICT_TRUE(s.IsNotFound())) {
@@ -1015,6 +1042,20 @@ void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& pee
   peer->last_successful_communication_time = MonoTime::Now();
 }
 
+void PeerMessageQueue::RequestWasNotSent(const std::string& peer_uuid) {
+  LockGuard scoped_lock(queue_lock_);
+  DCHECK_NE(State::kQueueConstructed, queue_state_.state);
+
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  if (PREDICT_FALSE(queue_state_.state != State::kQueueOpen || peer == nullptr)) {
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Queue is closed or peer was untracked.";
+    return;
+  }
+
+  peer->ResetLastRequest();
+}
+
+
 bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
                                         const ConsensusResponsePB& response) {
   DCHECK(response.IsInitialized()) << "Error: Uninitialized: "
@@ -1071,9 +1112,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     peer->is_new = false;
     peer->last_successful_communication_time = MonoTime::Now();
 
-    // Reset so that next transmission is not considered a re-transmission.
-    peer->last_num_messages_sent = -1;
-    peer->current_retransmissions = -1;
+    peer->ResetLastRequest();
 
     if (response.has_status()) {
       const auto& status = response.status();
@@ -1127,6 +1166,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
             } else {
               LOG_WITH_PREFIX_UNLOCKED(INFO) << "Got LMP mismatch error from peer: "
                                              << peer->ToString();
+              CHECK(!FLAGS_TEST_disallow_lmp_failures);
             }
             return true;
           }
@@ -1403,17 +1443,18 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
 
   // TODO move commit index advancement here so that the queue is not dependent on consensus at all,
   // but that requires a bit more work.
-  OpId new_committed_index;
+  OpId new_committed_op_id;
   OpId last_applied_op_id;
   for (PeerMessageQueueObserver* observer : copy) {
     observer->UpdateMajorityReplicated(
-        majority_replicated_data, &new_committed_index, &last_applied_op_id);
+        majority_replicated_data, &new_committed_op_id, &last_applied_op_id);
   }
 
   {
     LockGuard lock(queue_lock_);
-    if (new_committed_index && new_committed_index.index > queue_state_.committed_op_id.index) {
-      queue_state_.committed_op_id = new_committed_index;
+    if (!new_committed_op_id.empty() &&
+        new_committed_op_id.index > queue_state_.committed_op_id.index) {
+      queue_state_.committed_op_id = new_committed_op_id;
     }
     queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);
     local_peer_->last_applied = queue_state_.last_applied_op_id;

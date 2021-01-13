@@ -79,7 +79,8 @@ export const GET_NODE_INSTANCE_LIST = 'GET_NODE_INSTANCE';
 export const GET_NODE_INSTANCE_LIST_RESPONSE = 'GET_NODE_INSTANCE_RESPONSE';
 
 export const GET_NODE_INSTANCE_LIST_READ_REPLICA = 'GET_NODE_INSTANCE_READ_REPLICA';
-export const GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA = 'GET_NODE_INSTANCE_RESPONSE_READ_REPLICA';
+export const GET_NODE_INSTANCE_LIST_RESPONSE_READ_REPLICA =
+  'GET_NODE_INSTANCE_RESPONSE_READ_REPLICA';
 
 export const RESET_ON_PREM_CONFIG_DATA = 'RESET_ON_PREM_CONFIG_DATA';
 
@@ -102,7 +103,7 @@ export const DELETE_KMS_CONFIGURATION = 'DELETE_KMS_CONFIGURATION';
 export const DELETE_KMS_CONFIGURATION_RESPONSE = 'DELETE_KMS_CONFIGURATION_RESPONSE';
 
 export function getProviderList() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
   return {
     type: GET_PROVIDER_LIST,
@@ -151,14 +152,14 @@ export function getInstanceTypeListResponse(responsePayload) {
 
 export function createInstanceType(providerCode, providerUUID, instanceTypeInfo) {
   const formValues = {
-    'idKey': {
-      'providerCode': providerCode,
-      'instanceTypeCode': instanceTypeInfo.instanceTypeCode
+    idKey: {
+      providerCode: providerCode,
+      instanceTypeCode: instanceTypeInfo.instanceTypeCode
     },
-    'numCores': instanceTypeInfo.numCores,
-    'memSizeGB': instanceTypeInfo.memSizeGB,
-    'instanceTypeDetails': {
-      'volumeDetailsList': instanceTypeInfo.volumeDetailsList
+    numCores: instanceTypeInfo.numCores,
+    memSizeGB: instanceTypeInfo.memSizeGB,
+    instanceTypeDetails: {
+      volumeDetailsList: instanceTypeInfo.volumeDetailsList
     }
   };
   const url = getProviderEndpoint(providerUUID) + '/instance_types';
@@ -177,7 +178,7 @@ export function createInstanceTypeResponse(responsePayload) {
 }
 
 export function getSupportedRegionData() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/regions`);
   return {
     type: GET_SUPPORTED_REGION_DATA,
@@ -199,12 +200,12 @@ export function resetProviderList() {
 }
 
 export function createProvider(type, name, config) {
-  const customerUUID = localStorage.getItem("customerId");
-  const provider = PROVIDER_TYPES.find( (providerType) => providerType.code === type );
+  const customerUUID = localStorage.getItem('customerId');
+  const provider = PROVIDER_TYPES.find((providerType) => providerType.code === type);
   const formValues = {
-    'code': provider.code,
-    'name': name,
-    'config': config
+    code: provider.code,
+    name: name,
+    config: config
   };
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {
@@ -218,14 +219,17 @@ export function createProvider(type, name, config) {
  *  Currently, only supports Kubernetes.
  */
 export function createMultiRegionKubernetesProvider(name, config, regions) {
-  const customerUUID = localStorage.getItem("customerId");
+  const customerUUID = localStorage.getItem('customerId');
   const formValues = {
     code: 'kubernetes',
     name: name,
     config: config,
-    regionList: regions,
+    regionList: regions
   };
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/kubernetes`, formValues);
+  const request = axios.post(
+    `${ROOT_URL}/customers/${customerUUID}/providers/kubernetes`,
+    formValues
+  );
   return {
     type: CREATE_PROVIDER,
     payload: request
@@ -257,8 +261,8 @@ export function createRegionResponse(result) {
 
 export function createZones(providerUUID, regionUUID, zones) {
   const formValues = {
-    "availabilityZones": zones.map((zone) => {
-      return {"code": zone, "name": zone };
+    availabilityZones: zones.map((zone) => {
+      return { code: zone, name: zone };
     })
   };
   const url = getProviderEndpoint(providerUUID) + '/regions/' + regionUUID + '/zones';
@@ -277,9 +281,9 @@ export function createZonesResponse(result) {
 }
 
 export function createNodeInstances(zoneUUID, nodes) {
-  const customerUUID = localStorage.getItem("customerId");
+  const customerUUID = localStorage.getItem('customerId');
   const url = `${ROOT_URL}/customers/${customerUUID}/zones/${zoneUUID}/nodes`;
-  const formValues = { "nodes": nodes };
+  const formValues = { nodes: nodes };
   const request = axios.post(url, formValues);
   return {
     type: CREATE_NODE_INSTANCES,
@@ -298,12 +302,16 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
   const formValues = {
     keyCode: keyInfo.code,
     regionUUID: regionUUID,
-    keyType: "PRIVATE",
+    keyType: 'PRIVATE',
     keyContent: keyInfo.privateKeyContent,
     sshUser: keyInfo.sshUser,
     sshPort: keyInfo.sshPort,
     passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
-    airGapInstall: keyInfo.airGapInstall
+    airGapInstall: keyInfo.airGapInstall,
+    installNodeExporter: keyInfo.installNodeExporter,
+    nodeExporterUser: keyInfo.nodeExporterUser,
+    nodeExporterPort: keyInfo.nodeExporterPort,
+    skipProvisioning: keyInfo.skipProvisioning
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);
@@ -371,7 +379,7 @@ export function deleteKMSProviderConfig(configUUID) {
 export function deleteKMSProviderConfigResponse(provider) {
   return {
     type: DELETE_KMS_CONFIGURATION_RESPONSE,
-    payload: provider,
+    payload: provider
   };
 }
 
@@ -399,9 +407,8 @@ export function initializeProviderFailure(error) {
 }
 
 export function deleteProvider(providerUUID) {
-  const cUUID = localStorage.getItem("customerId");
-  const request =
-    axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
   return {
     type: DELETE_PROVIDER,
     payload: request
@@ -497,7 +504,7 @@ export function getAZUTypeListResponse(responsePayload) {
 }
 
 export function createDockerProvider() {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/providers/setup_docker`);
   return {
     type: CREATE_DOCKER_PROVIDER,
@@ -526,7 +533,7 @@ export function setOnPremConfigData(configData) {
 }
 
 export function getNodeInstancesForProvider(pUUID) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
   return {
     type: GET_NODE_INSTANCE_LIST,
@@ -542,7 +549,7 @@ export function getNodesInstancesForProviderResponse(response) {
 }
 
 export function getNodeInstancesForReadReplicaProvider(pUUID) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
   return {
     type: GET_NODE_INSTANCE_LIST_READ_REPLICA,
@@ -580,9 +587,9 @@ export function bootstrapProviderResponse(response) {
 
 export function createOnPremProvider(type, name, config) {
   const formValues = {
-    'code': type,
-    'name': name,
-    'config': config
+    code: type,
+    name: name,
+    config: config
   };
   const request = axios.post(`${getCustomerEndpoint()}/providers`, formValues);
   return {
@@ -615,7 +622,7 @@ export function deleteInstanceResponse(response) {
 }
 
 export function editProvider(payload) {
-  const cUUID = localStorage.getItem("customerId");
+  const cUUID = localStorage.getItem('customerId');
   const pUUID = payload.accountUUID;
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/edit`, payload);
   return {

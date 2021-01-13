@@ -486,6 +486,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
   static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(
       const std::shared_ptr<YBTable>& table);
+
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
@@ -541,12 +542,17 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
+  OpGroup group() override;
 
  private:
   friend class YBTable;
+
   explicit YBPgsqlReadOp(const std::shared_ptr<YBTable>& table);
+  CHECKED_STATUS GetHashPartitionKey(std::string* partition_key) const;
+  CHECKED_STATUS GetRangePartitionKey(std::string* partition_key) const;
+
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
-  YBConsistencyLevel yb_consistency_level_;
+  YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime read_time_;
 };
 

@@ -94,6 +94,13 @@ Status RpcController::status() const {
   return Status::OK();
 }
 
+Status RpcController::thread_pool_failure() const {
+  if (call_) {
+    return call_->thread_pool_failure();
+  }
+  return Status::OK();
+}
+
 const ErrorStatusPB* RpcController::error_response() const {
   if (call_) {
     return call_->error_pb();

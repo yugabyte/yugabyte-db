@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
 aliases:
- - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
   stable:
     parent: install-yugabyte-platform
@@ -83,7 +83,7 @@ The simplest option is use a self-signed certificate for now and add the custom 
 
 ## Upload the license file
 
-Now, upload the Yugabyte license file that you received from Yugabyte Support.
+Now, upload the Yugabyte license file that you received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 

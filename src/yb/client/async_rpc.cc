@@ -51,6 +51,17 @@ METRIC_DEFINE_histogram(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
     "Microseconds spent before sending the request to the server", 60000000LU, 2);
+
+METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
+    "Number of consistent prefix reads that were served by the closest replica.",
+    yb::MetricUnit::kRequests,
+    "Number of consistent prefix reads that were served by the closest replica.");
+
+METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
+    "Number of consistent prefix reads that failed to be served by the closest replica.",
+    yb::MetricUnit::kRequests,
+    "Number of consistent prefix reads that failed to be served by the closest replica.");
+
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(collect_end_to_end_traces);
 
@@ -103,7 +114,10 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       remote_read_rpc_time(METRIC_handler_latency_yb_client_read_remote.Instantiate(entity)),
       local_write_rpc_time(METRIC_handler_latency_yb_client_write_local.Instantiate(entity)),
       local_read_rpc_time(METRIC_handler_latency_yb_client_read_local.Instantiate(entity)),
-      time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)) {
+      time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)),
+      consistent_prefix_successful_reads(
+          METRIC_consistent_prefix_successful_reads.Instantiate(entity)),
+      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)) {
 }
 
 AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
@@ -148,6 +162,9 @@ void AsyncRpc::SendRpc() {
   // FLAGS_redis_allow_reads_from_followers is set to true.
   // TODO(hector): Temporarily blacklist the follower that couldn't serve the read so we can retry
   // on another follower.
+  if (async_rpc_metrics_ && num_attempts() > 1 && tablet_invoker_.is_consistent_prefix()) {
+    IncrementCounter(async_rpc_metrics_->consistent_prefix_failed_reads);
+  }
   tablet_invoker_.Execute(std::string(), num_attempts() > 1);
 }
 
@@ -170,6 +187,9 @@ void AsyncRpc::Finished(const Status& status) {
     if (tablet().is_split() ||
         ClientError(new_status) == ClientErrorCode::kTablePartitionsAreStale) {
       ops_[0]->yb_op->MarkTablePartitionsAsStale();
+    }
+    if (async_rpc_metrics_ && status.ok() && tablet_invoker_.is_consistent_prefix()) {
+      IncrementCounter(async_rpc_metrics_->consistent_prefix_successful_reads);
     }
     ProcessResponseFromTserver(new_status);
     batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, MakeFlushExtraResult());
@@ -249,15 +269,23 @@ bool AsyncRpc::IsLocalCall() const {
 
 namespace {
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::WriteRequestPB* req) {
-  auto& write_batch = *req->mutable_write_batch();
-  metadata.ToPB(write_batch.mutable_transaction());
-  write_batch.set_deprecated_may_have_metadata(true);
+template<class T>
+void SetTransactionMetadata(const TransactionMetadata& metadata,
+                            bool need_full_metadata,
+                            T* dest) {
+  auto* transaction = dest->mutable_transaction();
+  if (need_full_metadata) {
+    metadata.ToPB(transaction);
+  } else {
+    metadata.TransactionIdToPB(transaction);
+  }
+  dest->set_deprecated_may_have_metadata(true);
 }
 
-void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRequestPB* req) {
-  metadata.ToPB(req->mutable_transaction());
-  req->set_deprecated_may_have_metadata(true);
+void SetTransactionMetadata(const TransactionMetadata& metadata,
+                            bool need_full_metadata,
+                            tserver::WriteRequestPB* req) {
+  SetTransactionMetadata(metadata, need_full_metadata, req->mutable_write_batch());
 }
 
 } // namespace
@@ -298,7 +326,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data,
   }
   auto& transaction_metadata = batcher_->transaction_metadata();
   if (!transaction_metadata.transaction_id.IsNil()) {
-    SetTransactionMetadata(transaction_metadata, &req_);
+    SetTransactionMetadata(transaction_metadata, data->need_metadata, &req_);
     bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "

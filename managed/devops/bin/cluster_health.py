@@ -19,10 +19,15 @@ import time
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from exceptions import RuntimeError
+try:
+    from builtins import RuntimeError
+except Exception as e:
+    from exceptions import RuntimeError
 from datetime import datetime
 from dateutil import tz
 from multiprocessing import Pool
+from six import string_types, PY2, PY3
+
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
@@ -37,6 +42,7 @@ FATAL_TIME_THRESHOLD_MINUTES = 12
 DISK_UTILIZATION_THRESHOLD_PCT = 80
 FD_THRESHOLD_PCT = 50
 SSH_TIMEOUT_SEC = 10
+CMD_TIMEOUT_SEC = 20
 MAX_CONCURRENT_PROCESSES = 10
 MAX_TRIES = 2
 
@@ -147,10 +153,20 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        bytes = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=env)
-        return bytes.decode('utf-8')
+        timeout = CMD_TIMEOUT_SEC
+        command = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE, env=env)
+        while command.poll() is None and timeout > 0:
+            time.sleep(1)
+            timeout -= 1
+        if command.poll() is None and timeout <= 0:
+            command.kill()
+            command.wait()
+            return 'Error executing command {}: timeout occurred'.format(cmd)
+
+        output, stderr = command.communicate()
+        return output.decode('utf-8')
     except subprocess.CalledProcessError as e:
-        return 'Error executing command {}: {}'.format(cmd, e.output)
+        return 'Error executing command {}: {}'.format(cmd, e.output.decode('utf-8'))
 
 
 def safe_pipe(command_str):
@@ -200,7 +216,7 @@ class NodeChecker():
 
     def _remote_check_output(self, command):
         cmd_to_run = []
-        command = safe_pipe(command) if isinstance(command, basestring) else command
+        command = safe_pipe(command) if isinstance(command, string_types) else command
         env_conf = os.environ.copy()
         if self.is_k8s:
             env_conf["KUBECONFIG"] = self.k8s_details.config
@@ -475,8 +491,59 @@ def assemble_mail_row(data, is_first_check, timestamp):
         td_element('0', '', details_content))
 
 
-def send_mail(report, subject, destination, nodes, universe_name, report_only_errors):
+def send_email(subject, msg, sender, destination):
     logging.info("Sending email: '{}' to '{}'".format(subject, destination))
+
+    if SMTP_USE_SSL.lower() == 'true':
+        if EMAIL_PORT is not None:
+            s = smtplib.SMTP_SSL(EMAIL_SERVER, int(EMAIL_PORT))
+        else:
+            # Port defaults to 465
+            s = smtplib.SMTP_SSL(EMAIL_SERVER)
+    else:
+        if EMAIL_PORT is not None:
+            s = smtplib.SMTP(EMAIL_SERVER, int(EMAIL_PORT))
+        else:
+            s = smtplib.SMTP(EMAIL_SERVER)
+        if SMTP_USE_TLS.lower() == 'true':
+            s.starttls()
+    s.ehlo()
+    if EMAIL_USERNAME is not None and EMAIL_PASSWORD is not None:
+        s.login(EMAIL_USERNAME, EMAIL_PASSWORD)
+    dest_list = destination.split(',')
+    s.sendmail(sender, dest_list, msg.as_string())
+    s.quit()
+
+
+def send_alert_email(customer_tag, alert_info_json, destination):
+    is_valid = True
+    subject = "Yugabyte Platform Alert - <{}>".format(customer_tag)
+    if 'alert_name' in alert_info_json and alert_info_json['alert_name'] == 'Backup failure':
+        task_type = alert_info_json['task_type']
+        target_type = alert_info_json['target_type']
+        target_name = alert_info_json['target_name']
+        task_info = alert_info_json['task_info']
+        msg_content = "{} {} failed for {}.\n\nTask Info: {}" \
+            .format(task_type, target_type, target_name, task_info)
+    elif 'alert_name' in alert_info_json:
+        alert_name = alert_info_json['alert_name']
+        alert_state = alert_info_json['state']
+        universe_name = alert_info_json['universe_name']
+        msg_content = "{} for {} is {}.".format(alert_name, universe_name, alert_state)
+    else:
+        logging.error("Invalid alert_info_json")
+        is_valid = False
+    if is_valid:
+        sender = EMAIL_FROM
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = sender
+        msg['To'] = destination
+        msg.attach(MIMEText(msg_content, 'plain'))
+        send_email(subject, msg, sender, destination)
+
+
+def send_health_check_mail(report, subject, destination, nodes, universe_name, report_only_errors):
     style_font = "font-family: SF Pro Display, SF Pro, Helvetica Neue, Helvetica, sans-serif;"
     json_object = json.loads(str(report))
 
@@ -598,25 +665,7 @@ def send_mail(report, subject, destination, nodes, universe_name, report_only_er
     # the last part of a multipart MIME message is the preferred part
     msg.attach(MIMEText(body, 'html'))
 
-    if SMTP_USE_SSL.lower() == 'true':
-        if EMAIL_PORT is not None:
-            s = smtplib.SMTP_SSL(EMAIL_SERVER, int(EMAIL_PORT))
-        else:
-            # Port defaults to 465
-            s = smtplib.SMTP_SSL(EMAIL_SERVER)
-    else:
-        if EMAIL_PORT is not None:
-            s = smtplib.SMTP(EMAIL_SERVER, int(EMAIL_PORT))
-        else:
-            s = smtplib.SMTP(EMAIL_SERVER)
-        if SMTP_USE_TLS.lower() == 'true':
-            s.starttls()
-    s.ehlo()
-    if EMAIL_USERNAME is not None and EMAIL_PASSWORD is not None:
-        s.login(EMAIL_USERNAME, EMAIL_PASSWORD)
-    dest_list = destination.split(',')
-    s.sendmail(sender, dest_list, msg.as_string())
-    s.quit()
+    send_email(subject, msg, sender, destination)
 
 
 def local_time():
@@ -640,7 +689,10 @@ class CheckCoordinator:
     class CheckRunInfo:
         def __init__(self, instance, func_name, yb_process):
             self.instance = instance
-            self.func_name = func_name
+            if PY3:
+                self.__name__ = func_name
+            else:
+                self.func_name = func_name
             self.yb_process = yb_process
             self.result = None
             self.entry = None
@@ -671,15 +723,16 @@ class CheckCoordinator:
                         logging.info("Retry # " + str(check.tries) +
                                      " for check " + check.func_name)
 
+                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.yb_process is None:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
-                                            (check.instance, check.func_name, sleep_interval))
+                                            (check.instance, check_func_name, sleep_interval))
                     else:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
                                             (check.instance,
-                                                check.func_name,
+                                                check_func_name,
                                                 sleep_interval,
                                                 (check.yb_process,)))
 
@@ -707,6 +760,7 @@ class Cluster():
         self.enable_ysql = data["enableYSQL"]
         self.ysql_port = data["ysqlPort"]
         self.ycql_port = data["ycqlPort"]
+        self.enable_yedis = data["enableYEDIS"]
         self.redis_port = data["redisPort"]
 
 
@@ -718,9 +772,9 @@ class UniverseDefinition():
 
 def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
-    parser.add_argument('--cluster_payload', type=str, default=None, required=True,
+    parser.add_argument('--cluster_payload', type=str, default=None, required=False,
                         help='JSON serialized payload of cluster data: IPs, pem files, etc.')
-    parser.add_argument('--universe_name', type=str, default=None, required=True,
+    parser.add_argument('--universe_name', type=str, default=None, required=False,
                         help='Universe name to use in the email report')
     parser.add_argument('--customer_tag', type=str, default=None,
                         help='Customer name/env info to use in the email report')
@@ -736,65 +790,81 @@ def main():
                         help='Time to wait between retries of failed checks')
     parser.add_argument('--report_only_errors', action="store_true",
                         help='Only report nodes with errors')
+    parser.add_argument('--send_notification', action="store_true",
+                        help='Whether this is to alert to notify on or not')
+    parser.add_argument('--alert_info', type=str, default=None, required=False,
+                        help='JSON serialized payload of backups that have failed')
     args = parser.parse_args()
-    universe = UniverseDefinition(args.cluster_payload)
-    # Technically, each cluster can have its own version, but in practice, we disallow that in YW.
-    universe_version = universe.clusters[0].yb_version if universe.clusters else None
-    report = Report(universe_version)
-    coordinator = CheckCoordinator(args.retry_interval_secs)
-    summary_nodes = {}
-    for c in universe.clusters:
-        master_nodes = c.master_nodes
-        tserver_nodes = c.tserver_nodes
-        all_nodes = dict(master_nodes)
-        all_nodes.update(dict(tserver_nodes))
-        summary_nodes.update(dict(all_nodes))
-        for (node, node_name) in all_nodes.items():
-            checker = NodeChecker(
-                    node, node_name, c.identity_file, c.ssh_port,
-                    args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                    c.ycql_port, c.redis_port, c.enable_tls_client)
-            # TODO: use paramiko to establish ssh connection to the nodes.
-            if node in master_nodes:
-                coordinator.add_check(
-                    checker, "check_uptime_for_process", "yb-master")
-                coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
-            if node in tserver_nodes:
-                coordinator.add_check(
-                    checker, "check_uptime_for_process", "yb-tserver")
-                coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
-                # Only need to check redis-cli/cqlsh for tserver nodes, to be docker/k8s friendly.
-                coordinator.add_check(checker, "check_cqlsh")
-                coordinator.add_check(checker, "check_redis_cli")
-                # TODO: Enable check after addressing issue #1845.
-                if c.enable_ysql:
-                    coordinator.add_check(checker, "check_ysqlsh")
-            coordinator.add_check(checker, "check_disk_utilization")
-            coordinator.add_check(checker, "check_for_core_files")
-            coordinator.add_check(checker, "check_file_descriptors")
+    if args.send_notification and args.alert_info is not None:
+        alert_info_json = json.loads(args.alert_info)
+        send_alert_email(args.customer_tag, alert_info_json, args.destination)
+        print(alert_info_json)
+    elif args.cluster_payload is not None and args.universe_name is not None:
+        universe = UniverseDefinition(args.cluster_payload)
+        coordinator = CheckCoordinator(args.retry_interval_secs)
+        summary_nodes = {}
+        # Technically, each cluster can have its own version, but in practice,
+        # we disallow that in YW.
+        universe_version = universe.clusters[0].yb_version if universe.clusters else None
+        report = Report(universe_version)
+        for c in universe.clusters:
+            master_nodes = c.master_nodes
+            tserver_nodes = c.tserver_nodes
+            all_nodes = dict(master_nodes)
+            all_nodes.update(dict(tserver_nodes))
+            summary_nodes.update(dict(all_nodes))
+            for (node, node_name) in all_nodes.items():
+                checker = NodeChecker(
+                        node, node_name, c.identity_file, c.ssh_port,
+                        args.start_time_ms, c.namespace_to_config, c.ysql_port,
+                        c.ycql_port, c.redis_port, c.enable_tls_client)
+                # TODO: use paramiko to establish ssh connection to the nodes.
+                if node in master_nodes:
+                    coordinator.add_check(
+                        checker, "check_uptime_for_process", "yb-master")
+                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
+                if node in tserver_nodes:
+                    coordinator.add_check(
+                        checker, "check_uptime_for_process", "yb-tserver")
+                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
+                    # Only need to check redis-cli/cqlsh for tserver nodes
+                    # to be docker/k8s friendly.
+                    coordinator.add_check(checker, "check_cqlsh")
+                    if c.enable_yedis:
+                        coordinator.add_check(checker, "check_redis_cli")
+                    # TODO: Enable check after addressing issue #1845.
+                    if c.enable_ysql:
+                        coordinator.add_check(checker, "check_ysqlsh")
+                coordinator.add_check(checker, "check_disk_utilization")
+                coordinator.add_check(checker, "check_for_core_files")
+                coordinator.add_check(checker, "check_file_descriptors")
 
-    entries = coordinator.run()
-    for e in entries:
-        report.add_entry(e)
+        entries = coordinator.run()
+        for e in entries:
+            report.add_entry(e)
 
-    state = "ERROR" if report.has_errors() else "OK"
-    subject = "{} - <{}> {}".format(state, args.customer_tag, args.universe_name)
-    # If we have errors or were asked to send email with status update, then send the email.
-    #
-    # NOTE: We only send emails if we are provided a destination, which can be a CSV of addresses.
-    if args.destination and (args.send_status or report.has_errors()):
-        try:
-            send_mail(
-                report, subject, args.destination, summary_nodes.keys(),
-                args.universe_name, args.report_only_errors
-            )
-        except Exception as e:
-            logging.error("Sending email failed with: {}".format(str(e)))
-            report.mail_error = str(e)
-    report.write_to_log(args.log_file)
+        state = "ERROR" if report.has_errors() else "OK"
 
-    # Write to stdout to be caught by YW subprocess.
-    print(report)
+        subject = "{} - <{}> {}".format(state, args.customer_tag, args.universe_name)
+        # If we have errors or were asked to send email with status update, then send the email.
+        #
+        # NOTE: We only send emails if we are provided a destination,
+        # which can be a CSV of addresses.
+        if args.destination and (args.send_status or report.has_errors()):
+            try:
+                send_health_check_mail(
+                    report, subject, args.destination, summary_nodes.keys(),
+                    args.universe_name, args.report_only_errors
+                )
+            except Exception as e:
+                logging.error("Sending email failed with: {}".format(str(e)))
+                report.mail_error = str(e)
+        report.write_to_log(args.log_file)
+
+        # Write to stdout to be caught by YW subprocess.
+        print(report)
+    else:
+        logging.error("Invalid argument combination")
 
 
 if __name__ == '__main__':

@@ -820,6 +820,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			attr->attidentity = colDef->identity;
 	}
 
+	/* Check for WITH (table_oid = x). */
+	relationId = GetTableOidFromRelOptions(
+		stmt->options, tablespaceId, stmt->relation->relpersistence);
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -828,7 +832,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
-										  InvalidOid,
+										  relationId,
 										  InvalidOid,
 										  ofTypeId,
 										  ownerId,
@@ -1067,7 +1071,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (rawDefaults || stmt->constraints)
 		AddRelationNewConstraints(rel, rawDefaults, stmt->constraints,
-															true, true, false);
+								true, true, false, queryString);
 
 	ObjectAddressSet(address, RelationRelationId, relationId);
 
@@ -4901,7 +4905,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 				 * Process supplied expressions to replace selected columns.
 				 * Expression inputs come from the old tuple.
 				 */
-				ExecStoreTuple(tuple, oldslot, InvalidBuffer, false);
+				ExecStoreHeapTuple(tuple, oldslot, false);
 				econtext->ecxt_scantuple = oldslot;
 
 				foreach(l, tab->newvals)
@@ -4931,7 +4935,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Now check any constraints on the possibly-changed tuple */
-			ExecStoreTuple(tuple, newslot, InvalidBuffer, false);
+			ExecStoreHeapTuple(tuple, newslot, false);
 			econtext->ecxt_scantuple = newslot;
 
 			foreach(l, notnull_attrs)
@@ -5726,7 +5730,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * _list_ of defaults, but we just do one.
 		 */
 		AddRelationNewConstraints(rel, list_make1(rawEnt), NIL,
-								  false, true, false);
+								  false, true, false, NULL);
 
 		/* Make the additional catalog changes visible */
 		CommandCounterIncrement();
@@ -6317,7 +6321,7 @@ ATExecColumnDefault(Relation rel, const char *colName,
 		 * _list_ of defaults, but we just do one.
 		 */
 		AddRelationNewConstraints(rel, list_make1(rawEnt), NIL,
-								  false, true, false);
+								  false, true, false, NULL);
 	}
 
 	ObjectAddressSubSet(address, RelationRelationId,
@@ -7353,7 +7357,8 @@ ATAddCheckConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 										list_make1(copyObject(constr)),
 										recursing | is_readd,	/* allow_merge */
 										!recursing, /* is_local */
-										is_readd);	/* is_internal */
+										is_readd,	/* is_internal */
+										NULL);		/* queryString not available here */
 
 	/* we don't expect more than one constraint here */
 	Assert(list_length(newcons) <= 1);
@@ -9041,7 +9046,7 @@ validateCheckConstraint(Relation rel, HeapTuple constrtup)
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
-		ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+		ExecStoreHeapTuple(tuple, slot, false);
 
 		if (!ExecCheck(exprstate, econtext))
 			ereport(ERROR,
@@ -10051,7 +10056,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 							tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
 																foundObject.objectId);
 							tab->changedIndexDefs = lappend(tab->changedIndexDefs,
-															pg_get_indexdef_string(foundObject.objectId));
+											pg_get_indexdef_string(foundObject.objectId));
 						}
 					}
 					else if (relKind == RELKIND_SEQUENCE)

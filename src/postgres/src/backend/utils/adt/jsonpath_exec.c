@@ -1049,18 +1049,19 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				{
 					char	   *tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
 																		  NumericGetDatum(jb->val.numeric)));
+					double		val;
 					bool		have_error = false;
 
-					(void) float8in_internal_opt_error(tmp,
-													   NULL,
-													   "double precision",
-													   tmp,
-													   &have_error);
+					val = float8in_internal_opt_error(tmp,
+													  NULL,
+													  "double precision",
+													  tmp,
+													  &have_error);
 
-					if (have_error)
+					if (have_error || isinf(val) || isnan(val))
 						RETURN_ERROR(ereport(ERROR,
 											 (errcode(ERRCODE_NON_NUMERIC_SQL_JSON_ITEM),
-											  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
+											  errmsg("numeric argument of jsonpath item method .%s() is out of range for type double precision",
 													 jspOperationName(jsp->type)))));
 					res = jperOk;
 				}
@@ -1078,10 +1079,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 													  tmp,
 													  &have_error);
 
-					if (have_error || isinf(val))
+					if (have_error || isinf(val) || isnan(val))
 						RETURN_ERROR(ereport(ERROR,
 											 (errcode(ERRCODE_NON_NUMERIC_SQL_JSON_ITEM),
-											  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
+											  errmsg("string argument of jsonpath item method .%s() is not a valid representation of a double precision number",
 													 jspOperationName(jsp->type)))));
 
 					jb = &jbv;
@@ -1799,7 +1800,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	if (!(jb = getScalar(jb, jbvString)))
 		RETURN_ERROR(ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+							 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION),
 							  errmsg("jsonpath item method .%s() can only be applied to a string",
 									 jspOperationName(jsp->type)))));
 
@@ -1880,7 +1881,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		if (res == jperNotFound)
 			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION),
 								  errmsg("datetime format is not unrecognized"),
 								  errhint("use datetime template argument for explicit format specification"))));
 	}

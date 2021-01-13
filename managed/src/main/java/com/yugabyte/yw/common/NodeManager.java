@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.CertificateParams;
 
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -62,9 +63,11 @@ public class NodeManager extends DevopsBase {
   public enum NodeCommandType {
     Provision,
     Configure,
+    CronCheck,
     Destroy,
     List,
     Control,
+    Precheck,
     Tags,
     InitYSQL,
     Disk_Update
@@ -161,9 +164,34 @@ public class NodeManager extends DevopsBase {
         subCommand.add(keyInfo.sshUser);
       }
 
-      if (params instanceof AnsibleSetupServer.Params &&
-          accessKey.getKeyInfo().airGapInstall) {
-        subCommand.add("--air_gap");
+      if (type == NodeCommandType.Precheck) {
+        subCommand.add("--precheck_type");
+        if (keyInfo.skipProvisioning) {
+          subCommand.add("configure");
+        } else {
+          subCommand.add("provision");
+        }
+
+        if (keyInfo.airGapInstall) {
+          subCommand.add("--air_gap");
+        }
+        if (keyInfo.installNodeExporter) {
+          subCommand.add("--install_node_exporter");
+        }
+      }
+
+      if (params instanceof AnsibleSetupServer.Params) {
+        if (keyInfo.airGapInstall) {
+          subCommand.add("--air_gap");
+        }
+
+        if (keyInfo.installNodeExporter) {
+          subCommand.add("--install_node_exporter");
+          subCommand.add("--node_exporter_port");
+          subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
+          subCommand.add("--node_exporter_user");
+          subCommand.add(keyInfo.nodeExporterUser);
+        }
       }
     }
 
@@ -297,8 +325,10 @@ public class NodeManager extends DevopsBase {
             taskParam.allowInsecure ? "true" : "false"
           );
           String yb_home_dir = taskParam.getProvider().getYbHome();
-          // TODO: This directory location should also be passed into subcommand: --certs_node_dir
+
           extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+          subcommand.add("--certs_node_dir");
+          subcommand.add(yb_home_dir + "/yugabyte-tls-config");
 
           if (cert.certType == CertificateInfo.Type.SelfSigned) {
             subcommand.add("--rootCA_cert");
@@ -310,6 +340,21 @@ public class NodeManager extends DevopsBase {
               subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
               subcommand.add("--client_key");
               subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            subcommand.add("--use_custom_certs");
+            subcommand.add("--root_cert_path");
+            subcommand.add(customCertInfo.rootCertPath);
+            subcommand.add("--node_cert_path");
+            subcommand.add(customCertInfo.nodeCertPath);
+            subcommand.add("--node_key_path");
+            subcommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null) {
+              subcommand.add("--client_cert_path");
+              subcommand.add(customCertInfo.clientCertPath);
+              subcommand.add("--client_key_path");
+              subcommand.add(customCertInfo.clientKeyPath);
             }
           }
         }
@@ -377,6 +422,9 @@ public class NodeManager extends DevopsBase {
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
 
           if (taskParam.updateMasterAddrsOnly) {
+            if (taskParam.isMasterInShellMode) {
+              masterAddresses = "";
+            }
             if (processType.equals(ServerType.MASTER.name())) {
               gflags.put("master_addresses", masterAddresses);
             } else {
@@ -396,11 +444,44 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      case Certs:
+        {
+          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+          if (cert == null) {
+            throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+          }
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
+            throw new RuntimeException("Self signed certs cannot be rotated.");
+          }
+          String processType = taskParam.getProperty("processType");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else {
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
+          }
+          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+          subcommand.add("--use_custom_certs");
+          subcommand.add("--rotating_certs");
+          subcommand.add("--root_cert_path");
+          subcommand.add(customCertInfo.rootCertPath);
+          subcommand.add("--node_cert_path");
+          subcommand.add(customCertInfo.nodeCertPath);
+          subcommand.add("--node_key_path");
+          subcommand.add(customCertInfo.nodeKeyPath);
+          if (customCertInfo.clientCertPath != null) {
+            subcommand.add("--client_cert_path");
+            subcommand.add(customCertInfo.clientCertPath);
+            subcommand.add("--client_key_path");
+            subcommand.add(customCertInfo.clientKeyPath);
+          }
+        }
+        break;
     }
     return subcommand;
   }
 
-  public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
+  public ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -437,28 +518,30 @@ public class NodeManager extends DevopsBase {
           }
         }
 
-        commandArgs.add("--node_exporter_port");
-        commandArgs.add(Integer.toString(taskParam.communicationPorts.nodeExporterPort));
-
-        commandArgs.add("--install_node_exporter");
-        commandArgs.add(Boolean.toString(taskParam.extraDependencies.installNodeExporter));
-
         if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.useTimeSync) {
             commandArgs.add("--use_chrony");
           }
+
           if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
             Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
+
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
           }
+
           if (taskParam.ipArnString != null) {
             commandArgs.add("--iam_profile_arn");
             commandArgs.add(taskParam.ipArnString);
+          }
+
+          if (!taskParam.remotePackagePath.isEmpty()) {
+            commandArgs.add("--remote_package_path");
+            commandArgs.add(taskParam.remotePackagePath);
           }
         }
         if (cloudType.equals(Common.CloudType.azu)) {
@@ -505,6 +588,12 @@ public class NodeManager extends DevopsBase {
         break;
       }
       case List: {
+        if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        }
         commandArgs.add("--as_json");
         break;
       }
@@ -512,12 +601,15 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
         commandArgs.add("--instance_type");
-        commandArgs.add(nodeTaskParam.instanceType);
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        commandArgs.add(taskParam.instanceType);
+        commandArgs.add("--node_ip");
+        commandArgs.add(taskParam.nodeIP);
+        if (taskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(taskParam));
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
       case Control: {
@@ -559,6 +651,19 @@ public class NodeManager extends DevopsBase {
         commandArgs.add(taskParam.instanceType);
         if (taskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(taskParam));
+        }
+        break;
+      }
+      case CronCheck: {
+        if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
+          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+        }
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+      }
+      case Precheck: {
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
         }
         break;
       }

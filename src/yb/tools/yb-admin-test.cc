@@ -161,10 +161,14 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 2;
 
-  vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  master_flags.push_back("--replication_factor=2");
+  std::vector<std::string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--replication_factor=2"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  std::vector<std::string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+  };
   BuildAndStart(ts_flags, master_flags);
 
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
@@ -678,6 +682,43 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
     extra_table, ClusterVerifier::EXACTLY, rows_inserted));
 }
 
+TEST_F(AdminCliTest, TestClearPlacementPolicy) {
+  // Start a cluster with 3 tservers.
+  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_replicas = 2;
+  std::vector<std::string> master_flags;
+  master_flags.push_back("--enable_load_balancing=true");
+  std::vector<std::string> ts_flags;
+  ts_flags.push_back("--placement_cloud=c");
+  ts_flags.push_back("--placement_region=r");
+  ts_flags.push_back("--placement_zone=z");
+  BuildAndStart(ts_flags, master_flags);
+
+  std::string output;
+  const std::string& master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  // Create the placement config.
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "modify_placement_info", "c.r.z", 3, ""),
+   &output));
+
+  // Ensure that the universe config has placement information.
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "get_universe_config"),
+   &output));
+  ASSERT_TRUE(output.find("replicationInfo") != std::string::npos);
+
+  // Clear the placement config.
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "clear_placement_info"),
+   &output));
+
+  // Ensure that the placement config is absent.
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+   "-master_addresses", master_address, "get_universe_config"),
+   &output));
+  ASSERT_TRUE(output.find("replicationInfo") == std::string::npos);
+}
 
 }  // namespace tools
 }  // namespace yb

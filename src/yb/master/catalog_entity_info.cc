@@ -108,16 +108,20 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
-      reported_schema_version_({}) {}
+      reported_schema_version_({}) {
+  // Have to pre-initialize to an empty map, in case of access before the first setter is called.
+  replica_locations_ = std::make_shared<TabletInfo::ReplicaMap>();
+}
 
 TabletInfo::~TabletInfo() {
 }
 
-void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
+void TabletInfo::SetReplicaLocations(
+    std::shared_ptr<TabletInfo::ReplicaMap> replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
-  replica_locations_ = std::move(replica_locations);
+  replica_locations_ = replica_locations;
 }
 
 CHECKED_STATUS TabletInfo::CheckRunning() const {
@@ -140,11 +144,11 @@ Result<TSDescriptor*> TabletInfo::GetLeader() const {
   return STATUS_FORMAT(
       NotFound,
       "No leader found for tablet $0 with $1 replicas: $2.",
-      ToString(), replica_locations_.size(), replica_locations_);
+      ToString(), replica_locations_->size(), *replica_locations_);
 }
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
-  for (const auto& pair : replica_locations_) {
+  for (const auto& pair : *replica_locations_) {
     if (pair.second.role == consensus::RaftPeerPB::LEADER) {
       return pair.second.ts_desc;
     }
@@ -152,17 +156,21 @@ TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
   return nullptr;
 }
 
-void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
+std::shared_ptr<const TabletInfo::ReplicaMap> TabletInfo::GetReplicaLocations() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  *replica_locations = replica_locations_;
+  return replica_locations_;
 }
 
 void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
-  auto it = replica_locations_.find(replica.ts_desc->permanent_uuid());
-  if (it == replica_locations_.end()) {
-    replica_locations_.emplace(replica.ts_desc->permanent_uuid(), replica);
+  last_update_time_ = MonoTime::Now();
+  // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
+  // clients that already have the old shared_ptr.
+  replica_locations_ = std::make_shared<TabletInfo::ReplicaMap>(*replica_locations_);
+  auto it = replica_locations_->find(replica.ts_desc->permanent_uuid());
+  if (it == replica_locations_->end()) {
+    replica_locations_->emplace(replica.ts_desc->permanent_uuid(), replica);
     return;
   }
   it->second.UpdateFrom(replica);
@@ -532,6 +540,11 @@ std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
   return pending_tasks_;
 }
 
+std::size_t TableInfo::NumTablets() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  return tablet_map_.size();
+}
+
 void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
   shared_lock<decltype(lock_)> l(lock_);
@@ -577,10 +590,9 @@ DeletedTableInfo::DeletedTableInfo(const TableInfo* table) : table_id_(table->id
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto tablet_lock = tablet->LockForRead();
-    TabletInfo::ReplicaMap replica_locations;
-    tablet->GetReplicaLocations(&replica_locations);
+    auto replica_locations = tablet->GetReplicaLocations();
 
-    for (const TabletInfo::ReplicaMap::value_type& r : replica_locations) {
+    for (const TabletInfo::ReplicaMap::value_type& r : *replica_locations) {
       tablet_set_.insert(TabletSet::value_type(
           r.second.ts_desc->permanent_uuid(), tablet->id()));
     }

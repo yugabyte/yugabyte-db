@@ -196,9 +196,13 @@ vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& table
   return result;
 }
 
-TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers) {
+TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
+                                                    const std::set<std::string>& exclude) {
   TabletServerMapUnowned result;
   for (auto& pair : tablet_servers) {
+    if (exclude.find(pair.first) != exclude.end()) {
+      continue;
+    }
     result.emplace(pair.first, pair.second.get());
   }
   return result;

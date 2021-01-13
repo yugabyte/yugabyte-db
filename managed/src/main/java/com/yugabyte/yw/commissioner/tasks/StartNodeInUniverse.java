@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Set;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
@@ -40,6 +39,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
     NodeDetails currentNode = null;
     boolean hitException = false;
     try {
+      checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Set the 'updateInProgress' flag to prevent other updates from happening.
@@ -76,6 +76,12 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
+        // Clean the master addresses in the conf file for the current node so that
+        // the master comes up as a shell master.
+        createConfigureServerTasks(ImmutableList.of(currentNode), true /* isShell */,
+            true /* updateMasterAddrs */, true /* isMaster */)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
         // Set gflags for master.
         createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
 
@@ -128,26 +134,5 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
-  }
-
-  // Setup a configure task to update the new master list in the conf files of all servers.
-  private void createMasterInfoUpdateTask(Universe universe, NodeDetails startedNode) {
-    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
-    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
-    // We need to add the node explicitly since the node wasn't marked as a master or tserver
-    // before the task is completed.
-    tserverNodes.add(startedNode);
-    masterNodes.add(startedNode);
-    // Configure all tservers to pick the new master node ip as well.
-    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    // Update the master addresses in memory.
-    createSetFlagInMemoryTasks(tserverNodes, ServerType.TSERVER, true /* force flag update */,
-                               null /* no gflag to update */, true /* updateMasterAddr */);
-    // Change the master addresses in the conf file for the all masters to reflect the changes.
-    createConfigureServerTasks(masterNodes, false /* isShell */, true /* updateMasterAddrs */,
-        true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
-                               null /* no gflag to update */, true /* updateMasterAddr */);
   }
 }

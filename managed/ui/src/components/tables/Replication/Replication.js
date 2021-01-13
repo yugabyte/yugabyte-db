@@ -10,43 +10,40 @@ import { YBPanelItem } from '../../panels';
 import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import { MetricsPanel } from '../../metrics';
-
+import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
 import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
-const MILLI_IN_MIN = 60000.00;
-const MILLI_IN_SEC = 1000.00;
+const MILLI_IN_MIN = 60000.0;
+const MILLI_IN_SEC = 1000.0;
 
-export default class ListBackups extends Component {
+export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
       graphWidth: 840
-    }
+    };
   }
 
-  static defaultProps = {
-    title : "Replication",
-  }
-
-  static propTypes  = {
-    currentUniverse: PropTypes.object.isRequired
-  }
+  static propTypes = {
+    universe: PropTypes.object.isRequired
+  };
 
   componentDidMount() {
     const { graph } = this.props;
-    this.queryMetrics(graph.graphFilter);    
+    this.queryMetrics(graph.graphFilter);
   }
 
   componentWillUnmount() {
     this.props.resetMasterLeader();
   }
 
-  queryMetrics = graphFilter => {
-    const { currentUniverse } = this.props;
-    const universeDetails = getPromiseState(currentUniverse).isSuccess() ?
-      currentUniverse.data.universeDetails : 'all';
+  queryMetrics = (graphFilter) => {
+    const { universe: { currentUniverse }} = this.props;
+    const universeDetails = getPromiseState(currentUniverse).isSuccess()
+      ? currentUniverse.data.universeDetails
+      : 'all';
     const params = {
       metrics: [METRIC_NAME],
       start: graphFilter.startMoment.format('X'),
@@ -57,7 +54,11 @@ export default class ListBackups extends Component {
   };
 
   render() {
-    const { title, currentUniverse, graph: { metrics }} = this.props;
+    const {
+      universe: { currentUniverse },
+      graph: { metrics }
+    } = this.props;
+
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -70,26 +71,29 @@ export default class ListBackups extends Component {
     if (_.get(metrics, `${GRAPH_TYPE}.${METRIC_NAME}.layout.yaxis.alias`, null)) {
       // Get alias
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
-      const committedLagName = metricAliases['async_replication_committed_lag_micros']
-      aggregatedMetrics = {...metrics[GRAPH_TYPE][METRIC_NAME]};
-      const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(x => x.name === committedLagName);
+      const committedLagName = metricAliases['async_replication_committed_lag_micros'];
+      aggregatedMetrics = { ...metrics[GRAPH_TYPE][METRIC_NAME] };
+      const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(
+        (x) => x.name === committedLagName
+      );
       if (replicationNodeMetrics.length) {
         // Get max-value and avg-value metric array
-        let avgArr = null, maxArr = null;
-        replicationNodeMetrics.forEach(metric => {
+        let avgArr = null,
+          maxArr = null;
+        replicationNodeMetrics.forEach((metric) => {
           if (!avgArr && !maxArr) {
-            avgArr = metric.y.map(v => parseFloat(v) / replicationNodeMetrics.length);
+            avgArr = metric.y.map((v) => parseFloat(v) / replicationNodeMetrics.length);
             maxArr = [...metric.y];
           } else {
             metric.y.forEach((y, idx) => {
-              avgArr[idx] = parseFloat(avgArr[idx]) + parseFloat(y)/replicationNodeMetrics.length;
+              avgArr[idx] = parseFloat(avgArr[idx]) + parseFloat(y) / replicationNodeMetrics.length;
               if (parseFloat(y) > parseFloat(maxArr[idx])) {
-                maxArr[idx] = parseFloat(y)
+                maxArr[idx] = parseFloat(y);
               }
             });
           }
         });
-        const firstMetricData = replicationNodeMetrics[0];        
+        const firstMetricData = replicationNodeMetrics[0];
         aggregatedMetrics.data = [
           {
             ...firstMetricData,
@@ -107,29 +111,37 @@ export default class ListBackups extends Component {
         showMetrics = true;
       }
     }
-    
-    let infoBlock = <span />
+
+    let infoBlock = <span />;
     let recentStatBlock = null;
-    if (latestStat != null) {      
-      if (latestStat == 0) {
-        infoBlock = <div className="info success">
-          <i className="fa fa-check-circle icon"></i>
-          <div>
-            <h4>Cluster is caught up!</h4>
+    if (latestStat != null) {
+      if (parseInt(latestStat) === 0) {
+        infoBlock = (
+          <div className="info success">
+            <i className="fa fa-check-circle icon"></i>
+            <div>
+              <h4>Cluster is caught up!</h4>
+            </div>
           </div>
-        </div>;
+        );
       }
       let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
       if (latestStat > MILLI_IN_MIN) {
-        resourceNumber = <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />;
+        resourceNumber = (
+          <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />
+        );
       } else if (latestStat > MILLI_IN_SEC) {
-        resourceNumber = <YBResourceCount size={(latestStat / MILLI_IN_SEC).toFixed(4)} kind="s" inline={true} />;
+        resourceNumber = (
+          <YBResourceCount size={(latestStat / MILLI_IN_SEC).toFixed(4)} kind="s" inline={true} />
+        );
       }
-      recentStatBlock = <div className="metric-block">
-        <h3>Current Replication Lag</h3>
-        {resourceNumber}
-        <div className="metric-attribute">as of {moment(latestTimestamp).fromNow()}</div>
-      </div>;
+      recentStatBlock = (
+        <div className="metric-block">
+          <h3>Current Replication Lag</h3>
+          {resourceNumber}
+          <div className="metric-attribute">as of {moment(latestTimestamp).fromNow()}</div>
+        </div>
+      );
     }
 
     // TODO: Make graph resizeable
@@ -137,37 +149,34 @@ export default class ListBackups extends Component {
       <div>
         <YBPanelItem
           header={
-            <div className="container-title clearfix spacing-top">
-              <div className="pull-left">
-                <h2 className="task-list-header content-title pull-left">{title}</h2>
-              </div>              
+            <div className="replication-header">
+              <h2>Replication</h2>
+              <ReplicationAlertModalBtn
+                universeUUID={currentUniverse.data.universeUUID}
+                disabled={!showMetrics}
+              />
             </div>
           }
-          body={          
-           <div className="replication-content">
-             {infoBlock}
-              <div className="replication-content-stats">                
-                {recentStatBlock}
-              </div>
-              {!showMetrics &&
-                <div className="no-data">No data to display.</div>
-              }
-              {showMetrics && metrics[GRAPH_TYPE] && 
-                
-                  <div className="graph-container">
-                  <MetricsPanel 
+          body={
+            <div className="replication-content">
+              {infoBlock}
+              <div className="replication-content-stats">{recentStatBlock}</div>
+              {!showMetrics && <div className="no-data">No data to display.</div>}
+              {showMetrics && metrics[GRAPH_TYPE] && (
+                <div className="graph-container">
+                  <MetricsPanel
                     metricKey={METRIC_NAME}
                     metric={aggregatedMetrics}
-                    className={"metrics-panel-container"}
+                    className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}
-                  />                
-                  </div>
-              }
+                  />
+                </div>
+              )}
             </div>
           }
         />
       </div>
     );
   }
-}
+};

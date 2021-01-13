@@ -73,6 +73,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/crypt.h"
 
@@ -93,6 +94,8 @@ using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
+using yb::master::GetColocatedTabletSchemaRequestPB;
+using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -175,6 +178,10 @@ DEFINE_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
+
+DEFINE_int32(backfill_index_client_rpc_timeout_ms, 60 * 60 * 1000, // 60 min.
+             "Timeout for BackfillIndex RPCs from client to master.");
+TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
 DEFINE_test_flag(int32, yb_num_total_tablets, 0,
                  "The total number of tablets per table when a table is created.");
@@ -428,7 +435,14 @@ Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(rpc::Messenger* messeng
 Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
     std::unique_ptr<rpc::Messenger>&& messenger) {
   std::unique_ptr<YBClient> client;
+  auto ok = false;
+  auto scope_exit = ScopeExit([&ok, &messenger] {
+    if (!ok) {
+      messenger->Shutdown();
+    }
+  });
   RETURN_NOT_OK(DoBuild(messenger.get(), &client));
+  ok = true;
   client->data_->messenger_holder_ = std::move(messenger);
   return client;
 }
@@ -494,6 +508,12 @@ Status YBClient::TruncateTable(const string& table_id, bool wait) {
 Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->TruncateTables(this, table_ids, deadline, wait);
+}
+
+Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
+  auto deadline = (CoarseMonoClock::Now()
+                   + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
+  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
@@ -613,6 +633,17 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
 }
 
+Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetColocatedTabletSchemaById(this,
+                                             parent_colocated_table_id,
+                                             deadline,
+                                             info,
+                                             callback);
+}
+
 Result<IndexPermissions> YBClient::GetIndexPermissions(
     const TableId& table_id,
     const TableId& index_id) {
@@ -704,6 +735,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
+                                 const boost::optional<TransactionMetadata>& txn,
                                  const bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
@@ -722,6 +754,9 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   }
   if (next_pg_oid) {
     req.set_next_pg_oid(*next_pg_oid);
+  }
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
   }
   req.set_colocated(colocated);
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
@@ -758,7 +793,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   }
 
   Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                             source_namespace_id, next_pg_oid, colocated);
+                             source_namespace_id, next_pg_oid, boost::none /* txn */, colocated);
   if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
     return Status::OK();
   }
@@ -1568,7 +1603,7 @@ Status YBClient::GetTabletsAndUpdateCache(
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, /* partition_group_start= */ nullptr, /* request_no= */ 0));
+      tablets, /* partition_group_start= */ nullptr, /* lookup_rpc= */ nullptr));
 
   return Status::OK();
 }
@@ -1652,6 +1687,20 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
       tablet_id, table, deadline, std::move(callback), use_cache);
+}
+
+void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                                CoarseTimePoint deadline,
+                                LookupTabletRangeCallback callback) {
+  data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
+}
+
+std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
+    const std::shared_ptr<const YBTable>& table,
+    CoarseTimePoint deadline) {
+  return MakeFuture<Result<std::vector<internal::RemoteTabletPtr>>>([&](auto callback) {
+    this->LookupAllTablets(table, deadline, std::move(callback));
+  });
 }
 
 HostPort YBClient::GetMasterLeaderAddress() {

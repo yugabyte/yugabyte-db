@@ -10,20 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.UUID;
-
-import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -70,6 +62,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         throw new IllegalArgumentException(errMsg);
       }
 
+      createPrecheckTasks(nodesToProvision)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -84,6 +79,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
+
+      // Set default gflags
+      addDefaultGFlags(cluster.userIntent);
+      createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
 
       // Start the tservers in the clusters.
       createStartTServersTasks(newTservers)

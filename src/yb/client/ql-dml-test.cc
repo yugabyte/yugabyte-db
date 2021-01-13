@@ -13,6 +13,8 @@
 
 #include <thread>
 
+#include <boost/circular_buffer.hpp>
+
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
@@ -29,6 +31,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
@@ -71,6 +74,7 @@ const std::vector<std::string> kAllColumns = {"h1", "h2", "r1", "r2", "c1", "c2"
 const std::vector<std::string> kValueColumns = {"c1", "c2"};
 const size_t kValuePrefixLength = 4096;
 const std::string kValueFormat = RandomHumanReadableString(kValuePrefixLength) + "_$0";
+const int kInsertBatchSize = 20;
 
 struct RowKey {
   int32_t h1;
@@ -162,9 +166,20 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
   void InsertRows(size_t num_rows) {
     auto session = NewSession();
-    std::vector<std::future<Status>> futures;
-    futures.reserve(num_rows);
+    boost::circular_buffer<std::future<Status>> futures(kInsertBatchSize);
     for (size_t i = 0; i != num_rows; ++i) {
+      for (;;) {
+        // Remove all the futures that are done.
+        while (!futures.empty() && IsReady(futures.front())) {
+          EXPECT_OK(futures.front().get());
+          futures.pop_front();
+        }
+        // Keep collecting futures until we hit our limit.
+        if (futures.size() < kInsertBatchSize) {
+          break;
+        }
+        futures.front().wait();
+      }
       InsertRow(session, KeyForIndex(i), ValueForIndex(i));
       futures.push_back(session->FlushFuture());
     }
@@ -348,7 +363,7 @@ size_t CountIterators(MiniCluster* cluster) {
     std::vector<std::shared_ptr<tablet::TabletPeer>> peers;
     cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
     for (const auto& peer : peers) {
-      auto statistics = peer->tablet()->rocksdb_statistics();
+      auto statistics = peer->tablet()->regulardb_statistics();
       auto value = statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
       result += value;
     }

@@ -46,6 +46,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #ifdef YB_HEADERS_NO_STUBS
@@ -285,6 +286,9 @@ class YBClient {
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
+  // Backfill the specified index table.  This is only supported for YSQL at the moment.
+  CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -325,6 +329,10 @@ class YBClient {
 
   CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
+
+  CHECKED_STATUS GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       const TableId& table_id,
@@ -369,6 +377,7 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
+                                 const boost::optional<TransactionMetadata>& txn = boost::none,
                                  const bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
@@ -697,6 +706,14 @@ class YBClient {
                         LookupTabletCallback callback,
                         UseCache use_cache);
 
+  void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+                        CoarseTimePoint deadline,
+                        LookupTabletRangeCallback callback);
+
+  std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
+      const std::shared_ptr<const YBTable>& table,
+      CoarseTimePoint deadline);
+
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
@@ -730,6 +747,7 @@ class YBClient {
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetColocatedTabletSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::MetaCache;
   friend class internal::RemoteTablet;

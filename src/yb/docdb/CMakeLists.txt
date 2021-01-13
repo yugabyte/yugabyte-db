@@ -49,10 +49,6 @@ ADD_YB_LIBRARY(yb_docdb_encoding
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
-# TODO: find a way to add this only to the top-level CMakeLists.txt file.
-# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
-allow_using_postgres_libraries()
-
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
         conflict_resolution.cc
@@ -69,6 +65,7 @@ set(DOCDB_SRCS
         docdb_compaction_filter_intents.cc
         docdb-internal.cc
         doc_reader.cc
+        doc_reader_redis.cc
         docdb_rocksdb_util.cc
         doc_expr.cc
         doc_pgsql_scanspec.cc
@@ -116,9 +113,6 @@ add_dependencies(
         gen_src_yb_tablet_tablet_proto
         gen_src_yb_tserver_tserver_proto
 )
-
-cotire(yb_docdb_encoding)
-cotire(yb_docdb)
 
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS

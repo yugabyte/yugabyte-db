@@ -37,15 +37,15 @@
 
 #include <mutex>
 
-#include "yb/master/ts_descriptor.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/tasks_tracker.h"
-#include "yb/util/cow_object.h"
-#include "yb/common/entity_ids.h"
-#include "yb/util/monotime.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
-#include "yb/common/schema.h"
-#include "yb/common/index.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace master {
@@ -160,6 +160,7 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
 };
 
 class TableInfo;
+typedef scoped_refptr<TableInfo> TableInfoPtr;
 
 typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 
@@ -194,8 +195,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(ReplicaMap replica_locations);
-  void GetReplicaLocations(ReplicaMap* replica_locations) const;
+  void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
+  std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
@@ -228,6 +229,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   CHECKED_STATUS CheckRunning() const;
 
+  bool InitiateElection() {
+    bool expected = false;
+    return initiated_election_.compare_exchange_strong(expected, true);
+  }
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 
@@ -250,12 +256,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  ReplicaMap replica_locations_;
+  std::shared_ptr<ReplicaMap> replica_locations_;
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+
+  std::atomic<bool> initiated_election_{false};
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -349,6 +357,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_local_index() const;
   bool is_unique_index() const;
 
+  void set_is_system() { is_system_ = true; }
+  bool is_system() const { return is_system_; }
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -373,6 +384,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       const std::string& partition_key_start, const std::string& partition_key_end,
       TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
+
+  std::size_t NumTablets() const;
 
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
@@ -446,6 +459,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;

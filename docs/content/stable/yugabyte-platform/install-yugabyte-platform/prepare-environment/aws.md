@@ -4,7 +4,7 @@ headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte Platform.
 aliases:
- - /stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/
+  - /stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/
 menu:
   stable:
     identifier: prepare-environment-1-aws

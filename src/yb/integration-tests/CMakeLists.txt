@@ -53,6 +53,7 @@ target_link_libraries(integration-tests
   tserver
   tserver_test_util
   master
+  pq_utils
   ql_api
   ysck
   yb-admin_lib
@@ -127,6 +128,7 @@ ADD_YB_TEST(redis_table-test)
 ADD_YB_TEST(update_scan_delta_compact-test)
 ADD_YB_TEST(log_version-test)
 ADD_YB_TEST(load_balancer-test)
+ADD_YB_TEST(load_balancer_mini_cluster-test)
 ADD_YB_TEST(load_balancer_multi_table-test)
 ADD_YB_TEST(load_balancer_colocated_tables-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)

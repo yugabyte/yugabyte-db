@@ -55,6 +55,8 @@ class QLExprResult {
 
   QLExprResultWriter Writer();
 
+  bool IsNull() const;
+
  private:
   friend class QLExprResultWriter;
 
@@ -191,7 +193,7 @@ class QLTableRow {
 
   // The two following vectors will be of the same size.
   // We use separate fields to achieve the following features:
-  // 1) Fast was to cleanup row, just by setting assigned to false with one call.
+  // 1) Fast way to cleanup row, just by setting assigned to false with one call.
   // 2) Avoid destroying values_, so they would be able to reuse allocated storage during row reuse.
   boost::container::small_vector<QLTableColumn, kPreallocatedSize> values_;
   boost::container::small_vector<bool, kPreallocatedSize> assigned_;

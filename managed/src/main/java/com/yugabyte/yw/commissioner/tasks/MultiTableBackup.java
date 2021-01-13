@@ -63,7 +63,11 @@ public class MultiTableBackup extends UniverseTaskBase {
 
   @Override
   public void run() {
+    List<BackupTableParams> backupParamsList = new ArrayList<>();
+    BackupTableParams tableBackupParams = new BackupTableParams();
+    Set<String> tablesToBackup = new HashSet<>();
     try {
+      checkUniverseVersion();
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
@@ -75,9 +79,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       String certificate = universe.getCertificate();
 
       YBClient client = null;
-      Set<UUID> tableSet = new HashSet<UUID>(params().tableUUIDList);
-      BackupTableParams tableBackupParams = new BackupTableParams();
-      List<BackupTableParams> backupParamsList = new ArrayList<>();
+      Set<UUID> tableSet = new HashSet<>(params().tableUUIDList);
       try {
         client = ybService.getClient(masterAddresses, certificate);
         // If user specified the list of tables, only get info for those tables.
@@ -108,6 +110,9 @@ public class MultiTableBackup extends UniverseTaskBase {
             }
             LOG.info("Queuing backup for table {}:{}", tableSchema.getNamespace(),
               tableSchema.getTableName());
+
+            tablesToBackup
+              .add(String.format("%s:%s", tableSchema.getNamespace(), tableSchema.getTableName()));
           }
         }
         // If user did not specify tables, that means we need to backup all tables.
@@ -127,8 +132,7 @@ public class MultiTableBackup extends UniverseTaskBase {
               tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE ||
               table.getRelationType() == RelationType.INDEX_TABLE_RELATION ||
               (params().keyspace != null && !params().keyspace.equals(tableKeySpace))) {
-              LOG.info("Skipping keyspace/universe backu" +
-                "p of table " + tableUUID +
+              LOG.info("Skipping keyspace/universe backup of table " + tableUUID +
                        ". Expected keyspace is " + params().keyspace +
                        "; actual keyspace is " + tableKeySpace);
               continue;
@@ -183,6 +187,8 @@ public class MultiTableBackup extends UniverseTaskBase {
 
             LOG.info("Queuing backup for table {}:{}", tableKeySpace,
               table.getName());
+
+            tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
           }
         }
         ybService.closeClient(client, masterAddresses);
@@ -242,12 +248,14 @@ public class MultiTableBackup extends UniverseTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
+      taskInfo = String.join(",", tablesToBackup);
+
       unlockUniverseForUpdate();
 
       subTaskGroupQueue.run();
-
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();
@@ -278,8 +286,8 @@ public class MultiTableBackup extends UniverseTaskBase {
 
     if (tableName != null && tableUUID != null) {
       if (backupParams.tableNameList == null) {
-        backupParams.tableNameList = new ArrayList<String>();
-        backupParams.tableUUIDList = new ArrayList<UUID>();
+        backupParams.tableNameList = new ArrayList<>();
+        backupParams.tableUUIDList = new ArrayList<>();
         if (backupParams.tableName != null && backupParams.tableUUID != null) {
           // Clear singular fields and add to lists
           backupParams.tableNameList.add(backupParams.tableName);

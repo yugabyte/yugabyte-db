@@ -9,7 +9,7 @@ menu:
     identifier: prepare-environment-2-gcp
     weight: 55
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -28,16 +28,12 @@ showAsideToc: false
     </a>
   </li>
 
-<!--
-
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
-
--->
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
@@ -45,14 +41,14 @@ showAsideToc: false
       Kubernetes
     </a>
   </li>
-<!--
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
--->
+
 </ul>
 
 ## 1. Create a new project (optional)

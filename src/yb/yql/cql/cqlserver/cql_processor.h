@@ -80,6 +80,8 @@ class CQLProcessor : public ql::QLProcessor {
   void Reschedule(rpc::ThreadPoolTask* task) override;
 
  private:
+  bool CheckAuthentication(const CQLRequest& req) const;
+
   // Process a CQL request.
   std::unique_ptr<CQLResponse> ProcessRequest(const CQLRequest& req);
 
@@ -101,6 +103,7 @@ class CQLProcessor : public ql::QLProcessor {
 
   // Process statement execution result and error.
   std::unique_ptr<CQLResponse> ProcessResult(const ql::ExecutedResult::SharedPtr& result);
+  std::unique_ptr<CQLResponse> ProcessAuthResult(const string& saved_hash, bool can_login);
   std::unique_ptr<CQLResponse> ProcessError(
       const Status& s,
       boost::optional<CQLMessage::QueryId> query_id = boost::none);

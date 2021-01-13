@@ -32,6 +32,7 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgWriteRestart extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgWriteRestart.class);
+  private static final int SLEEP_DURATION = 5000;
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -108,7 +109,7 @@ public class TestPgWriteRestart extends BasePgSQLTest {
       // The other request is retried for a max of 20 times with binary
       // exponential backoff that could total up to 17.5 seconds (at the
       // default values) across the 20 requests.
-      Thread.sleep(5000);
+      Thread.sleep(SLEEP_DURATION);
       s1.execute("commit");
       t.join();
     } catch (PSQLException ex) {
@@ -182,10 +183,10 @@ public class TestPgWriteRestart extends BasePgSQLTest {
       s1.execute("select * from writerestarts where a=1 for update");
 
       Thread t = new Thread(new ParallelRunWithImplicitPrepared(c2,
-        "update writerestarts set b=b+1 where a=1", -1));
+        "update writerestarts set b=b+2 where a=1", -1));
       t.start();
 
-      Thread.sleep(5000);
+      Thread.sleep(SLEEP_DURATION);
       s1.execute("commit");
       t.join();
 
@@ -193,9 +194,9 @@ public class TestPgWriteRestart extends BasePgSQLTest {
       s1.execute("begin");
       s1.execute("select * from writerestarts where a=1 for update");
       t = new Thread(new ParallelRunWithImplicitPrepared(c2,
-        "update writerestarts set b=b+1 where a=?", 1));
+        "update writerestarts set b=b+2 where a=?", 1));
       t.start();
-      Thread.sleep(5000);
+      Thread.sleep(SLEEP_DURATION);
       s1.execute("commit");
       t.join();
     } catch (PSQLException ex) {
@@ -206,7 +207,7 @@ public class TestPgWriteRestart extends BasePgSQLTest {
     int finalValue = getValue("writerestarts");
 
     LOG.info("Initial and Final values: " + initialValue + " , " + finalValue);
-    assertEquals(finalValue, initialValue + 2);
+    assertEquals(finalValue, initialValue + 4);
   }
 
   private void createTrigger() throws Exception {
@@ -245,7 +246,6 @@ public class TestPgWriteRestart extends BasePgSQLTest {
     // Test without triggers.
     performParallelWrites(false /* usePreparedStatements */, "extended" /* query_mode */);
     performParallelWrites(false /* usePreparedStatements */, "simple" /* query_mode */);
-    performImplicitPreparedParallelWrites();
 
     createTrigger();
 
@@ -271,6 +271,11 @@ public class TestPgWriteRestart extends BasePgSQLTest {
 
     initialValue = finalValue;
     performParallelWrites(true /* usePreparedStatements */, "simple" /* query_mode */);
+    finalValue = getValue("operations");
+    assertEquals(finalValue, initialValue + 2);
+
+    initialValue = finalValue;
+    performImplicitPreparedParallelWrites();
     finalValue = getValue("operations");
     assertEquals(finalValue, initialValue + 2);
 

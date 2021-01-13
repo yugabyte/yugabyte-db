@@ -19,45 +19,259 @@ Included here are the release notes for all releases in the v2.3 latest release 
 
 {{< note title="New release versioning" >}}
 
-Starting with v2.2.0, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
 {{< /note >}}
 
 {{< note title="Upgrading from 1.3" >}}
 
-Prior to version 2.0, YSQL was still in beta. Upon release of 2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to version 2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
 
 {{< /note >}}
 
-## Notable features and changes
+## Latest release: v2.3.3 - October 26, 2020
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the latest release series.
+**Build:** `2.3.3.0-b106`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.3.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.3.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.3.3.0-b106
+```
+
+## Notable features and changes (cumulative for the v2.3 latest release series)
+
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.3 latest release series. For the latest v2.3 release notes, see [Release notes](#release-notes) below.
 
 ### YSQL
 
-- Load data from a large file to a table using the improved `COPY <table> FROM <file>` statement. For details, see [`COPY`](../../../api/ysql/commands/). Improved memory management should prevent out-of-memory (OOM) issues.
+- Load data from a large file to a table using the improved `COPY <table> FROM <file>` statement. For details, see [`COPY`](../../../api/ysql/the-sql-language/statements/cmd_copy/). Improved memory management should prevent out-of-memory (OOM) issues.
 
-- Specify smaller transaction sizes using the `COPY OPTION` `ROWS_PER_TRANSACTION`. For an example, see [Import a large table using smaller transactions](../../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions)
-
-### Yugabyte Platform
-
-#### Add Microsoft Azure integration
-
-- Use existing network resources [#5389]
-- Create default network resources [#5388]
-- Add UI for Azure provider [#5378]
+- Specify smaller transaction sizes using the `COPY OPTION` `ROWS_PER_TRANSACTION`. For an example, see [Import a large table using smaller transactions](../../../api/ysql/the-sql-language/statements/cmd_copy/#import-a-large-table-using-smaller-transactions).
 
 ## Release notes
+
+### v2.3.3 - October 26, 2020
+
+**Build:** `2.3.3.0-b106`
+
+#### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.3.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.3.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.3.3.0-b106
+```
+
+#### New features
+
+##### Yugabyte Platform
+
+* Introducing beta support for Azure IaaS orchestration in Yugabyte Platform cloud provider configuration. ([6094](https://github.com/yugabyte/yugabyte-db/issues/6094), [6020](https://github.com/yugabyte/yugabyte-db/issues/6020))
+* Yugabyte Platform operations now allow promoting a Yugabyte TServer only node to run YB-Master and YB-TServer process. ([5831](https://github.com/yugabyte/yugabyte-db/issues/5831))
+
+##### Core database
+
+* [YSQL] Introducing support for Event Triggers that are global to a particular database and are capable of capturing DDL events. ([2379](https://github.com/yugabyte/yugabyte-db/issues/2379))
+
+#### Improvements
+
+##### Yugabyte Platform
+
+* Enhancements to on-premises deployment workflows:
+  * Do not fail universe creation if cronjobs can't be created for on-premises. ([5939](https://github.com/yugabyte/yugabyte-db/issues/5939))
+  * Remove pre-provision script requirement for airgapped installations. ([5929](https://github.com/yugabyte/yugabyte-db/issues/5929))
+  * "Sudo passwordless" in on-premises cloud provider configuration toggle is renamed.
+  * Allow `yugabyte` user to belong to other user groups in Linux. ([5943](https://github.com/yugabyte/yugabyte-db/issues/5943))
+  * Added a new "Advanced" section  in on-prem cloud provider configuration which includes:
+    * Use hostnames
+    * Desired home directory
+    * Node exporter settings
+  * Improvements to installation of Prometheus Node Exporter utility workflow. ([5926](https://github.com/yugabyte/yugabyte-db/issues/5926))
+    * The node exporter option is now available in the cloud configuration under advanced settings.
+    * Supports bringing your own node exporter user.
+* Make YEDIS API optional for new Universes and no change in behavior of existing universes. ([5207](https://github.com/yugabyte/yugabyte-db/issues/5207))
+* UI/UX improvements for YB Platform:
+  * Add visual feedback when backup or restore is initiated from modal. ([5908](https://github.com/yugabyte/yugabyte-db/issues/5908))
+  * Minor fixes to primary cluster widget text issue. ([5988](https://github.com/yugabyte/yugabyte-db/issues/5988))
+  * Show pre-provision script in UI for non-passwordless sudo on-premises provider. ([5550](https://github.com/yugabyte/yugabyte-db/issues/5550))
+  * Update backup target and backup pages. ([5917](https://github.com/yugabyte/yugabyte-db/issues/5917))
+* For YugabyteDB universes with replication factor (RF) > 3, change the default `min_num` replicas for even distribution of AZs across all regions. ([5426](https://github.com/yugabyte/yugabyte-db/issues/5426))
+* Added functionality to create IPv6-enabled universe in Kubernetes. ([5309](https://github.com/yugabyte/yugabyte-db/issues/5309), [5235](https://github.com/yugabyte/yugabyte-db/issues/5235))
+
+##### Core database
+
+* Support for SQL/JSON Path Language (`jsonb_path_query`). ([5408](https://github.com/yugabyte/yugabyte-db/issues/5408))
+* Remove range-loop-analysis and fallthrough errors in our code. ([5812](https://github.com/yugabyte/yugabyte-db/issues/5812))
+* Incorrect index update if used expression result is still unchanged. ([5898](https://github.com/yugabyte/yugabyte-db/issues/5898))
+* Various improvements to `RaftConsensus` tests. ([4548](https://github.com/yugabyte/yugabyte-db/issues/4548), [5912](https://github.com/yugabyte/yugabyte-db/issues/5912))
+* As part of the tablet splitting feature:
+  * Implemented cleanup of the tablet for which all replicas have been split for. ([4929](https://github.com/yugabyte/yugabyte-db/issues/4929))
+  * Compaction improvements ([5523](https://github.com/yugabyte/yugabyte-db/issues/5523))
+* Improve performance for sequences by using higher cache value by default. Controlled by a YB-TServer configuration flag `--ysql_sequence_cache_minval`.  ([6041](https://github.com/yugabyte/yugabyte-db/issues/6041))
+* Added compatibility mode in the `yb_backup.py` script for YugabyteDB version earlier than v2.1.4. ([5810](https://github.com/yugabyte/yugabyte-db/issues/5810))
+* Stability improvements to core database - make exponential backoff on lagging RAFT followers send NOOP. ([5527](https://github.com/yugabyte/yugabyte-db/issues/5527))
+* Added use of separate metrics objects for `RegularDB` and `IntentsDB`. ([5640](https://github.com/yugabyte/yugabyte-db/issues/5640))
+* Improvements to 2DC (xCluster replication) by adding TLS support for cleaning up `cdc_state` table. ([5905](https://github.com/yugabyte/yugabyte-db/issues/5905))
+
+#### Bug fixes
+
+##### Yugabyte Platform
+
+* Fix for Universe disk usage shows up empty on the universe page. ([5548](https://github.com/yugabyte/yugabyte-db/issues/5548))
+* Fix on on-premises backup failures due to file owned by the root user. ([6062](https://github.com/yugabyte/yugabyte-db/issues/6062))
+* Fix for a bug where user operation to perform a change to nodes count by AZ was doing a full move. ([5335](https://github.com/yugabyte/yugabyte-db/issues/5335))
+* Fixes for Yugabyte Platform data backup script for Replicated-based installations
+* Fixes to Client Certificate start time to use UTC during download. ([6118](https://github.com/yugabyte/yugabyte-db/issues/6118))
+* Fixes for migration if no access keys exist yet. ([6099](https://github.com/yugabyte/yugabyte-db/issues/6099))
+* Fix to resolve issues caused by starting a YB-TServer node when another YB-Master node is down in the universe. ([5739](https://github.com/yugabyte/yugabyte-db/issues/5739))
+* Use the correct disk mount point while calculating disk usage of logs. ([5983](https://github.com/yugabyte/yugabyte-db/issues/5983))
+* Fixes to delete backups for TLS-enabled universes. ([5980](https://github.com/yugabyte/yugabyte-db/issues/5980))
+
+##### Core database
+
+* Fix for bug with the duplicate row detection that allows a unique index to get created when the table is not unique on the index columns. ([5811](https://github.com/yugabyte/yugabyte-db/issues/5811))
+* Improve fault tolerance of DDLs and reduce version mismatch errors in YSQL. ([3979](https://github.com/yugabyte/yugabyte-db/issues/3979), [4360](https://github.com/yugabyte/yugabyte-db/issues/4360))
+* Fixes to incorrect column-ids in the restored table if the original table was altered. ([5958](https://github.com/yugabyte/yugabyte-db/issues/5958))
+* Fixes timeout bug in Yugabyte Platform when there are read replicas. This fix will ignore read replica YB-TServers when running `AreLeadersOnPreferredOnly`. ([6081](https://github.com/yugabyte/yugabyte-db/issues/6081))
+* Fixes to restore of YSQL Backups after dropping and recreating a database. ([5651](https://github.com/yugabyte/yugabyte-db/issues/5651))
+* Fixes to a bug with the duplicate row detection that allows a unique index to get created when the table is not unique on the index columns. This is fixed by setting the read time for backfill write requests to be the safe time chosen for backfill read requests rather than the hard-coded time `50`. ([5811](https://github.com/yugabyte/yugabyte-db/issues/5811))
+
+#### Known Issues
+
+##### Yugabyte Platform
+
+* Azure IaaS orchestration:
+  * No pricing information provided. ([5624](https://github.com/yugabyte/yugabyte-db/issues/5624))
+  * No support for regions with zero availability zones (AZs). ([5628](https://github.com/yugabyte/yugabyte-db/issues/5628))
+
+### v2.3.2 - September 29, 2020
+
+**Build:** `2.3.2.0-b37`
+
+#### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.2.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.2.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.3.2.0-b37
+```
+
+#### Features and changes
+
+##### YSQL
+
+- Enable `pg_stat_statements` extension by default. [#5750](https://github.com/yugabyte/yugabyte-db/issues/5750)
+- Clean up unused `PgStatement` objects on hot path after usage to avoid memory consumption. [#5374](https://github.com/yugabyte/yugabyte-db/issues/5374)
+- Fix restarting writes (`INSERT` and `UPDATE)` on transaction conflicts and avoid surfacing transaction errors to user applications. [#4291](https://github.com/yugabyte/yugabyte-db/issues/4291)
+- Enable batching of updates for YSQL procedures and functions. [#5257](https://github.com/yugabyte/yugabyte-db/issues/5257)
+
+##### YCQL
+
+- Add additional system queries (`SELECT_LOCAL`, `SELECT_LOCAL_TOKENS`, and `SELECT_PEERS_TOKENS`) for caching. [#5753](https://github.com/yugabyte/yugabyte-db/issues/5753)
+- Fix crash for YCQL index scan when `ORDER BY` columns exist in table, but not in the chosen index, and raise an error. [#5690](https://github.com/yugabyte/yugabyte-db/issues/5690)
+
+##### Core database
+
+- Allow setting a custom replacement policy per table through `yb_admin`. [#5368](https://github.com/yugabyte/yugabyte-db/pull/5368)
+- Do not clean up transaction that potentially was committed. [#5789](https://github.com/yugabyte/yugabyte-db/issues/5789) [#5783](https://github.com/yugabyte/yugabyte-db/issues/5783) [#5755](https://github.com/yugabyte/yugabyte-db/issues/5755)
+- Fix CDC shutdown races. Moved thread pool shutdown before other CDC objects cleanup. Added explicit CDC poller clear in CDC consumer shutdown. [#5583](https://github.com/yugabyte/yugabyte-db/issues/5583)
+- Fix preparer deadlock after switching from leader to follower. [#5741](https://github.com/yugabyte/yugabyte-db/issues/5741)
+- Fix `RaftGroupMetadata` construction issues found using PVS Studio. [#5578](https://github.com/yugabyte/yugabyte-db/issues/5578)
+- Change `rlimit` flags to have at-least semantics. Only change the process soft limit if it is smaller than the limit specified by the corresponding flag value. [#5715](https://github.com/yugabyte/yugabyte-db/issues/5715)
+- Add extra logging when initializing `syscatalog`. [#5708](https://github.com/yugabyte/yugabyte-db/issues/5708)
+- Set default `webserver_interface` to `rpc_bind_address` IP/host component. [#5320](https://github.com/yugabyte/yugabyte-db/issues/5320)
+- Add environmental variables functionality to `yugabyted`. New environment variables for YSQL (`YSQL_USER`, `YSQL_PASSWORD`, and `YSQL_DB`) and YCQL(`YCQL_USER`, `YCQL_PASSWORD`, and `YCQL_KEYSPACE`). ([#5499](https://github.com/yugabyte/yugabyte-db/issues/5499)
+- Improve cleanup of aborted transactions. [#5669](https://github.com/yugabyte/yugabyte-db/issues/5669)
+- Fix dumping an empty batch by updating MaxReplicateOpId. [#5679](https://github.com/yugabyte/yugabyte-db/issues/5679)
+- Set default staleness for read from followers (using `max_stale_read_time_ms`) to 60 seconds. Previously, a follower could return requested data no matter how state the data is. [#5590](https://github.com/yugabyte/yugabyte-db/issues/5590)
+- Calculate the placement UUID from Raft upon tserver registration. [#5558](https://github.com/yugabyte/yugabyte-db/issues/5558)
+- Enable ignoring deleted tablets. [#5122](https://github.com/yugabyte/yugabyte-db/issues/5122)
+- Remove unreachable nodes from UI (`/tablet-servers` page) after nodes are removed from the cluster. [#4759](https://github.com/yugabyte/yugabyte-db/issues/4759)
+
+##### Yugabyte Platform
+
+- Fix issue parsing multiple comma-separated addresses for `rpc_bind_addresses`. [#5634](https://github.com/yugabyte/yugabyte-db/issues/5634)
+- Add functionality to delete old backups after a specified time period. In the **Create Backup** dialog, added **Number of Days to Retain Backup** field. [#4493](https://github.com/yugabyte/yugabyte-db/issues/4493)
+- Combine the Platform and community Grafana dashboards. Grafana dashboard shows the node status and other panels correctly. [#5707](https://github.com/yugabyte/yugabyte-db/issues/5707)
+- Sum table sizes across all nodes of a universe. [#5745](https://github.com/yugabyte/yugabyte-db/issues/5745)
+- Fixes releasing OnPrem nodes should not delete them from the universe metadata. Fixes releasing a node should only attempt to shut down processes on that node. Nodes can be re-added using **Node > Actions > Add** flow. [#5703](https://github.com/yugabyte/yugabyte-db/issues/5703) [#5791](https://github.com/yugabyte/yugabyte-db/issues/5791) [#5792](https://github.com/yugabyte/yugabyte-db/issues/5792)
+- Add additional property to MetricsPanel to handle width of Replication graph and increase height. Aggregates replication metrics values from all tservers into an average and max value graph across all tservers. [#5429](https://github.com/yugabyte/yugabyte-db/issues/5429) [#5613](https://github.com/yugabyte/yugabyte-db/issues/5613) [#5632](https://github.com/yugabyte/yugabyte-db/issues/5632)
+- Update yb-client JAR version to `0.8.1`. [#5759](https://github.com/yugabyte/yugabyte-db/issues/5759)
+- Stop and restart relevant services during Yugabyte Platform backup. Backups stop and restart services. Restores stop and restart Yugabyte Platform and Prometheus, if necessary. [#5685](https://github.com/yugabyte/yugabyte-db/issues/5685)
+- Authenticate API tokens even when using OAuth. This allows `curl` requests. [#5587](https://github.com/yugabyte/yugabyte-db/issues/5587)
+- Fix Metrics tab and columns misalignment on table page. [#5582](https://github.com/yugabyte/yugabyte-db/issues/5582)
+- Rename **In Use** column to **Universe Name** and show `NOT USED` if the node is not in use. [#5713](https://github.com/yugabyte/yugabyte-db/issues/5713)
+- Do not generate node certificates for custom certificates. [#5545](https://github.com/yugabyte/yugabyte-db/issues/5545)
+- Make instance name field optional for on-premises provider. [#5234](https://github.com/yugabyte/yugabyte-db/issues/5234)
+- Fix button for Metrics tab to reset active and focus state when key is unpressed. [#5620](https://github.com/yugabyte/yugabyte-db/issues/5620)
+- Add Docker- and VM-aware options to the backup script and will include Prometheus snapshots. [#5120](https://github.com/yugabyte/yugabyte-db/issues/5120) [#5615](https://github.com/yugabyte/yugabyte-db/issues/5615) [#5612](https://github.com/yugabyte/yugabyte-db/issues/5612) [#5614](https://github.com/yugabyte/yugabyte-db/issues/5614)
 
 ### v2.3.1 – September 15, 2020
 
 **Build:** `2.3.1.0-b15`
 
-#### Downloads (binaries)
+#### Downloads
 
-- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz)
-- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz)
-- Docker: `docker pull yugabytedb/yugabyte:2.3.1.0-b15`
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.3.1.0-b15
+```
 
 #### Features and changes
 
@@ -68,11 +282,11 @@ Note: Content will be added as new notable features and changes are available in
 - Fix `CREATE TABLE` is 4-5x slower using Docker on Mac than not using Docker. Speeds up table creation by buffering writes to postgres system tables, caching pinned objects, and significantly reducing write RPC calls. [#3503](https://github.com/yugabyte/yugabyte-db/issues/3503)
 - Roll back the catalog version made in commit `46f3701` so that 2.3 upgrades can proceed. [#5408](ttps://github.com/yugabyte/yugabyte-db/issues/5408)
 
-#### Core database
+##### Core database
 
 - Quickly evict known unresponsive tablet servers from the tablet location cache. Applies only to follower reads. For example, when tablet servers are unresponsive or dead — not sending heartbeats to the master for 5 minutes. This could also happen after decommissioning nodes. [#1052](https://github.com/yugabyte/yugabyte-db/issues/1052)
 
-#### Yugabyte Platform
+##### Yugabyte Platform
 
 - Add search input and data sorting to the on-premises instances table list. Click arrows next to column titles to sort. Use the Search form to search multiple columns. [#4757](https://github.com/yugabyte/yugabyte-db/issues/4757)
 - Add the ability to change the user role (`Admin`, `ReadOnly`, or `BackupAdmin`) from the UI by an admin. Also, fix stale users list after creation or deletion of a user and disable **Save** buttons at Customer Profile tabs for `ReadOnly` users. [#5311](https://github.com/yugabyte/yugabyte-db/issues/5311)
@@ -82,25 +296,33 @@ Note: Content will be added as new notable features and changes are available in
 
 **Build:** `2.3.0.0-b176`
 
-#### Downloads (binaries)
+#### Downloads
 
-##### Precompiled 64-bit binaries
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
 
-- [macOS](https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz)
-- [Linux](https://downloads.yugabyte.com/yugabyte-2.3.0.0-linux.tar.gz)
-- Docker: `docker pull yugabytedb/yugabyte:2.3.0.0-b176`
+#### Docker
 
-##### Source code
-
-- [Source code (zip)](https://github.com/yugabyte/yugabyte-db/archive/v2.3.1.0.zip)
-- [Source code (tar.gz)](https://github.com/yugabyte/yugabyte-db/archive/v2.3.1.0.tar.gz)
+```sh
+docker pull yugabytedb/yugabyte:2.3.0.0-b176
+```
 
 #### Features and changes
 
-#### YSQL
+##### YSQL
 
 - Fix OOM when running large `COPY TO` statements by creating new memory context for the loop over retrieved rows and resetting it after processing each row. [#5205](https://github.com/yugabyte/yugabyte-db/issues/5205)
-- Support transactional batch size for [`COPY FROM` command](../../../api/ysql/commands/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. For an example, see [Import a large table using smaller transactions](../../../api/ysql/commands/cmd_copy/#import-a-large-table-using-smaller-transactions) [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
+- Support transactional batch size for [`COPY FROM` command](../../../api/ysql/the-sql-language/statements/cmd_copy) with OOM fix. Batch sizes can be passed in with `ROWS_PER_TRANSACTION` in the `COPY OPTION` syntax. For an example, see [Import a large table using smaller transactions](../../../api/ysql/the-sql-language/statements/cmd_copy/#import-a-large-table-using-smaller-transactions) [#2855](https://github.com/yugabyte/yugabyte-db/issues/2855) [#5453](https://github.com/yugabyte/yugabyte-db/issues/5453)
 - For index backfill flags, use better default values. Set `index_backfill_rpc_timeout_ms` default from `60000` to `30000` and change `backfill_index_timeout_grace_margin_ms` default from `50` to `500`. [#5494](https://github.com/yugabyte/yugabyte-db/issues/5494)
 - Remove spurious error message "0A000: Alter table is not yet supported" from `CREATE OR REPLACE VIEW`. [#5071](https://github.com/yugabyte/yugabyte-db/issues/5071)
 - Prevent consistency violations when a partitioned table has foreign key constraints due to erroneous classification as a single-row transaction. [#5387](https://github.com/yugabyte/yugabyte-db/issues/5387)
@@ -127,7 +349,7 @@ Note: Content will be added as new notable features and changes are available in
 - For non-prepared statements, optimize `pg_statistic` system table lookups and update debugging utilities. [#5051](https://github.com/yugabyte/yugabyte-db/issues/5051)
 - Correctly show beta feature warnings by default. [#5322](https://github.com/yugabyte/yugabyte-db/issues/5322)
 
-#### YCQL
+##### YCQL
 
 - For `WHERE` clause in the `CREATE INDEX` statement, return a `Not supported` error. [#5363](https://github.com/yugabyte/yugabyte-db/issues/5363)
 - Fix TSAN issue in partition-aware policy for C++ driver 2.9.0-yb-8 (yugabyte/cassandra-cpp-driver). [#1837](https://github.com/yugabyte/yugabyte-db/issues/1837)
@@ -138,7 +360,7 @@ Note: Content will be added as new notable features and changes are available in
 - Enable backfilling of transactional tables by default. [#4708](https://github.com/yugabyte/yugabyte-db/issues/4708)
 - Fix `ycqlsh` should return a failure when known that the create (unique) index has failed. [#5161](https://github.com/yugabyte/yugabyte-db/issues/5161)
 
-#### Core database
+##### Core database
 
 - Fix core dump related to DNS resolution from cache for Kubernetes universes. [#5561](https://github.com/yugabyte/yugabyte-db/issues/5561)
 - Fix yb-master fails to restart after errors on first run. [#5276](https://github.com/yugabyte/yugabyte-db/issues/5276)
@@ -195,7 +417,7 @@ Note: Content will be added as new notable features and changes are available in
 - Remove KernelStackWatchdog and use LongOperationTracker to waste less resources per thread. [#5226](https://github.com/yugabyte/yugabyte-db/issues/5226)
 - Change the default value of `metric_node_name` flag from `DEFAULT_NODE_NAME` to `hostname:port`. [#4859](https://github.com/yugabyte/yugabyte-db/issues/4859)
 
-#### Yugabyte Platform
+##### Yugabyte Platform
 
 - For S3 backups, install `s3cmd` required for encrypted backup and restore flows. [#5593](https://github.com/yugabyte/yugabyte-db/issues/5593)
 - When creating on-premises provider, remove `YB_HOME_DIR` if not set. [#5592](https://github.com/yugabyte/yugabyte-db/issues/5592)

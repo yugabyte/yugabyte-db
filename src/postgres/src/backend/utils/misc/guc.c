@@ -36,6 +36,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
+#include "commands/copy.h"
 #include "commands/prepare.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
@@ -1884,12 +1885,34 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_create_with_table_oid,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
 		&data_sync_retry,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_read_from_followers", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Allow any statement that generates a read request to go to any node."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_read_from_followers,
+		false,
+		check_follower_reads, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -3148,6 +3171,17 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_default_copy_from_rows_per_transaction", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the batch number of rows to copy from the source to table."),
+			NULL,
+			0
+		},
+		&yb_default_copy_from_rows_per_transaction,
+		DEFAULT_BATCH_ROWS_PER_TRANSACTION, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -4061,7 +4095,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		NULL, NULL, NULL
+		check_default_XactIsoLevel, NULL, NULL
 	},
 
 	{

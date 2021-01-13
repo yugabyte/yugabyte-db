@@ -37,6 +37,7 @@
 #include <functional>
 #include <map>
 #include <iomanip>
+#include <sstream>
 #include <unordered_set>
 
 #include "yb/common/partition.h"
@@ -47,12 +48,15 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/string_case.h"
@@ -282,12 +286,39 @@ string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
   return "";
 }
 
+namespace {
+
+bool TabletServerComparator(
+    const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) {
+  auto a_cloud_info = a->GetRegistration().common().cloud_info();
+  auto b_cloud_info = b->GetRegistration().common().cloud_info();
+
+  if (a_cloud_info.placement_cloud() == b_cloud_info.placement_cloud()) {
+    if (a_cloud_info.placement_region() == b_cloud_info.placement_region()) {
+      if (a_cloud_info.placement_zone() == b_cloud_info.placement_zone()) {
+        return a->permanent_uuid() < b->permanent_uuid();
+      }
+      return a_cloud_info.placement_zone() < b_cloud_info.placement_zone();
+    }
+    return a_cloud_info.placement_region() < b_cloud_info.placement_region();
+  }
+  return a_cloud_info.placement_cloud() < b_cloud_info.placement_cloud();
+}
+
+} // anonymous namespace
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
                                         std::stringstream* output,
                                         const int hide_dead_node_threshold_mins) {
-  for (auto desc : *descs) {
+  // Copy vector to avoid changes to the reference descs passed
+  std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
+
+  // Comparator orders by cloud, region, zone and uuid fields.
+  std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
+
+  for (auto desc : local_descs) {
     if (desc->placement_uuid() == current_uuid) {
       if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
         continue;
@@ -719,10 +750,9 @@ void MasterPathHandlers::HandleHealthCheck(
       table->GetAllTablets(&tablets);
 
       for (const auto& tablet : tablets) {
-        TabletInfo::ReplicaMap replication_locations;
-        tablet->GetReplicaLocations(&replication_locations);
+        auto replication_locations = tablet->GetReplicaLocations();
 
-        if (replication_locations.size() < replication_factor) {
+        if (replication_locations->size() < replication_factor) {
           // These tablets don't have the required replication locations needed.
           jw.String(tablet->tablet_id());
           continue;
@@ -733,7 +763,7 @@ void MasterPathHandlers::HandleHealthCheck(
           continue;
         }
         int recent_replica_count = 0;
-        for (const auto& iter : replication_locations) {
+        for (const auto& iter : *replication_locations) {
           if (std::find_if(dead_nodes.begin(),
                            dead_nodes.end(),
                            [iter, death_interval_msecs] (const auto& ts) {
@@ -1036,10 +1066,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>State</th>"
       "<th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    TabletInfo::ReplicaMap locations;
-    tablet->GetReplicaLocations(&locations);
+    auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
-    AppendValuesFromMap(locations, &sorted_locations);
+    AppendValuesFromMap(*locations, &sorted_locations);
     std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
 
     auto l = tablet->LockForRead();
@@ -1117,12 +1146,12 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
-void MasterPathHandlers::GetLeaderlessTablets(TabletInfos* leaderless_tablets) {
-  leaderless_tablets->clear();
+std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
+  std::vector<TabletInfoPtr> nonsystem_tablets;
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  vector<scoped_refptr<TableInfo>> tables;
+  std::vector<TableInfoPtr> tables;
   master_->catalog_manager()->GetAllTables(&tables, /* includeOnlyRunningTables */ true);
 
   for (const auto& table : tables) {
@@ -1133,37 +1162,98 @@ void MasterPathHandlers::GetLeaderlessTablets(TabletInfos* leaderless_tablets) {
     table->GetAllTablets(&ts);
 
     for (TabletInfoPtr t : ts) {
-      TabletInfo::ReplicaMap rm;
-      t.get()->GetReplicaLocations(&rm);
-
-      auto has_leader = std::any_of(
-        rm.begin(), rm.end(),
-        [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
-
-      if (!has_leader) {
-        leaderless_tablets->push_back(t);
-      }
+      nonsystem_tablets.push_back(t);
     }
   }
+  return nonsystem_tablets;
+}
+
+std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
+  std::vector<TabletInfoPtr> leaderless_tablets;
+
+  auto nonsystem_tablets = GetNonSystemTablets();
+
+  for (TabletInfoPtr t : nonsystem_tablets) {
+    auto rm = t.get()->GetReplicaLocations();
+
+    auto has_leader = std::any_of(
+      rm->begin(), rm->end(),
+      [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
+
+    if (!has_leader) {
+      leaderless_tablets.push_back(t);
+    }
+  }
+  return leaderless_tablets;
+}
+
+Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets() {
+  std::vector<TabletInfoPtr> underreplicated_tablets;
+
+  auto nonsystem_tablets = GetNonSystemTablets();
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  int cluster_rf;
+
+  RETURN_NOT_OK_PREPEND(master_->catalog_manager()->GetReplicationFactor(&cluster_rf),
+                        "Unable to find replication factor");
+
+  for (TabletInfoPtr t : nonsystem_tablets) {
+    auto rm = t.get()->GetReplicaLocations();
+
+    // Find out the tablets which have been replicated less than the replication factor
+    if(rm->size() < cluster_rf) {
+      underreplicated_tablets.push_back(t);
+    }
+  }
+  return underreplicated_tablets;
 }
 
 void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& req,
                                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  TabletInfos ts;
-  GetLeaderlessTablets(&ts);
+
+  auto leaderless_ts = GetLeaderlessTablets();
+  auto underreplicated_ts = GetUnderReplicatedTablets();
 
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
 
-  for (TabletInfoPtr t : ts) {
+  for (TabletInfoPtr t : leaderless_ts) {
     *output << Substitute(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t->table()->name()),
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t.get()->tablet_id()));
+  }
+
+  *output << "</table>\n";
+
+  if(!underreplicated_ts.ok()) {
+    LOG(WARNING) << underreplicated_ts.ToString();
+    *output << "<h2>Call to get the cluster replication factor failed</h2>\n";
+    return;
+  }
+
+  *output << "<h3>Underreplicated Tablets</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
+          << "<th>Tablet Replication Count</th></tr>\n";
+
+  for (TabletInfoPtr t : *underreplicated_ts) {
+    auto rm = t.get()->GetReplicaLocations();
+
+    *output << Substitute(
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
+        "<td>$3</td><td>$4</td></tr>\n",
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t->table()->name()),
+        EscapeForHtmlToString(t->table()->id()),
+        EscapeForHtmlToString(t.get()->tablet_id()),
+        EscapeForHtmlToString(std::to_string(rm->size())));
   }
 
   *output << "</table>\n";
@@ -1174,14 +1264,45 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  TabletInfos ts;
-  GetLeaderlessTablets(&ts);
+  auto leaderless_ts = GetLeaderlessTablets();
 
   jw.StartObject();
   jw.String("leaderless_tablets");
   jw.StartArray();
 
-  for (TabletInfoPtr t : ts) {
+  for (TabletInfoPtr t : leaderless_ts) {
+    jw.StartObject();
+    jw.String("table_uuid");
+    jw.String(t->table()->id());
+    jw.String("tablet_uuid");
+    jw.String(t.get()->tablet_id());
+    jw.EndObject();
+  }
+
+  jw.EndArray();
+  jw.EndObject();
+}
+
+void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebRequest& req,
+                                                    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  auto underreplicated_ts = GetUnderReplicatedTablets();
+
+  if(!underreplicated_ts.ok()) {
+    jw.StartObject();
+    jw.String("Error");
+    jw.String(underreplicated_ts.status().ToString());
+    jw.EndObject();
+    return;
+  }
+
+  jw.StartObject();
+  jw.String("underreplicated_tablets");
+  jw.StartArray();
+
+  for(TabletInfoPtr t : *underreplicated_ts) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(t->table()->id());
@@ -1317,11 +1438,6 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
   HandleMasters(req, resp);
   (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
-
-  // Display the user tables if any.
-  (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleCatalogManager(req, resp, true /* only_user_tables */);
-  (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
@@ -1645,6 +1761,18 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
   jw.Protobuf(config);
 }
 
+void MasterPathHandlers::HandleVersionInfoDump(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+
+  // Get the version info.
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+
+  jw.Protobuf(version_info);
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1708,6 +1836,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/tablet-replication", "Tablet Replication Health",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleGetUnderReplicationStatus, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
@@ -1718,6 +1850,9 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/masters", "Master Statuses",
       std::bind(&MasterPathHandlers::HandleGetMastersStatus, this, _1, _2), false, false);
+  server->RegisterPathHandler(
+      "/api/v1/version", "YB Version Information",
+      std::bind(&MasterPathHandlers::HandleVersionInfoDump, this, _1, _2), false, false);
   return Status::OK();
 }
 
@@ -1779,10 +1914,9 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
-      TabletInfo::ReplicaMap replication_locations;
-      tablet->GetReplicaLocations(&replication_locations);
+      auto replication_locations = tablet->GetReplicaLocations();
 
-      for (const auto& replica : replication_locations) {
+      for (const auto& replica : *replication_locations) {
         if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
                           || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {

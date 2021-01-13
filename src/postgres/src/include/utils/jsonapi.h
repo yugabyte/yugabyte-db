@@ -33,6 +33,28 @@ typedef enum
 	JSON_TOKEN_END
 } JsonTokenType;
 
+typedef enum
+{
+	JSON_SUCCESS,
+	JSON_ESCAPING_INVALID,
+	JSON_ESCAPING_REQUIRED,
+	JSON_EXPECTED_ARRAY_FIRST,
+	JSON_EXPECTED_ARRAY_NEXT,
+	JSON_EXPECTED_COLON,
+	JSON_EXPECTED_END,
+	JSON_EXPECTED_JSON,
+	JSON_EXPECTED_MORE,
+	JSON_EXPECTED_OBJECT_FIRST,
+	JSON_EXPECTED_OBJECT_NEXT,
+	JSON_EXPECTED_STRING,
+	JSON_INVALID_TOKEN,
+	JSON_UNICODE_CODE_POINT_ZERO,
+	JSON_UNICODE_ESCAPE_FORMAT,
+	JSON_UNICODE_HIGH_ESCAPE,
+	JSON_UNICODE_HIGH_SURROGATE,
+	JSON_UNICODE_LOW_SURROGATE
+} JsonParseErrorType;
+
 
 /*
  * All the fields in this structure should be treated as read-only.
@@ -101,28 +123,39 @@ typedef struct JsonSemAction
  * points to. If the action pointers are NULL the parser
  * does nothing and just continues.
  */
-extern void pg_parse_json(JsonLexContext *lex, JsonSemAction *sem);
+extern JsonParseErrorType pg_parse_json(JsonLexContext *lex,
+										JsonSemAction *sem);
+
+/* the null action object used for pure validation */
+extern JsonSemAction nullSemAction;
 
 /*
  * json_count_array_elements performs a fast secondary parse to determine the
  * number of elements in passed array lex context. It should be called from an
  * array_start action.
+ *
+ * The return value indicates whether any error occurred, while the number
+ * of elements is stored into *elements (but only if the return value is
+ * JSON_SUCCESS).
  */
-extern int	json_count_array_elements(JsonLexContext *lex);
+extern JsonParseErrorType json_count_array_elements(JsonLexContext *lex,
+													int *elements);
 
 /*
- * constructors for JsonLexContext, with or without strval element.
+ * constructor for JsonLexContext, with or without strval element.
  * If supplied, the strval element will contain a de-escaped version of
  * the lexeme. However, doing this imposes a performance penalty, so
  * it should be avoided if the de-escaped lexeme is not required.
- *
- * If you already have the json as a text* value, use the first of these
- * functions, otherwise use  makeJsonLexContextCstringLen().
  */
-extern JsonLexContext *makeJsonLexContext(text *json, bool need_escapes);
 extern JsonLexContext *makeJsonLexContextCstringLen(char *json,
 							 int len,
 							 bool need_escapes);
+
+/* lex one token */
+extern JsonParseErrorType json_lex(JsonLexContext *lex);
+
+/* construct an error detail string for a json error */
+extern char *json_errdetail(JsonParseErrorType error, JsonLexContext *lex);
 
 /*
  * Utility function to check if a string is a valid JSON number.

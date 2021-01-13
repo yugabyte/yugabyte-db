@@ -38,11 +38,13 @@ public class TestTransactionStatusTable extends BaseCQLTest {
     // tablets opening thread pool.
     builder.addCommonTServerArgs("--transaction_table_num_tablets=4");
     builder.addCommonTServerArgs("--num_tablets_to_open_simultaneously=8");
+    // Reduce the number of tablets per table.
+    builder.addMasterArgs("--yb_num_shards_per_tserver=1");
   }
 
   @Test
   public void testCreation() throws Throwable {
-    final int kTablesCount = SanitizerUtil.nonTsanVsTsan(10, 5);
+    final int kTablesCount = SanitizerUtil.nonTsanVsTsan(4, 2);
     final CountDownLatch startSignal = new CountDownLatch(kTablesCount);
     List<ThrowingRunnable> cmds = new ArrayList<>();
     List<Session> sessions = new ArrayList<>();

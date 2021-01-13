@@ -169,6 +169,27 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 
 Enable or disable the webserver UI. Default is `false`.
 
+##### --master_flags *master_flags*
+
+Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+
+##### --tserver_flags *tserver_flags*
+
+Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+
+##### --ysql_enable_auth *bool*
+
+Enable or disable YSQL Authentication. Default is `false`.
+If the `YSQL_PASSWORD` environment variable exists then, authentication mode is automatically changed to enforced.
+
+##### --use_cassandra_authentication *bool*
+
+Enable or disable YCQL Authentication. Default is `false`.
+If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist then, authentication mode is automatically changed to enforced.
+
+**Note**
+- The corresponding environment variables have higher priority than the command-line flags.
+
 ##### --initial_scripts_dir *initial-scripts-dir*
 
 The directory from where yugabyted reads initialization scripts.
@@ -433,7 +454,7 @@ Combinations of environment variables and their uses.
 
 **Note**
 - In the case of multi-node deployment, all nodes should have similar environment variables. 
-
+- Changing the values of the environment variables after the first run has no effect.
 -----
 
 ## Examples
@@ -443,7 +464,15 @@ Combinations of environment variables and their uses.
 Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.2.0/data1 --listen=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
+```
+
+### Pass additional flags to tserver
+
+Create a single-node cluster and set additional flags to the yb-tserver process.
+
+```sh
+bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
 ```
 
 ### Create a multi-node cluster
@@ -451,8 +480,8 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.2.0/data1 --listen=1
 Add two more nodes to the cluster using the `join` option.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.2.0/data2 --listen=127.0.0.2 --join=127.0.0.1
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.2.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
 ### Destroy a multi-node cluster
@@ -460,7 +489,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.2.0/data3 --listen=1
 Destroy the above multi-node cluster.
 
 ```sh
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.2.0/data1
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.2.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.2.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
 ```

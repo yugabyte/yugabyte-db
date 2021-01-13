@@ -51,6 +51,15 @@ YbgStatus YbgResetMemoryContext()
 	return PG_STATUS_OK;
 }
 
+YbgStatus YbgDeleteMemoryContext()
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	DeleteThreadLocalCurrentMemoryContext();
+
+	return PG_STATUS_OK;
+}
+
 //-----------------------------------------------------------------------------
 // Types
 //-----------------------------------------------------------------------------
@@ -188,9 +197,9 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 }
 
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
-                               int32_t attno,
-                               uint64_t datum,
-                               bool is_null)
+                                    int32_t attno,
+                                    uint64_t datum,
+                                    bool is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 

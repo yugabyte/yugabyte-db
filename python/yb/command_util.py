@@ -22,17 +22,26 @@ import platform
 import shutil
 import subprocess
 import logging
+import shlex
 
 from collections import namedtuple
 
 
-ProgramResult = namedtuple('ProgramResult',
-                           ['cmd_line',
-                            'returncode',
-                            'stdout',
-                            'stderr',
-                            'error_msg',
-                            'program_path'])
+class ProgramResult:
+    def __init__(
+            self,
+            cmd_line,
+            returncode,
+            stdout,
+            stderr,
+            error_msg,
+            program_path):
+        self.cmd_line = cmd_line
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.error_msg = error_msg
+        self.program_path = program_path
 
 
 def trim_output(output, max_lines):
@@ -74,12 +83,14 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None, log_command
                 trim_output(program_stderr.strip(), max_error_lines))
         if not error_ok:
             raise RuntimeError(error_msg)
-    return ProgramResult(cmd_line=args,
-                         program_path=os.path.realpath(args[0]),
-                         returncode=program_subprocess.returncode,
-                         stdout=program_stdout.strip().decode('utf-8'),
-                         stderr=program_stderr.strip().decode('utf-8'),
-                         error_msg=error_msg)
+    return ProgramResult(
+        cmd_line=args,
+        returncode=program_subprocess.returncode,
+        stdout=program_stdout.strip().decode('utf-8'),
+        stderr=program_stderr.strip().decode('utf-8'),
+        error_msg=error_msg,
+        program_path=os.path.realpath(args[0])
+    )
 
 
 def mkdir_p(d):

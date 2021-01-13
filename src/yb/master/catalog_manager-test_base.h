@@ -227,6 +227,8 @@ class TestLoadBalancerBase {
 
  protected:
   Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
+    cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
+    cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
   }
 
@@ -358,11 +360,11 @@ class TestLoadBalancerBase {
 
     // Remove the 2 tablet peers that are wrongly placed and assign a new one that is properly
     // placed.
-    for (auto tablet : tablets_) {
-      TabletInfo::ReplicaMap replica_map;
-      tablet->GetReplicaLocations(&replica_map);
-      replica_map.erase(ts_descs_[1]->permanent_uuid());
-      replica_map.erase(ts_descs_[2]->permanent_uuid());
+    for (const auto& tablet : tablets_) {
+      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
+        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      replica_map->erase(ts_descs_[1]->permanent_uuid());
+      replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
     // Remove the two wrong tablet servers from the list.
@@ -370,7 +372,8 @@ class TestLoadBalancerBase {
     ts_descs_.pop_back();
     // Add a tablet server with proper placement and peer it to all tablets. Now all tablets
     // should have 2 peers.
-    ts_descs_.push_back(SetupTS("1new", "a"));
+    // Using empty ts_uuid here since our mocked PendingTasksUnlocked only returns empty ts_uuids.
+    ts_descs_.push_back(SetupTS("", "a"));
     for (auto tablet : tablets_) {
       AddRunningReplica(tablet.get(), ts_descs_[1]);
     }
@@ -407,7 +410,7 @@ class TestLoadBalancerBase {
     }
     int count = 0;
     int pending_add_count = 0;
-    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count);
+    ASSERT_OK(cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count));
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     string placeholder, tablet_id;
@@ -432,7 +435,8 @@ class TestLoadBalancerBase {
       pending_remove_replica_tasks_.push_back(tablet->id());
     }
     int pending_remove_count = 0;
-    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &count, &pending_remove_count, &count);
+    ASSERT_OK(
+        cb_->CountPendingTasksUnlocked(cur_table_uuid_, &count, &pending_remove_count, &count));
     ASSERT_EQ(pending_remove_count, pending_remove_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &placeholder)));
@@ -484,9 +488,9 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      TabletInfo::ReplicaMap replica_map;
-      tablet->GetReplicaLocations(&replica_map);
-      replica_map.erase(ts_descs_[2]->permanent_uuid());
+      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
+        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
     // Remove the tablet server from the list.
@@ -640,9 +644,9 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      TabletInfo::ReplicaMap replica_map;
-      tablet->GetReplicaLocations(&replica_map);
-      replica_map.erase(ts_descs_[2]->permanent_uuid());
+      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
+        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
     // Remove the tablet server from the list.
@@ -899,7 +903,7 @@ class TestLoadBalancerBase {
     // Prepare the replicas.
     tablet::RaftGroupStatePB state = tablet::RUNNING;
     for (int i = 0; i < tablets_.size(); ++i) {
-      TabletInfo::ReplicaMap replica_map;
+      auto replica_map = std::make_shared<TabletInfo::ReplicaMap>();
       for (int j = 0; j < ts_descs_.size(); ++j) {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
@@ -908,7 +912,7 @@ class TestLoadBalancerBase {
             consensus::RaftPeerPB::LEADER :
             consensus::RaftPeerPB::FOLLOWER;
         NewReplica(ts_desc.get(), state, role , &replica);
-        InsertOrDie(&replica_map, ts_desc->permanent_uuid(), replica);
+        InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
       tablet_map_[tablets_[i]->tablet_id()]->SetReplicaLocations(replica_map);
@@ -959,29 +963,29 @@ class TestLoadBalancerBase {
 
   void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
                          bool is_live = true) {
-    TabletInfo::ReplicaMap replicas;
-    tablet->GetReplicaLocations(&replicas);
+    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
+      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
     NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING,
                consensus::RaftPeerPB::FOLLOWER, &replica);
-    InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
+    InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
 
   void RemoveReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    TabletInfo::ReplicaMap replicas;
-    tablet->GetReplicaLocations(&replicas);
-    int before_size = replicas.size();
-    replicas.erase(ts_desc->permanent_uuid());
-    ASSERT_TRUE(before_size > replicas.size());
+    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
+      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    int before_size = replicas->size();
+    replicas->erase(ts_desc->permanent_uuid());
+    ASSERT_TRUE(before_size > replicas->size());
     tablet->SetReplicaLocations(replicas);
   }
 
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    TabletInfo::ReplicaMap replicas;
-    tablet->GetReplicaLocations(&replicas);
-    for (auto& replica : replicas) {
+    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
+      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    for (auto& replica : *replicas) {
       if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
         replica.second.role = consensus::RaftPeerPB::LEADER;
       } else {

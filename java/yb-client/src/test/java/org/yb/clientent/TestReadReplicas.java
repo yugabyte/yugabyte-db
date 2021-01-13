@@ -23,13 +23,13 @@ import org.junit.runner.RunWith;
 
 import org.yb.Schema;
 import org.yb.ColumnSchema;
-import org.yb.YBTestRunner;
 import org.yb.master.Master;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestReadReplicas extends TestYBClient {
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION = "testRegion";
@@ -69,7 +69,8 @@ public class TestReadReplicas extends TestYBClient {
             "--load_balancer_max_concurrent_moves=100",
             "--load_balancer_max_concurrent_removals=100");
 
-    createMiniCluster(3, masterArgs, tserverArgs);
+    // Enable YSQL to generate the txn status table (in order to test txn status leader spread).
+    createMiniCluster(3, masterArgs, tserverArgs, true /* enable_ysql */);
 
     // Create the cluster config pb to be sent to the masters
     org.yb.Common.CloudInfoPB cloudInfo0 = org.yb.Common.CloudInfoPB.newBuilder()
@@ -194,5 +195,8 @@ public class TestReadReplicas extends TestYBClient {
     expectedMap.put(READ_ONLY_NEW_TS, expectedReadOnlyNewTsList);
 
     assertTrue(syncClient.waitForExpectedReplicaMap(60000, table, expectedMap));
+    // From issue #6081, make sure that we ignore read replicas when checking if
+    // transaction status tablet leaders are properly spread.
+    assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
   }
 }

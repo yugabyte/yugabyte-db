@@ -28,6 +28,7 @@ using namespace std::literals;
 
 DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
+DECLARE_bool(fail_on_out_of_range_clock_skew);
 
 namespace yb {
 
@@ -36,6 +37,8 @@ class TransactionEntTest : public client::KeyValueTableTest<MiniCluster> {
   virtual ~TransactionEntTest() {}
 
   void SetUp() override {
+    FLAGS_fail_on_out_of_range_clock_skew = false;
+
     server::RandomErrorClock::Register();
     FLAGS_time_source = server::RandomErrorClock::kNtpName;
     KeyValueTableTest::SetUp();

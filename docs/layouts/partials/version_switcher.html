@@ -7,7 +7,7 @@
     {{ range $index,$value := .Site.Menus }}
       {{ if eq $index $title }}
         {{ if eq $index "latest" }}
-          {{ $context.Scratch.Set "currentVersionTitle" "v2.3 (latest)" }}
+          {{ $context.Scratch.Set "currentVersionTitle" "v2.5 (latest)" }}
         {{ else if eq $index "stable" }}
           {{ $context.Scratch.Set "currentVersionTitle" "v2.2 (stable)" }}
         {{ else }}
@@ -27,7 +27,7 @@
     </button>
     
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-        <a class="dropdown-item" href="/latest/">v2.3 (latest)</a>
+        <a class="dropdown-item" href="/latest/">v2.5 (latest)</a>
         <a class="dropdown-item" href="/stable/">v2.2 (stable)</a>
         {{ range sort $versions "Name" "desc" }}
             {{ if  hasPrefix .Name "v"}}

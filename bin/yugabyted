@@ -350,7 +350,17 @@ class ControlScript(object):
         tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tarpath))
+
+        if self.configs.temp_data.get("collect_logs_stdout"):
+            Output.log("Logs are packaged into {}".format(tarpath))
+            if tarfile.is_tarfile(tarpath):
+                with open(tarpath, 'rb') as tar_fd:
+                    if sys.version_info[0] == 3:
+                        sys.stdout.buffer.write(tar_fd.read())
+                    else:
+                        sys.stdout.write(tar_fd.read())
+        else:
+            Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -489,6 +499,13 @@ class ControlScript(object):
                 ["--{}".format(flag) for flag in \
                     self.configs.saved_data.get("tserver_flags").split(",")])
 
+        # Add authentication flags in tserver
+        if self.configs.saved_data.get("ysql_enable_auth"):
+            yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
+
+        if self.configs.saved_data.get("use_cassandra_authentication"):
+            yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
+
         yw_cmd = [
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
@@ -545,18 +562,6 @@ class ControlScript(object):
                     " Removing...").format(data_dir_files, data_dir))
                 rmcontents(data_dir, exclude_names=[pid_file_name])
 
-            # Add enforced authentication flags on first installation
-            # Add ysql_enable_auth, if YSQL_PASSWORD env variable exists
-            # Add use_cassandra_authentication, if YCQL_USER or YCQL_PASSWORD env variables exists
-            # Add ysql_enable_auth flag to enforce authentication for YSQL
-            if self.setup_env_init.is_exists('YSQL_PASSWORD'):
-                yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-
-            # Add use_cassandra_authentication flag to enforce authentication for YCQL
-            if self.setup_env_init.is_exists('YCQL_USER') or \
-                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
-                yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
                 Output.init_animation("Running system checks...")
@@ -588,7 +593,7 @@ class ControlScript(object):
                 should_callhome = should_callhome or was_started
 
             if is_first_install and not join_ip:
-                self.first_install_init()
+                self.first_install_init_auth()
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -1139,6 +1144,9 @@ class ControlScript(object):
             if path:
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
+        if args.parser == "collect_logs":
+            self.configs.temp_data["collect_logs_stdout"] = args.stdout
+
         if args.parser == "start":
             if args.data_dir is not None:
                 config_data_dir = self.configs.saved_data.get("data_dir")
@@ -1160,6 +1168,24 @@ class ControlScript(object):
             args.ui = self.parse_bool(args.ui)
             args.daemon = self.parse_bool(args.daemon)
             args.callhome = self.parse_bool(args.callhome)
+
+            # Set authentication flags same as provided in the command-line flags.
+            if args.ysql_enable_auth:
+                args.ysql_enable_auth = self.parse_bool(args.ysql_enable_auth)
+
+            if args.use_cassandra_authentication:
+                args.use_cassandra_authentication = self.parse_bool(args.use_cassandra_authentication)
+
+            # Set authentication flags to True, if it is first-run and
+            # have required environment variables to enforce the authentication.
+            if not self.is_yb_initialized():
+                if self.setup_env_init.is_exists('YSQL_PASSWORD'):
+                    args.ysql_enable_auth = True
+
+                # Add use_cassandra_authentication flag to enforce authentication for YCQL
+                if self.setup_env_init.is_exists('YCQL_USER') or \
+                        self.setup_env_init.is_exists('YCQL_PASSWORD'):
+                    args.use_cassandra_authentication = True
 
             if args.ui and not self.java_installed():
                 Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
@@ -1253,6 +1279,14 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
 
+        # Docker: Redirect the logs.tar.gz to stdout
+        for cmd in ("collect_logs",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
+                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                action="store_true", default=False)
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -1288,6 +1322,12 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
                 help="Toggle enabling or disabling webserver UI. Default false.")
+            cur_parser.add_argument(
+                "--ysql_enable_auth", choices=BOOL_CHOICES, metavar="BOOL",
+                help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--use_cassandra_authentication", choices=BOOL_CHOICES, metavar="BOOL",
+                help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
 
@@ -1337,7 +1377,7 @@ class ControlScript(object):
     def master_port(self):
        self.configs.saved_data.get("master_rpc_port")
 
-    def first_install_init(self):
+    def first_install_init_auth(self):
         if self.get_failed_node_processes():
             Output.log_error_and_exit(
                 "{} is not running.".format(SCRIPT_NAME))
@@ -1412,6 +1452,8 @@ class Configs(object):
             "master_flags": "",
             "tserver_flags": "",
             "join": "",
+            "ysql_enable_auth": False,
+            "use_cassandra_authentication": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -1419,6 +1461,7 @@ class Configs(object):
             "daemon": True,
             "ui": False,
             "initial_scripts_dir": "",
+            "collect_logs_stdout": False,
         }
         self.config_file = config_file
 
@@ -1886,7 +1929,7 @@ class YsqlProxy(object):
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd + ["-c", "create database {}".format(db)]
+        cmd = self.cmd + ["-c", "create database \"{}\"".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
@@ -1915,7 +1958,7 @@ class YsqlProxy(object):
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
-        cmd = self.cmd + ["-c", "create role {} with LOGIN SUPERUSER password '{}';".
+        cmd = self.cmd + ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
@@ -1926,7 +1969,7 @@ class YsqlProxy(object):
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
         run_process_checked(cmd=cmd, env_vars=env)
-    
+
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
         cmd = self.cmd + ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
@@ -1934,7 +1977,7 @@ class YsqlProxy(object):
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd + ["-c", "alter database {} owner to {};".format(db, new_owner)]
+        cmd = self.cmd + ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
@@ -1978,7 +2021,7 @@ class YcqlProxy(object):
     # Create specified superuser
     def create_user(self, ycql_username, ycql_password):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE ROLE {} WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
+                "CREATE ROLE \"{}\" WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
                 format(ycql_username, ycql_password)]
         run_process_checked(cmd, log_cmd=False)
 
@@ -1987,7 +2030,7 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", username, "-p", password, "-e",
                 "DROP ROLE IF EXISTS {};".format(user_to_delete)]
         run_process_checked(cmd)
-    
+
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
@@ -2005,7 +2048,7 @@ class YcqlProxy(object):
     # Create specified keyspace
     def create_keyspace(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE KEYSPACE {};".format(keyspace)]
+                "CREATE KEYSPACE \"{}\";".format(keyspace)]
         run_process_checked(cmd)
 
     # Runs ycqlsh with specified files.
@@ -2555,7 +2598,7 @@ class EnvBasedCredentials(object):
             proxy_class.create_db(self.get_ysql_db())
 
         # Update password for default user
-        if self.get_ysql_user() == DEFAULT_YSQL_USER:
+        if self.get_ysql_user() == DEFAULT_YSQL_USER and self.get_ysql_password() != DEFAULT_YSQL_PASSWORD:
             proxy_class.update_password(self.get_ysql_password())
 
         # Create User
@@ -2575,7 +2618,7 @@ class EnvBasedCredentials(object):
             proxy_class.create_keyspace(self.get_ycql_keyspace())
 
         # Update password for default user
-        if self.get_ycql_user() == DEFAULT_YCQL_USER:
+        if self.get_ycql_user() == DEFAULT_YCQL_USER and self.get_ycql_password() != DEFAULT_YCQL_PASSWORD:
             proxy_class.update_password(self.get_ycql_password())
 
         # Create user

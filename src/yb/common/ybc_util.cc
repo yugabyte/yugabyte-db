@@ -29,6 +29,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/version_info.h"
+#include "yb/util/thread.h"
 
 #include "yb/util/net/net_util.h"
 
@@ -242,7 +243,7 @@ YBCStatus YBCInitGFlags(const char* argv0) {
   return ToYBCStatus(yb::InitGFlags(argv0));
 }
 
-bool YBCIsTxnConflicError(uint16_t txn_errcode) {
+bool YBCIsTxnConflictError(uint16_t txn_errcode) {
   return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kConflict);
 }
 
@@ -294,6 +295,10 @@ void YBCResolveHostname() {
     LOG(WARNING) << "Failed to get fully qualified domain name of the local hostname: "
                  << status;
   }
+}
+
+void YBCInitThreading() {
+  InitThreading();
 }
 
 } // extern "C"

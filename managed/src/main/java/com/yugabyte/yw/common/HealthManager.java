@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Provider;
 
@@ -13,10 +14,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 
 @Singleton
 public class HealthManager extends DevopsBase {
+  public static final Logger LOG = LoggerFactory.getLogger(HealthManager.class);
+
   @Inject
   play.Configuration appConfig;
 
@@ -38,27 +44,86 @@ public class HealthManager extends DevopsBase {
     public boolean enableYSQL = false;
     public int ysqlPort = 5433;
     public int ycqlPort = 9042;
+    public boolean enableYEDIS = false;
     public int redisPort = 6379;
   }
 
-  public ShellProcessHandler.ShellResponse runCommand(
-      Provider provider,
-      List<ClusterInfo> clusters,
-      String universeName,
-      String customerTag,
-      String destination,
-      Long potentialStartTimeMs,
-      Boolean sendMailAlways,
-      Boolean reportOnlyErrors,
-      SmtpData smtpData) {
+  public ShellResponse runCommand(
+    String customerTag,
+    String destination,
+    SmtpData smtpData,
+    JsonNode taskFailures
+  ) {
+    return runCommand(
+      null /* provider */,
+      null /* clusters */,
+      null /* universeName */,
+      customerTag,
+      destination,
+      0L,
+      true /* sendMailAlways */,
+      false /* reportOnlyErrors */,
+      smtpData,
+      true /* isTaskNotification */,
+      taskFailures
+    );
+  }
+
+  public ShellResponse runCommand(
+    Provider provider,
+    List<ClusterInfo> clusters,
+    String universeName,
+    String customerTag,
+    String destination,
+    Long potentialStartTimeMs,
+    Boolean sendMailAlways,
+    Boolean reportOnlyErrors,
+    SmtpData smtpData
+  ) {
+    return runCommand(
+      provider,
+      clusters,
+      universeName,
+      customerTag,
+      destination,
+      potentialStartTimeMs,
+      sendMailAlways,
+      reportOnlyErrors,
+      smtpData,
+      false /* isTaskNotification */,
+      null /* alertInfo */
+    );
+  }
+
+  public ShellResponse runCommand(
+    Provider provider,
+    List<ClusterInfo> clusters,
+    String universeName,
+    String customerTag,
+    String destination,
+    Long potentialStartTimeMs,
+    Boolean sendMailAlways,
+    Boolean reportOnlyErrors,
+    SmtpData smtpData,
+    Boolean isTaskNotification,
+    JsonNode taskInfo
+  ) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(HEALTH_CHECK_SCRIPT);
-    commandArgs.add("--cluster_payload");
-    commandArgs.add(Json.stringify(Json.toJson(clusters)));
-    commandArgs.add("--universe_name");
-    commandArgs.add(universeName);
+
+    if (universeName != null) {
+      commandArgs.add("--universe_name");
+      commandArgs.add(universeName);
+    }
+    String description = String.join(" ", commandArgs);
+
+    if (clusters != null) {
+      commandArgs.add("--cluster_payload");
+      commandArgs.add(Json.stringify(Json.toJson(clusters)));
+    }
+
     commandArgs.add("--customer_tag");
     commandArgs.add(customerTag);
     if (destination != null) {
@@ -72,8 +137,10 @@ public class HealthManager extends DevopsBase {
     if (sendMailAlways) {
       commandArgs.add("--send_status");
     }
+
     // Start with a copy of the cloud config env vars.
-    HashMap extraEnvVars = new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars = provider == null ?
+      new HashMap<>() : new HashMap<>(provider.getConfig());
 
     String email = appConfig.getString("yb.health.default_email");
     if (smtpData != null) {
@@ -112,8 +179,13 @@ public class HealthManager extends DevopsBase {
       commandArgs.add("--report_only_errors");
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
-    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/);
+    if (isTaskNotification) {
+      commandArgs.add("--send_notification");
+      commandArgs.add("--alert_info");
+      commandArgs.add(Json.stringify(taskInfo));
+    }
+
+    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
   }
 
   @Override

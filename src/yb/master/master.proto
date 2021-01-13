@@ -34,6 +34,7 @@ syntax = "proto2";
 package yb.master;
 
 option java_package = "org.yb.master";
+option cc_enable_arenas = true;
 
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
@@ -133,6 +134,8 @@ message MasterErrorPB {
 
     // Client set some fields in the table replication info incorrectly.
     INVALID_TABLE_REPLICATION_INFO = 35;
+
+    REACHED_SPLIT_LIMIT = 36;
   }
 
   // The error code.
@@ -323,6 +326,9 @@ message SysTabletsEntryPB {
   // Key corresponds to the table_id for the index table. Value is encoded as
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
+
+  // Tablet IDs for this tablet split if they have been registered in master.
+  repeated bytes split_tablet_ids = 14;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -404,6 +410,9 @@ message SysTablesEntryPB {
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
   optional IndexInfoPB fully_applied_index_info = 27;
+
+  // Optional: Table dependent upon transaction success (abort removes table). Used by YSQL.
+  optional TransactionMetadataPB transaction = 29;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -430,6 +439,9 @@ message SysNamespaceEntryPB {
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
+
+  // Optional: Namespace dependent upon transaction success (abort removes NS). Used by YSQL.
+  optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
 }
@@ -667,6 +679,10 @@ message TabletReportPB {
   // changes have not yet been reported to the master.
   // The first tablet report (non-incremental) is sequence number 0.
   required int32 sequence_number = 4;
+
+  // Number of tablets that could not be included in this heartbeat.
+  // If 0, then all tablets have been reported to the master.
+  optional int32 remaining_tablet_count = 5;
 }
 
 message ReportedTabletUpdatesPB {
@@ -677,6 +693,8 @@ message ReportedTabletUpdatesPB {
 // Sent by the Master in response to the TS tablet report (part of the heartbeats)
 message TabletReportUpdatesPB {
   repeated ReportedTabletUpdatesPB tablets = 1;
+  // Returns true if the tablet report had to be truncated because master ran out of time.
+  optional bool processing_truncated = 2 [ default = false ];
 }
 
 message TServerMetricsPB {
@@ -765,6 +783,8 @@ message TSHeartbeatResponsePB {
   // Used by tservers and postgres backends to decide if a cache refresh is needed.
   optional uint64 ysql_catalog_version = 10;
 
+  optional uint64 ysql_last_breaking_catalog_version = 15;
+
   optional UniverseKeyRegistryPB universe_key_registry = 11;
 
   optional cdc.ConsumerRegistryPB consumer_registry = 12;
@@ -772,6 +792,8 @@ message TSHeartbeatResponsePB {
   optional int32 cluster_config_version = 13;
 
   optional int64 tablet_split_size_threshold_bytes = 14;
+
+  optional int32 tablet_report_limit = 16;
 }
 
 message TSInformationPB {
@@ -813,6 +835,7 @@ message TabletLocationsPB {
   // See SysTabletsEntryPB for fields with the same name.
   optional uint64 split_depth = 9;
   optional bytes split_parent_tablet_id = 12;
+  repeated bytes split_tablet_ids = 13;
 
   // Number of expected live replicas.
   optional int32 expected_live_replicas = 10;
@@ -902,6 +925,9 @@ message CreateTableRequestPB {
 
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
+
+ // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 20;
 }
 
 message CreateTableResponsePB {
@@ -942,6 +968,19 @@ message IsTruncateTableDoneResponsePB {
 
   // true if the truncate operation is completed, false otherwise
   optional bool done = 2;
+}
+
+message BackfillIndexRequestPB {
+  // The index to backfill.
+  optional TableIdentifierPB index_identifier = 1;
+}
+
+message BackfillIndexResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // The indexed table to backfill.
+  optional TableIdentifierPB table_identifier = 2;
 }
 
 // Delete table request (including index table).
@@ -1027,6 +1066,8 @@ message GetTableLocationsResponsePB {
 
   // See SysTablesEntryPB for field with the same name.
   optional uint32 partitions_version = 4;
+
+  optional bool creating = 5;
 }
 
 message AlterTableRequestPB {
@@ -1145,6 +1186,18 @@ message GetTableSchemaResponsePB {
 
   // True if table is colocated.
   optional bool colocated = 13;
+}
+
+message GetColocatedTabletSchemaRequestPB {
+  required TableIdentifierPB parent_colocated_table = 1;
+}
+
+message GetColocatedTabletSchemaResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // List of all colocated user tables in this colocated database.
+  repeated GetTableSchemaResponsePB get_table_schema_response_pbs = 2;
 }
 
 // ============================================================================
@@ -1376,6 +1429,8 @@ message CreateNamespaceRequestPB {
   optional bytes source_namespace_id = 5; // namespace id of the source database to copy from.
   optional uint32 next_pg_oid = 6; // Next oid to assign. Ignored when source_namespace_id is given
                                    // and the next_pg_oid from source namespace will be used.
+ // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 8;
 
   // True if the namespace is colocated.
   optional bool colocated = 7 [ default = false ];
@@ -1595,6 +1650,8 @@ message RolePermissionInfoPB {
   optional uint32 all_keyspaces_permissions = 2;
   optional uint32 all_roles_permissions = 3;
   repeated ResourcePermissionInfoPB resource_permissions = 4;
+  optional string salted_hash = 5;
+  optional bool can_login = 6;
 }
 
 message GetPermissionsResponsePB {
@@ -1898,6 +1955,8 @@ service MasterService {
   rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
 
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);
 
@@ -1907,6 +1966,8 @@ service MasterService {
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+  rpc GetColocatedTabletSchema(GetColocatedTabletSchemaRequestPB)
+      returns (GetColocatedTabletSchemaResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc IsCreateNamespaceDone(IsCreateNamespaceDoneRequestPB)

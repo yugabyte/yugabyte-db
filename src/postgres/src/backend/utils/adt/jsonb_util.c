@@ -550,7 +550,7 @@ fillJsonbValue(JsonbContainer *container, int index,
  * "raw scalar" pseudo array to append it - the actual scalar should be passed
  * next and it will be added as the only member of the array.
  *
- * Values of type jvbBinary, which are rolled up arrays and objects,
+ * Values of type jbvBinary, which are rolled up arrays and objects,
  * are unpacked before being added to the result.
  */
 JsonbValue *
@@ -1771,14 +1771,6 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 			break;
 
 		case jbvNumeric:
-			/* replace numeric NaN with string "NaN" */
-			if (numeric_is_nan(scalarVal->val.numeric))
-			{
-				appendToBuffer(buffer, "NaN", 3);
-				*jentry = 3;
-				break;
-			}
-
 			numlen = VARSIZE_ANY(scalarVal->val.numeric);
 			padlen = padBufferToInt(buffer);
 

@@ -2,17 +2,24 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,10 +28,11 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
+import play.Configuration;
+import play.api.Play;
 import play.libs.Json;
 
 public abstract class AbstractTaskBase implements ITask {
@@ -49,6 +57,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;
+
+  // A field used to send additional information with prometheus metric associated with this task
+  public String taskInfo = "";
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -94,14 +105,11 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   /**
-   * Log the output of shellResponse to STDOUT or STDERR
    * @param response : ShellResponse object
    */
-  public void logShellResponse(ShellProcessHandler.ShellResponse response) {
-    if (response.code == 0) {
-      LOG.info("[" + getName() + "] STDOUT: '" + response.message + "'");
-    } else {
-      throw new RuntimeException(response.message);
+  public void processShellResponse(ShellResponse response) {
+    if (response.code != 0) {
+      throw new RuntimeException((response.message != null ) ? response.message : "error");
     }
   }
 
@@ -111,7 +119,7 @@ public abstract class AbstractTaskBase implements ITask {
    * @param response: ShellResponse object
    * @return JsonNode: Json formatted shell response message
    */
-  public JsonNode parseShellResponseAsJson(ShellProcessHandler.ShellResponse response) {
+  public JsonNode parseShellResponseAsJson(ShellResponse response) {
     return Util.convertStringToJson(response.message);
   }
 
@@ -124,7 +132,7 @@ public abstract class AbstractTaskBase implements ITask {
         if (node == null) {
           return;
         }
-        LOG.debug("Changing node {} state from {} to {} in universe {}.",
+        LOG.info("Changing node {} state from {} to {} in universe {}.",
                   nodeName, node.state, state, universeUUID);
         node.state = state;
         if (state == NodeDetails.NodeState.Decommissioned) {
@@ -138,5 +146,65 @@ public abstract class AbstractTaskBase implements ITask {
       }
     };
     return updater;
+  }
+
+  @Override
+  public boolean shouldSendNotification() {
+    try {
+      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
+      Customer customer = Customer.get(task.getCustomerUUID());
+      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
+      CustomerRegisterFormData.AlertingData alertingData =
+        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
+      return task.getType().equals(CustomerTask.TaskType.Create) &&
+        task.getTarget().equals(CustomerTask.TargetType.Backup) &&
+        alertingData.reportBackupFailures;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  @Override
+  public void sendNotification() {
+    try {
+      Configuration appConfig = Play.current().injector().instanceOf(Configuration.class);
+      HealthManager healthManager = Play.current().injector().instanceOf(HealthManager.class);
+      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
+      Customer customer = Customer.get(task.getCustomerUUID());
+      ObjectNode notificationData = Json.newObject()
+        .put("alert_name", "Backup failure")
+        .put("task_type", task.getType().name())
+        .put("target_type", task.getTarget().name())
+        .put("target_name", task.getNotificationTargetName())
+        .put("task_info", taskInfo);
+      String customerTag = String.format("[%s][%s]", customer.name, customer.code);
+      List<String> destinations = new ArrayList<>();
+      String ybEmail = appConfig.getString("yb.health.default_email", null);
+      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
+      CustomerRegisterFormData.AlertingData alertingData =
+        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
+      if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
+        destinations.add(ybEmail);
+      }
+
+      if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
+        destinations.add(alertingData.alertingEmail);
+      }
+
+      CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
+      CustomerRegisterFormData.SmtpData smtpData = null;
+      if (smtpConfig != null) {
+        smtpData =  Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
+      }
+
+      healthManager.runCommand(
+        customerTag,
+        destinations.size() == 0 ? null : String.join(",", destinations),
+        smtpData,
+        notificationData
+      );
+    } catch (Exception e) {
+      LOG.error("Error alerting task failure", e);
+    }
   }
 }

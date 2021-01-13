@@ -304,6 +304,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // If the queue is empty, check if we were told to send a status-only message (which is what
   // happens during heartbeats). If not, just return.
   if (PREDICT_FALSE(!req_has_ops && trigger_mode == RequestTriggerMode::kNonEmptyOnly)) {
+    queue_->RequestWasNotSent(peer_pb_.permanent_uuid());
     return;
   }
 
@@ -343,6 +344,9 @@ void Peer::ProcessResponse() {
   CleanRequestOps();
 
   Status status = controller_.status();
+  if (status.ok()) {
+    status = controller_.thread_pool_failure();
+  }
   controller_.Reset();
 
   auto performing_lock = LockPerforming(std::adopt_lock);

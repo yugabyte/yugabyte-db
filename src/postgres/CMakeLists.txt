@@ -16,11 +16,12 @@ get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
 foreach(include_dir ${yb_cmake_include_dirs})
   set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
-  if( ("${COMPILER_FAMILY}" STREQUAL "gcc8") OR
-      ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "9.0"))
-    set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -Wno-format-truncation -Wno-maybe-uninitialized -Wno-stringop-truncation")
-  endif()
 endforeach(include_dir)
+if("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
+  set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -Wno-format-truncation")
+  set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -Wno-maybe-uninitialized")
+  set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -Wno-stringop-truncation")
+endif()
 
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 
@@ -57,10 +58,6 @@ add_dependencies(postgres configure_postgres)
 # ------------------------------------------------------------------------------------------------
 # Dependencies between postgres and other targets
 # ------------------------------------------------------------------------------------------------
-
-# Make sure we rebuild postgres before the master/tserver libraries.
-add_dependencies(master postgres)
-add_dependencies(tserver postgres)
 
 if("${YB_BUILD_TYPE}" STREQUAL "compilecmds")
   message("Not making postgres depend on other libraries in the compilecmds build type.")

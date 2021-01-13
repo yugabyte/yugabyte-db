@@ -30,8 +30,14 @@ import time
 
 from subprocess import check_call
 
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext, mkdir_p, quote_for_bash, \
-        is_verbose_mode
+from yugabyte_pycommon import (
+    init_logging,
+    run_program,
+    WorkDirContext,
+    mkdir_p,
+    quote_for_bash,
+    is_verbose_mode
+)
 
 from yb import common_util
 from yb.tool_base import YbBuildToolBase
@@ -397,7 +403,11 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--with-ldap',
                 '--with-openssl',
+                # Options are ossp (original/old implementation), bsd (BSD) and e2fs
+                # (libuuid-based for Unix/Mac).
+                '--with-uuid=e2fs',
                 '--with-libedit-preferred',
                 '--with-includes=' + self.openssl_include_dir,
                 '--with-libraries=' + self.openssl_lib_dir,
@@ -539,10 +549,14 @@ class PostgresBuilder(YbBuildToolBase):
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
-                run_program(
-                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
-                    error_ok=True
-                ).print_output_and_raise_error_if_failed()
+
+                make_result = run_program(
+                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True, error_ok=True
+                )
+                if make_result.failure():
+                    make_result.print_output_to_stdout()
+                    raise RuntimeError("PostgreSQL compilation failed")
+
                 if self.build_type == 'compilecmds':
                     logging.info(
                             "Not running make install in the %s directory since we are only "

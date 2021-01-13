@@ -132,6 +132,8 @@ class PeerMessageQueue {
 
     void ResetLeaderLeases();
 
+    void ResetLastRequest();
+
     // UUID of the peer.
     const std::string uuid;
 
@@ -293,6 +295,8 @@ class PeerMessageQueue {
   // more requests pending.
   virtual bool ResponseFromPeer(const std::string& peer_uuid,
                                 const ConsensusResponsePB& response);
+
+  void RequestWasNotSent(const std::string& peer_uuid);
 
   // Closes the queue, peers are still allowed to call UntrackPeer() and ResponseFromPeer() but no
   // additional peers can be tracked or messages queued.
@@ -517,7 +521,10 @@ class PeerMessageQueue {
   OpId OpIdWatermark();
   uint64_t NumSSTFilesWatermark();
 
-  Result<ReadOpsResult> ReadFromLogCache(int64_t from_index,
+  // Reads operations from the log cache in the range (after_index, to_index].
+  //
+  // If 'to_index' is 0, then all operations after 'after_index' will be included.
+  Result<ReadOpsResult> ReadFromLogCache(int64_t after_index,
                                          int64_t to_index,
                                          int max_batch_size,
                                          const std::string& peer_uuid);

@@ -138,6 +138,19 @@ typedef struct PgTypeEntity {
   YBCPgDatumFromData yb_to_datum;
 } YBCPgTypeEntity;
 
+// Kind of a datum.
+// In addition to datatype, a "datum" is also specified by "kind".
+// - Standard value.
+// - MIN limit value, which can be infinite, represents an absolute mininum value of a datatype.
+// - MAX limit value, which can be infinite, represents an absolute maximum value of a datatype.
+//
+// NOTE: Currently Postgres use a separate boolean flag for null instead of datum.
+typedef enum PgDatumKind {
+  YB_YQL_DATUM_STANDARD_VALUE = 0,
+  YB_YQL_DATUM_LIMIT_MAX,
+  YB_YQL_DATUM_LIMIT_MIN,
+} YBCPgDatumKind;
+
 // API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
 YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
@@ -218,6 +231,7 @@ typedef struct PgExecParameters {
   int rowmark = -1;
   uint64_t read_time = 0;
   char *partition_key = NULL;
+  bool read_from_followers = false;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -225,6 +239,7 @@ typedef struct PgExecParameters {
   int rowmark;
   uint64_t read_time;
   char *partition_key;
+  bool read_from_followers;
 #endif
 } YBCPgExecParameters;
 
@@ -245,6 +260,13 @@ typedef struct PgTableProperties {
   uint32_t num_hash_key_columns;
   bool is_colocated;
 } YBCPgTableProperties;
+
+typedef struct PgYBTupleIdDescriptor {
+  YBCPgOid database_oid;
+  YBCPgOid table_oid;
+  int32_t nattrs;
+  YBCPgAttrValueDescriptor *attrs;
+} YBCPgYBTupleIdDescriptor;
 
 #ifdef __cplusplus
 }  // extern "C"

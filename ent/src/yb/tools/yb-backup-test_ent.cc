@@ -487,5 +487,58 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBBackupWrongUsage
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithDropYugabyteDB)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+        (1 row)
+      )#"
+  ));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (200, 'bar')"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+         200 | bar
+        (2 rows)
+      )#"
+  ));
+
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE DATABASE db", "CREATE DATABASE"));
+  SetDbName("db"); // Connecting to the second DB from the moment.
+  // Validate that the DB restoration works even if the default 'yugabyte' db was recreated.
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP DATABASE yugabyte", "DROP DATABASE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE DATABASE yugabyte", "CREATE DATABASE"));
+  SetDbName("yugabyte"); // Connecting to the recreated 'yugabyte' DB from the moment.
+
+  // Restore into the recreated "ysql.yugabyte" YSQL DB.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Check the table data.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+        (1 row)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

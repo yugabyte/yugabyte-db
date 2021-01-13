@@ -165,6 +165,21 @@ class YBClient::Data {
                                               const std::string& table_id,
                                               CoarseTimePoint deadline);
 
+  CHECKED_STATUS BackfillIndex(YBClient* client,
+                               const YBTableName& table_name,
+                               const TableId& table_id,
+                               CoarseTimePoint deadline,
+                               bool wait = true);
+  CHECKED_STATUS IsBackfillIndexInProgress(YBClient* client,
+                                           const TableId& table_id,
+                                           const TableId& index_id,
+                                           CoarseTimePoint deadline,
+                                           bool* backfill_in_progress);
+  CHECKED_STATUS WaitForBackfillIndexToFinish(YBClient* client,
+                                              const TableId& table_id,
+                                              const TableId& index_id,
+                                              CoarseTimePoint deadline);
+
   CHECKED_STATUS AlterTable(YBClient* client,
                             const master::AlterTableRequestPB& req,
                             CoarseTimePoint deadline);
@@ -215,6 +230,11 @@ class YBClient::Data {
                                     CoarseTimePoint deadline,
                                     std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
+  CHECKED_STATUS GetColocatedTabletSchemaById(YBClient* client,
+                                              const TableId& parent_colocated_table_id,
+                                              CoarseTimePoint deadline,
+                                              std::shared_ptr<std::vector<YBTableInfo>> info,
+                                              StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
@@ -224,7 +244,7 @@ class YBClient::Data {
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
       const YBTableName& table_name,
-      const YBTableName& index_name,
+      const TableId& index_id,
       const CoarseTimePoint deadline);
   Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
       YBClient* client,
