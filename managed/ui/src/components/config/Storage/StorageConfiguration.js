@@ -118,7 +118,7 @@ class StorageConfiguration extends Component {
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
       case 'nfs':
-        dataPayload = _.pick(dataPayload,['BACKUP_LOCATION']);
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
         break;
 
       case 'gcs':
@@ -135,7 +135,8 @@ class StorageConfiguration extends Component {
           dataPayload = _.pick(dataPayload, [
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
-            'IAM_INSTANCE_PROFILE']);
+            'IAM_INSTANCE_PROFILE'
+          ]);
         } else {
            dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
