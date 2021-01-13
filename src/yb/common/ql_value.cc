@@ -333,7 +333,7 @@ void QLValue::Serialize(
     }
     case UUID: {
       std::string bytes;
-      CHECK_OK(uuid_value(pb).ToBytes(&bytes));
+      uuid_value(pb).ToBytes(&bytes);
       CQLEncodeBytes(bytes, buffer);
       return;
     }
@@ -341,7 +341,7 @@ void QLValue::Serialize(
       std::string bytes;
       Uuid uuid = timeuuid_value(pb);
       CHECK_OK(uuid.IsTimeUuid());
-      CHECK_OK(uuid.ToBytes(&bytes));
+      uuid.ToBytes(&bytes);
       CQLEncodeBytes(bytes, buffer);
       return;
     }

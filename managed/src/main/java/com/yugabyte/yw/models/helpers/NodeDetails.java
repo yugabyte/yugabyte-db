@@ -72,7 +72,9 @@ public class NodeDetails {
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     BeingDecommissioned,
     // After a stopped/removed node is returned back to the IaaS.
-    Decommissioned
+    Decommissioned,
+    // Set when the cert is being updated.
+    UpdateCert
   }
 
   // The current state of the node.
@@ -164,7 +166,8 @@ public class NodeDetails {
       state == NodeState.Live ||
       state == NodeState.ToBeRemoved ||
       state == NodeState.Removing ||
-      state == NodeState.Stopping);
+      state == NodeState.Stopping ||
+      state == NodeState.UpdateCert);
   }
 
   @JsonIgnore

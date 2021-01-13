@@ -82,6 +82,9 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @EnumValue("UpdateCert")
+    UpdateCert,
+
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
@@ -124,6 +127,8 @@ public class CustomerTask extends Model {
           return completed ? "Deleted " : "Deleting ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case UpdateCert:
+          return completed ? "Updated Cert " : "Updating Cert ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
@@ -171,11 +176,14 @@ public class CustomerTask extends Model {
     }
   }
 
+  // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
-  @SequenceGenerator(
-    name = "customer_task_id_seq", sequenceName = "customer_task_id_seq", allocationSize = 1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "customer_task_id_seq")
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  public Long getId() {
+    return id;
+  }
 
   @Constraints.Required
   @Column(nullable = false)

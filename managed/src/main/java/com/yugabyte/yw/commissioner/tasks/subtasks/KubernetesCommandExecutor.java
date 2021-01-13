@@ -134,7 +134,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public boolean enableClientToNodeEncrypt = false;
     public UUID rootCA = null;
     public ServerType serverType = ServerType.EITHER;
-    public int rollingUpgradePartition = 0;
+    public int tserverPartition = 0;
+    public int masterPartition = 0;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -581,18 +582,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (userIntent.enableIPV6) {
       overrides.put("ip_version_support", "v6_only");
     }
+
     Map<String, Object> partition = new HashMap<>();
-    if (taskParams().serverType == ServerType.TSERVER) {
-      partition.put("tserver", taskParams().rollingUpgradePartition);
-      partition.put("master", replicationFactorZone);
-    }
-    else if (taskParams().serverType == ServerType.MASTER) {
-      partition.put("tserver", numNodes);
-      partition.put("master", taskParams().rollingUpgradePartition);
-    }
-    if (!partition.isEmpty()) {
-      overrides.put("partition", partition);
-    }
+    partition.put("tserver", taskParams().tserverPartition);
+    partition.put("master", taskParams().masterPartition);
+    overrides.put("partition", partition);
 
     UUID placementUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();

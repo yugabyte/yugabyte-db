@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a hierarchy 
-linkTitle: employee hierarchy use case
-headerTitle: Using a WITH clause recursive substatement to traverse a hierarchy
-description: This section shows how to traverse a hierarchy, breadth or depth first, using a  a WITH clause recursive substatement.
+title: Case study—using a WITH clause recursive substatement to traverse an employee hierarchy 
+linkTitle: case study—traversing an employee hierarchy
+headerTitle: Case study—traversing an employee a hierarchy
+description: Case study to show how to traverse a hierarchy, breadth or depth first, using a WITH clause recursive substatement.
 menu:
   latest:
     identifier: emps-hierarchy
@@ -12,11 +12,28 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A hierarchy is usually represented in a SQL database in a single table with a _"parent ID"_ column that references the table's _"ID"_ primary key, enforced by a foreign key constraint. (This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling.) The ultimate root of the hierarchy has the _"parent ID"_ set to `NULL`.
+
+
+A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this explained in the section [Using a WITH clause recursive substatement to traverse graphs of all kinds](..//traversing-general-graphs/). 
+
+The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key. A _"parent ID"_ column (list) references the table's primary key—the _"ID"_ column (list). This is  enforced by a foreign key constraint. (This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling.) The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
+
+The SQL that this section presents uses the simpler representation. But the section  [Using a WITH clause recursive substatement to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy.
+
+{{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
+
+All of the `.sql` scripts that this case study presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
+
+[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+
+After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start the master-script. Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the report that it produces on a dedicated spool directory and confirm that your report is identical to the reference copy that is delivered in the zip-file.
+{{< /tip >}}
 
 ## Create and populate the "emps" table
 
 The following code creates a table of employees that records each employee's manager this way. This is a stylized example where _"name"_ serves as the primary key column, _"mgr_name"_ serves as the foreign key column, and there are no other columns.
+
+##### `cr-table.sql`
 
 ```plpgsql
 set client_min_messages = warning;
@@ -78,6 +95,8 @@ Key (name)=(fred) is still referenced from table "emps".
 
 This constraint, together with the fact that the "_mgr_name"_ column is nullable, guarantees the invariant that there is exactly one ultimate manager—in other words that the employee graph is a tree (a.k.a. hierarchy). Check it thus:
 
+##### `do-assert-is-hierarchy.sql`
+
 ```plpgsql
 do $body$
 begin
@@ -90,6 +109,8 @@ $body$;
 ## List the employees top-down with their immediate managers in breadth first order
 
 This simplest formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive substatement like this:
+
+##### `cr-view-top-down-simple.sql`
 
 ```plpgsql
 create or replace view top_down_simple(depth, mgr_name, name) as
@@ -134,11 +155,13 @@ select
 from hierarchy_of_emps;
 ```
 
-Each successive iteration of the recursive term accumulates the set of direct reports, where such a report exists, of the employees produced first by the non-recursive term (i.e. the ultimate manager) and then by the employees produced by the previous  iteration of the recursive term. The iteration stops when none of the employees produced by  the previous  iteration of the recursive term has a report. 
+Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous  iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report. 
 
 Notice that the choice to define the ultimate manager to be at depth _1_ is just that: a design choice. You might prefer to define the ultimate manager to be at depth _0_, arguing that it's better to interpret this measure as the number of managers up the chain that the present employee has.
 
 The result set that this view represents is usually ordered first by the calculated _"depth"_ column and then by usefully orderable actual columns—the manager name and then the employee name in the case of the "_emps"_ example table:
+
+##### `do-breadth-first-query.sql`
 
 ```plpgsql
 select
@@ -174,6 +197,8 @@ This produces a so-called "breadth first" order. This is the result:
 
 The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section.
 
+##### `cr-view-top-down-path.sql`
+
 ```plpgsql
 create or replace view top_down_path(path) as
 with
@@ -197,6 +222,8 @@ from hierarchy_of_emps;
 ```
 
 The cardinality of the path represents the depth. The result set that this view represents can be easily ordered first by the emergent _"depth"_ and then by the employee name:
+
+##### `do-breadth-first-path-query.sql`
 
 ```plpgsql
 select cardinality(path) as depth, path
@@ -227,6 +254,8 @@ This is the result:
 Notice that the _"top_down_path"_ view has the same information content as the _"top_down_simple"_ view. But it's easier to read because you don't need mentally to construct the path by looking, recursively, for the row that has the "_mgr_name"_ of the row of interest as its _"name"_ until you reach the ultimate manager.
 
 This `assert` confirms the conclusion:
+
+##### `do-assert-top-down-path-view-and-top-down-simple-view-same-info.sql`
 
 ```plpgsql
 do $body$
@@ -276,6 +305,8 @@ This "`UNION ALL` of two complementary `EXCEPT` queries" is the standard pattern
 
 Do this:
 
+##### `do-depth-first-query.sql`
+
 ```plpgsql
 select cardinality(path) as depth, path
 from top_down_path
@@ -319,6 +350,8 @@ returns the value _4_ for the present example. This means that `path[5]` returns
 
 Users often like to use indentation to visualize hierarchical depth. This is easy to achieve, thus:
 
+##### `do-indented-depth-first-query.sql`
+
 ```plpgsl
 select
   rpad(' ', 2*cardinality(path) - 2, ' ')||path[cardinality(path)] as "emps hierarchy"
@@ -349,6 +382,8 @@ This is the result:
 ```
 
 You've probably seen how the Unix `tree` command presents the hierarchy that it computes using the long vertical bar, the long horizontal bar, the sideways "T", and the "L" symbols: `│`, `─`, `├`, and `└`. It's easy to output an approximation to this, that omits the long vertical bar, with a single SQL statement. The trick is to use the [`lead()`](../../../exprs/window_functions/function-syntax-semantics/lag-lead/#lead) window function to calculate the _"next_depth"_ for each row as well as the _"depth"_. If the _"next_depth"_ value is equal to the _"depth"_ value: then output the sideways "T"; else output the "L" (at the appropriate indentation level).
+
+##### `do-unix-tree-query.sql`
 
 ```plpgsql
 with
@@ -426,7 +461,11 @@ It's easy to transform this result _manually_ into the format that Unix uses by 
 
 Of course, when you do this, you're intuitively following a rule. So it could certainly be implemented in procedural code, using this harness:
 
+##### `cr-function-unix-tree.sql`
+
 ```plpgsql
+drop function if exists unix_tree() cascade;
+
 create function unix_tree()
   returns table(t text)
   language plpgsql
@@ -504,7 +543,9 @@ Implementing, and testing, the logic is left as an exercise for the reader.
 
 The essential property of a hierarchy is that each successive upwards step defines exactly one parent (in this example, exactly one manager) by traversing the foreign key reference in the "many" to "one" direction. It's this property that distinguishes a hierarchy from a more general graph. This means that there is no distinction between breadth-first and depth-first when traversing a hierarchy upwards.
 
-Here is the query. It's presented using the prepare-and-execute paradigm so that you can supply the starting employee of interest as a parameter. Notice that _"path"_ is not yet defined in the non-recursive term. This means that the only practical design for the _"depth"_ notion here is different from what was used in the top-down approach: the design chosen has it starting at _0_ and _increasing_ by _1_ with each step up the hierarchy.
+Here is the query. It's presented using the prepare-and-execute paradigm so that you can supply the starting employee of interest as a parameter. Notice that _"path"_ is not yet defined in the _non-recursive term_. This means that the only practical design for the _"depth"_ notion here is different from what was used in the top-down approach: the design chosen has it starting at _0_ and _increasing_ by _1_ with each step up the hierarchy.
+
+##### `do-bottom-up-simple-query.sql`
 
 ```plpgsql
 deallocate all;
@@ -567,8 +608,9 @@ This is the result:
 
 Alternatively, you could encapsulate the query in a function to deliver the same benefit. In this scheme, the result is a single array that represents the path from bottom to top.
 
+##### `cr-function-bottom-up-path.sql`
+
 ```plpgsql
-set client_min_messages = warning;
 drop function if exists bottom_up_path(text) cascade;
 
 create function bottom_up_path(start_name in text)
@@ -609,6 +651,8 @@ This is the result:
 ```
 
 You can produce a prettier output like this:
+
+##### `cr-function-bottom-up-path-display.sql`
 
 ```plpgsql
 drop function if exists bottom_up_path_display(text) cascade;

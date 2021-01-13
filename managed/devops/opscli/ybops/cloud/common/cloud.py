@@ -182,6 +182,34 @@ class AbstractCloud(AbstractCommandParser):
             "-U postgres\"".format(master_addresses, init_db_path)
         )
 
+    def compare_root_certs(self, extra_vars, ssh_options):
+        has_openssl = True
+        root_cert_path = extra_vars["root_cert_path"]
+        certs_node_dir = extra_vars["certs_node_dir"]
+        yb_root_cert_path = os.path.join(certs_node_dir, self.ROOT_CERT_NAME)
+        remote_shell = RemoteShell(ssh_options)
+        try:
+            remote_shell.run_command('which openssl')
+        except YBOpsRuntimeError as e:
+            # No openssl, just compare files.
+            has_openssl = False
+
+        # Check if files exist. If not, let it error out (since the root files should be there.)
+        remote_shell.run_command('test -f {}'.format(root_cert_path))
+        remote_shell.run_command('test -f {}'.format(yb_root_cert_path))
+
+        # Compare the openssl hash if openssl is present.
+        if has_openssl:
+            md5_cmd = "openssl x509 -noout -modulus -in '{}' | openssl md5"
+            curr_root = remote_shell.run_command(md5_cmd.format(yb_root_cert_path))
+            new_root = remote_shell.run_command(md5_cmd.format(root_cert_path))
+            if curr_root.stdout != new_root.stdout:
+                raise YBOpsRuntimeError("Root certs are different.")
+        # Openssl not present, just compare the files after removing whitespace.
+        else:
+            # If there is an error code, that means the files are different. Should fail.
+            remote_shell.run_command('diff -Z {} {}'.format(root_cert_path, yb_root_cert_path))
+
     def copy_certs(self, extra_vars, ssh_options):
         node_ip = ssh_options["ssh_host"]
         root_cert_path = extra_vars["root_cert_path"]

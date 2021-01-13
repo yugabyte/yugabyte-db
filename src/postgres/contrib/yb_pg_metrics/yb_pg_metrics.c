@@ -51,6 +51,9 @@ typedef enum statementType
 	Insert,
 	Delete,
 	Update,
+	Begin,
+	Commit,
+	Rollback,
 	Other,
 	Transaction,
 	AggregatePushdown,
@@ -102,7 +105,7 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                  ProcessUtilityContext context,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
                                  DestReceiver *dest, char *completionTag);
-static void ybpgm_Store();
+static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
 
 /*
  * Function used for checking if the current statement is a top level statement.
@@ -150,6 +153,9 @@ set_metric_names(void)
   strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
   strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
   strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
+  strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
+  strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
+  strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
@@ -533,19 +539,18 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
    *   use this not-null check for now.
    */
   if (isTopLevelStatement() && queryDesc->totaltime) {
-	uint64_t time;
-
 	InstrEndLoop(queryDesc->totaltime);
-	time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64 rows_count = queryDesc->estate->es_processed;
 
-	ybpgm_Store(type, time);
+	ybpgm_Store(type, time, rows_count);
 
 	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
-	  ybpgm_Store(Transaction, time);
+	  ybpgm_Store(Transaction, time, rows_count);
 
 	if (IsA(queryDesc->planstate, AggState) &&
 		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-	  ybpgm_Store(AggregatePushdown, time);
+	  ybpgm_Store(AggregatePushdown, time, rows_count);
   }
 
   IncStatementNestingLevel();
@@ -579,6 +584,36 @@ ybpgm_memsize(void)
 }
 
 /*
+ * Get the statement type for a transactional statement.
+ */
+static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
+  statementType type = Other;
+  switch (stmt->kind) {
+    case TRANS_STMT_BEGIN:
+    case TRANS_STMT_START:
+      type = Begin;
+      break;
+    case TRANS_STMT_COMMIT:
+    case TRANS_STMT_COMMIT_PREPARED:
+      type = Commit;
+      break;
+    case TRANS_STMT_ROLLBACK:
+    case TRANS_STMT_ROLLBACK_TO:
+    case TRANS_STMT_ROLLBACK_PREPARED:
+      type = Rollback;
+      break;
+    case TRANS_STMT_SAVEPOINT:
+    case TRANS_STMT_RELEASE:
+    case TRANS_STMT_PREPARE:
+      type = Other;
+      break;
+    default:
+      elog(ERROR, "unrecognized statement kind: %d", stmt->kind);
+  }
+  return type;
+}
+
+/*
  * Hook used for tracking "Other" statements.
  */
 static void
@@ -592,6 +627,15 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
   {
     instr_time start;
     instr_time end;
+    statementType type;
+
+    if (IsA(pstmt->utilityStmt, TransactionStmt)) {
+      TransactionStmt *stmt = (TransactionStmt *)(pstmt->utilityStmt);
+      type = ybpgm_getStatementType(stmt);
+    } else {
+      type = Other;
+    }
+
     INSTR_TIME_SET_CURRENT(start);
 
     IncBlockNestingLevel();
@@ -616,7 +660,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
-    ybpgm_Store(Other, INSTR_TIME_GET_MICROSEC(end));
+    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end), 0 /* rows */);
   }
   else
   {
@@ -632,7 +676,9 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-ybpgm_Store(statementType type, uint64_t time){
-  ybpgm_table[type].calls++;
-  ybpgm_table[type].total_time += time;
+ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
+  struct ybpgmEntry *entry = &ybpgm_table[type];
+  entry->total_time += time;
+  entry->calls += 1;
+  entry->rows += rows;
 }

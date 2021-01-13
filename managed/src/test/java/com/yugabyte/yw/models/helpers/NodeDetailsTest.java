@@ -41,6 +41,7 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.SoftwareInstalled);
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
     activeStates.add(NodeDetails.NodeState.UpdateGFlags);
+    activeStates.add(NodeDetails.NodeState.UpdateCert);
     activeStates.add(NodeDetails.NodeState.Live);
     activeStates.add(NodeDetails.NodeState.Stopping);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
@@ -58,6 +59,7 @@ public class NodeDetailsTest {
     Set<NodeDetails.NodeState> queryableStates = new HashSet<>();
     queryableStates.add(NodeDetails.NodeState.UpgradeSoftware);
     queryableStates.add(NodeDetails.NodeState.UpdateGFlags);
+    queryableStates.add(NodeDetails.NodeState.UpdateCert);
     queryableStates.add(NodeDetails.NodeState.Live);
     queryableStates.add(NodeDetails.NodeState.ToBeRemoved);
     queryableStates.add(NodeDetails.NodeState.Removing);

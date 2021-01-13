@@ -92,20 +92,31 @@ public class ModelFactory {
   public static Universe createUniverse(long customerId) {
     return createUniverse("Test Universe", customerId);
   }
+  public static Universe createUniverse(long customerId, UUID rootCA) {
+    return createUniverse("Test Universe", UUID.randomUUID(), customerId,
+                          Common.CloudType.aws, null, rootCA);
+  }
   public static Universe createUniverse(String universeName, long customerId) {
     return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
   public static Universe createUniverse(String universeName, UUID universeUUID) {
     return createUniverse(universeName, universeUUID, 1L, Common.CloudType.aws);
   }
-  public static Universe createUniverse(String universeName, long customerId, Common.CloudType cloudType) {
+  public static Universe createUniverse(String universeName, long customerId,
+                                        Common.CloudType cloudType) {
     return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType) {
+  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
+                                        Common.CloudType cloudType) {
     return createUniverse(universeName, universeUUID, customerId, cloudType, null);
   }
-  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType,
-                                        PlacementInfo pi) {
+  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
+                                        Common.CloudType cloudType, PlacementInfo pi) {
+    return createUniverse(universeName, universeUUID, customerId, cloudType, pi, null);
+  }
+  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId,
+                                        Common.CloudType cloudType, PlacementInfo pi,
+                                        UUID rootCA) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     Provider p = Provider.get(c.uuid, cloudType);
@@ -120,6 +131,7 @@ public class ModelFactory {
     params.universeUUID = universeUUID;
     params.nodeDetailsSet = new HashSet<>();
     params.nodePrefix = universeName;
+    params.rootCA = rootCA;
     params.upsertPrimaryCluster(userIntent, pi);
     Universe u = Universe.create(params, customerId);
     c.addUniverseUUID(u.universeUUID);
