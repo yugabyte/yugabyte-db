@@ -2879,7 +2879,6 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
     return Status::OK();
   }
 
- private:
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
     if (now != result) {
       tablet_.clock()->Update(result);
