@@ -22,7 +22,7 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 - YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are CentOS 7.x and RHEL 7.x.
 - Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#ulimits) on each node running a YugabyteDB server.
-- Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
+- Use [ntp or chrony](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 
@@ -131,7 +131,7 @@ For Yugabyte Platform, the SSH port is changed for added security.
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
+For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/). Below are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 
