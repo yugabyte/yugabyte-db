@@ -1636,6 +1636,19 @@ struct ReadContext {
     return tablet->IsTransactionalRequest(req->pgsql_batch_size() > 0);
   }
 
+  bool is_for_backfill() const {
+    if (req->pgsql_batch_size() > 0) {
+      if (req->pgsql_batch(0).is_for_backfill()) {
+        // Currently, read requests for backfill should only come by themselves, not in batches.
+        DCHECK_EQ(req->pgsql_batch_size(), 1);
+        return true;
+      }
+    }
+    // YCQL doesn't send read RPCs for scanning the indexed table and instead directly reads using
+    // iterator, so there's no equivalent logic for YCQL here.
+    return false;
+  }
+
   // Picks read based for specified read context.
   CHECKED_STATUS PickReadTime(server::Clock* clock) {
     if (!read_time) {
@@ -2066,10 +2079,17 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) {
-  auto read_tx = VERIFY_RESULT(
-      tablet::ScopedReadOperation::Create(
-          read_context->tablet.get(), read_context->require_lease, read_context->read_time));
-  read_context->used_read_time = read_tx.read_time();
+  ReadHybridTime read_time;
+  tablet::ScopedReadOperation read_tx;
+  if (read_context->is_for_backfill()) {
+    read_time = read_context->read_time;
+  } else {
+    read_tx = VERIFY_RESULT(
+        tablet::ScopedReadOperation::Create(
+            read_context->tablet.get(), read_context->require_lease, read_context->read_time));
+    read_time = read_tx.read_time();
+  }
+  read_context->used_read_time = read_time;
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -2088,7 +2108,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
           &HandleRedisReadRequestAsync,
           Unretained(read_context->tablet.get()),
           read_context->context->GetClientDeadline(),
-          read_tx.read_time(),
+          read_time,
           redis_read_req,
           Unretained(read_context->resp->add_redis_batch()),
           cb);
@@ -2136,7 +2156,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(read_context->tablet->HandleQLReadRequest(
-          read_context->context->GetClientDeadline(), read_tx.read_time(), ql_read_req,
+          read_context->context->GetClientDeadline(), read_time, ql_read_req,
           read_context->req->transaction(), &result));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
@@ -2156,7 +2176,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       TRACE("Start HandlePgsqlReadRequest");
       size_t num_rows_read;
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
-          read_context->context->GetClientDeadline(), read_tx.read_time(),
+          read_context->context->GetClientDeadline(), read_time,
           !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
           read_context->req->transaction(), &result, &num_rows_read));
 
