@@ -31,7 +31,9 @@
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(allow_insecure_connections);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(certs_dir);
+DECLARE_string(ssl_protocols);
 DECLARE_string(TEST_public_hostname_suffix);
 
 namespace yb {
@@ -65,10 +67,12 @@ class SecureConnectionTest : public client::KeyValueTableTest {
     return Status::OK();
   }
 
+  void TestSimpleOps();
+
   std::unique_ptr<rpc::SecureContext> secure_context_;
 };
 
-TEST_F(SecureConnectionTest, Simple) {
+void SecureConnectionTest::TestSimpleOps() {
   CreateTable(client::Transactional::kFalse);
 
   const int32_t kKey = 1;
@@ -84,6 +88,21 @@ TEST_F(SecureConnectionTest, Simple) {
     auto value = ASSERT_RESULT(SelectRow(NewSession(), kKey));
     ASSERT_EQ(kValue, value);
   }
+}
+
+TEST_F(SecureConnectionTest, Simple) {
+  TestSimpleOps();
+}
+
+class SecureConnectionTLS12Test : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_ssl_protocols = "tls12";
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, TLS12, SecureConnectionTLS12Test) {
+  TestSimpleOps();
 }
 
 TEST_F(SecureConnectionTest, BigWrite) {
