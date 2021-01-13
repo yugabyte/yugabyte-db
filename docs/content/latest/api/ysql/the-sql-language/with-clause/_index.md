@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `WITH` clause (sometimes known as the _common table expression_) can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
+The `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
 
 {{< tip title="Download a zip of WITH clause demonstration scripts" >}}
 
@@ -30,7 +30,9 @@ After unzipping it on a convenient new directory, you'll see a `README.txt`.  It
 
 ## Introduction
 
-The `WITH` clause lets you name one or several SQL substatements. With the exception of the special `WITH` clause recursive substatement, qqq
+The `WITH` clause lets you name one or several SQL substatements. Such a substatement may be any of these kinds: `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE`. And the `WITH` clause is legal at the start of any of these kinds of statement : `SELECT`, `INSERT`, `UPDATE`, or `DELETE`. (`VALUES` is missing from the second list.) There are two kinds of `WITH` clause substatement: the _ordinary_ kind; and the _recursive_ kind.
+
+The statement text that the ordinary kind of `WITH` clause substatement names has the same syntax as the a SQL statement that you issue at top level. However, the recursive kind of substatement may be used _only_ in a `WITH` clause. Each such `WITH` clause component (the name, an optional parenthesized column list) and the substatement itself) is sometimes known as a _common table expression_.
 
 A `WITH` clause can, for example, be used to provide values for, say, an `INSERT` like this:
 
@@ -47,6 +49,14 @@ select k, v from a;
 
 select k, v from t1 order by k;
 ```
+
+This component:
+
+```
+a(k, v) as (select g.v, g.v*2 from generate_series(11, 20) as g(v))
+```
+
+is an example of a common table expression. The YSQL documentation avoids using the term _common table expression_
 
 This is the result:
 

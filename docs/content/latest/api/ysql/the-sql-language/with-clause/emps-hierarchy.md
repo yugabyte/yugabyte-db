@@ -1,7 +1,7 @@
 ---
-title: Case study—using a WITH clause recursive substatement to traverse a hierarchy 
+title: Case study—using a WITH clause recursive substatement to traverse an employee hierarchy 
 linkTitle: case study—traversing an employee hierarchy
-headerTitle: Case study—using a WITH clause recursive substatement to traverse a hierarchy
+headerTitle: Case study—traversing an employee a hierarchy
 description: Case study to show how to traverse a hierarchy, breadth or depth first, using a WITH clause recursive substatement.
 menu:
   latest:
