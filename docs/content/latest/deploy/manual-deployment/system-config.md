@@ -24,6 +24,13 @@ Do the following configuration steps on each of the nodes in the cluster.
 $ sudo yum install -y ntp
 ```
 
+{{< note title="Note" >}}
+As of CentOS 8, `ntp` is no longer available and has been replaced by `chrony`. To install, run:
+```sh
+$ sudo yum install -y chrony
+```
+{{< /note >}}
+
 ## ulimits
 
 In Linux, `ulimit` is used to limit and control the usage of system resources (threads, files, and network connections) on a per-process or per-user basis.
