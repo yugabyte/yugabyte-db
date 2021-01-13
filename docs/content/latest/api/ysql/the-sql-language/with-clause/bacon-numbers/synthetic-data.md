@@ -227,7 +227,7 @@ Again, you see the expected nine edges:
  Steve  | James  | King Lear
 ```
 
-Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the recursive `WITH` clause substatement that finds the paths.
+Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the `WITH` clause recursive substatement that finds the paths.
 
 ## Find the paths
 
