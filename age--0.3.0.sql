@@ -1286,7 +1286,7 @@ CREATE AGGREGATE ag_catalog.age_stdevp (float8)
 );
 
 --
--- aggregate transfers function for min & max
+-- aggregate transfer functions for min & max
 --
 -- max
 CREATE FUNCTION ag_catalog.age_agtype_larger_aggtransfn(agtype, agtype)
@@ -1321,6 +1321,46 @@ CREATE AGGREGATE ag_catalog.age_min (agtype)
    finalfunc_modify = read_only,
    sortop = <,
    parallel = safe
+);
+
+--
+-- aggregate transfer/final functions for percentileCont & percentileDisc
+--
+CREATE FUNCTION ag_catalog.age_percentile_aggtransfn(internal, float8, float8)
+RETURNS internal
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_percentile_cont_aggfinalfn(internal)
+RETURNS float8
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_percentile_disc_aggfinalfn(internal)
+RETURNS float8
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE AGGREGATE ag_catalog.age_percentilecont(float8, float8)
+(
+    stype = internal,
+    sfunc = ag_catalog.age_percentile_aggtransfn,
+    finalfunc = ag_catalog.age_percentile_cont_aggfinalfn,
+    parallel = safe
+);
+
+CREATE AGGREGATE ag_catalog.age_percentiledisc(float8, float8)
+(
+    stype = internal,
+    sfunc = ag_catalog.age_percentile_aggtransfn,
+    finalfunc = ag_catalog.age_percentile_disc_aggfinalfn,
+    parallel = safe
 );
 
 --

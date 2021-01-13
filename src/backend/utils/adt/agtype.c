@@ -30,7 +30,10 @@
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_collation_d.h"
+#include "catalog/pg_operator_d.h"
+#include "executor/nodeAgg.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
@@ -56,6 +59,19 @@ typedef struct agtype_in_state
     agtype_parse_state *parse_state;
     agtype_value *res;
 } agtype_in_state;
+
+/* State structure for Percentile aggregate functions */
+typedef struct PercentileGroupAggState
+{
+    /* percentile value */
+    float8 percentile;
+    /* Sort object we're accumulating data in: */
+    Tuplesortstate *sortstate;
+    /* Number of normal rows inserted into sortstate: */
+    int64 number_of_rows;
+    /* Have we already done tuplesort_performsort? */
+    bool sort_done;
+} PercentileGroupAggState;
 
 typedef enum /* type categories for datum_to_agtype */
 {
@@ -7255,4 +7271,205 @@ Datum age_agtype_smaller_aggtransfn(PG_FUNCTION_ARGS)
     agtype_smaller = (test <= 0) ? agtype_arg1 : agtype_arg2;
 
     PG_RETURN_POINTER(agtype_smaller);
+}
+
+/* borrowed from PGs float8 routines for percentile_cont */
+static Datum float8_lerp(Datum lo, Datum hi, double pct)
+{
+    double loval = DatumGetFloat8(lo);
+    double hival = DatumGetFloat8(hi);
+
+    return Float8GetDatum(loval + (pct * (hival - loval)));
+}
+
+/* Code borrowed and adjusted from PG's ordered_set_transition function */
+PG_FUNCTION_INFO_V1(age_percentile_aggtransfn);
+
+Datum age_percentile_aggtransfn(PG_FUNCTION_ARGS)
+{
+    PercentileGroupAggState *pgastate;
+
+    /* verify we are in an aggregate context */
+    Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
+
+    /* if this is the first invocation, create the state */
+    if (PG_ARGISNULL(0))
+    {
+        MemoryContext old_mcxt;
+        float8 percentile;
+
+        /* validate the percentile */
+        if (PG_ARGISNULL(2))
+            ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+                errmsg("percentile value NULL is not a valid numeric value")));
+
+        percentile = PG_GETARG_FLOAT8(2);
+        if (percentile < 0 || percentile > 1 || isnan(percentile))
+        ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+                        errmsg("percentile value %g is not between 0 and 1",
+                               percentile)));
+
+        /* switch to the correct aggregate context */
+        old_mcxt = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
+        /* create and initialize the state */
+        pgastate = palloc(sizeof(PercentileGroupAggState));
+        pgastate->percentile = percentile;
+        /*
+         * Percentiles need to be calculated from a sorted set. We are only
+         * using float8 values, using the less than operator, and flagging
+         * randomAccess to true - as we can potentially be reusing this
+         * sort multiple times in the same query.
+         */
+        pgastate->sortstate = tuplesort_begin_datum(FLOAT8OID,
+                                                    Float8LessOperator,
+                                                    InvalidOid, false, work_mem,
+                                                    NULL, true);
+        pgastate->number_of_rows = 0;
+        pgastate->sort_done = false;
+
+        /* restore the old context */
+        MemoryContextSwitchTo(old_mcxt);
+    }
+    /* otherwise, retrieve the state */
+    else
+        pgastate = (PercentileGroupAggState *) PG_GETARG_POINTER(0);
+
+    /* Load the datum into the tuplesort object, but only if it's not null */
+    if (!PG_ARGISNULL(1))
+    {
+        tuplesort_putdatum(pgastate->sortstate, PG_GETARG_DATUM(1), false);
+        pgastate->number_of_rows++;
+    }
+    /* return the state */
+    PG_RETURN_POINTER(pgastate);
+}
+
+/* Code borrowed and adjusted from PG's percentile_cont_final function */
+PG_FUNCTION_INFO_V1(age_percentile_cont_aggfinalfn);
+
+Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
+{
+    PercentileGroupAggState *pgastate;
+    float8 percentile;
+    int64 first_row = 0;
+    int64 second_row = 0;
+    Datum val;
+    Datum first_val;
+    Datum second_val;
+    double proportion;
+    bool isnull;
+
+    /* verify we are in an aggregate context */
+    Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
+
+    /* If there were no regular rows, the result is NULL */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    /* retrieve the state and percentile */
+    pgastate = (PercentileGroupAggState *) PG_GETARG_POINTER(0);
+    percentile = pgastate->percentile;
+
+    /* number_of_rows could be zero if we only saw NULL input values */
+    if (pgastate->number_of_rows == 0)
+        PG_RETURN_NULL();
+
+    /* Finish the sort, or rescan if we already did */
+    if (!pgastate->sort_done)
+    {
+        tuplesort_performsort(pgastate->sortstate);
+        pgastate->sort_done = true;
+    }
+    else
+        tuplesort_rescan(pgastate->sortstate);
+
+    /* calculate the percentile cont*/
+    first_row = floor(percentile * (pgastate->number_of_rows - 1));
+    second_row = ceil(percentile * (pgastate->number_of_rows - 1));
+
+    Assert(first_row < pgastate->number_of_rows);
+
+    if (!tuplesort_skiptuples(pgastate->sortstate, first_row, true))
+        elog(ERROR, "missing row in percentile_cont");
+
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &first_val, &isnull, NULL))
+        elog(ERROR, "missing row in percentile_cont");
+    if (isnull)
+        PG_RETURN_NULL();
+
+    if (first_row == second_row)
+    {
+        val = first_val;
+    }
+    else
+    {
+        if (!tuplesort_getdatum(pgastate->sortstate, true, &second_val, &isnull, NULL))
+            elog(ERROR, "missing row in percentile_cont");
+
+        if (isnull)
+            PG_RETURN_NULL();
+
+        proportion = (percentile * (pgastate->number_of_rows - 1)) - first_row;
+        val = float8_lerp(first_val, second_val, proportion);
+    }
+
+    PG_RETURN_DATUM(val);
+}
+
+/* Code borrowed and adjusted from PG's percentile_disc_final function */
+PG_FUNCTION_INFO_V1(age_percentile_disc_aggfinalfn);
+
+Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
+{
+    PercentileGroupAggState *pgastate;
+    double percentile;
+    Datum val;
+    bool isnull;
+    int64 rownum;
+
+    Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
+
+    /* If there were no regular rows, the result is NULL */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    pgastate = (PercentileGroupAggState *) PG_GETARG_POINTER(0);
+    percentile = pgastate->percentile;
+
+    /* number_of_rows could be zero if we only saw NULL input values */
+    if (pgastate->number_of_rows == 0)
+        PG_RETURN_NULL();
+
+    /* Finish the sort, or rescan if we already did */
+    if (!pgastate->sort_done)
+    {
+        tuplesort_performsort(pgastate->sortstate);
+        pgastate->sort_done = true;
+    }
+    else
+        tuplesort_rescan(pgastate->sortstate);
+
+    /*----------
+     * We need the smallest K such that (K/N) >= percentile.
+     * N>0, therefore K >= N*percentile, therefore K = ceil(N*percentile).
+     * So we skip K-1 rows (if K>0) and return the next row fetched.
+     *----------
+     */
+    rownum = (int64) ceil(percentile * pgastate->number_of_rows);
+    Assert(rownum <= pgastate->number_of_rows);
+
+    if (rownum > 1)
+    {
+        if (!tuplesort_skiptuples(pgastate->sortstate, rownum - 1, true))
+            elog(ERROR, "missing row in percentile_disc");
+    }
+
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &val, &isnull, NULL))
+        elog(ERROR, "missing row in percentile_disc");
+
+    /* We shouldn't have stored any nulls, but do the right thing anyway */
+    if (isnull)
+        PG_RETURN_NULL();
+    else
+        PG_RETURN_DATUM(val);
 }

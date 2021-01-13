@@ -4342,39 +4342,81 @@ LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agt...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
--- aggregate functions stdev() & stdevp()
+-- aggregate functions stDev() & stDevP()
 --
-SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN stdev(u.gpa), stdevp(u.gpa) $$)
-AS (stdev agtype, stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN stDev(u.gpa), stDevP(u.gpa) $$)
+AS (stDev agtype, stDevP agtype);
        stdev       |      stdevp       
 -------------------+-------------------
  0.549566929066705 | 0.508800109100231
 (1 row)
 
 -- should return 0
-SELECT * FROM cypher('UCSC', $$ RETURN stdev(NULL) $$) AS (stdev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDev(NULL) $$) AS (stDev agtype);
  stdev 
 -------
  0.0
 (1 row)
 
-SELECT * FROM cypher('UCSC', $$ RETURN stdevp(NULL) $$) AS (stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDevP(NULL) $$) AS (stDevP agtype);
  stdevp 
 --------
  0.0
 (1 row)
 
 -- should fail
-SELECT * FROM cypher('UCSC', $$ RETURN stdev() $$) AS (stdev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDev() $$) AS (stDev agtype);
 ERROR:  function ag_catalog.age_stdev() does not exist
-LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN stdev() $$) AS (stdev...
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN stDev() $$) AS (stDev...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM cypher('UCSC', $$ RETURN stdevp() $$) AS (stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDevP() $$) AS (stDevP agtype);
 ERROR:  function ag_catalog.age_stdevp() does not exist
-LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN stdevp() $$) AS (stde...
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN stDevP() $$) AS (stDe...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
+-- aggregate functions percentileCont() & percentileDisc()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55), percentileDisc(u.gpa, .55), percentileCont(u.gpa, .9), percentileDisc(u.gpa, .9) $$)
+AS (percentileCont1 agtype, percentileDisc1 agtype, percentileCont2 agtype, percentileDisc2 agtype);
+ percentilecont1 | percentiledisc1 | percentilecont2 | percentiledisc2 
+-----------------+-----------------+-----------------+-----------------
+ 3.765           | 3.75            | 3.94            | 4.0
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55) $$)
+AS (percentileCont agtype);
+ percentilecont 
+----------------
+ 3.765
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileDisc(u.gpa, .55) $$)
+AS (percentileDisc agtype);
+ percentiledisc 
+----------------
+ 3.75
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('UCSC', $$ RETURN percentileCont(NULL, .5) $$) AS (percentileCont agtype);
+ percentilecont 
+----------------
+ 
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(NULL, .5) $$) AS (percentileDisc agtype);
+ percentiledisc 
+----------------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN percentileCont(.5, NULL) $$) AS (percentileCont agtype);
+ERROR:  percentile value NULL is not a valid numeric value
+SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(.5, NULL) $$) AS (percentileDisc agtype);
+ERROR:  percentile value NULL is not a valid numeric value
 --
 -- Cleanup
 --

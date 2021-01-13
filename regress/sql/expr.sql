@@ -1826,16 +1826,33 @@ SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
 
 --
--- aggregate functions stdev() & stdevp()
+-- aggregate functions stDev() & stDevP()
 --
-SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN stdev(u.gpa), stdevp(u.gpa) $$)
-AS (stdev agtype, stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN stDev(u.gpa), stDevP(u.gpa) $$)
+AS (stDev agtype, stDevP agtype);
 -- should return 0
-SELECT * FROM cypher('UCSC', $$ RETURN stdev(NULL) $$) AS (stdev agtype);
-SELECT * FROM cypher('UCSC', $$ RETURN stdevp(NULL) $$) AS (stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDev(NULL) $$) AS (stDev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDevP(NULL) $$) AS (stDevP agtype);
 -- should fail
-SELECT * FROM cypher('UCSC', $$ RETURN stdev() $$) AS (stdev agtype);
-SELECT * FROM cypher('UCSC', $$ RETURN stdevp() $$) AS (stdevp agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDev() $$) AS (stDev agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN stDevP() $$) AS (stDevP agtype);
+
+--
+-- aggregate functions percentileCont() & percentileDisc()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55), percentileDisc(u.gpa, .55), percentileCont(u.gpa, .9), percentileDisc(u.gpa, .9) $$)
+AS (percentileCont1 agtype, percentileDisc1 agtype, percentileCont2 agtype, percentileDisc2 agtype);
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55) $$)
+AS (percentileCont agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileDisc(u.gpa, .55) $$)
+AS (percentileDisc agtype);
+-- should return null
+SELECT * FROM cypher('UCSC', $$ RETURN percentileCont(NULL, .5) $$) AS (percentileCont agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(NULL, .5) $$) AS (percentileDisc agtype);
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN percentileCont(.5, NULL) $$) AS (percentileCont agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(.5, NULL) $$) AS (percentileDisc agtype);
 
 --
 -- Cleanup
