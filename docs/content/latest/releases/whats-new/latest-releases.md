@@ -40,7 +40,7 @@ Note: Content will be added as new notable features and changes are available in
 
 **Jan 14, 2021**
 
-**Build:** `2.5.1.0-b2`
+**Build:** `2.5.1.0-b153`
 
 #### Downloads
 
@@ -60,7 +60,7 @@ Note: Content will be added as new notable features and changes are available in
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.5.1.0-b2
+docker pull yugabytedb/yugabyte:2.5.1.0-b153
 ```
 
 ### **New features**
