@@ -2768,7 +2768,7 @@ TEST_F_EX(PgLibPqTest,
 // This test is for issue #6208.
 TEST_F_EX(
     PgLibPqTest,
-    CreateUniqueIndexWriteAfterSafeTime,
+    YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWriteAfterSafeTime),
     PgLibPqTestIndexBackfillSlow) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const std::string& kIndexName = "i";
