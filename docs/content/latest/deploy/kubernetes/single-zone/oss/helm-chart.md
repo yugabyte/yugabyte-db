@@ -145,10 +145,10 @@ enableLoadBalancer=False --namespace yb-demo
 
 {{< note title="Important" >}}
 
-On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 8GB memory so 
-the cluster has room to startup. Example config in macOS:
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so 
+the cluster has room to startup. Example command:
 ```
-VBoxManage modifyvm "minikube" --cpus 4 --memory 8192
+minikube start --cpus 4 --memory 5120
 ```
 
 {{< /note >}}
