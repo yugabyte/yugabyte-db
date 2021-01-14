@@ -188,7 +188,7 @@ class TransactionState {
   }
 
   std::string ToString() const {
-    return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
+    return Format("{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
                       " request_queue: $5 first_entry_raft_index: $6 }",
                   id_, last_touch_, TransactionStatus_Name(status_),
                   involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
@@ -436,6 +436,25 @@ class TransactionState {
       }
       resend_applying_time_ = now_physical +
           std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
+    }
+  }
+
+  void AddInvolvedTablets(
+      const TabletId& source_tablet_id, const std::vector<TabletId>& tablet_ids) {
+    auto source_it = involved_tablets_.find(source_tablet_id);
+    if (source_it == involved_tablets_.end()) {
+      LOG(FATAL) << "Unknown involved tablet: " << source_tablet_id;
+      return;
+    }
+    for (const auto& tablet_id : tablet_ids) {
+      if (involved_tablets_.emplace(tablet_id, source_it->second).second) {
+        ++tablets_with_not_applied_intents_;
+      }
+    }
+    if (!source_it->second.all_intents_applied) {
+      // Mark source tablet as if intents have been applied for it.
+      --tablets_with_not_applied_intents_;
+      source_it->second.all_intents_applied = true;
     }
   }
 
@@ -1193,6 +1212,77 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       >
   > ManagedTransactions;
 
+  void SendUpdateTransactionRequest(
+      const NotifyApplyingData& action, const CoarseTimePoint& deadline) {
+    VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
+
+    tserver::UpdateTransactionRequestPB req;
+    req.set_tablet_id(action.tablet);
+    auto& state = *req.mutable_state();
+    state.set_transaction_id(action.transaction.data(), action.transaction.size());
+    state.set_status(TransactionStatus::APPLYING);
+    state.add_tablets(context_.tablet_id());
+    state.set_commit_hybrid_time(action.commit_time.ToUint64());
+    state.set_sealed(action.sealed);
+
+    auto handle = rpcs_.Prepare();
+    if (handle != rpcs_.InvalidHandle()) {
+      *handle = UpdateTransaction(
+          deadline,
+          nullptr /* remote_tablet */,
+          context_.client_future().get(),
+          &req,
+          [this, handle, action]
+              (const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
+            client::UpdateClock(resp, &context_);
+            rpcs_.Unregister(handle);
+            if (status.ok()) {
+              return;
+            }
+            LOG_WITH_PREFIX(WARNING)
+                << "Failed to send apply for transaction: " << action.transaction << ": "
+                << status;
+            const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
+            const bool tablet_has_been_split = !split_child_tablet_ids.empty();
+            if (status.IsNotFound() || tablet_has_been_split) {
+              std::lock_guard<std::mutex> lock(managed_mutex_);
+              auto it = managed_transactions_.find(action.transaction);
+              if (it == managed_transactions_.end()) {
+                return;
+              }
+              managed_transactions_.modify(
+                  it, [this, &action, &split_child_tablet_ids,
+                       tablet_has_been_split](TransactionState& state) {
+                    if (tablet_has_been_split) {
+                      // We need to update involved tablets map.
+                      LOG_WITH_PREFIX(INFO) << Format(
+                          "Tablet $0 has been split into: $1", action.tablet,
+                          split_child_tablet_ids);
+                      state.AddInvolvedTablets(action.tablet, split_child_tablet_ids);
+                    } else {
+                      // Tablet has been deleted (not split), so we should mark it as applied to
+                      // be able to cleanup the transaction.
+                      tserver::TransactionStatePB transaction_state;
+                      transaction_state.add_tablets(action.tablet);
+                      WARN_NOT_OK(
+                          state.AppliedInOneOfInvolvedTablets(transaction_state),
+                          "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
+                    }
+                  });
+              if (tablet_has_been_split) {
+                const auto new_deadline = TransactionRpcDeadline();
+                NotifyApplyingData new_action = action;
+                for (const auto& split_child_tablet_id : split_child_tablet_ids) {
+                  new_action.tablet = split_child_tablet_id;
+                  SendUpdateTransactionRequest(new_action, new_deadline);
+                }
+              }
+            }
+          });
+      (**handle).SendRpc();
+    }
+  }
+
   void ExecutePostponedLeaderActions(PostponedLeaderActions* actions) {
     for (const auto& p : actions->complete_with_status) {
       p.request->CompleteWithStatus(p.status);
@@ -1205,45 +1295,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (!actions->notify_applying.empty()) {
       auto deadline = TransactionRpcDeadline();
       for (const auto& action : actions->notify_applying) {
-        VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
-
-        tserver::UpdateTransactionRequestPB req;
-        req.set_tablet_id(action.tablet);
-        auto& state = *req.mutable_state();
-        state.set_transaction_id(action.transaction.data(), action.transaction.size());
-        state.set_status(TransactionStatus::APPLYING);
-        state.add_tablets(context_.tablet_id());
-        state.set_commit_hybrid_time(action.commit_time.ToUint64());
-        state.set_sealed(action.sealed);
-
-        auto handle = rpcs_.Prepare();
-        if (handle != rpcs_.InvalidHandle()) {
-          *handle = UpdateTransaction(
-              deadline,
-              nullptr /* remote_tablet */,
-              context_.client_future().get(),
-              &req,
-              [this, handle, txn_id = action.transaction, tablet = action.tablet]
-                  (const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
-                client::UpdateClock(resp, &context_);
-                rpcs_.Unregister(handle);
-                LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send apply: " << status;
-                // Tablet was deleted, so we should mark it as applied to cleanup transaction.
-                if (status.IsNotFound()) {
-                  std::lock_guard<std::mutex> lock(managed_mutex_);
-                  auto it = managed_transactions_.find(txn_id);
-                  if (it != managed_transactions_.end()) {
-                    managed_transactions_.modify(it, [&tablet](TransactionState& state) {
-                      tserver::TransactionStatePB transaction_state;
-                      transaction_state.add_tablets(tablet);
-                      WARN_NOT_OK(state.AppliedInOneOfInvolvedTablets(transaction_state),
-                                  "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
-                    });
-                  }
-                }
-              });
-          (**handle).SendRpc();
-        }
+        SendUpdateTransactionRequest(action, deadline);
       }
     }
 

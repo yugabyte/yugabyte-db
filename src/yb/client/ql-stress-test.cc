@@ -388,7 +388,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   }
 
   size_t total_entries = 0;
-  size_t expected_leaders = table_.table()->GetPartitions().size();
+  size_t expected_leaders = table_.table()->GetPartitionCount();
   ASSERT_OK(WaitFor(
       std::bind(&QLStressTest::CheckRetryableRequestsCountsAndLeaders, this,
                 expected_leaders, &total_entries),
@@ -573,9 +573,9 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   // Give new leader some time to request lease.
   // TODO wait for specific event.
   std::this_thread::sleep_for(3s);
-  auto temp_leader_safe_time = temp_leader->tablet()->SafeTime(tablet::RequireLease::kTrue);
+  auto temp_leader_safe_time = ASSERT_RESULT(
+      temp_leader->tablet()->SafeTime(tablet::RequireLease::kTrue));
   LOG(INFO) << "Safe time: " << temp_leader_safe_time;
-  ASSERT_FALSE(temp_leader_safe_time.is_valid());
 
   LOG(INFO) << "Transferring leadership from " << temp_leader->permanent_uuid()
             << " back to " << old_leader->permanent_uuid();

@@ -707,30 +707,7 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
   return impl_->ModifyFlushedFrontier(frontier);
 }
 
-bool HasPendingCompaction(rocksdb::DB* db) {
-  uint64_t compaction_pending = 0;
-  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-  return compaction_pending > 0;
-}
-
-bool HasRunningCompaction(rocksdb::DB* db) {
-  uint64_t running_compactions = 0;
-  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-  return running_compactions > 0;
-}
-
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  auto s = ForceFullRocksDBCompactAsync(db);
-  if (s.ok()) {
-    while (HasPendingCompaction(db) || HasRunningCompaction(db)) {
-      std::this_thread::sleep_for(10ms);
-    }
-  } else {
-    LOG(WARNING) << s;
-  }
-}
-
-Status ForceFullRocksDBCompactAsync(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");

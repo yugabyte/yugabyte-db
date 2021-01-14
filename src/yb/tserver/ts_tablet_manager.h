@@ -48,6 +48,8 @@
 #include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/constants.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -101,7 +103,8 @@ typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 struct TabletCreationMetaData;
-typedef boost::container::static_vector<TabletCreationMetaData, 2> SplitTabletsCreationMetaData;
+typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
+    SplitTabletsCreationMetaData;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
@@ -222,25 +225,41 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   virtual CHECKED_STATUS
       StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
-  // Generate an incremental tablet report.
+  // Generate a tablet report.
   //
   // This will report any tablets which have changed since the last acknowleged
   // tablet report. Once the report is successfully transferred, call
   // MarkTabletReportAcknowledged() to clear the incremental state. Otherwise, the
   // next tablet report will continue to include the same tablets until one
   // is acknowleged.
+  // 'include_bootstrap' flag indicates whether to include bootstrapped tablets that have not
+  // changed.  Normal reports include bootstrap information on every HB, but full reports do not.
   //
   // This is thread-safe to call along with tablet modification, but not safe
   // to call from multiple threads at the same time.
-  void GenerateIncrementalTabletReport(master::TabletReportPB* report);
+  void GenerateTabletReport(master::TabletReportPB* report, bool include_bootstrap = true);
 
-  // Generate a full tablet report and reset any incremental state tracking.
-  void GenerateFullTabletReport(master::TabletReportPB* report);
+  // Start a full tablet report and reset any incremental state tracking.
+  void StartFullTabletReport(master::TabletReportPB* report);
 
-  // Mark that the master successfully received and processed the given
-  // tablet report. This uses the report sequence number to "un-dirty" any
-  // tablets which have not changed since the acknowledged report.
-  void MarkTabletReportAcknowledged(const master::TabletReportPB& report);
+  // Mark that the master successfully received and processed the given tablet report.
+  // 'seq_num' - only remove tablets unchanged since the acknowledged report sequence number.
+  // 'updates' - explicitly ACK'd updates from the Master, may be a subset of request tablets.
+  // 'dirty_check' - DEBUG. Confirm we've processed all dirty tablets after a full sweep.
+  void MarkTabletReportAcknowledged(int32_t seq_num,
+                                    const master::TabletReportUpdatesPB& updates,
+                                    bool dirty_check = false);
+
+  // Adjust the max number of tablets that will be included in a single report.
+  // This is normally controlled by a master-configured GFLAG.
+  void SetReportLimit(int32_t limit) {
+    std::lock_guard<RWMutex> write_lock(mutex_);
+    report_limit_ = limit;
+  }
+  int32_t GetReportLimit() {
+    SharedLock<RWMutex> read_lock(mutex_);
+    return report_limit_;
+  }
 
   // Get all of the tablets currently hosted on this server.
   void GetTabletPeers(TabletPeers* tablet_peers,
@@ -482,8 +501,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   typedef std::unordered_map<TabletId, std::shared_ptr<tablet::TabletPeer>> TabletMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, and
-  // tablets_being_remote_bootstrapped_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_,
+  // tablets_being_compacted_after_split_ and tablets_being_remote_bootstrapped_.
   mutable RWMutex mutex_;
 
   // Map from tablet ID to tablet
@@ -499,20 +518,25 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TransitionInProgressMap transition_in_progress_ GUARDED_BY(transition_in_progress_mutex_);
   mutable std::mutex transition_in_progress_mutex_;
 
-  // Tablets to include in the next incremental tablet report.
-  // When a tablet is added/removed/added locally and needs to be
-  // reported to the master, an entry is added to this map.
+  // Tablets to include in the next tablet report. When a tablet is added/removed/added
+  // locally and needs to be reported to the master, an entry is added to this map.
+  // Tablets aren't removed from this Map until the Master acknowledges it in response.
   DirtyMap dirty_tablets_ GUARDED_BY(mutex_);
 
   typedef std::set<TabletId> TabletIdSet;
 
   TabletIdSet tablets_being_remote_bootstrapped_ GUARDED_BY(mutex_);
 
+  TabletIdSet tablets_being_compacted_after_split_ GUARDED_BY(mutex_);
+
   // Used to keep track of the number of concurrent remote bootstrap sessions per table.
   std::unordered_map<TableId, TabletIdSet> tablets_being_remote_bootstrapped_per_table_;
 
   // Next tablet report seqno.
-  std::atomic<uint32_t> next_report_seq_{0};
+  uint32_t next_report_seq_ GUARDED_BY(mutex_) = 0;
+
+  // Limit on the number of tablets to send in a single report.
+  int32_t report_limit_ GUARDED_BY(mutex_) = std::numeric_limits<int32_t>::max();
 
   MetricRegistry* metric_registry_;
 
@@ -538,6 +562,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
+
+  // Thread pool for manually triggering compactions for tablets created from a split.
+  std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 

@@ -17,6 +17,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
+  "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.4.1208",
@@ -29,6 +30,7 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.11.907",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
@@ -43,7 +45,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "1.4.193" % Test,
+  "com.h2database" % "h2" % "1.4.200" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test
 )
@@ -63,7 +65,7 @@ resolvers += {
 }
 
 lazy val groupId = "org.yb"
-libraryDependencies += groupId % "yb-client" % "0.8.1-SNAPSHOT"
+libraryDependencies += groupId % "yb-client" % "0.8.2-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"

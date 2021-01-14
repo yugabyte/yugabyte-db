@@ -19,10 +19,7 @@ result_kvs=""
 
 preflight_provision_check() {
   # Check python is installed.
-  pypath=$(sudo which python)
-  update_result_json_with_rc "Python Installed" "$?"
-
-  sudo /bin/sh -c "$pypath -c \"import os\""
+  sudo /bin/sh -c "/usr/bin/env python --version"
   update_result_json_with_rc "Sudo Access to Python" "$?"
 
   # Check for internet access.
@@ -37,8 +34,12 @@ preflight_provision_check() {
 
   if [[ $install_node_exporter = true ]]; then
     # Check node exporter isn't already installed.
-    num_proc=$(ps -ef | grep "node_exporter" | grep -v "grep" | wc -l)
-    update_result_json_with_rc "(Prometheus) No Pre-existing Node Exporter Running" "$num_proc"
+    no_node_exporter=false
+    if [[ "$(ps -ef | grep "node_exporter" | grep -v "grep" | grep -v "preflight" |
+             wc -l | tr -d ' ')" = '0' ]]; then
+      no_node_exporter=true
+    fi
+    update_result_json "(Prometheus) No Pre-existing Node Exporter Running" "$no_node_exporter"
 
     # Check prometheus files are writable.
     filepaths="/opt/prometheus /etc/prometheus /var/log/prometheus /var/run/prometheus \
@@ -95,7 +96,16 @@ check_filepath() {
 
   # Use sudo command for provision.
   if [[ "$check_type" == "provision" ]]; then
-    sudo test -w "$path" || ($check_parent && sudo test -w $(dirname "$path"))
+    # To reduce sudo footprint, use a format similar to what ansible would execute
+    # (e.g. /bin/sh -c */usr/bin/env python *)
+    if $check_parent; then
+      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+        filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
+        exit(1) if not os.access(filepath, os.W_OK) else exit();\""
+    else
+      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+        exit(1) if not os.access('$path', os.W_OK) else exit();\""
+    fi
   else
     test -w "$path" || ($check_parent && test -w $(dirname "$path"))
   fi

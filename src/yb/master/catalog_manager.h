@@ -60,6 +60,7 @@
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -287,6 +288,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the information about the specified table.
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
+
+  // Get the information about the specified colocated databsae.
+  CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                          GetColocatedTabletSchemaResponsePB* resp);
 
   // List all the running tables.
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
@@ -920,7 +925,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
       const consensus::ConsensusStatePB& consensus_state,
-      const tablet::RaftGroupStatePB& replica_state);
+      const ReportedTabletPB& report);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -929,12 +934,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO: See if we can remove this logic, as it seems confusing.
   void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                         const consensus::ConsensusStatePB* consensus_state,
-                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const ReportedTabletPB& report,
                                         const scoped_refptr<TabletInfo>& tablet_to_update);
 
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
-                                             const tablet::RaftGroupStatePB& replica_state,
+                                             const ReportedTabletPB& report,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -1022,7 +1027,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   void SendSplitTabletRequest(
-      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
   // Send the "truncate table request" to all tablets of the specified table.
@@ -1132,6 +1137,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
   CHECKED_STATUS EnableBgTasks();
+
+  // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
+  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet);
+  // Background task for automatically rebuilding system.partitions every
+  // partitions_vtable_cache_refresh_secs seconds.
+  void RebuildYQLSystemPartitions();
 
   // Set the current list of black listed nodes, which is used to track the load movement off of
   // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
@@ -1353,6 +1364,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
 
+  // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
+  std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
+
   // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
   YsqlTransactionDdl ysql_transaction_;
 
@@ -1366,6 +1380,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

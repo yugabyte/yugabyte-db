@@ -208,6 +208,7 @@ const formFieldNames = [
   'primary.enableClientToNodeEncrypt',
   'primary.enableEncryptionAtRest',
   'primary.selectEncryptionAtRestConfig',
+  'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
   'async.universeName',
@@ -234,7 +235,7 @@ const formFieldNames = [
 
 function getFormData(currentUniverse, formType, clusterType) {
   const {
-    universeDetails: { clusters, encryptionAtRestConfig }
+    universeDetails: { clusters, encryptionAtRestConfig, rootCA }
   } = currentUniverse.data;
   const cluster = getClusterByType(clusters, clusterType);
   const data = {};
@@ -276,6 +277,7 @@ function getFormData(currentUniverse, formType, clusterType) {
       return { name: key, value: userIntent.instanceTags[key] };
     });
 
+    data[clusterType].tlsCertificateId = rootCA;
     if (encryptionAtRestConfig) {
       data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
       data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;

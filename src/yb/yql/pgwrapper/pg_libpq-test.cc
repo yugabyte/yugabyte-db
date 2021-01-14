@@ -10,9 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <thread>
+
 #include "yb/gutil/strings/join.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/barrier.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_quote.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -42,6 +45,8 @@ namespace pgwrapper {
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
+  void TestUriAuth();
+
   void TestMultiBankAccount(IsolationLevel isolation);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
@@ -92,7 +97,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& db_name : names) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", QuotePgName(db_name)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", PqEscapeIdentifier(db_name)));
     ASSERT_OK(ConnectToDB(db_name));
   }
 }
@@ -102,9 +107,118 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& user_name : names) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", QuotePgName(user_name)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE USER $0", PqEscapeIdentifier(user_name)));
     ASSERT_OK(ConnectToDBAsUser("" /* db_name */, user_name));
   }
+}
+
+// Test libpq connection using URI connection string.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
+  const std::string& host = pg_ts->bind_host();
+  const uint16_t port = pg_ts->pgsql_rpc_port();
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "yugabyte");
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_user"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "yugabyte");
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("show listen_addresses"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, host);
+    }
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("show port"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, std::to_string(port));
+    }
+  }
+  // Supply database name.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    {
+      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
+      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
+      ASSERT_EQ(answer, "template1");
+    }
+  }
+  // Supply an incorrect password.  Since HBA config gives the yugabyte user trust access, postgres
+  // won't request a password, our client won't send this password, and the authentication should
+  // succeed.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    ASSERT_OK(ConnectUsingString(conn_str));
+  }
+}
+
+void PgLibPqTest::TestUriAuth() {
+  const std::string& host = pg_ts->bind_host();
+  const uint16_t port = pg_ts->pgsql_rpc_port();
+  // Don't supply password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    Result<PGConn> result = ConnectUsingString(
+        conn_str,
+        CoarseMonoClock::Now() + 2s /* deadline */);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError());
+    ASSERT_TRUE(result.status().message().ToBuffer().find("Connect failed") != std::string::npos)
+        << result.status();
+  }
+  // Supply an incorrect password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    Result<PGConn> result = ConnectUsingString(
+        conn_str,
+        CoarseMonoClock::Now() + 2s /* deadline */);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNetworkError());
+    ASSERT_TRUE(result.status().message().ToBuffer().find("Connect failed") != std::string::npos)
+        << result.status();
+  }
+  // Supply the correct password.
+  {
+    const std::string& conn_str = Format("postgres://yugabyte:yugabyte@$0:$1", host, port);
+    LOG(INFO) << "Connecting using string: " << conn_str;
+    ASSERT_OK(ConnectUsingString(conn_str));
+  }
+}
+
+// Enable authentication using password.  This scheme requests the plain password.  You may still
+// use SSL for encryption on the wire.
+class PgLibPqTestAuthPassword : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_hba_conf_csv=host all all samehost password");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriPassword), PgLibPqTestAuthPassword) {
+  TestUriAuth();
+}
+
+// Enable authentication using md5.  This scheme is a challenge and response, so the plain password
+// isn't sent.
+class PgLibPqTestAuthMd5 : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_hba_conf_csv=host all all samehost md5");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgLibPqTestAuthMd5) {
+  TestUriAuth();
 }
 
 // Test that repeats example from this article:
@@ -2306,6 +2420,79 @@ CHECKED_STATUS WaitForBackfillStage(
 
 } // namespace
 
+// Override the index backfill test to have delays for testing snapshot too old.
+class PgLibPqTestIndexBackfillSnapshotTooOld : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillSnapshotTooOld() {
+    more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=10000");
+    more_tserver_flags.push_back("--TEST_ysql_index_state_flags_update_delay_ms=0");
+    more_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3");
+  }
+};
+
+// Make sure that index backfill doesn't care about snapshot too old.  Force a situation where the
+// indexed table scan for backfill would occur after the committed history cutoff.  A compaction is
+// needed to update this committed history cutoff, and the retention period needs to be low enough
+// so that the cutoff is ahead of backfill's safe read time.  See issue #6333.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillSnapshotTooOld),
+          PgLibPqTestIndexBackfillSnapshotTooOld) {
+  const std::string kIndexName = "i";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+  constexpr int kTimeoutSec = 3;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  // (Make it one tablet for simplicity.)
+  LOG(INFO) << "Create table...";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char) SPLIT INTO 1 TABLETS", kTableName));
+
+  LOG(INFO) << "Get table id for indexed table...";
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+
+  // Insert something so that reading it would trigger snapshot too old.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('s')", kTableName));
+
+  std::thread create_index_thread([&] {
+    LOG(INFO) << "Create index...";
+    Status s = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (c)", kIndexName, kTableName);
+    if (!s.ok()) {
+      // We are doomed to fail the test.  Before that, let's see if it turns out to be "snapshot too
+      // old" or some other unexpected error.
+      ASSERT_TRUE(s.IsNetworkError()) << "got unexpected error: " << s;
+      ASSERT_TRUE(s.message().ToBuffer().find("Snapshot too old") != std::string::npos)
+          << "got unexpected error: " << s;
+      // It is "snapshot too old".  Fail now.
+      FAIL() << "got snapshot too old: " << s;
+    }
+  });
+
+  // Sleep until we are in the interval
+  //   (read_time + history_retention_interval, read_time + slowdown_backfill)
+  // = (read_time + 3s, read_time + 10s)
+  // Choose read_time + 5s.
+  LOG(INFO) << "Sleep...";
+  SleepFor(1s); // approximate setup time before getting to the backfill stage
+  SleepFor(5s);
+
+  LOG(INFO) << "Flush and compact indexed table...";
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      false /* is_compaction */));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      true /* is_compaction */));
+
+  LOG(INFO) << "Waiting for create index thread to finish...";
+  create_index_thread.join();
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
  public:
@@ -2560,6 +2747,141 @@ TEST_F_EX(PgLibPqTest,
   thread_holder.Stop();
 }
 
+// Simulate this situation:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (i, j, PRIMARY KEY (i))
+//                                                INSERT (1, 'a')
+//   CREATE UNIQUE INDEX (j)
+//   - DELETE_ONLY perm
+//                                                DELETE (1, 'a')
+//                                                (delete (1, 'a') to index)
+//                                                INSERT (2, 'a')
+//   - WRITE_DELETE perm
+//   - BACKFILL perm
+//     - get safe time for read
+//                                                INSERT (3, 'a')
+//                                                (insert (3, 'a') to index)
+//     - do the actual backfill
+//                                                (insert (2, 'a') to index--detect conflict)
+//   - READ_WRITE_DELETE perm
+// This test is for issue #6208.
+TEST_F_EX(
+    PgLibPqTest,
+    CreateUniqueIndexWriteAfterSafeTime,
+    PgLibPqTestIndexBackfillSlow) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const std::string& kIndexName = "i";
+  const std::string& kNamespaceName = "yugabyte";
+  const std::string& kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j char, PRIMARY KEY (i))", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'a')", kTableName));
+
+  std::thread create_index_thread([&] {
+    LOG(INFO) << "Creating index";
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    Status s = conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName);
+    ASSERT_NOK(s);
+    ASSERT_TRUE(s.IsNetworkError());
+    ASSERT_TRUE(s.message().ToBuffer().find("duplicate key value")
+                != std::string::npos) << s;
+  });
+
+  {
+    std::map<std::string, bool> index_state_flags = {
+      {"indislive", true},
+      {"indisready", false},
+      {"indisvalid", false},
+    };
+
+    LOG(INFO) << "Wait for indislive index state flag";
+    // Deadline is 3s
+    ASSERT_OK(WaitFor(
+        std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
+        3s,
+        Format("Wait for index state flags to hit target: $0", index_state_flags)));
+
+    LOG(INFO) << "Do insert and delete";
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'a')", kTableName));
+
+    LOG(INFO) << "Check we're not yet at indisready index state flag";
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
+  }
+
+  {
+    std::map<std::string, bool> index_state_flags = {
+      {"indislive", true},
+      {"indisready", true},
+      {"indisvalid", false},
+    };
+
+    LOG(INFO) << "Wait for indisready index state flag";
+    // Deadline is
+    //   7s for sleep between indislive and indisready
+    // + 3s for extra
+    // = 10s
+    ASSERT_OK(WaitFor(
+        std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
+        10s,
+        Format("Wait for index state flags to hit target: $0", index_state_flags)));
+  }
+
+  {
+    LOG(INFO) << "Wait for backfill (approx)";
+    // 7s for sleep between indisready and backfill
+    SleepFor(7s);
+
+    LOG(INFO) << "Wait to get safe time for backfill (approx)";
+    //   7s for sleep between get safe time and do backfill
+    // / 2 to get the middle
+    // = 3s
+    SleepFor(3s);
+
+    LOG(INFO) << "Do insert";
+    // Deadline is
+    //   4s for remainder of 7s sleep between get safe time and do backfill
+    // + 3s for extra
+    // = 7s
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 7s, CoarseMonoClock::Duration::max());
+    while (true) {
+      Status status = conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 'a')", kTableName);
+      LOG(INFO) << "Got " << yb::ToString(status);
+      if (status.ok()) {
+        break;
+      } else {
+        ASSERT_FALSE(status.IsIllegalState() &&
+                     status.message().ToBuffer().find("Duplicate value") != std::string::npos)
+            << "The insert should come before backfill, so it should not cause duplicate conflict.";
+        ASSERT_TRUE(waiter.Wait());
+      }
+    }
+  }
+
+  LOG(INFO) << "Wait for CREATE INDEX to finish";
+  create_index_thread.join();
+
+  // Check.
+  {
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 10s, CoarseMonoClock::Duration::max());
+    while (true) {
+      auto result = conn.FetchFormat("SELECT count(*) FROM $0", kTableName);
+      if (result.ok()) {
+        auto res = ASSERT_RESULT(result);
+        const int64_t main_table_size = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+        ASSERT_EQ(main_table_size, 2);
+        break;
+      }
+      ASSERT_TRUE(result.status().IsQLError()) << result.status();
+      ASSERT_TRUE(result.status().message().ToBuffer().find("schema version mismatch")
+                  != std::string::npos) << result.status();
+      ASSERT_TRUE(waiter.Wait());
+    }
+  }
+}
+
 // Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.
 class PgLibPqTestIndexBackfillSlowSmallClientDeadline : public PgLibPqTestIndexBackfillSlow {
  public:
@@ -2764,39 +3086,53 @@ TEST_F_EX(PgLibPqTest,
   create_index_thread.join();
 }
 
-// Override the index backfill test to enable authentication.  Flags taken from
-// <https://docs.yugabyte.com/latest/secure/authentication/password-authentication/> and modified to
-// allow postgres role unconditionally.
+// Override the index backfill test to have different HBA config:
+// 1. if any user tries to access the authdb database, enforce md5 auth
+// 2. if the postgres user tries to access the yugabyte database, allow it
+// 3. if the yugabyte user tries to access the yugabyte database, allow it
+// 4. otherwise, disallow it
 class PgLibPqTestIndexBackfillAuth : public PgLibPqTestIndexBackfill {
  public:
   PgLibPqTestIndexBackfillAuth() {
-    more_tserver_flags.push_back("--ysql_hba_conf="
-                                 "host yugabyte postgres 0.0.0.0/0 trust,"
-                                 "host yugabyte postgres ::0/0 trust,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 md5,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 scram-sha-256,"
-                                 "host yugabyte yugabyte ::0/0 md5,"
-                                 "host yugabyte yugabyte ::0/0 scram-sha-256");
-    more_tserver_flags.push_back("--ysql_pg_conf=password_encryption=scram-sha-256");
+    more_tserver_flags.push_back(
+        Format(
+          "--ysql_hba_conf="
+          "host $0 all all md5,"
+          "host yugabyte postgres all trust,"
+          "host yugabyte yugabyte all trust",
+          kAuthDbName));
   }
+
+  const std::string kAuthDbName = "authdb";
 };
 
 // Test backfill on clusters where the yugabyte role has authentication enabled.
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(BackfillAuth),
           PgLibPqTestIndexBackfillAuth) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
+  const std::string& kTableName = "t";
 
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  LOG(INFO) << "create " << this->kAuthDbName << " database";
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", this->kAuthDbName));
+  }
 
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
+  LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
+  {
+    const std::string& host = pg_ts->bind_host();
+    const uint16_t port = pg_ts->pgsql_rpc_port();
 
-// TODO(jason): expect success when closing issue #5324.
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find(
-      "backfill query couldn't be sent") != std::string::npos) << status;
+    auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+        "yugabyte",
+        "yugabyte",
+        host,
+        port,
+        this->kAuthDbName)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+  }
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch
@@ -3050,6 +3386,91 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+namespace {
+
+class CoordinatedRunner {
+ public:
+  using RepeatableCommand = std::function<Status()>;
+
+  explicit CoordinatedRunner(std::vector<RepeatableCommand> commands)
+      : barrier_(commands.size()) {
+    threads_.reserve(commands.size());
+    for (auto& c : commands) {
+      threads_.emplace_back([this, cmd = std::move(c)] () {
+        while (!(stop_.load(std::memory_order_acquire) ||
+            error_detected_.load(std::memory_order_acquire))) {
+          barrier_.Wait();
+          const auto status = cmd();
+          if (!status.ok()) {
+            LOG(ERROR) << "Error detected: " << status;
+            error_detected_.store(true, std::memory_order_release);
+          }
+        }
+        barrier_.Detach();
+      });
+    }
+  }
+
+  void Stop() {
+    stop_.store(true, std::memory_order_release);
+    for (auto& thread : threads_) {
+      thread.join();
+    }
+  }
+
+  bool HasError() {
+    return error_detected_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::vector<std::thread> threads_;
+  Barrier barrier_;
+  std::atomic<bool> stop_{false};
+  std::atomic<bool> error_detected_{false};
+};
+
+bool RetryableError(const Status& status) {
+  const auto msg = status.message().ToBuffer();
+  const std::string expected_errors[] = {"Try Again",
+                                         "Catalog Version Mismatch",
+                                         "Restart read required at",
+                                         "schema version mismatch for table"};
+  for (const auto& expected : expected_errors) {
+    if (msg.find(expected) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
+  const size_t reader_count = 20;
+  std::vector<CoordinatedRunner::RepeatableCommand> commands;
+  commands.reserve(reader_count + 1);
+  commands.emplace_back(
+      [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+        RETURN_NOT_OK(connection->Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100"));
+        RETURN_NOT_OK(connection->Execute("ALTER TABLE t DROP COLUMN v"));
+        return Status::OK();
+  });
+  for (size_t i = 0; i < reader_count; ++i) {
+    commands.emplace_back(
+        [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+          const auto res = connection->Fetch("SELECT key FROM t");
+          return (res.ok() || RetryableError(res.status())) ? Status::OK() : res.status();
+    });
+  }
+  CoordinatedRunner runner(std::move(commands));
+  std::this_thread::sleep_for(10s);
+  runner.Stop();
+  ASSERT_FALSE(runner.HasError());
 }
 
 } // namespace pgwrapper

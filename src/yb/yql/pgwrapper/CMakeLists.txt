@@ -13,10 +13,10 @@
 
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
-
 set(PGWRAPPER_LIBS
-    yb_util
-    yb_pggate_flags)
+    yb_common
+    yb_pggate_flags
+    yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
@@ -43,10 +43,6 @@ ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
 
-# TODO: find a way to add this only to the top-level CMakeLists.txt file.
-# See https://github.com/yugabyte/yugabyte-db/issues/5853 for more details.
-allow_using_postgres_libraries()
-
 target_link_libraries(pg_wrapper_test_base integration-tests)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
@@ -66,7 +62,7 @@ set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME ${LAST_ADDED_TEST_BINARY_NAM
 set(gen_initial_sys_catalog_snapshot_cmd
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
 
-if (NOT "${YB_BUILD_TYPE}" STREQUAL "tsan")
+if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
   # Don't build the initial sys catalog snapshot target automatically in TSAN. But still create the
   # target so it could be built explicitly.
   add_custom_target(

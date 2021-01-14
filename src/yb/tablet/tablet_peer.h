@@ -44,6 +44,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -165,7 +166,7 @@ class TabletPeer : public consensus::ConsensusContext,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
-      const yb::OpId& split_op_id);
+      const consensus::SplitOpInfo& split_op_info);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -481,10 +482,10 @@ class TabletPeer : public consensus::ConsensusContext,
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
  private:
-  HybridTime ReportReadRestart() override;
+  Result<HybridTime> ReportReadRestart() override;
 
-  FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
-  HybridTime PreparePeerRequest() override;
+  Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
+  Result<HybridTime> PreparePeerRequest() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;

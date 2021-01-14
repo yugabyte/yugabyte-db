@@ -82,9 +82,9 @@ class AbstractTablet {
   //
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, e.g. because of
   // a timeout.
-  HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
-                      HybridTime min_allowed = HybridTime::kMin,
-                      CoarseTimePoint deadline = CoarseTimePoint::max()) const {
+  Result<HybridTime> SafeTime(RequireLease require_lease = RequireLease::kTrue,
+                              HybridTime min_allowed = HybridTime::kMin,
+                              CoarseTimePoint deadline = CoarseTimePoint::max()) const {
     return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
@@ -99,6 +99,7 @@ class AbstractTablet {
   virtual CHECKED_STATUS HandlePgsqlReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
+      bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       PgsqlReadRequestResult* result,
@@ -123,6 +124,7 @@ class AbstractTablet {
 
   CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
+                                        bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
                                         PgsqlReadRequestResult* result,
@@ -131,7 +133,7 @@ class AbstractTablet {
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 
  private:
-  virtual HybridTime DoGetSafeTime(
+  virtual Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const = 0;
 };
 

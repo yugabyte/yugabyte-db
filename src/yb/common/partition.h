@@ -242,6 +242,12 @@ class PartitionSchema {
   // Decode the given partition_key to a 2-byte integer.
   static uint16_t DecodeMultiColumnHashValue(const string& partition_key);
 
+  // Does [partition_key_start, partition_key_end] form a valid range.
+  static CHECKED_STATUS IsValidHashPartitionRange(const string& partition_key_start,
+                                                  const string& partition_key_end);
+
+  static bool IsValidHashPartitionKeyBound(const string& partition_key);
+
   // YugaByte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max_partition_key] range into the requested number of intervals.

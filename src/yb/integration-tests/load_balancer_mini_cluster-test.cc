@@ -119,9 +119,8 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
     tbl_info->GetAllTablets(&tablets);
     bool foundReplica = false;
     for (const auto& tablet : tablets) {
-      master::TabletInfo::ReplicaMap replica_map;
-      tablet->GetReplicaLocations(&replica_map);
-      if (replica_map.find(ts3_uuid) != replica_map.end()) {
+      auto replica_map = tablet->GetReplicaLocations();
+      if (replica_map->find(ts3_uuid) != replica_map->end()) {
         foundReplica = true;
         break;
       }

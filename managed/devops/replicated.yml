@@ -155,16 +155,14 @@ components:
         image_name: yugabyte/yugaware
         version: "YUGABYTE_RELEASE_VERSION"
         volumes:
-          - host_path: /var/run/docker.sock
-            container_path: /var/run/docker.sock:rw
-          - host_path: /usr/bin/docker
-            container_path: /usr/bin/docker
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
             container_path: /opt/yugabyte/releases
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
+            container_path: /prometheus
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
@@ -188,8 +186,7 @@ components:
               play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               db {
-                default.url="jdbc:postgresql://{{repl HostPrivateIpAddress "db" "postgres" }}:5432/yugaware"
-                default.driver=org.postgresql.Driver
+                default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
@@ -220,11 +217,19 @@ components:
                     name = "Csrf-Token"
                   }
                 }
+                # CORS config
+                cors {
+                  pathPrefixes = ["/"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  supportsCredentials=true
+                  allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
+                  allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
+                }
               }
 
               yb {
                 devops.home = /opt/yugabyte/devops
-                metrics.url = "http://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090/api/v1"
+                metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
@@ -239,8 +244,6 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                taskGC.gc_check_interval = 1 day
-                taskGC.task_retention_duration = 30 days
               }
 
   - name: nginx

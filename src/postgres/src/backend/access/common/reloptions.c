@@ -478,6 +478,18 @@ static relopt_string stringRelOpts[] =
 		validateWithCheckOption,
 		NULL
 	},
+	{
+		{
+			"replica_placement",
+			"Json formatted string with array of placement policies",
+			RELOPT_KIND_YB_TABLESPACE,
+			AccessExclusiveLock
+		},
+		0 /* default_len */,
+		true /* default_isnull */,
+		validatePlacementConfiguration,
+		NULL /* default_val */
+	},
 	/* list terminator */
 	{{NULL}}
 };
@@ -1611,6 +1623,36 @@ tablespace_reloptions(Datum reloptions, bool validate)
 
 	fillRelOptions((void *) tsopts, sizeof(TableSpaceOpts), options, numoptions,
 				   validate, tab, lengthof(tab));
+
+	pfree(options);
+
+	return (bytea *) tsopts;
+}
+
+/*
+ * Option parser for yugabyte tablespace reloptions
+ */
+bytea *
+yb_tablespace_reloptions(Datum reloptions, bool validate)
+{
+	relopt_value *options;
+	YBTableSpaceOpts *tsopts;
+	int     numoptions;
+	static const relopt_parse_elt yb_tab[] = {
+		{"replica_placement", RELOPT_TYPE_STRING, offsetof(YBTableSpaceOpts, placement_offset)}
+	};
+
+	options = parseRelOptions(reloptions, validate, RELOPT_KIND_YB_TABLESPACE, &numoptions);
+
+	/* if none set, we're done */
+	if (numoptions == 0) {
+		return NULL;
+	}
+
+	tsopts = allocateReloptStruct(sizeof(YBTableSpaceOpts), options, numoptions);
+
+	fillRelOptions((void *) tsopts, sizeof(YBTableSpaceOpts), options, numoptions,
+				validate, yb_tab, lengthof(yb_tab));
 
 	pfree(options);
 

@@ -203,7 +203,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
 
       // Ensure that our tablet reports are consistent.
       TabletReportPB report;
-      tablet_manager->GenerateIncrementalTabletReport(&report);
+      tablet_manager->GenerateTabletReport(&report);
       ASSERT_EQ(1, report.updated_tablets_size()) << "Wrong report size:\n" << report.DebugString();
       ReportedTabletPB reported_tablet = report.updated_tablets(0);
       ASSERT_TRUE(reported_tablet.has_committed_consensus_state());

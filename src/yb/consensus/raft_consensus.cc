@@ -282,7 +282,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id) {
+    const SplitOpInfo& split_op_info) {
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
       messenger, proxy_cache, local_peer_pb.cloud_info());
 
@@ -335,7 +335,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       mark_dirty_clbk,
       table_type,
       retryable_requests,
-      split_op_id);
+      split_op_info);
 }
 
 RaftConsensus::RaftConsensus(
@@ -351,7 +351,7 @@ RaftConsensus::RaftConsensus(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id)
+    const SplitOpInfo& split_op_info)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -360,6 +360,7 @@ RaftConsensus::RaftConsensus(
       queue_(std::move(queue)),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
+      step_down_check_tracker_(&peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
@@ -388,7 +389,7 @@ RaftConsensus::RaftConsensus(
       DCHECK_NOTNULL(consensus_context),
       this,
       retryable_requests,
-      split_op_id,
+      split_op_info,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -707,18 +708,12 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
       graceful ? std::string() : peer.permanent_uuid(), MonoDelta());
 }
 
-void RaftConsensus::CheckDelayedStepDown(rpc::ScheduledTaskId task_id, const Status& status) {
+void RaftConsensus::CheckDelayedStepDown(const Status& status) {
   ReplicaState::UniqueLock lock;
   auto lock_status = state_->LockForConfigChange(&lock);
   if (!lock_status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Failed to check delayed election: " << lock_status;
-    lock = state_->LockForRead();
-    --num_scheduled_step_down_checks_;
     return;
-  }
-  --num_scheduled_step_down_checks_;
-  if (task_id == last_scheduled_step_down_check_task_id_) {
-    last_scheduled_step_down_check_task_id_ = rpc::kInvalidTaskId;
   }
 
   if (state_->GetCurrentTermUnlocked() != delayed_step_down_.term) {
@@ -846,13 +841,8 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
           .graceful = graceful_stepdown,
         };
         LOG_WITH_PREFIX(INFO) << "Delay step down: " << delayed_step_down_.ToString();
-        auto& scheduler = peer_proxy_factory_->messenger()->scheduler();
-        if (last_scheduled_step_down_check_task_id_ != rpc::kInvalidTaskId) {
-          scheduler.Abort(last_scheduled_step_down_check_task_id_);
-        }
-        ++num_scheduled_step_down_checks_;
-        last_scheduled_step_down_check_task_id_ = scheduler.Schedule(
-            std::bind(&RaftConsensus::CheckDelayedStepDown, this, _1, _2),
+        step_down_check_tracker_.Schedule(
+            std::bind(&RaftConsensus::CheckDelayedStepDown, this, _1),
             1ms * timeout_ms);
         return Status::OK();
       }
@@ -2495,24 +2485,13 @@ void RaftConsensus::Shutdown() {
 
   CHECK_OK(ExecuteHook(PRE_SHUTDOWN));
 
-  for (;;) {
-    {
-      ReplicaState::UniqueLock lock;
-      // Transition to kShuttingDown state.
-      CHECK_OK(state_->LockForShutdown(&lock));
-      if (num_scheduled_step_down_checks_ == 0) {
-        LOG_WITH_PREFIX(INFO) << "Raft consensus shutting down.";
-        break;
-      }
-      YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Waiting " << num_scheduled_step_down_checks_
-                                   << " step down checks to complete";
-      if (last_scheduled_step_down_check_task_id_ != rpc::kInvalidTaskId) {
-        peer_proxy_factory_->messenger()->scheduler().Abort(
-            last_scheduled_step_down_check_task_id_);
-      }
-    }
-    std::this_thread::sleep_for(1ms);
+  {
+    ReplicaState::UniqueLock lock;
+    // Transition to kShuttingDown state.
+    CHECK_OK(state_->LockForShutdown(&lock));
+    step_down_check_tracker_.StartShutdown();
   }
+  step_down_check_tracker_.CompleteShutdown();
 
   // Close the peer manager.
   peer_manager_->Close();
@@ -2641,7 +2620,7 @@ Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {
   return state_->CheckIsActiveLeaderAndHasLease();
 }
 
-MicrosTime RaftConsensus::MajorityReplicatedHtLeaseExpiration(
+Result<MicrosTime> RaftConsensus::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, CoarseTimePoint deadline) const {
   return state_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
 }
@@ -3088,11 +3067,9 @@ yb::OpId RaftConsensus::GetSplitOpId() {
   return state_->GetSplitOpIdUnlocked();
 }
 
-Status RaftConsensus::ResetSplitOpId() {
-  ReplicaState::UniqueLock lock;
-  RETURN_NOT_OK(state_->LockForUpdate(&lock));
-  state_->ResetSplitOpIdUnlocked();
-  return Status::OK();
+std::array<TabletId, kNumSplitParts> RaftConsensus::GetSplitChildTabletIds() {
+  auto lock = state_->LockForRead();
+  return state_->GetSplitChildTabletIdsUnlocked();
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {

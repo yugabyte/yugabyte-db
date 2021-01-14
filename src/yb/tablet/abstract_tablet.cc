@@ -73,6 +73,7 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
 
 Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                               const ReadHybridTime& read_time,
+                                              bool is_explicit_request_read_time,
                                               const PgsqlReadRequestPB& pgsql_read_request,
                                               const TransactionOperationContextOpt& txn_op_context,
                                               PgsqlReadRequestResult* result,
@@ -86,8 +87,9 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
       ? GetSchema(pgsql_read_request.index_request().table_id()) : nullptr;
 
   TRACE("Start Execute");
-  auto fetched_rows = doc_op.Execute(QLStorage(), deadline, read_time, *schema, index_schema.get(),
-                                     &result->rows_data, &result->restart_read_ht);
+  auto fetched_rows = doc_op.Execute(
+      QLStorage(), deadline, read_time, is_explicit_request_read_time, *schema, index_schema.get(),
+      &result->rows_data, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

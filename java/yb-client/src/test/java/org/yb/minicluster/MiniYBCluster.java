@@ -600,6 +600,11 @@ public class MiniYBCluster implements AutoCloseable {
           "--tserver_unresponsive_timeout_ms=" +
           clusterParameters.tserverHeartbeatTimeoutMsOpt.get());
     }
+    if (clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.isPresent()) {
+      masterCmdLine.add(
+          "--partitions_vtable_cache_refresh_secs=" +
+          clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.get());
+    }
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }

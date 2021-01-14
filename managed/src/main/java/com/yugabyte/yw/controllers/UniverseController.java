@@ -112,16 +112,24 @@ public class UniverseController extends AuthenticatedController {
   @Inject
   YcqlQueryExecutor ycqlQueryExecutor;
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
-
-
   // The YB client to use.
   public YBClientService ybService;
 
   @Inject
   public UniverseController(YBClientService service) {
     this.ybService = service;
+  }
+
+  private boolean validateEncryption(ObjectNode formData) {
+    for (JsonNode cluster : formData.get("clusters")) {
+      JsonNode nodeToNodeEncryption = cluster.get("userIntent").get("enableNodeToNodeEncrypt");
+      JsonNode clientToNodeEncryption = cluster.get("userIntent").get("enableClientToNodeEncrypt");
+
+      if (!nodeToNodeEncryption.asBoolean() && clientToNodeEncryption.asBoolean()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private Universe checkCallValid(UUID customerUUID, UUID universeUUID) {
@@ -463,6 +471,11 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       formData = (ObjectNode) request().body().asJson();
+
+      if (!validateEncryption(formData))
+      {
+        return ApiResponse.error(BAD_REQUEST, "It is imperative that the NodeToNode TLS encryption should be enabled for enabling the ClientToNode TLS encryption.");
+      }
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -1304,6 +1317,33 @@ public class UniverseController extends AuthenticatedController {
                 BAD_REQUEST, "Neither master nor tserver gflags changed.");
           }
           break;
+        case Restart:
+          customerTaskType = CustomerTask.TaskType.Restart;
+          if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+            return ApiResponse.error(
+                BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+          }
+          break;
+        case Certs:
+          customerTaskType = CustomerTask.TaskType.UpdateCert;
+          if (taskParams.certUUID == null) {
+            return ApiResponse.error(BAD_REQUEST,
+                "certUUID is required for taskType: " + taskParams.taskType);
+          }
+          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Certs can only be rotated for onprem." + taskParams.taskType);
+          }
+          CertificateInfo cert = CertificateInfo.get(taskParams.certUUID);
+          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Need a custom cert. Cannot use self-signed." + taskParams.taskType);
+          }
+          cert = CertificateInfo.get(universe.getUniverseDetails().rootCA);
+          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
+            return ApiResponse.error(BAD_REQUEST,
+                "Only custom certs can be rotated." + taskParams.taskType);
+          }
       }
 
       LOG.info("Got task type {}", customerTaskType.toString());

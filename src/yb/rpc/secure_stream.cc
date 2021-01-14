@@ -19,6 +19,8 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include <boost/tokenizer.hpp>
+
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_util.h"
@@ -35,6 +37,9 @@ using namespace std::literals;
 
 DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
 DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
+DEFINE_string(ssl_protocols, "",
+              "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
+                  "Empty to allow TLS only.");
 
 namespace yb {
 namespace rpc {
@@ -43,7 +48,7 @@ namespace {
 
 const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
 
-std::string SSLErrorMessage(int error) {
+std::string SSLErrorMessage(uint64_t error) {
   auto message = ERR_reason_error_string(error);
   return message ? message : "no error";
 }
@@ -195,6 +200,40 @@ Result<detail::X509Ptr> CreateCertificate(
   return std::move(cert);
 }
 
+const std::unordered_map<std::string, int64_t>& SSLProtocolMap() {
+  static const std::unordered_map<std::string, int64_t> result = {
+      {"ssl2", SSL_OP_NO_SSLv2},
+      {"ssl3", SSL_OP_NO_SSLv3},
+      {"tls10", SSL_OP_NO_TLSv1},
+      {"tls11", SSL_OP_NO_TLSv1_1},
+      {"tls12", SSL_OP_NO_TLSv1_2},
+  };
+  return result;
+}
+
+int64_t ProtocolsOption() {
+  constexpr int64_t kDefaultProtocols = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+
+  const std::string& ssl_protocols = FLAGS_ssl_protocols;
+  if (ssl_protocols.empty()) {
+    return kDefaultProtocols;
+  }
+
+  const auto& protocol_map = SSLProtocolMap();
+  int64_t result = SSL_OP_NO_SSL_MASK;
+  boost::tokenizer<> tokenizer(ssl_protocols);
+  for (const auto& protocol : tokenizer) {
+    auto it = protocol_map.find(protocol);
+    if (it == protocol_map.end()) {
+      LOG(DFATAL) << "Unknown SSL protocol: " << protocol;
+      return kDefaultProtocols;
+    }
+    result &= ~it->second;
+  }
+
+  return result;
+}
+
 } // namespace
 
 namespace detail {
@@ -213,7 +252,9 @@ SecureContext::SecureContext() {
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);
 
-  SSL_CTX_set_options(context_.get(), SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION);
+  int64_t protocols = ProtocolsOption();
+  VLOG(1) << "Protocols option: " << protocols;
+  SSL_CTX_set_options(context_.get(), protocols | SSL_OP_NO_COMPRESSION);
   auto res = SSL_CTX_set_session_id_context(context_.get(), kContextId, sizeof(kContextId));
   LOG_IF(DFATAL, res != 1) << "Failed to set session id for SSL context: "
                            << SSLErrorMessage(ERR_get_error());
@@ -488,7 +529,7 @@ const Endpoint& SecureStream::Local() {
 }
 
 std::string SecureStream::ToString() {
-  return Format("SECURE $0 $1", state_, lower_stream_->ToString());
+  return Format("SECURE[$0] $1 $2", need_connect_ ? "C" : "S", state_, lower_stream_->ToString());
 }
 
 void SecureStream::UpdateLastActivity() {
@@ -705,7 +746,7 @@ Status SecureStream::Init() {
     SSL_set_mode(ssl_.get(), SSL_MODE_RELEASE_BUFFERS);
     SSL_set_app_data(ssl_.get(), this);
 
-    if (!need_connect_) {
+    if (!need_connect_ || secure_context_.use_client_certificate()) {
       auto res = SSL_use_PrivateKey(ssl_.get(), secure_context_.private_key());
       if (res != 1) {
         return SSL_STATUS(InvalidArgument, "Failed to use private key: $0");
@@ -722,7 +763,11 @@ Status SecureStream::Init() {
     SSL_set_bio(ssl_.get(), int_bio, int_bio);
     bio_.reset(temp_bio);
 
-    SSL_set_verify(ssl_.get(), SSL_VERIFY_PEER, &VerifyCallback);
+    int verify_mode = SSL_VERIFY_PEER;
+    if (secure_context_.require_client_certificate()) {
+      verify_mode |= SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_CLIENT_ONCE;
+    }
+    SSL_set_verify(ssl_.get(), verify_mode, &VerifyCallback);
   }
 
   return Status::OK();

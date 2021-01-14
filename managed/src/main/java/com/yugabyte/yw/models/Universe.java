@@ -329,13 +329,22 @@ public class Universe extends Model {
   // Helper api to make an atomic read of universe version, and compare and swap the
   // updated version to disk.
   private static synchronized Universe readModifyWrite(UUID universeUUID,
-                                                       UniverseUpdater updater)
-      throws ConcurrentModificationException {
+                                                       UniverseUpdater updater,
+                                                       boolean incrementVersion) {
     Universe universe = Universe.get(universeUUID);
     // Update the universe object which is supplied as a lambda function.
-    updater.run(universe);
-    // Save the universe object by doing a compare and swap.
-    universe.compareAndSwap();
+    boolean updateSucceeded = false;
+    try {
+      updater.run(universe);
+      updateSucceeded = true;
+    } catch(Exception e) {
+      LOG.debug("Error running universe updater", e);
+      throw e;
+    } finally {
+      // Save the universe object by doing a compare and swap.
+      universe.compareAndSwap(updateSucceeded /* updateDetails */ , incrementVersion);
+    }
+
     return universe;
   }
 
@@ -347,13 +356,21 @@ public class Universe extends Model {
    * @return the updated version of the object if successful, or throws an exception.
    */
   public static Universe saveDetails(UUID universeUUID, UniverseUpdater updater) {
+    return Universe.saveDetails(universeUUID, updater, true);
+  }
+
+  public static Universe saveDetails(
+    UUID universeUUID,
+    UniverseUpdater updater,
+    boolean incrementVersion
+  ) {
     int numRetriesLeft = 10;
     long sleepTimeMillis = 100;
     // Try the read and update for a few times till it succeeds.
     Universe universe = null;
     while (numRetriesLeft > 0) {
       try {
-        universe = readModifyWrite(universeUUID, updater);
+        universe = readModifyWrite(universeUUID, updater, incrementVersion);
         break;
       } catch (ConcurrentModificationException e) {
         // Decrement retries.
@@ -368,9 +385,9 @@ public class Universe extends Model {
         } catch (InterruptedException e1) {
           LOG.error("Error while sleeping", e1);
         }
-        continue;
       }
     }
+
     return universe;
   }
 
@@ -494,7 +511,10 @@ public class Universe extends Model {
   public List<NodeDetails> getServers(ServerType type) {
     List<NodeDetails> servers = new ArrayList<NodeDetails>();
     UniverseDefinitionTaskParams details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
+    Set<NodeDetails> filteredNodeDetails = details.nodeDetailsSet.stream()
+      .filter(n -> n.cloudInfo.private_ip != null)
+      .collect(Collectors.toSet());
+    for (NodeDetails nodeDetails : filteredNodeDetails) {
       switch(type) {
       case YQLSERVER:
         if (nodeDetails.isYqlServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
@@ -636,19 +656,35 @@ public class Universe extends Model {
    *
    * @return the new version number after the update if successful, or throws a RuntimeException.
    */
-  private int compareAndSwap() {
+  /**
+   * Compares the version of this object with the one in the DB, and updates it if the versions
+   * match.
+   *
+   * @param updateDetails whether to update universe details or not
+   * @param incrementVersion whether to increment the version or not
+   * @return the current version of the universe metadata
+   */
+  private int compareAndSwap(boolean updateDetails, boolean incrementVersion) {
     // Update the universe details json.
     universeDetailsJson = Json.stringify(Json.toJson(universeDetails));
 
     // Create the new version number.
-    int newVersion = this.version + 1;
+    int newVersion = incrementVersion ? this.version + 1 : this.version;
 
     // Save the object if the version is the same.
-    String updateQuery = "UPDATE universe " +
+    String updateQuery = updateDetails ? "UPDATE universe " +
       "SET universe_details_json = :universeDetails, version = :newVersion " +
+      "WHERE universe_uuid = :universeUUID AND version = :curVersion"
+      :
+      "UPDATE universe " +
+      "SET version = :newVersion " +
       "WHERE universe_uuid = :universeUUID AND version = :curVersion";
+
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
-    update.setParameter("universeDetails", universeDetailsJson);
+    if (updateDetails) {
+      update.setParameter("universeDetails", universeDetailsJson);
+    }
+
     update.setParameter("universeUUID", universeUUID);
     update.setParameter("curVersion", this.version);
     update.setParameter("newVersion", newVersion);
@@ -778,5 +814,13 @@ public class Universe extends Model {
           port == n.ysqlServerHttpPort ||
           port == n.yqlServerHttpPort ||
           port == n.redisServerHttpPort));
+  }
+
+  public void incrementVersion() {
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {}
+    };
+    Universe.saveDetails(universeUUID, updater);
   }
 }

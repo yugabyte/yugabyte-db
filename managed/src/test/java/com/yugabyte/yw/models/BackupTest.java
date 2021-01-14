@@ -17,16 +17,13 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.yugabyte.yw.models.Backup.BackupState.Completed;
 import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.*;
 
 
 public class BackupTest extends FakeDBApplication {
@@ -216,13 +213,19 @@ public class BackupTest extends FakeDBApplication {
     UUID taskUUID1 = UUID.randomUUID();
     UUID taskUUID2 = UUID.randomUUID();
     ExecutorService service = Executors.newFixedThreadPool(2);
-    Thread t1 = new Thread(() -> b.setTaskUUID(taskUUID1));
-    Thread t2 = new Thread(() -> b.setTaskUUID(taskUUID2));
-    service.submit(t1);
-    service.submit(t2);
-    service.awaitTermination(100, TimeUnit.MILLISECONDS);
+    AtomicBoolean success1 = new AtomicBoolean();
+    AtomicBoolean success2 = new AtomicBoolean();
+    service.submit(() -> success1.set(b.setTaskUUID(taskUUID1)));
+    service.submit(() -> success2.set(b.setTaskUUID(taskUUID2)));
+    service.awaitTermination(3, TimeUnit.SECONDS);
     b.refresh();
-    assertEquals(taskUUID1, b.taskUUID);
+    if (success1.get() && !success2.get()) {
+      assertEquals(taskUUID1, b.taskUUID);
+    } else {
+      assertFalse(success1.get());
+      assertTrue(success2.get());
+      assertEquals(taskUUID2, b.taskUUID);
+    }
   }
 
   @Test

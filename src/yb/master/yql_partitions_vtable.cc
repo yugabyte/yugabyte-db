@@ -19,6 +19,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/net/dns_resolver.h"
 
+DECLARE_int32(partitions_vtable_cache_refresh_secs);
+
 DEFINE_bool(use_cache_for_partitions_vtable, true,
             "Whether we should use caching for system.partitions table.");
 
@@ -44,6 +46,20 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
+  // The cached versions are initialized to -1, so if there is a race, we may still generate the
+  // cache on the calling thread.
+  if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
+      cached_tablets_version_ >= 0 &&
+      cached_tablet_locations_version_ >= 0) {
+    // Don't need a version match here, since we have a bg task handling cache refreshing.
+    return cache_;
+  }
+
+  RETURN_NOT_OK(GenerateAndCacheData());
+  return cache_;
+}
+
+Status YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
     std::shared_lock<boost::shared_mutex> lock(mutex_);
@@ -51,7 +67,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
       // Cache is up to date, so we could use it.
-      return cache_;
+      return Status::OK();
     }
   }
 
@@ -62,7 +78,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
       new_tablets_version == cached_tablets_version_ &&
       new_tablet_locations_version == cached_tablet_locations_version_) {
     // Cache was updated between locks, and now it is up to date.
-    return cache_;
+    return Status::OK();
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
@@ -95,7 +111,6 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     // Get tablets for table.
     std::vector<scoped_refptr<TabletInfo>> tablet_infos;
     table->GetAllTablets(&tablet_infos);
-    tablets.reserve(tablets.size() + tablet_infos.size());
     for (const auto& info : tablet_infos) {
       tablets.emplace_back();
       auto& data = tablets.back();
@@ -122,6 +137,8 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
   }
 
+  // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
+  vtable->Reserve(tablets.size());
   for (const auto& data : tablets) {
     // Skip not-found tablets: they might not be running yet or have been deleted.
     if (data.locations->table_id().empty()) {
@@ -153,16 +170,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, &row));
   }
 
-  if (new_tablets_version == catalog_manager->tablets_version() &&
-      new_tablet_locations_version == catalog_manager->tablet_locations_version()) {
-    // Versions were not changed during calculating result, so could update cache for those
-    // versions.
-    cached_tablets_version_ = new_tablets_version;
-    cached_tablet_locations_version_ = new_tablet_locations_version;
-    cache_ = vtable;
-  }
+  // Update cache and versions.
+  cached_tablets_version_ = new_tablets_version;
+  cached_tablet_locations_version_ = new_tablet_locations_version;
+  cache_ = vtable;
 
-  return vtable;
+  return Status::OK();
 }
 
 Schema YQLPartitionsVTable::CreateSchema() const {

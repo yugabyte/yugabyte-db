@@ -30,6 +30,7 @@ import org.yb.client.YBClient;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.*;
@@ -76,11 +77,20 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
     amuc = mock(AbstractModifyMasterClusterConfig.class);
+
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+      new ChangeMasterClusterConfigResponse(1111, "", null);
+
     try {
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", null, null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
+    // WaitForServer mock.
+    mockWaits(mockClient);
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -109,6 +119,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   );
 
   List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),

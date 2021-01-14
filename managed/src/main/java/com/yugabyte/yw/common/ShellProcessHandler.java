@@ -102,8 +102,8 @@ public class ShellProcessHandler {
             appendStream(errorStream, errSb, logCmdOutput);
             outputStream.close();
             errorStream.close();
-            processOutput = outSb.toString();
-            processError = errSb.toString();
+            processOutput = outSb.toString().trim();
+            processError = errSb.toString().trim();
             if (logCmdOutput) {
                 LOG.debug("Proc stdout | " + processOutput);
                 LOG.debug("Proc stderr | " + processError);

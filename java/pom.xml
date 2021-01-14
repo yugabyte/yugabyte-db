@@ -128,6 +128,7 @@
     <module>yb-client</module>
     <module>yb-cli</module>
     <module>yb-cql</module>
+    <module>yb-cql-4x</module>
     <module>yb-pgsql</module>
     <module>yb-loadtester</module>
     <module>yb-jedis-tests</module>
@@ -341,7 +342,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.1-SNAPSHOT</version>
+        <version>0.8.2-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -488,7 +489,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.1-SNAPSHOT</version>
+        <version>0.8.2-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

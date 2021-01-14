@@ -59,10 +59,6 @@ add_dependencies(postgres configure_postgres)
 # Dependencies between postgres and other targets
 # ------------------------------------------------------------------------------------------------
 
-# Make sure we rebuild postgres before the master/tserver libraries.
-add_dependencies(master postgres)
-add_dependencies(tserver postgres)
-
 if("${YB_BUILD_TYPE}" STREQUAL "compilecmds")
   message("Not making postgres depend on other libraries in the compilecmds build type.")
 else()

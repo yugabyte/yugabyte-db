@@ -277,14 +277,13 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
   return txn_map;
 }
 
-CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
-                                   const TxnStatusMap& txn_map,
-                                   CDCRecordPB* record) {
+CHECKED_STATUS SetRecordTime(const TransactionId& txn_id,
+                             const TxnStatusMap& txn_map,
+                             CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
   if (txn_status == txn_map.end()) {
     return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
   }
-  record->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
   record->set_time(txn_status->second.status_time.ToUint64());
   return Status::OK();
 }
@@ -347,10 +346,11 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
           auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
               batch.transaction().transaction_id()));
           // If we're not replicating intents, set record time using the transaction map.
-          RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
+          RETURN_NOT_OK(SetRecordTime(txn_id, txn_map, record));
         } else {
           record->mutable_transaction_state()->set_transaction_id(
               batch.transaction().transaction_id());
+          record->mutable_transaction_state()->add_tablets(tablet_peer->tablet_id());
         }
       }
     }

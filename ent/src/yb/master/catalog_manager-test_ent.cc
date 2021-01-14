@@ -335,15 +335,15 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
 
   void AddRunningReplicaEnt(TabletInfo* tablet, std::shared_ptr<yb::master::TSDescriptor> ts_desc,
                             bool is_live) {
-    TabletInfo::ReplicaMap replicas;
-    tablet->GetReplicaLocations(&replicas);
+    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
+      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
     consensus::RaftPeerPB::Role role = is_live ?
         consensus::RaftPeerPB::FOLLOWER :
         consensus::RaftPeerPB::LEARNER;
     NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, role, &replica);
-    InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
+    InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
 };

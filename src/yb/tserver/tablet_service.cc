@@ -609,17 +609,17 @@ void TabletServiceAdminImpl::GetSafeTime(
     }
   }
 
-  HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+  auto safe_time = tablet.peer->tablet()->SafeTime(
       tablet::RequireLease::kTrue, min_hybrid_time, deadline);
-  if (!safe_time.is_valid()) {
+  if (!safe_time.ok()) {
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS(TimedOut, "Timed out waiting for safe time."),
+        safe_time.status(),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
 
-  resp->set_safe_time(safe_time.ToUint64());
+  resp->set_safe_time(safe_time->ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   VLOG(1) << "Tablet " << tablet.peer->tablet_id()
           << " returning safe time " << yb::ToString(safe_time);
@@ -677,14 +677,12 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_at_hybrid_time());
-  const HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+  const auto safe_time = tablet.peer->tablet()->SafeTime(
       tablet::RequireLease::kTrue, read_at, deadline);
-  if (!safe_time.is_valid()) {
+  if (!safe_time.ok()) {
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS_SUBSTITUTE(TimedOut,
-                          "TimedOut waiting for safe time to get past $0",
-                          read_at.ToString()),
+        safe_time.status(),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
@@ -778,15 +776,14 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
-    // TODO(jason): handle missing pgsql_proxy_bind_address (I think it is possible when disabling
-    // YSQL).
     resume_from = tablet.peer->tablet()->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
         deadline,
         read_at,
         server_->pgsql_proxy_bind_address(),
-        req->namespace_name());
+        req->namespace_name(),
+        server_->GetSharedMemoryPostgresAuthKey());
   } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
     resume_from = tablet.peer->tablet()->BackfillIndexes(
         indexes_to_backfill, req->start_key(), deadline, read_at);
@@ -1496,11 +1493,14 @@ Status TabletServiceImpl::CheckPeerIsReady(
   const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (!allow_split_tablet &&
       tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    tablet_peer.consensus()->GetSplitOpId();
+    auto split_child_tablet_ids = tablet_peer.consensus()->GetSplitChildTabletIds();
     return STATUS(
-        IllegalState,
-        Format(
-            "The tablet $0 is in $1 state.", tablet->tablet_id(), tablet_data_state),
-        TabletServerError(TabletServerErrorPB::TABLET_SPLIT));
+               IllegalState,
+               Format("The tablet $0 is in $1 state.", tablet->tablet_id(), tablet_data_state),
+               TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
+        .CloneAndAddErrorCode(SplitChildTabletIdsData(
+            std::vector<TabletId>(split_child_tablet_ids.begin(), split_child_tablet_ids.end())));
     // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
     // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
     // modified their data state, but all had some failures (code bug?).
@@ -1643,10 +1643,41 @@ struct ReadContext {
     return tablet->IsTransactionalRequest(req->pgsql_batch_size() > 0);
   }
 
-  // Picks read based for specified read context.
+  ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time)  const {
+    DCHECK_GT(restart_time, read_time.read);
+    VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
+    auto result = read_time;
+    result.read = std::min(std::max(restart_time, safe_ht_to_read), read_time.global_limit);
+    result.local_limit = safe_ht_to_read;
+    return result;
+  }
+
   CHECKED_STATUS PickReadTime(server::Clock* clock) {
+    auto result = DoPickReadTime(clock);
+    if (!result.ok()) {
+      TRACE(result.ToString());
+    }
+    return result;
+  }
+
+  bool is_for_backfill() const {
+    if (req->pgsql_batch_size() > 0) {
+      if (req->pgsql_batch(0).is_for_backfill()) {
+        // Currently, read requests for backfill should only come by themselves, not in batches.
+        DCHECK_EQ(req->pgsql_batch_size(), 1);
+        return true;
+      }
+    }
+    // YCQL doesn't send read RPCs for scanning the indexed table and instead directly reads using
+    // iterator, so there's no equivalent logic for YCQL here.
+    return false;
+  }
+
+ private:
+  // Picks read based for specified read context.
+  CHECKED_STATUS DoPickReadTime(server::Clock* clock) {
     if (!read_time) {
-      safe_ht_to_read = tablet->SafeTime(require_lease);
+      safe_ht_to_read = VERIFY_RESULT(tablet->SafeTime(require_lease));
       // If the read time is not specified, then it is a single-shard read.
       // So we should restart it in server in case of failure.
       read_time.read = safe_ht_to_read;
@@ -1660,13 +1691,8 @@ struct ReadContext {
         read_time.global_limit = read_time.read;
       }
     } else {
-      safe_ht_to_read = tablet->SafeTime(
-          require_lease, read_time.read, context->GetClientDeadline());
-      if (!safe_ht_to_read.is_valid()) { // Timed out
-        const char* error_message = "Timed out waiting for read time";
-        TRACE(error_message);
-        return STATUS(TimedOut, error_message);
-      }
+      safe_ht_to_read = VERIFY_RESULT(tablet->SafeTime(
+          require_lease, read_time.read, context->GetClientDeadline()));
     }
     return Status::OK();
   }
@@ -1981,6 +2007,8 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();
       restart_read_time->set_read_ht(read_context->read_time.read.ToUint64());
+      restart_read_time->set_deprecated_max_of_read_time_and_local_limit_ht(
+          read_context->read_time.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_context->read_time.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
       down_cast<Tablet*>(read_context->tablet.get())->metrics()->restart_read_requests->Increment();
@@ -2065,10 +2093,17 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) {
-  auto read_tx = VERIFY_RESULT(
-      tablet::ScopedReadOperation::Create(
-          read_context->tablet.get(), read_context->require_lease, read_context->read_time));
-  read_context->used_read_time = read_tx.read_time();
+  ReadHybridTime read_time;
+  tablet::ScopedReadOperation read_tx;
+  if (read_context->is_for_backfill()) {
+    read_time = read_context->read_time;
+  } else {
+    read_tx = VERIFY_RESULT(
+        tablet::ScopedReadOperation::Create(
+            read_context->tablet.get(), read_context->require_lease, read_context->read_time));
+    read_time = read_tx.read_time();
+  }
+  read_context->used_read_time = read_time;
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -2087,7 +2122,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
           &HandleRedisReadRequestAsync,
           Unretained(read_context->tablet.get()),
           read_context->context->GetClientDeadline(),
-          read_tx.read_time(),
+          read_time,
           redis_read_req,
           Unretained(read_context->resp->add_redis_batch()),
           cb);
@@ -2135,17 +2170,11 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(read_context->tablet->HandleQLReadRequest(
-          read_context->context->GetClientDeadline(), read_tx.read_time(), ql_read_req,
+          read_context->context->GetClientDeadline(), read_time, ql_read_req,
           read_context->req->transaction(), &result));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
-        DCHECK_GT(result.restart_read_ht, read_context->read_time.read);
-        VLOG(1) << "Restart read required at: " << result.restart_read_ht
-                << ", original: " << read_context->read_time;
-        auto read_time = read_context->read_time;
-        read_time.read = result.restart_read_ht;
-        read_time.local_limit = read_context->safe_ht_to_read;
-        return read_time;
+        return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);
@@ -2161,17 +2190,15 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       TRACE("Start HandlePgsqlReadRequest");
       size_t num_rows_read;
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
-          read_context->context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req,
+          read_context->context->GetClientDeadline(), read_time,
+          !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
           read_context->req->transaction(), &result, &num_rows_read));
 
       total_num_rows_read += num_rows_read;
 
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
-        VLOG(1) << "Restart read required at: " << result.restart_read_ht;
-        read_context->read_time.read = result.restart_read_ht;
-        read_context->read_time.local_limit = read_context->safe_ht_to_read;
-        return read_context->read_time;
+        return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
