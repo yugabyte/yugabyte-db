@@ -1053,7 +1053,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1155,7 +1155,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
-      const TabletInfo& source_tablet_info, const PartitionPB& partition);
+      TabletInfo* source_tablet_info, const PartitionPB& partition,
+      TableInfo::lock_type* table_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
