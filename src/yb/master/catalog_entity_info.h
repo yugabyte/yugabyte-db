@@ -194,7 +194,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   virtual const TabletId& id() const override { return tablet_id_; }
 
   const TabletId& tablet_id() const { return tablet_id_; }
-  const scoped_refptr<TableInfo>& table() const { return table_; }
+  scoped_refptr<const TableInfo> table() const { return table_; }
+  const scoped_refptr<TableInfo>& table() { return table_; }
 
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
