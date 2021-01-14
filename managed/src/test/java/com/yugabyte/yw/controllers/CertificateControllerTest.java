@@ -125,7 +125,7 @@ public class CertificateControllerTest extends FakeDBApplication {
       result_uuids.add(UUID.fromString(e.get("uuid").toString()));
       result_labels.add(e.get("label").toString());
       assertEquals(e.get("certType"), "SelfSigned");
-      assertEquals(e.get("removable"), true);
+      assertEquals(e.get("inUse"), false);
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
@@ -134,10 +134,10 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteCertificate() {
-	UUID cert_uuid = test_certs_uuids.get(0);  
-	Result result = deleteCertificate(cert_uuid);
-	JsonNode json = Json.parse(contentAsString(result));
-	assertEquals(OK, result.status());
+    UUID cert_uuid = test_certs_uuids.get(0);
+    Result result = deleteCertificate(cert_uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
   }
   
   @Test
