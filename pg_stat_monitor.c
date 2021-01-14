@@ -1104,6 +1104,18 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		Counters    tmp;
 		double      stddev;
 		int64       queryid = entry->key.queryid;
+		struct tm   tm;
+		time_t bucket_t,current_t;
+		double diff_t;
+
+		memset(&tm, 0, sizeof(tm));
+		strptime(pgss->bucket_start_time[entry->key.bucket_id],  "%Y-%m-%d %H:%M:%S", &tm);
+		bucket_t = mktime(&tm);
+
+		time(&current_t);
+		diff_t = difftime(current_t, bucket_t);
+		if (diff_t > (PGSM_BUCKET_TIME * PGSM_MAX_BUCKETS))
+			continue;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
@@ -1273,7 +1285,8 @@ get_next_wbucket(pgssSharedState *pgss)
 		sec = lt->tm_sec - (lt->tm_sec % PGSM_BUCKET_TIME);
 		if (sec < 0)
 			sec = 0;
-		snprintf(pgss->bucket_start_time[bucket_id], sizeof(pgss->bucket_start_time[bucket_id]), "%02d-%02d-%04d %02d:%02d:%02d", lt->tm_mday, lt->tm_mon + 1, lt->tm_year + 1900, lt->tm_hour, lt->tm_min, sec);
+		snprintf(pgss->bucket_start_time[bucket_id], sizeof(pgss->bucket_start_time[bucket_id]),
+				"%04d-%02d-%02d %02d:%02d:%02d", lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, sec);
 		return bucket_id;
 	}
 	return pgss->current_wbucket;

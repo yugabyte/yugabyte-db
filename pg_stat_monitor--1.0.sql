@@ -136,7 +136,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(resp_calls, ',')) resp_calls,
     cpu_user_time,
     cpu_sys_time
-FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid;
+FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid
+ORDER BY bucket_start_time;
 
 CREATE FUNCTION decode_error_level(elevel int)
 RETURNS  text
