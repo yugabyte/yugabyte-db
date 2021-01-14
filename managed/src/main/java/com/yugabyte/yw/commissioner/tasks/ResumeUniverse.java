@@ -41,7 +41,7 @@ public class ResumeUniverse extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = null;
-      universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      universe = Universe.get(params().universeUUID);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to resume the existing nodes.

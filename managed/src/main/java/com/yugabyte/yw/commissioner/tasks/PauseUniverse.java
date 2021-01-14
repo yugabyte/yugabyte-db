@@ -54,11 +54,6 @@ public class PauseUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       // If for any reason pause universe fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
-      }
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }

@@ -44,7 +44,6 @@ public class AnsibleResumeServer extends NodeTaskBase {
     if (u.getNode(nodeName) == null) {
       LOG.error("No node in universe with name " + nodeName);
       return;
-    }
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -54,14 +53,13 @@ public class AnsibleResumeServer extends NodeTaskBase {
       }
     };
 
-    saveUniverseDetails(updater);
   }
 
   @Override
   public void run() {
     // Update the node state as resuming..
-    setNodeState(NodeDetails.NodeState.Starting);
-    // Execute the ansible command.
+    // setNodeState(NodeDetails.NodeState.Starting);
+
     try {
       ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.Resume, taskParams());

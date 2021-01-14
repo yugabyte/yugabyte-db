@@ -1001,7 +1001,7 @@ public class UniverseController extends AuthenticatedController {
     }
     return Results.status(OK, universe.toJson());
   }
-  
+
   public Result pause(UUID customerUUID, UUID universeUUID) {
 	  Universe universe;
 	    try {
@@ -1022,7 +1022,7 @@ public class UniverseController extends AuthenticatedController {
 	    taskParams.customerUUID = customerUUID;
 	    // Submit the task to resume the universe.
 	    TaskType taskType = TaskType.PauseUniverse;
-	 
+
 	    UUID taskUUID = commissioner.submit(taskType, taskParams);
 	    LOG.info("Submitted pause universe for " + universeUUID + ", task uuid = " + taskUUID);
 
@@ -1043,7 +1043,7 @@ public class UniverseController extends AuthenticatedController {
 
   }
 
-  
+
   public Result resume(UUID customerUUID, UUID universeUUID) {
 	  Universe universe;
 	    try {
@@ -1064,7 +1064,7 @@ public class UniverseController extends AuthenticatedController {
 	    taskParams.customerUUID = customerUUID;
 	    // Submit the task to resume the universe.
 	    TaskType taskType = TaskType.ResumeUniverse;
-	 
+
 	    UUID taskUUID = commissioner.submit(taskType, taskParams);
 	    LOG.info("Submitted resume universe for " + universeUUID + ", task uuid = " + taskUUID);
 
