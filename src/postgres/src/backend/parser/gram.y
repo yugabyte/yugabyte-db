@@ -7377,8 +7377,6 @@ fetch_args:	cursor_name
 				}
 			| NEXT opt_from_in cursor_name
 				{
-					parser_ybc_signal_unsupported(@1, "FETCH NEXT", 6514);
-
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7437,8 +7435,9 @@ fetch_args:	cursor_name
 				}
 			| SignedIconst opt_from_in cursor_name
 				{
-					parser_ybc_signal_unsupported(@1, "FETCH + OR -", 6514);
-
+					if ($1 < 0) {
+						parser_ybc_signal_unsupported(@1, "FETCH -", 6514);
+					}
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7455,8 +7454,6 @@ fetch_args:	cursor_name
 				}
 			| FORWARD opt_from_in cursor_name
 				{
-					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
-
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
@@ -7465,8 +7462,9 @@ fetch_args:	cursor_name
 				}
 			| FORWARD SignedIconst opt_from_in cursor_name
 				{
-					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
-
+					if ($2 < 0) {
+						parser_ybc_signal_unsupported(@1, "FETCH FORWARD -", 6514);
+					}
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
@@ -7475,8 +7473,6 @@ fetch_args:	cursor_name
 				}
 			| FORWARD ALL opt_from_in cursor_name
 				{
-					parser_ybc_signal_unsupported(@1, "FETCH FORWARD", 6514);
-
 					FetchStmt *n = makeNode(FetchStmt);
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
