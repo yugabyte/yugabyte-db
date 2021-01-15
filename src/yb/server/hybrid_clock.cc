@@ -71,7 +71,7 @@ DEFINE_string(time_source, "",
               "specific for appropriate tests, that adds them.");
 TAG_FLAG(time_source, hidden);
 
-DEFINE_bool(fail_on_out_of_range_clock_skew, true,
+DEFINE_bool(fail_on_out_of_range_clock_skew, false,
             "In case transactional tables are present, crash the process if clock skew greater "
             "than the configured maximum.");
 
