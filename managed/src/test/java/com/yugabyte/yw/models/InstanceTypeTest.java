@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.InstanceType.VolumeType;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
