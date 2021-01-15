@@ -36,6 +36,202 @@ Note: Content will be added as new notable features and changes are available in
 
 ## Release notes
 
+### **Yugabyte Release Notes v2.5.1**
+
+**Jan 14, 2021**
+
+**Build:** `2.5.1.0-b153`
+
+#### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+#### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.5.1.0-b153
+```
+
+### **New features**
+
+**Yugabyte Platform**
+
+*   [#5723] Support for custom CA signed certificates for encryption in-flight 
+*   [#5556] Add alerts capability for backup tasks
+
+**Core Database**
+
+*   [#6010] YCQL: Cache authentication information
+*   [#4874] YSQL: Backup for colocated databases
+*   [#4899] YSQL: Index backfill unique indexes 
+*   [#6237] YSQL: add CREATE INDEX NONCONCURRENTLY grammar 
+*   [#5982] YSQL: Add support for CREATE TABLE/INDEX ... WITH (table_oid = x) 
+*   [#4770] YSQL: Completing feature RANGE Partitioning
+*   Improved Clock Skew Handling
+    *   [#6370] Bump default max_clock_skew to 500ms
+    *   [#3335] Crash when too big clock skew is detected
+
+### **Improvements**
+
+**Yugabyte Platform**
+
+*   [#5888] Better error for handling when user creates concurrent backup tasks 
+*   [#6016] Pre-flight checks for create universe / edit universe / add node operations
+*   [#4183] Add error message for invalid ssh keys for onprem providers
+*   [#5848] Onprem provider creation failure leaves incomplete state behind
+*   [#5652] Improve delete universe handling for failed universes
+*   [#6254] Allow user to input multiple GFlag entries at the same time
+*   [#4843] New Health check for Replication status in 2dc setup
+*   [#6268] Utility script to edit universe json from command line
+*   [#4795] Embed http proxy within yb platform to avoid need for deploying nginx
+*   [#5799] Delete platform code related to dev/debug package installs and EPEL repo
+*   [#6228] Enabling Encryption-at-Rest without KMS config causes Create Universe to fail silently
+*   [#6289] Fixed degraded performance on Live Queries tab caused by huge number of DOM nodes in rows
+*   [#6383] Disabled unused API endpoint: run_query 
+*   [#6384] Disabled unused API endpoint: run_in_shell 
+*   [#6389] Input validation for kubernetes config path 
+*   [#6386] Added input validation for access_keys API endpoint 
+*   [#6382] Added UI validation for backup target paths
+*   #6175: Use sudo when removing prometheus snapshots during platform backup
+*   [#6602] Fix TLS directory while provisioning YB nodes.
+*   [#6683] Use a timeout mechanism in cluster_health.py that is more compatible with docker's lack of zombie reaping
+*   [#6633] Platform: rename Pivotal to VMware Tanzu, add Red Hat OpenShift cloud provider
+
+**Core Database**
+
+*   [#6580] ycql: Log the status when statement fails for system query cache
+*   [#6608, #6609] YCQL: Consolidate authentication error handling and messages
+*   [YCQL][#6374] Upgrade spark-cassandra-connector version to 2.4-yb-3
+*   #5678: [YCQL] Optimize updating non-indexed columns within indexed tables.
+*   [#3329][YSQL] Optimized updates to reflect changes on necessary indexes only
+*   [#5805] [YSQL] Use slots more widely in tuple mapping code and make naming more consistent
+*    [YSQL] Clean up libpq connection code (#6481)
+*   [#6417] [YSQL] Backport 'Skip allocating hash table in EXPLAIN-only mode'
+*   [#6131] [YSQL] Dowgrade permission check for data directory to warning
+*   [YSQL] Bubble up backfill error message (#6292)
+*   [#5805] [YSQL]  Don't require return slots for nodes without projection
+*   [#5805] [YSQL] Split ExecStoreTuple into ExecStoreHeapTuple and ExecStoreBufferHeapTuple
+*   [#5805] [YSQL] Error position support for defaults and check constraints
+    *   Improvements to 2DC x-cluster async replication 
+    *   [#6169] Correctly replay write batches with external intents on bootstrap
+    *   [#6169] New format for external intents
+    *   [#6283] Fix Very Large Metric Lag for 2DC Txns
+    *   [#3522] Fix Threading Issues with CDC Consumer Writes
+    *   [#6068] Replicate Intents and Apply Messages for 2DC Txns
+    *   [#6169] Fix apply order of updated external intents records
+    *   [#4516] 2DC: Initial support for colocated databases
+*   Improvements to Tooling
+    *   [#6589] docdb: Add option to clear placement info in yb-admin.
+    *   [#6223] master UI make hash_split more readable 
+    *   [#6161] Change modify_table_placement_info to wipe read_replicas and affinitized_leaders
+    *   [#5420] ybase: Enhance YMaster admin page to display under-replicated tablets
+    *   [#1325] ybase: API for displaying YB version information
+*   Improvements to Tablet splitting
+    *   [#4942] docdb: tablet splitting: implemented retries to post-split involved tablets for 
+    *   #5937: Fixed the case when one of the tablet replicas is down during the split.
+    *   #6101 Add the flag to limit number of tablets per table
+    *   [#6424] Fix post-split compaction to be async
+*   Improvements to core product security
+    *   [#6568] Add flag to force client certificate verification in SSL
+    *   [#6266] Replace retry counter with check that data is ready
+    *   [#6266] Retry SSL_write on SSL_ERROR_WANT_WRITE
+    *   [#6266] Fix handling SSL_write error
+*   [#6394, #6434] docdb: Speedup system.partitions queries
+*   [#3979] Add Transaction Cleanup to Catalog Manager Create DDLs
+*   [#1258]: Send election request from master during table creation
+*   [#6114] docdb: Add metrics for master YCQL system table
+*   [#1259] Speedup DROP TABLE
+*   [#5752] Avoid starving threadpool with run election tasks from FailureDetector
+*   [#5755] Faster cleanup of transactions that failed to commit due to a concurrent abort
+*   (#5996) Messenger::ScheduleOnReactor should break loop finding reactor
+*   [#6305] Adaptive Heartbeat Reporting
+*   [#6445] docdb: Master should rebuild YCQL system.partitions on a background thread
+*   [#6696] Small master perf tweaks
+
+**Bug Fixes**
+
+**Yugabyte Platform**
+
+
+
+*   [#6300] Install of s3cmd fails for default GCP OS image when airgapped
+*   [#6085] Fixed the issue where master is brought up in read replica cluster
+*   [#6416] Deletion with flag --node_ip fails for onprem universes.
+*   [#6614] Fixed NPE with full move
+*   [#6252] Fixed NPE on the metrics page
+*   [#5942] Fixed an issue where release instance is not an option for a node should the install fail because of ssh access
+*   [#6275] Fixed missing stats on Nodes page when universe has read replicas
+*   [#6257] Updating user profile when smtp username or password are empty
+
+**Core Database**
+
+
+
+*   [#6144] YCQL: Fix handling of tablet-lookup errors in Executor::FlushAsync
+*   [#6570] YSQL: Use IsYBRelation instead of IsYugaByteEnabled
+*   [#6492] YSQL Avoid memcpy() with a NULL source pointer and count == 0
+*   [YSQL] Fix IsCreateTableDone for index backfill (#6234)
+*   [#6318, #6334] Call InitThreading in YSQL webserver process
+*   #6317: [YSQL] Fixed SIGSERV in YBPreloadRelCache
+*   [#6364] [YSQL] Replace CurrentMemoryContext with GetCurrentMemoryContext for all pg_extensions
+*   #6219] [YSQL] PRIMARY KEY index in TEMP TABLE is not checked for uniqueness
+*   (#6284) [YSQL] Clear ALTERING when there's no alter 
+*   [#5805] [YSQL] Fix run-time partition pruning for appends with multiple source rels
+*   [#6151] [YSQL] Handle rowmark in case of read with batch of ybctids
+*    (#6270) [YSQL] Prevent concurrent backfill index
+*   [#6133] [YSQL] Fix procedure with an INOUT parameter in DO block
+*   [#6061] [YSQL] ysql_dump should consistently use quotes on column names
+*   #6009: [backup][YSQL] Fixed incorrect column-ids in restored YSQL table if original table was altered.
+*   #5954 [YSQL] Check transaction status after read finished
+*   #6430 [YSQL] Refresh YBCache in case postgres clears its internal cache
+*   #6468 [YSQL] Fix read restarts of request with paging state
+*   [#6435] docdb: fixed handling of empty bloom filter key in the write path
+*   [#6435] Fixed bloom filter index generation for range-partitioned tablets
+*   [#6375] Check against TabletPeer returning null tablet pointer in 
+*   (#5641) Fix for --cert_node_filename for tservers and --enable_ysql
+*   [#6318, #6334] Call InitThreading in YSQL webserver process
+*   [#4150] Fix incorrect tracking of flushed/synced op id in case of Raft operation abort
+*   (#6278) Master SEGV during LB due to null TSDescriptor 
+*   [#6353] Disable rocksdb flush on all DeleteTablet calls
+*   [#6338] Fix crash with redis workloads and snapshot restore
+*   [#6334] Attach/detach Squeasel threads to/from libcds using callbacks
+*   [#6245] Fixed incorrect restored table schema if the table was altered after the backup.
+*   [#6217] Avoid a possible assertion failure in CDSAttacher destructor in Webserver
+*   [#6170] Shutdown status resolver before destroying it in ResolveIntents
+*   [#6482] Fix timeout handling when getting safe time in a RF1 cluster
+*   [#6635] Fix the wrong detection of communication failure when no operations transferred
+*   [#6678] backup: Fix restore of colocated table with table_oid already set
+
+    **Known Issues**
+
+
+**Yugabyte Platform**
+
+
+
+*   Azure IaaS orchestration
+    *   No pricing information provided (5624)
+    *   No support for regions with zero Availability Zones(AZs) (5628)
+
+**Core Database**
+
+
+
+*   Advisory on clock-skew
+    *   After commit `a60a4ae00d217563cac865b3363e2c2bb8aa58ba`, by default, any YB node will explicitly crash if it detects a clock skew higher than the `max_clock_skew` flag (default 500ms). This can be disabled by setting `fail_on_out_of_range_clock_skew=false`, but this could lead to consistency issues! The recommendation is that you ensure clocks are synchronized across your cluster.
+
+
 ### v2.5.0 - November 12, 2020
 
 **Build:** `2.5.0.0-b2`
