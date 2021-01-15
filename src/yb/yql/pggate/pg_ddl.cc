@@ -537,12 +537,10 @@ PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
 
 Status PgAlterTable::AddColumn(const char *name,
                                const YBCPgTypeEntity *attr_type,
-                               int order,
-                               bool is_not_null) {
+                               int order) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_type->yb_type));
-
-  client::YBColumnSpec* column = table_alterer->AddColumn(name)->Type(yb_type)->Order(order);
-  if (is_not_null) column->NotNull();
+  table_alterer->AddColumn(name)->Type(yb_type)->Order(order);
+  // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
 
   return Status::OK();
 }

@@ -182,6 +182,41 @@ typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 // In the future, it may hold information about annotations, etc.
 class ColumnSchema {
  public:
+  // Component comparators for combining in custom comparators.
+  static bool CompName(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.name_ == b.name_;
+  }
+
+  static bool CompNullable(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.is_nullable_ == b.is_nullable_;
+  }
+
+  static bool CompHashKey(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.is_hash_key_ == b.is_hash_key_;
+  }
+
+  static bool CompSortingType(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.sorting_type_ == b.sorting_type_;
+  }
+
+  static bool CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.type_info()->type() == b.type_info()->type();
+  }
+
+  static bool CompOrder(const ColumnSchema &a, const ColumnSchema &b) {
+    return a.order_ == b.order_;
+  }
+
+  // Combined comparators.
+  static bool CompareType(const ColumnSchema &a, const ColumnSchema &b) {
+    return CompNullable(a, b) && CompHashKey(a, b) &&
+        CompSortingType(a, b) && CompTypeInfo(a, b);
+  }
+
+  static bool CompareByDefault(const ColumnSchema &a, const ColumnSchema &b) {
+    return CompareType(a, b) && CompName(a, b);
+  }
+
   enum SortingType : uint8_t {
     kNotSpecified = 0,
     kAscending,          // ASC, NULLS FIRST
@@ -301,15 +336,17 @@ class ColumnSchema {
   // For example, "STRING NOT NULL".
   std::string TypeToString() const;
 
+  template <typename Comparator>
+  bool Equals(const ColumnSchema &other, Comparator comp) const {
+    return comp(*this, other);
+  }
+
   bool EqualsType(const ColumnSchema &other) const {
-    return is_nullable_ == other.is_nullable_ &&
-           is_hash_key_ == other.is_hash_key_ &&
-           sorting_type_ == other.sorting_type_ &&
-           type_info()->type() == other.type_info()->type();
+    return Equals(other, CompareType);
   }
 
   bool Equals(const ColumnSchema &other) const {
-    return EqualsType(other) && this->name_ == other.name_;
+    return Equals(other, CompareByDefault);
   }
 
   int Compare(const void *lhs, const void *rhs) const {
@@ -998,17 +1035,22 @@ class Schema {
 
   // Return true if the schemas have exactly the same set of columns
   // and respective types, and the same table properties.
-  bool Equals(const Schema &other) const {
+  template <typename ColumnComparator>
+  bool Equals(const Schema &other, ColumnComparator comp) const {
     if (this == &other) return true;
     if (this->num_key_columns_ != other.num_key_columns_) return false;
     if (this->table_properties_ != other.table_properties_) return false;
     if (this->cols_.size() != other.cols_.size()) return false;
 
     for (size_t i = 0; i < other.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(other.cols_[i])) return false;
+      if (!this->cols_[i].Equals(other.cols_[i], comp)) return false;
     }
 
     return true;
+  }
+
+  bool Equals(const Schema &other) const {
+    return Equals(other, ColumnSchema::CompareByDefault);
   }
 
   // Return true if the schemas have exactly the same set of columns

@@ -1138,8 +1138,17 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         auto table_lock = table->LockForRead();
         RETURN_NOT_OK(table->GetSchema(&persisted_schema));
       }
+
+      // Ignore 'nullable' attribute - due to difference in implementation
+      // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
+      struct CompareColumnsExceptNullable {
+        bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
+          return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
+              ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
+        }
+      } comparator;
       // Schema::Equals() compares only column names & types. It does not compare the column ids.
-      if (!persisted_schema.Equals(schema)
+      if (!persisted_schema.Equals(schema, comparator)
           || persisted_schema.column_ids().size() != column_ids.size()) {
         return STATUS(InternalError,
                       Format("Invalid created table schema={$0}, expected={$1}",

@@ -327,8 +327,7 @@ class PgAlterTable : public PgDdl {
 
   CHECKED_STATUS AddColumn(const char *name,
                            const YBCPgTypeEntity *attr_type,
-                           int order,
-                           bool is_not_null);
+                           int order);
 
   CHECKED_STATUS RenameColumn(const char *oldname, const char *newname);
 
