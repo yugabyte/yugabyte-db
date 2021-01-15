@@ -13,7 +13,7 @@ jobs:
         run: |
           my_ver=$(cat version.txt)
           git fetch --depth=1 origin master
-          main_ver=$(git show origin/master:version.txt)
+          main_ver=$(git show origin/master:managed/src/main/resources/version.txt)
           if [[ "$main_ver" == "$my_ver" ]]; then
             train="master"
           else
