@@ -100,7 +100,7 @@ One way to fix this is to set `python3` the alternative for `python` by running:
 2. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.5.0.0-linux.tar.gz && cd yugabyte-2.5.1.0/
+    $ tar xvfz yugabyte-2.5.1.0-linux.tar.gz && cd yugabyte-2.5.1.0/
     ```
 
 ## Configure YugabyteDB
