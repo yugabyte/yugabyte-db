@@ -316,7 +316,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (node.cloudInfo.private_ip == null) {
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
                                node.nodeName));
-        // Free up the node so that the client can use the instance to create another uiverse.
+        // Free up the node so that the client can use the instance to create another universe.
         NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
         providerNode.clearNodeDetails();
         continue;
