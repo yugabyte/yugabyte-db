@@ -63,6 +63,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       use_local_tserver_(use_local_tserver) {}
 
   ~TwoDCOutputClient() {
+    std::lock_guard<decltype(lock_)> l(lock_);
     rpcs_->Abort({&write_handle_});
   }
 
@@ -103,14 +104,14 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   cdc::ConsumerTabletInfo consumer_tablet_info_;
   std::shared_ptr<CDCClient> local_client_;
   rpc::Rpcs* rpcs_;
-  rpc::Rpcs::Handle write_handle_;
+  rpc::Rpcs::Handle write_handle_ GUARDED_BY(lock_);
   std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk_;
 
   bool use_local_tserver_;
 
   std::shared_ptr<client::YBTable> table_;
 
-  // Used to protect error_status_, op_id_, done_processing_ and record counts.
+  // Used to protect error_status_, op_id_, done_processing_, write_handle_ and record counts.
   mutable rw_spinlock lock_;
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
@@ -277,6 +278,7 @@ void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB>
   // TODO: This should be parallelized for better performance with M:N setups.
   auto deadline = CoarseMonoClock::Now() +
                   MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+  std::lock_guard<decltype(lock_)> l(lock_);
   write_handle_ = rpcs_->Prepare();
   if (write_handle_ != rpcs_->InvalidHandle()) {
     // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
@@ -295,7 +297,11 @@ void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB>
 
 void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResponsePB& response) {
   // Handle response.
-  auto retained = rpcs_->Unregister(&write_handle_);
+  rpc::RpcCommandPtr retained = nullptr;
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    retained = rpcs_->Unregister(&write_handle_);
+  }
   if (!status.ok()) {
     HandleError(status, true /* done */);
     return;
