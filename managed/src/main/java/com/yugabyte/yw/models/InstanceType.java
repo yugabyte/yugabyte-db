@@ -176,12 +176,12 @@ public class InstanceType extends Model {
       .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
       .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
-      if (instanceType.instanceTypeDetailsJson.isEmpty()) {
-        InstanceTypeDetails instanceTypeDetailsObj = new InstanceTypeDetails();
-        instanceTypeDetailsObj.setVolumeDetailsList(
+      instanceType.instanceTypeDetails =
+        Json.fromJson(Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
+      if (instanceType.instanceTypeDetails.volumeDetailsList.isEmpty()) {
+        instanceType.instanceTypeDetails.setVolumeDetailsList(
           config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
           config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY), VolumeType.EBS);
-        instanceType.instanceTypeDetails = instanceTypeDetailsObj;
       }
     }
     return entries;
@@ -198,9 +198,8 @@ public class InstanceType extends Model {
     if (provider.code.equals("aws")) {
       entries = populateDefaultsIfEmpty(entries, config);
     }
-
-    return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
-      entry.getInstanceTypeCode())).collect(Collectors.toList());
+    
+    return entries;
   }
 
   public static InstanceType createWithMetadata(Provider provider, String instanceTypeCode,
