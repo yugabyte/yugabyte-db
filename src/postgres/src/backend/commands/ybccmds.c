@@ -793,8 +793,7 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
 
 				HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-														order, col_type,
-														colDef->is_not_null));
+														order, col_type));
 				++col;
 				ReleaseSysCache(typeTuple);
 				needsYBAlter = true;
