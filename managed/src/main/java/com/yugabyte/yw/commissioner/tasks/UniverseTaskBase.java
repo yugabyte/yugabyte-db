@@ -316,6 +316,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (node.cloudInfo.private_ip == null) {
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
                                node.nodeName));
+        // Free up the node.
+        NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
+        providerNode.clearNodeDetails();
         continue;
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
