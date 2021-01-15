@@ -231,7 +231,7 @@ class PgApiImpl {
                                PgStatement **handle);
 
   CHECKED_STATUS AlterTableAddColumn(PgStatement *handle, const char *name,
-                                     int order, const YBCPgTypeEntity *attr_type, bool is_not_null);
+                                     int order, const YBCPgTypeEntity *attr_type);
 
   CHECKED_STATUS AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                         const char *newname);

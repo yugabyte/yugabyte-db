@@ -283,4 +283,43 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("DROP DATABASE yb3");
     }
   }
+
+  @Test
+  public void testAlteredYSQLTableBackupWithNotNull() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl(id int)");
+
+      stmt.execute("ALTER TABLE test_tbl ADD a int NOT NULL");
+      stmt.execute("ALTER TABLE test_tbl ADD b int NULL");
+
+      stmt.execute("INSERT INTO test_tbl(id, a, b) VALUES (1, 2, 3)");
+      stmt.execute("INSERT INTO test_tbl(id, a) VALUES (2, 4)");
+
+      runInvalidQuery(
+          stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
+          "null value in column \"a\" violates not-null constraint");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      stmt.execute("INSERT INTO test_tbl (id, a, b) VALUES (9999, 9, 9)");
+
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=1", new Row(1, 2, 3));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=9999", new Row(9999, 9, 9));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=1", new Row(1, 2, 3));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=9999");
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }
