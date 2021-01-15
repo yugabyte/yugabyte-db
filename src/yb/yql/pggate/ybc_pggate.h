@@ -194,7 +194,7 @@ YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type, bool is_not_null);
+                                   const YBCPgTypeEntity *attr_type);
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
                                       const char *newname);
