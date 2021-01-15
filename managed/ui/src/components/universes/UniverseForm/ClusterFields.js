@@ -95,7 +95,7 @@ const initialState = {
   maxNumNodes: -1,
   assignPublicIP: true,
   hasInstanceTypeChanged: false,
-  useTimeSync: false,
+  useTimeSync: true,
   enableYSQL: true,
   enableIPV6: false,
   enableYEDIS: false,
@@ -336,6 +336,7 @@ export default class ClusterFields extends Component {
           }
         }
       } else {
+        console.log("Inside else block inside else--", this.state.useTimeSync)
         // Initialize the form values if not exists
         updateFormField(`${clusterType}.numNodes`, 3);
         updateFormField(`${clusterType}.replicationFactor`, 3);
