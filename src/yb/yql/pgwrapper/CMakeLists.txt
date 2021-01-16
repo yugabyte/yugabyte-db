@@ -47,12 +47,13 @@ target_link_libraries(pg_wrapper_test_base integration-tests)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
    ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(pg_wrapper-test)
+ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
-ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_mini-test)
+ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_txn-test)
+ADD_YB_TEST(pg_wrapper-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
