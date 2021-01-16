@@ -888,6 +888,16 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 							/* Types are the same, no changes will occur. */
 							break;
 						}
+						/* timestamp <-> timestamptz type change is allowed
+							if no rewrite is needed */
+						if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
+							break;
+						}
+						if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
+							break;
+						}
 						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This ALTER TABLE command is not yet supported.")));
 					}
