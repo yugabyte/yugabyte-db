@@ -44,6 +44,11 @@ public class AlertManager {
     }
 
     CustomerRegisterFormData.SmtpData smtpData = emailHelper.getSmtpData(customer.uuid);
+    // Skip if the SMTP configuration is not completely defined.
+    if (smtpData == null) {
+      return;
+    }
+
     String subject = String.format("Yugabyte Platform Alert - <%s>", customer.getTag());
     AlertDefinition definition = alert.definitionUUID == null ? null
         : AlertDefinition.get(alert.definitionUUID);
@@ -66,7 +71,7 @@ public class AlertManager {
     }
 
     try {
-      emailHelper.sendEmail(subject, String.join(",", destinations), smtpData,
+      emailHelper.sendEmail(customer, subject, String.join(",", destinations), smtpData,
           Collections.singletonMap("text/plain; charset=\"us-ascii\"", content));
     } catch (MessagingException e) {
       LOG.error("Error sending email for alert {} in state '{}'", alert.uuid, state, e);

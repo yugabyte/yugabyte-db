@@ -195,11 +195,13 @@ public class HealthChecker {
             "Error converting health check response to prometheus metrics: " + e.getMessage());
       }
 
-      if (!StringUtils.isEmpty(emailDestinations) && (sendMailAlways || hasErrors)) {
+      SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
+      if (!StringUtils.isEmpty(emailDestinations) && (smtpData != null)
+          && (sendMailAlways || hasErrors)) {
         String subject = String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(),
             u.name);
-        String mailError = sendEmailReport(u, emailHelper.getSmtpData(c.uuid), emailDestinations,
-            subject, healthJSON, reportOnlyErrors);
+        String mailError = sendEmailReport(u, c, smtpData, emailDestinations, subject, healthJSON,
+            reportOnlyErrors);
         if (mailError != null) {
           LOG.warn("Health check had the following errors during mailing: " + mailError);
           createAlert(c, u, "Error sending Health check email: " + mailError);
@@ -208,8 +210,8 @@ public class HealthChecker {
     }
   }
 
-  private String sendEmailReport(Universe u, SmtpData smtpData, String emailDestinations,
-      String subject, JsonNode report, boolean reportOnlyErrors) {
+  private String sendEmailReport(Universe u, Customer c, SmtpData smtpData,
+      String emailDestinations, String subject, JsonNode report, boolean reportOnlyErrors) {
 
     // LinkedHashMap saves values order.
     Map<String, String> contentMap = new LinkedHashMap<>();
@@ -219,7 +221,7 @@ public class HealthChecker {
         healthCheckerReport.asHtml(u, report, reportOnlyErrors));
 
     try {
-      emailHelper.sendEmail(subject, emailDestinations, smtpData, contentMap);
+      emailHelper.sendEmail(c, subject, emailDestinations, smtpData, contentMap);
     } catch (MessagingException e) {
       return e.getMessage();
     }
