@@ -565,7 +565,7 @@ fi
 
 set_default_compiler_type
 find_or_download_thirdparty
-find_compiler_by_type "$YB_COMPILER_TYPE"
+find_compiler_by_type
 
 if [[ $cc_or_cxx == "compiler-wrapper.sh" && $compiler_args_str == "--version" ]]; then
   # Allow invoking this script not through a symlink but directly in one special case: when trying

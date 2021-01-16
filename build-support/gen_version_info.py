@@ -94,7 +94,6 @@ def main():
     hostname = socket.gethostname()
     build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
 
-    logging.info('Get user name')
     try:
         username = os.getlogin()
     except OSError as ex:

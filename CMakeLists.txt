@@ -213,9 +213,10 @@ endif()
 # This helps find the right third-party build directory.
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
-elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
+elseif ("${COMPILER_FAMILY}" STREQUAL "clang")
   if(NOT APPLE AND
-     NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
+     (NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx" OR
+      "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0"))
     # This must be a Clang third-party build where we use "uninstrumented" instead of
     # "clang_uninstrumented" because everything is built with Clang.
     set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
@@ -335,7 +336,7 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
   # Remove this check when all Clang builds will use libc++.
-  if("${USING_SANITIZERS}" OR APPLE)
+  if("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$" OR APPLE)
     ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
     ADD_CXX_FLAGS("-Wthread-safety-analysis")
   endif()
@@ -380,7 +381,7 @@ endif()
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
-elseif(NOT "${USING_SANITIZERS}")
+elseif(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   message("Specifying linker flags to not allow any undefined symbols")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
 else()
@@ -483,6 +484,10 @@ if (IS_CLANG)
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
+
+  if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0" AND APPLE)
+    ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
+  endif()
 elseif("${COMPILER_FAMILY}" MATCHES "^gcc.*$")
   # These flags are not understood by some versions.
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
@@ -493,30 +498,8 @@ endif()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 
 # Flag to enable thread sanitizer (clang or gcc 4.8)
-if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
-  YB_SETUP_SANITIZER("TSAN")
-  ADD_CXX_FLAGS("-fsanitize=thread")
-
-  # Enables dynamic_annotations.h to actually generate code
-  ADD_CXX_FLAGS("-DDYNAMIC_ANNOTATIONS_ENABLED")
-
-  # changes atomicops to use the tsan implementations
-  ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
-
-  # Compile and link against the thirdparty TSAN instrumented libstdcxx.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
-elseif ("${YB_BUILD_TYPE}" STREQUAL "asan")
-  YB_SETUP_SANITIZER("ASAN")
-
-  ADD_CXX_FLAGS("-fsanitize=address")
-  ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
-
-  # Compile and link against the thirdparty ASAN instrumented libstdcxx.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-  if("${COMPILER_FAMILY}" STREQUAL "gcc")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lubsan -ldl")
-    ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
-  endif()
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  YB_SETUP_SANITIZER()
 elseif (NOT APPLE AND IS_CLANG)
   # Special setup for Clang on Linux. This is not needed on macOS.
   if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")

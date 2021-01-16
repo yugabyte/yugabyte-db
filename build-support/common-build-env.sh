@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-#@IgnoreInspection BashAddShebang
-
 # Copyright (c) YugaByte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -105,11 +103,6 @@ readonly MAX_EFFECTIVE_NUM_BUILD_WORKERS=10
 
 readonly MVN_OUTPUT_FILTER_REGEX
 
-# An even faster alternative to downloading a pre-built third-party dependency tarball from S3
-# or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
-# outside of main (non-thirdparty) YB codebase's build pipeline.
-readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY="$YB_JENKINS_NFS_HOME_DIR/thirdparty"
-
 readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
 
 readonly YB_SHARED_MVN_LOCAL_REPO="$YB_JENKINS_NFS_HOME_DIR/m2_repository"
@@ -153,6 +146,8 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc8
   gcc9
+  clang10
+  clang11
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -853,12 +848,19 @@ log_diagnostics_about_local_thirdparty() {
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
 # used in compiler-wrapper.sh.
 find_compiler_by_type() {
-  compiler_type=$1
-  validate_compiler_type "$1"
-  local compiler_type=$1
+  expect_num_args 0 "$@"
+  expect_vars_to_be_set YB_COMPILER_TYPE
+  if [[ -n ${YB_RESOLVED_CC_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
+    cc_executable=$YB_RESOLVED_CC_COMPILER
+    cxx_executable=$YB_RESOLVED_CXX_COMPILER
+    return
+  fi
+
+  validate_compiler_type "$YB_COMPILER_TYPE"
+
   unset cc_executable
   unset cxx_executable
-  case "$compiler_type" in
+  case "$YB_COMPILER_TYPE" in
     gcc)
       if [[ -n ${YB_GCC_PREFIX:-} ]]; then
         if [[ ! -d $YB_GCC_PREFIX/bin ]]; then
@@ -947,6 +949,19 @@ find_compiler_by_type() {
       cc_executable+=${YB_CLANG_SUFFIX:-}
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
+    clang10|clang11)
+      local clang_prefix_candidate
+      local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
+      local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
+      for clang_prefix_candidate in /usr/local/bin /usr/bin; do
+        if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
+              -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+          cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
+          cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          break
+        fi
+      done
+    ;;
     zapcc)
       if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
         cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
@@ -957,7 +972,7 @@ find_compiler_by_type() {
       fi
     ;;
     *)
-      fatal "Unknown compiler type '$compiler_type'"
+      fatal "Unknown compiler type '$YB_COMPILER_TYPE'"
   esac
 
   # -----------------------------------------------------------------------------------------------
@@ -988,11 +1003,14 @@ find_compiler_by_type() {
               "Compiler does not exist or is not executable at the path we set" \
               "$compiler_var_name to" \
               "(possibly applying 'which' expansion): $compiler_path" \
-              "(trying to use compiler type '$compiler_type')."
+              "(trying to use compiler type '$YB_COMPILER_TYPE')."
       fi
       eval $compiler_var_name=\"$compiler_path\"
     fi
   done
+
+  export YB_RESOLVED_CC_COMPILER=$cc_executable
+  export YB_RESOLVED_CXX_COMPILER=$cxx_executable
 }
 
 # Make pushd and popd quiet.
@@ -1238,6 +1256,7 @@ save_paths_to_build_dir() {
 }
 
 detect_linuxbrew() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   if [[ -z ${BUILD_ROOT:-} ]]; then
     fatal "BUILD_ROOT is not set, not trying to use the default version of Linuxbrew."
   fi
@@ -1422,18 +1441,23 @@ detect_num_cpus() {
 }
 
 # Gets a random build worker host name. Output variable: build_workers (array).
+# shellcheck disable=SC2120
 get_build_worker_list() {
   expect_num_args 0 "$@"
-  declare -i num_attempts=1
-
   if [[ -z ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
     fatal "YB_BUILD_WORKERS_LIST_URL not set"
   fi
 
   declare -i attempt
-  for (( attempt=1; attempt <= $MAX_ATTEMPTS_TO_GET_BUILD_WORKER; attempt++ )); do
+  for (( attempt=1; attempt <= MAX_ATTEMPTS_TO_GET_BUILD_WORKER; attempt++ )); do
     # Note: ignoring bad exit codes and HTTP status codes here. We only look at the output and
     # if each build worker name is of the right format ("build-worker-..."), we consider it valid.
+    #
+    # Typically, when advice at https://github.com/koalaman/shellcheck/wiki/SC2207 is followed,
+    # the code ends up being unnecessarily complex for simple word splitting where all whitespace
+    # (new lines, spaces, etc.) has to be treated the same way.
+    #
+    # shellcheck disable=SC2207
     build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -1458,7 +1482,7 @@ get_build_worker_list() {
   done
 
   fatal "Could not get a build worker name from $YB_BUILD_WORKERS_LIST_URL in" \
-        "$MAX_ATTEMPTS_TO_GET_BUILD_WORKER attempts. Last output from curl: '$build_workers'"
+        "$MAX_ATTEMPTS_TO_GET_BUILD_WORKER attempts. Last output from curl: '${build_workers[*]}'"
 }
 
 detect_num_cpus_and_set_make_parallelism() {

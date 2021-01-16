@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20201111062958-7047513803-centos7-linuxbrew/yugabyte-db-thirdparty-v20201111062958-7047513803-centos7-linuxbrew.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20201207195011-bbf28cf4f1-centos7-linuxbrew/yugabyte-db-thirdparty-v20201207195011-bbf28cf4f1-centos7-linuxbrew.tar.gz

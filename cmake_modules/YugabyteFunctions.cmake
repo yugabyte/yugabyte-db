@@ -160,11 +160,6 @@ endfunction()
 
 # Makes sure that we are using a supported compiler family.
 function(VALIDATE_COMPILER_TYPE)
-  set(USING_SANITIZERS FALSE PARENT_SCOPE)
-  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-    set(USING_SANITIZERS TRUE PARENT_SCOPE)
-  endif()
-
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
   endif()
@@ -220,6 +215,12 @@ endfunction()
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
   if (RPATH_ENTRY STREQUAL "")
     message(FATAL_ERROR "Trying to add an empty rpath entry.")
+  endif()
+  if(NOT EXISTS "${RPATH_ENTRY}")
+    message(
+      WARNING
+      "Adding a non-existent rpath directory '${RPATH_ENTRY}'. This might be OK in case the "
+      "directory is created during the build.")
   endif()
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
   set(FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
@@ -334,7 +335,13 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
   set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_BUILD_TYPE}/libcxx")
+  if(NOT EXISTS "${LIBCXX_DIR}")
+    message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
+  endif()
   set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+  if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
+    message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
+  endif()
   ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
 
   # This needs to appear before adding third-party dependencies that have their headers in the
@@ -344,17 +351,79 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
 
   ADD_CXX_FLAGS("-nostdinc++")
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
+  if(NOT EXISTS "${LIBCXX_DIR}/lib")
+    message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+  endif()
 endmacro()
 
-macro(YB_SETUP_SANITIZER SANITIZER)
-  string(TOLOWER "${SANITIZER}" LOWER_SANITIZER)
+# This is a macro because we need to call functions that set flags on the parent scope.
+macro(YB_SETUP_SANITIZER)
+  if(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+    message(
+      FATAL_ERROR
+      "YB_SETUP_SANITIZER can only be invoked for asan/tsan build types. "
+      "Build type: ${YB_BUILD_TYPE}.")
+  endif()
 
   if("${COMPILER_FAMILY}" STREQUAL "clang")
-    message("Using ${SANITIZER}-instrumented libc++")
-    YB_SETUP_CLANG("${LOWER_SANITIZER}")
+    message("Using instrumented libc++ (build type: ${YB_BUILD_TYPE})")
+    YB_SETUP_CLANG("${YB_BUILD_TYPE}")
   else()
     message("Not using ${SANITIZER}-instrumented standard C++ library for compiler family "
             "${COMPILER_FAMILY} yet.")
+  endif()
+
+  if("${YB_BUILD_TYPE}" STREQUAL "asan")
+    if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
+       NOT APPLE)
+      # TODO: see if we can use static libasan instead (requires third-party changes).
+      ADD_CXX_FLAGS("-shared-libasan")
+      ADD_LINKER_FLAGS("-lunwind")
+
+      # TODO: this is mostly needed because we depend on the ASAN runtime shared library and that
+      # depends on libc++ but does not have the rpath set correctly, so we have to add our own
+      # dependency on libc++ so it gets resolved using our rpath.
+      ADD_LINKER_FLAGS("-lc++")
+
+      execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
+        OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
+      if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:]+)(:.*|$)" )
+        set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR "Clang runtime directory does not exist: ${CLANG_RUNTIME_LIB_DIR}")
+        endif()
+        ADD_GLOBAL_RPATH_ENTRY("${CLANG_RUNTIME_LIB_DIR}")
+      else()
+        message(FATAL_ERROR
+                "Could not parse the output of 'clang -print-search-dirs': "
+                "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
+      endif()
+    endif()
+
+    ADD_CXX_FLAGS("-fsanitize=address")
+    ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
+
+    # Compile and link against the thirdparty ASAN instrumented libstdcxx.
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    if("${COMPILER_FAMILY}" STREQUAL "gcc")
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lubsan -ldl")
+      ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
+    endif()
+  elseif("${YB_BUILD_TYPE}" STREQUAL "tsan")
+    ADD_CXX_FLAGS("-fsanitize=thread")
+
+    # Enables dynamic_annotations.h to actually generate code
+    ADD_CXX_FLAGS("-DDYNAMIC_ANNOTATIONS_ENABLED")
+
+    # changes atomicops to use the tsan implementations
+    ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
+
+    # Compile and link against the thirdparty TSAN instrumented libstdcxx.
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+  else()
+    message(FATAL_ERROR "Invalid build type for YB_SETUP_SANITIZER: '${YB_BUILD_TYPE}'")
   endif()
 endmacro()
 
