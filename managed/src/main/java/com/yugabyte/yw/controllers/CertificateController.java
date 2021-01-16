@@ -129,26 +129,20 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
-	public Result list(UUID customerUUID) {
+  public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    HashSet<String> removableUUIDs = new HashSet<String>();
-    List<Universe> universes = Universe.getAll();
-    for (Universe universe : universes) {
-      // Continue the loop if we get NullPointerException in
-      // universe_obj.getUniverseDetails()
-      // for the universes which does not have any certificate attached to it.
-      try {
-        Universe universe_obj = Universe.get(universe.universeUUID);
+    HashSet<String> inUseUUIDs = new HashSet<String>();
+    for (Universe universe : Universe.getAll()) {
+      Universe universe_obj = Universe.get(universe.universeUUID);
+      if (universe_obj.getUniverseDetails().rootCA != null) {
         UUID cert = universe_obj.getUniverseDetails().rootCA;
-        removableUUIDs.add(cert.toString());
-      } catch (NullPointerException a) {
-        continue;
+        inUseUUIDs.add(cert.toString());
       }
     }
     JsonNode certificates = Json.toJson(certs);
     for (JsonNode cert : certificates) {
       JsonNode cert_uuid = cert.get("uuid");
-      if (removableUUIDs.contains(cert_uuid.asText())) {
+      if (inUseUUIDs.contains(cert_uuid.asText())) {
         ((ObjectNode) cert).put("inUse", true);
       } else {
         ((ObjectNode) cert).put("inUse", false);
@@ -174,19 +168,13 @@ public class CertificateController extends AuthenticatedController {
     if (cert == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
     }
-    List<Universe> universes = Universe.getAll();
-    for (Universe universe : universes) {
-      // Continue the loop if we get NullPointerException in
-      // universe_obj.getUniverseDetails()
-      // for the universes which does not have any certificate attached to it.
-      try {
-        Universe universe_obj = Universe.get(universe.universeUUID);
+    for (Universe universe : Universe.getAll()) {
+      Universe universe_obj = Universe.get(universe.universeUUID);
+      if (universe_obj.getUniverseDetails().rootCA != null) {
         UUID certificate_uuid = universe_obj.getUniverseDetails().rootCA;
         if (certificate_uuid.equals(cert.uuid)) {
           return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
         }
-      } catch (NullPointerException a) {
-        continue;
       }
     }
     if (cert.delete()) {
