@@ -47,7 +47,7 @@ public class SetUniverseKey {
 
   private final YBClientService ybService;
 
-  private final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
+  private static final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
 
   @Inject
   public SetUniverseKey(
@@ -126,7 +126,7 @@ public class SetUniverseKey {
         byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
         byte[] keyVal = keyManager.getUniverseKey(u.universeUUID, activeKey.configUuid, keyRef);
         Arrays.stream(u.getMasterAddresses().split(","))
-            .map(addrString -> HostAndPort.fromString(addrString))
+            .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
       }
     } catch (Exception e) {
