@@ -706,6 +706,12 @@ while [[ $# -gt 0 ]]; do
     --gcc9)
       YB_COMPILER_TYPE="gcc9"
     ;;
+    --clang10)
+      YB_COMPILER_TYPE="clang10"
+    ;;
+    --clang11)
+      YB_COMPILER_TYPE="clang11"
+    ;;
     --zapcc)
       YB_COMPILER_TYPE="zapcc"
     ;;
