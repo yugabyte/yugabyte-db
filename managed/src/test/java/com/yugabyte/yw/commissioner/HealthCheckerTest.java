@@ -6,6 +6,7 @@ import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.HealthManager;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -267,6 +269,9 @@ public class HealthCheckerTest extends FakeDBApplication {
       any(),
       eq(0L)
     );
+
+    // Erase stored into DB data to avoid DuplicateKeyException.
+    HealthCheck.keepOnlyLast(u.universeUUID, 0);
 
     // disable report only errors
     setupAlertingData(null, true, false);
@@ -529,12 +534,13 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
     // Imitate error while sending the email.
     doThrow(new MessagingException("TestException")).when(emailHelper).sendEmail(any(), any(),
-        any(), any());
+        any(), any(), any());
+    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(EmailFixtures.createSmtpData());
 
     assertEquals(0, Alert.list(defaultCustomer.uuid).size());
     healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
 
-    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any());
+    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that alert is created.
     List<Alert> alerts = Alert.list(defaultCustomer.uuid);
     assertNotEquals(0, alerts.size());
@@ -544,9 +550,10 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Test
   public void testEmailSentWithTwoContentTypes() throws MessagingException {
     Universe u = setupUniverse("test");
+    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(EmailFixtures.createSmtpData());
     healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
 
-    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any());
+    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     verify(report, times(1)).asHtml(eq(u), any(), anyBoolean());
     verify(report, times(1)).asPlainText(any(), anyBoolean());
   }
