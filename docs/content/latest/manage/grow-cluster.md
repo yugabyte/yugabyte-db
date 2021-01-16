@@ -12,7 +12,5 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Growing a YugabyteDB cluster involves only adding new yb-tserver nodes using the same settings just like you did when creating the cluster.  
-
-Refer to [starting `tserver` servers](../../deploy/manual-deployment/start-tservers/) for further parameters and options.
-
+To grow a YugabyteDB cluster, add new yb-tserver nodes, just like you would when creating the cluster.
+For more information, see [starting `tserver` servers](../../deploy/manual-deployment/start-tservers/).
