@@ -26,7 +26,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfig;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
@@ -43,12 +45,6 @@ public class EmailHelper {
   @Inject
   private RuntimeConfigFactory configFactory;
 
-  public static final String DEFAULT_SMTP_SERVER = "email-smtp.us-west-2.amazonaws.com";
-
-  public static final int DEFAULT_SMTP_PORT = 25;
-
-  public static final int DEFAULT_SMTP_PORT_SSL = 587;
-
   /**
    * Sends email with subject and content to recipients from destinations. STMP
    * parameters are in {@link smtpData}.
@@ -56,12 +52,15 @@ public class EmailHelper {
    * The content map can hold more than one part. To save the parts order use the
    * appropriate Map implementation (as example, LinkedHashMap).
    * <p>
-   * If smtpData.smtpServer is empty then the default SMTP server is used -
-   * <i>email-smtp.us-west-2.amazonaws.com</i>
+   * If smtpData.smtpServer is empty, used configuration value
+   * "yb.health.default_smtp_server".
    * <p>
-   * If smtpData.smtpPort is not set/filled (equals to -1), used a value for the
-   * default SMTP port: 25 for non SSL connection, 587 - for SSL.
+   * If smtpData.smtpPort is not set/filled (equals to -1), used configuration
+   * value "yb.health.default_smtp_port" for non SSL connection,
+   * "yb.health.default_smtp_port_ssl" - for SSL.
    *
+   * @param customer     customer instance (used to get runtime configuration
+   *                     values)
    * @param subject      email subject
    * @param destinations list of recipients comma separated
    * @param smtpData     SMTP configuration parameters
@@ -69,42 +68,18 @@ public class EmailHelper {
    *
    * @throws MessagingException
    */
-  public void sendEmail(String subject, String destinations,
+  public void sendEmail(Customer customer, String subject, String destinations,
       CustomerRegisterFormData.SmtpData smtpData, Map<String, String> content)
       throws MessagingException {
     LOG.info("Sending email: '{}' to '{}'", subject, destinations);
 
-    Properties prop = new Properties();
-    try {
-      prop.put("mail.smtp.user", smtpData.smtpUsername);
-      prop.put("mail.smtp.auth", true);
-      prop.put("mail.smtp.starttls.enable", Boolean.valueOf(smtpData.useTLS));
-      prop.put("mail.smtp.host",
-          StringUtils.isEmpty(smtpData.smtpServer) ? DEFAULT_SMTP_SERVER : smtpData.smtpServer);
-      prop.put("mail.smtp.port",
-          String.valueOf(smtpData.smtpPort == -1
-              ? (smtpData.useSSL ? DEFAULT_SMTP_PORT_SSL : DEFAULT_SMTP_PORT)
-              : smtpData.smtpPort));
-      prop.put("mail.smtp.ssl.enable", Boolean.valueOf(smtpData.useSSL));
-      if (smtpData.useSSL) {
-        prop.put("mail.smtp.ssl.trust", smtpData.smtpServer);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new IllegalArgumentException("SmtpData is not correctly filled.", e);
-    }
-
-    if (StringUtils.isEmpty(smtpData.emailFrom)) {
-      throw new IllegalArgumentException(
-          "SmtpData is not correctly filled: emailFrom can't be empty.");
-    }
-
-    Session session = Session.getInstance(prop, new Authenticator() {
-      @Override
-      protected PasswordAuthentication getPasswordAuthentication() {
-        return new PasswordAuthentication(smtpData.smtpUsername, smtpData.smtpPassword);
-      }
-    });
+    Session session = Session.getInstance(smtpDataToProperties(customer, smtpData),
+        new Authenticator() {
+          @Override
+          protected PasswordAuthentication getPasswordAuthentication() {
+            return new PasswordAuthentication(smtpData.smtpUsername, smtpData.smtpPassword);
+          }
+        });
 
     Message message = new MimeMessage(session);
     message.setFrom(new InternetAddress(smtpData.emailFrom));
@@ -121,6 +96,50 @@ public class EmailHelper {
     message.setContent(multipart);
 
     Transport.send(message);
+  }
+
+  /**
+   * Converts smtpData into properties used for mail session.
+   *
+   * @param smtpData
+   * @return
+   * @throws IllegalArgumentException if some parameters are not filled/incorrect.
+   */
+  @VisibleForTesting
+  Properties smtpDataToProperties(Customer customer, SmtpData smtpData) {
+    Properties prop = new Properties();
+    try {
+      RuntimeConfig<Customer> runtimeConfig = configFactory.forCustomer(customer);
+
+      // According to official Java documentation all the parameters should be added
+      // as String.
+      prop.put("mail.smtp.user", smtpData.smtpUsername);
+      prop.put("mail.smtp.auth", "true");
+      prop.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      String smtpServer = StringUtils.isEmpty(smtpData.smtpServer)
+          ? runtimeConfig.getString("yb.health.default_smtp_server")
+          : smtpData.smtpServer;
+      prop.put("mail.smtp.host", smtpServer);
+      prop.put("mail.smtp.port",
+          String.valueOf(
+              smtpData.smtpPort == -1
+                  ? (smtpData.useSSL ? runtimeConfig.getInt("yb.health.default_smtp_port_ssl")
+                      : runtimeConfig.getInt("yb.health.default_smtp_port"))
+                  : smtpData.smtpPort));
+      prop.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
+      if (smtpData.useSSL) {
+        prop.put("mail.smtp.ssl.trust", smtpServer);
+      }
+    } catch (Exception e) {
+      LOG.error("Error while converting smtpData to Properties", e);
+      throw new IllegalArgumentException("SmtpData is not correctly filled.", e);
+    }
+
+    if (StringUtils.isEmpty(smtpData.emailFrom)) {
+      throw new IllegalArgumentException(
+          "SmtpData is not correctly filled: emailFrom can't be empty.");
+    }
+    return prop;
   }
 
   /**
@@ -159,6 +178,8 @@ public class EmailHelper {
     return destinations;
   }
 
+  // TODO: (Sergey Potachev) Extract SmtpData class from CustomerRegisterFormData.
+  // Move this logic to SmtpData (together with smtpDataToProperties).
   /**
    * Returns the {@link SmtpData} instance fulfilled with parameters of the
    * specified customer.
@@ -179,7 +200,7 @@ public class EmailHelper {
    * address (see {@link #getYbEmail})
    *
    * @param customerUUID
-   * @return
+   * @return filled SmtpData if all parameters exist or NULL otherwise
    */
   public SmtpData getSmtpData(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
@@ -188,18 +209,17 @@ public class EmailHelper {
     if (smtpConfig != null) {
       smtpData = Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
     } else {
+      RuntimeConfig<Customer> runtimeConfig = configFactory.forCustomer(customer);
       smtpData = new SmtpData();
-      smtpData.smtpUsername = configFactory.forCustomer(customer)
-          .getString("yb.health.ses_email_username");
-      smtpData.smtpPassword = configFactory.forCustomer(customer)
-          .getString("yb.health.ses_email_password");
-      smtpData.useSSL = configFactory.forCustomer(customer).getBoolean("yb.health.default_ssl");
-      smtpData.useTLS = configFactory.forCustomer(customer).getBoolean("yb.health.default_tls");
+      smtpData.smtpUsername = runtimeConfig.getString("yb.health.ses_email_username");
+      smtpData.smtpPassword = runtimeConfig.getString("yb.health.ses_email_password");
+      smtpData.useSSL = runtimeConfig.getBoolean("yb.health.default_ssl");
+      smtpData.useTLS = runtimeConfig.getBoolean("yb.health.default_tls");
     }
 
     if (StringUtils.isEmpty(smtpData.emailFrom)) {
       smtpData.emailFrom = getYbEmail(customer);
     }
-    return smtpData;
+    return StringUtils.isEmpty(smtpData.emailFrom) ? null : smtpData;
   }
 }
