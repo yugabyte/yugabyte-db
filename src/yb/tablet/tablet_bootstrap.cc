@@ -94,6 +94,8 @@ DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
               "The segment size for transaction status tablet log roll-overs, in bytes.");
+DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
+                 "Time (in ms) to delay tablet bootstrap by.");
 
 namespace yb {
 namespace tablet {
@@ -536,6 +538,11 @@ class TabletBootstrap {
       consensus_info->last_id = MinimumOpId();
       consensus_info->last_committed_id = MinimumOpId();
       return Status::OK();
+    }
+
+    // Only sleep if this isn't a new tablet, since we only want to delay on restart when testing.
+    if (PREDICT_FALSE(FLAGS_TEST_tablet_bootstrap_delay_ms > 0)) {
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_tablet_bootstrap_delay_ms));
     }
 
     // If there were blocks, there must be segments to replay. This is required by Raft, since we
