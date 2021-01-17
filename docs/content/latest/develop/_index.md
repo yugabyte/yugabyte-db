@@ -93,6 +93,19 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="query-performance/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
+        <div class="articles">1 articles</div>
+        <div class="title">Query Performance</div>
+      </div>
+      <div class="body">
+        Anaylis the query performance.
+      </div>
+    </a>
 
   </div>
 
