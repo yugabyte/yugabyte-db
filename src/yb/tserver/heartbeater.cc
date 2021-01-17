@@ -383,8 +383,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_cluster_config_version(server_->cluster_config_version());
 
   // Include the hybrid time of this tablet server in the heartbeat.
-  auto* hybrid_clock = down_cast<server::HybridClock*>(server_->Clock());
-  req.set_ts_hybrid_time(hybrid_clock->Now().ToUint64());
+  auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
+  if (hybrid_clock) {
+    req.set_ts_hybrid_time(hybrid_clock->Now().ToUint64());
+  } else {
+    req.set_ts_hybrid_time(0);
+  }
 
   // Also include the physical clock time of this tablet server in the heartbeat.
   Result<PhysicalTime> now = hybrid_clock->physical_clock()->Now();

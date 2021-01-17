@@ -568,8 +568,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
     TServerTable(output, viewType);
-    TServerDisplay(read_replica_uuid, &descs, &tablet_map, output, hide_dead_node_threshold_override,
-                   viewType);
+    TServerDisplay(read_replica_uuid, &descs, &tablet_map, output,
+                   hide_dead_node_threshold_override, viewType);
   }
 
   ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
