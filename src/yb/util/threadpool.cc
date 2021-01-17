@@ -613,7 +613,6 @@ void ThreadPool::DispatchThread(bool permanent) {
 
     // Execute the task
     {
-      LongOperationTracker long_operation_tracker("Thread Pool Task", std::chrono::seconds(5));
       MicrosecondsInt64 start_wall_us = GetMonoTimeMicros();
       task.runnable->Run();
       int64_t wall_us = GetMonoTimeMicros() - start_wall_us;
