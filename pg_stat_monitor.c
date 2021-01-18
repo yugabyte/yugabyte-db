@@ -21,7 +21,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.7.0"
-#define PG_STAT_STATEMENTS_COLS         41  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         42  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 /*---- Initicalization Function Declarations ----*/
@@ -46,6 +46,7 @@ static unsigned char *pgss_qbuf[MAX_BUCKETS];
 
 static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
+static double time_diff(struct timeval end, struct timeval start);
 
 /* Saved hook values in case of unload */
 static planner_hook_type planner_hook_next = NULL;
@@ -314,9 +315,9 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 static void
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-
-	getrusage(RUSAGE_SELF, &rusage_start);
-
+	if(getrusage(RUSAGE_SELF, &rusage_start) != 0)
+		elog(WARNING, "pg_stat_monitor: failed to execute getrusage");
+	
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
 	else
@@ -410,9 +411,10 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		 * levels of hook all do this.)
 		 */
 		InstrEndLoop(queryDesc->totaltime);
-		getrusage(RUSAGE_SELF, &rusage_end);
-		utime = TIMEVAL_DIFF(rusage_start.ru_utime, rusage_end.ru_utime);
-		stime = TIMEVAL_DIFF(rusage_start.ru_stime, rusage_end.ru_stime);
+		if(getrusage(RUSAGE_SELF, &rusage_end) != 0)
+			elog(WARNING, "pg_stat_monitor: failed to execute getrusage");
+		utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
+		stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
 
 		if (PGSM_ENABLED == 1)
 			pgss_store(queryId,
@@ -2620,5 +2622,15 @@ exit:
 	if (buf)
 		pfree(buf);
 	return buf_len;
+}
+
+static double
+time_diff(struct timeval end, struct timeval start)
+{
+	double mstart;
+	double mend;
+	mend = ((double) end.tv_sec * 1000.0 + (double) end.tv_usec / 1000.0);
+	mstart   = ((double) start.tv_sec * 1000.0 + (double) start.tv_usec / 1000.0);
+	return mend - mstart;
 }
 

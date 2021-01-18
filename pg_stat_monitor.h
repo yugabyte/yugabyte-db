@@ -54,11 +54,6 @@
 #include "utils/guc.h"
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
-
-/* Time difference in miliseconds */
-#define	TIMEVAL_DIFF(start, end) (((double) end.tv_sec + (double) end.tv_usec / 1000000.0) \
-	- ((double) start.tv_sec + (double) start.tv_usec / 1000000.0)) * 1000
-
 #define  TextArrayGetTextDatum(x,y) textarray_get_datum(x,y)
 #define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
 

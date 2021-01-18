@@ -134,8 +134,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
     blk_read_time,
     blk_write_time,
 	(string_to_array(resp_calls, ',')) resp_calls,
-    cpu_user_time,
-    cpu_sys_time
+	round(cpu_user_time::numeric, 4) as cpu_user_time,
+	round(cpu_sys_time::numeric, 4) as cpu_sys_time
 FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid
 ORDER BY bucket_start_time;
 
