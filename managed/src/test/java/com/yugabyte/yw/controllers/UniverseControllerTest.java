@@ -2205,6 +2205,40 @@ public class UniverseControllerTest extends WithApplication {
     verify(mockCommissioner).submit(eq(TaskType.UpdateDiskSize), argCaptor.capture());
     assertAuditEntry(1, customer.uuid);
   }
+  @Test
+  public void testUniverseListWithInvalidClientToNodeEncrypt() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+      Matchers.any(UniverseDefinitionTaskParams.class))).thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+      new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "SingleUserUniverse")
+      .put("instanceType", i.getInstanceTypeCode()).put("replicationFactor", 3).put("numNodes", 3)
+      .put("enableYEDIS", "false").put("provider", p.uuid.toString())
+      .put("enableNodeToNodeEncrypt", false).put("enableClientToNodeEncrypt", 3);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.put("accessKeyCode", accessKeyCode);
+    ArrayNode clustersJsonArray = Json.newArray()
+      .add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    String expectedResult = String.format("It is imperative that the NodeToNode TLS encryption should be enabled for enabling the ClientToNode TLS encryption.");
+    assertBadRequest(result, expectedResult);
+    assertAuditEntry(0, customer.uuid);
+  }
+
 
   @Test
   public void testUniverseCreateWithDisabledYedis() {

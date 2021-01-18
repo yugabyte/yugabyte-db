@@ -121,11 +121,15 @@ public class UniverseController extends AuthenticatedController {
   }
 
   private boolean validateEncryption(ObjectNode formData) {
+    JsonNode clusters = formData.get("clusters");
+    if (clusters == null) {
+      return true;
+    }
     for (JsonNode cluster : formData.get("clusters")) {
       JsonNode nodeToNodeEncryption = cluster.get("userIntent").get("enableNodeToNodeEncrypt");
       JsonNode clientToNodeEncryption = cluster.get("userIntent").get("enableClientToNodeEncrypt");
-
-      if (!nodeToNodeEncryption.asBoolean() && clientToNodeEncryption.asBoolean()) {
+      if (clientToNodeEncryption != null && !nodeToNodeEncryption.asBoolean(false) &&
+        (clientToNodeEncryption.asBoolean(false) || clientToNodeEncryption == null)) {
         return false;
       }
     }
