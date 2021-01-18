@@ -179,6 +179,7 @@ components:
         config_files:
           - filename: /opt/yugabyte/yugaware/conf/application.docker.conf
             contents: |
+              include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
