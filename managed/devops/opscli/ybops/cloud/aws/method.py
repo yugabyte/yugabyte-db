@@ -138,8 +138,8 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
 
 
 class AwsPauseInstancesMethod(AbstractInstancesMethod):
-    """Subclass for pausing an instance in AWS, we fetch the host info and update the extra_vars
-    with necessary parameters
+    """Subclass for stopping an instance in AWS, we fetch the host info
+    and call the stop_instance method.
     """
     def __init__(self, base_command):
         super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
@@ -150,23 +150,21 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to delete.")
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
+        region = args.region
+        search_pattern = args.search_pattern
+    
+        host_info = self.cloud.get_host_info_specific_args(region, search_pattern, get_all=False, private_ip=args.node_ip)
+       
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
 
-        self.extra_vars.update({
-            "cloud_subnet": host_info["subnet"],
-            "cloud_region": host_info["region"],
-            "private_ip": host_info['private_ip']
-        })
-        self.update_ansible_vars_with_args(args)
-        self.cloud.setup_ansible(args).run("pause-instance.yml", self.extra_vars)
+        self.cloud.stop_instance(host_info)
 
 
 class AwsResumeInstancesMethod(AbstractInstancesMethod):
-    """Subclass for resuming an instance in AWS, we fetch the host info and update the extra_vars
-    with necessary parameters
+    """Subclass for resuming an instance in AWS, we fetch the host info
+    and call the start_instance method.
     """
     def __init__(self, base_command):
         super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
@@ -177,18 +175,25 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to delete.")
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
+        region = args.region
+        search_pattern = args.search_pattern
+        filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["stopped"]
+                }
+            ]
+        host_info = self.cloud.get_host_info_specific_args(
+            region,
+            search_pattern,
+            get_all=False,
+            private_ip=args.node_ip,
+            filters=filters
+        )
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
-
-        self.extra_vars.update({
-            "cloud_subnet": host_info["subnet"],
-            "cloud_region": host_info["region"],
-            "private_ip": host_info['private_ip']
-        })
-        self.update_ansible_vars_with_args(args)
-        self.cloud.setup_ansible(args).run("resume-instance.yml", self.extra_vars)
+        self.cloud.start_instance(host_info)
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

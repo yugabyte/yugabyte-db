@@ -54,14 +54,15 @@ public class ResumeUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       // If for any reason resume universe fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
+      // try {
+      //   unlockUniverseForUpdate();
+      // } catch (Throwable t1) {
         // Ignore the error
-      }
+      // }
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }
+    // unlockUniverseForUpdate();
     LOG.info("Finished {} task.", getName());
   }
 }

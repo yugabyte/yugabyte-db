@@ -25,7 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-public class AnsibleResumeServer extends NodeTaskBase {
+public class ResumeServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     // IP of node to be deleted.
@@ -33,17 +33,18 @@ public class AnsibleResumeServer extends NodeTaskBase {
   }
 
   @Override
-  protected AnsibleResumeServer.Params taskParams() {
-    return (AnsibleResumeServer.Params)taskParams;
+  protected ResumeServer.Params taskParams() {
+    return (ResumeServer.Params)taskParams;
   }
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleResumeServer.class);
+  public static final Logger LOG = LoggerFactory.getLogger(ResumeServer.class);
 
   private void resumeUniverse(final String nodeName) {
     Universe u = Universe.get(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
       LOG.error("No node in universe with name " + nodeName);
       return;
+    }
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -52,26 +53,21 @@ public class AnsibleResumeServer extends NodeTaskBase {
         LOG.debug("Resuming node " + nodeName + " from universe " + taskParams().universeUUID);
       }
     };
-
   }
 
   @Override
   public void run() {
     // Update the node state as resuming..
     // setNodeState(NodeDetails.NodeState.Starting);
-
+    // Execute the ansible command.
     try {
-      ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Resume, taskParams());
+      ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
       processShellResponse(response);
+      setNodeState(NodeDetails.NodeState.Live);
+      resumeUniverse(taskParams().nodeName);
     } catch (Exception e) {
-        throw e;
-       
+      throw e;
     }
 
-    Universe u = Universe.get(taskParams().universeUUID);
-    UserIntent userIntent = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
-    NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
   }
 }

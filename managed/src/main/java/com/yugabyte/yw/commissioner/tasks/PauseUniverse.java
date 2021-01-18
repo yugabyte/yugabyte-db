@@ -14,10 +14,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 
@@ -41,7 +39,9 @@ public class PauseUniverse extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = null;
-      universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      // unlockUniverseForUpdate();
+      // universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      universe = Universe.get(params().universeUUID);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
@@ -53,6 +53,11 @@ public class PauseUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
+      // try {
+      //   unlockUniverseForUpdate();
+      // } catch (Throwable t1) {
+        // Ignore the error
+      // }
       // If for any reason pause universe fails we would just unlock the universe for update
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

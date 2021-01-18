@@ -8,13 +8,16 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import boto3
 import json
 import logging
 import os
 import socket
+import sys
 
 from botocore.utils import InstanceMetadataFetcher
 from botocore.credentials import InstanceMetadataProvider
+from botocore.exceptions import ClientError
 
 from six.moves.urllib.request import urlopen
 from six.moves.urllib.error import URLError
@@ -32,6 +35,9 @@ from ybops.cloud.aws.utils import set_yb_sg_and_fetch_vpc, query_vpc, get_zones,
     delete_vpc, get_client, get_clients, AwsBootstrapClient, get_available_regions, \
     get_spot_pricing, YbVpcComponents, create_instance, has_ephemerals, get_device_names, \
     modify_tags, update_disk
+
+
+
 
 
 class AwsCloud(AbstractCloud):
@@ -288,13 +294,14 @@ class AwsCloud(AbstractCloud):
         search_pattern = args.search_pattern
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
-    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None):
-        filters = [
-            {
-                "Name": "instance-state-name",
-                "Values": ["running"]
-            }
-        ]
+    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None, filters=None):
+        if not filters:
+            filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["running"]
+                }
+            ]
 
         # If no argument passed, assume full scan.
         if is_valid_ip_address(search_pattern):
@@ -368,3 +375,17 @@ class AwsCloud(AbstractCloud):
         if not instance:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
+
+    def stop_instance(self, args):
+        ec2 = boto3.client('ec2',  args["region"])
+        try:
+            response = ec2.stop_instances(InstanceIds=[args["id"]], DryRun=False)
+        except ClientError as e:
+            logging.error(e)
+
+    def start_instance(self, args):
+        ec2 = boto3.client('ec2',  args["region"])
+        try:
+            response = ec2.start_instances(InstanceIds=[args["id"]], DryRun=False)
+        except ClientError as e:
+            logging.error(e)

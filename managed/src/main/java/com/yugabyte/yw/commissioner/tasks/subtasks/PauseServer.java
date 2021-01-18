@@ -25,7 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-public class AnsiblePauseServer extends NodeTaskBase {
+public class PauseServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     // IP of node to be deleted.
@@ -33,11 +33,11 @@ public class AnsiblePauseServer extends NodeTaskBase {
   }
 
   @Override
-  protected AnsiblePauseServer.Params taskParams() {
-    return (AnsiblePauseServer.Params)taskParams;
+  protected PauseServer.Params taskParams() {
+    return (PauseServer.Params)taskParams;
   }
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsiblePauseServer.class);
+  public static final Logger LOG = LoggerFactory.getLogger(PauseServer.class);
 
   private void pauseUniverse(final String nodeName) {
     Universe u = Universe.get(taskParams().universeUUID);
@@ -45,35 +45,21 @@ public class AnsiblePauseServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        LOG.debug("Pausing node " + nodeName + " from universe " + taskParams().universeUUID);
-      }
-    };
-
-    saveUniverseDetails(updater);
   }
 
   @Override
   public void run() {
-    // Update the node state as pausing..
+    // Update the node state as stopping also can not set the node state to stopped as it will be not reachable.
     setNodeState(NodeDetails.NodeState.Stopping);
-    // Execute the ansible command.
+
     try {
-      ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Pause, taskParams());
+      ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
       processShellResponse(response);
+      pauseUniverse(taskParams().nodeName);
     } catch (Exception e) {
-        throw e;
-       
+      throw e;
+
     }
 
-    Universe u = Universe.get(taskParams().universeUUID);
-    UserIntent userIntent = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
-    NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
   }
 }

@@ -348,21 +348,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   
   /**
-   * Creates a task list to destroy nodes and adds it to the task queue.
+   * Creates a task list to pauses nodes and adds it to the task queue.
    *
    * @param nodes : a collection of nodes that need to be paused
    */
   public SubTaskGroup createPauseServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsiblePauseServers", executor);
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PauseServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to pause the node. Log it and skip the node.
       if (node.cloudInfo.private_ip == null) {
-        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node pause.",
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping pause.",
                                node.nodeName));
         continue;
       }
-      AnsiblePauseServer.Params params = new AnsiblePauseServer.Params();
+      PauseServer.Params params = new PauseServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
@@ -376,7 +376,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       // Create the Ansible task to destroy the server.
-      AnsiblePauseServer task = new AnsiblePauseServer();
+      PauseServer task = new PauseServer();
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
@@ -389,12 +389,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     
   /**
-   * Creates a task list to destroy nodes and adds it to the task queue.
+   * Creates a task list to resume nodes and adds it to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be paused
+   * @param nodes : a collection of nodes that need to be resumes
    */
   public SubTaskGroup createResumeServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleResumeServers", executor);
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ResumeServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to pause the node. Log it and skip the node.
@@ -403,7 +403,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                                node.nodeName));
         continue;
       }
-      AnsibleResumeServer.Params params = new AnsibleResumeServer.Params();
+      ResumeServer.Params params = new ResumeServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
@@ -417,7 +417,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       // Create the Ansible task to destroy the server.
-      AnsibleResumeServer task = new AnsibleResumeServer();
+      ResumeServer task = new ResumeServer();
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.

@@ -20,8 +20,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsiblePauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -618,10 +618,10 @@ public class NodeManager extends DevopsBase {
         break;
       }
       case Pause: {
-          if (!(nodeTaskParam instanceof AnsiblePauseServer.Params)) {
-            throw new RuntimeException("NodeTaskParams is not AnsiblePauseServer.Params");
+          if (!(nodeTaskParam instanceof PauseServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
-          AnsiblePauseServer.Params taskParam = (AnsiblePauseServer.Params) nodeTaskParam;
+          PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--node_ip");
@@ -633,10 +633,10 @@ public class NodeManager extends DevopsBase {
           break;
         }
         case Resume: {
-          if (!(nodeTaskParam instanceof AnsibleResumeServer.Params)) {
-            throw new RuntimeException("NodeTaskParams is not AnsibleResumeServer.Params");
+          if (!(nodeTaskParam instanceof ResumeServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
-          AnsibleResumeServer.Params taskParam = (AnsibleResumeServer.Params) nodeTaskParam;
+          ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--node_ip");

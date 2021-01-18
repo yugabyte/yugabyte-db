@@ -87,9 +87,9 @@ public enum TaskType {
 
   AnsibleDestroyServer("subtasks.AnsibleDestroyServer"),
   
-  AnsiblePauseServer("subtasks.AnsiblePauseServer"),
+  PauseServer("subtasks.PauseServer"),
 
-  AnsibleResumeServer("subtasks.AnsibleResumeServer"),
+  ResumeServer("subtasks.ResumeServer"),
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 

@@ -1017,10 +1017,10 @@ public class UniverseController extends AuthenticatedController {
 	    // Create the Commissioner task to pause the universe.
 	    PauseUniverse.Params taskParams = new PauseUniverse.Params();
 	    taskParams.universeUUID = universeUUID;
-	    // There is no staleness of a delete request. Perform it even if the universe has changed.
+	    // There is no staleness of a pause request. Perform it even if the universe has changed.
 	    taskParams.expectedUniverseVersion = -1;
 	    taskParams.customerUUID = customerUUID;
-	    // Submit the task to resume the universe.
+	    // Submit the task to pause the universe.
 	    TaskType taskType = TaskType.PauseUniverse;
 
 	    UUID taskUUID = commissioner.submit(taskType, taskParams);
