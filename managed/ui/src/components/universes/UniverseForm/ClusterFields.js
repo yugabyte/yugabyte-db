@@ -1522,12 +1522,13 @@ export default class ClusterFields extends Component {
           _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
         );
     const placementCloud = getPlacementCloud(cluster);
+    const regionAndProviderDefined = isNonEmptyArray(formValues[clusterType]?.regionList)
+      && isNonEmptyString(formValues[clusterType]?.provider);
 
     // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
     if ((
       self.props.universe.currentPlacementStatus && placementCloud
-      && isNonEmptyArray(formValues[clusterType].regionList)
-      && isNonEmptyString(formValues[clusterType].provider))
+      && regionAndProviderDefined)
     ) {
       placementStatus = (
         <AZPlacementInfo
@@ -1743,14 +1744,7 @@ export default class ClusterFields extends Component {
               )}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
-              {(isNonEmptyArray(formValues[clusterType]?.regionList)
-                && isNonEmptyString(formValues[clusterType]?.provider)
-              )
-                && placementStatusOnprem ? placementStatusOnprem
-                : (isNonEmptyArray(formValues[clusterType]?.regionList)
-                  && isNonEmptyString(formValues[clusterType]?.provider)
-                ) ? azSelectorTable : null
-              }
+              {placementStatusOnprem  || regionAndProviderDefined && azSelectorTable}
             </Col>
           </Row>
         </div>
