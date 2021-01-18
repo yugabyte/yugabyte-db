@@ -214,19 +214,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
       TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesWaitForPod,
-      TaskType.WaitForServer,
-      TaskType.WaitForServerReady,
-      TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
@@ -444,9 +436,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
 
-    verify(mockKubernetesManager, times(4)).helmUpgrade(expectedConfig.capture(),
+    verify(mockKubernetesManager, times(3)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(4)).getPodStatus(expectedConfig.capture(),
+    verify(mockKubernetesManager, times(3)).getPodStatus(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1)).getPodInfos(expectedConfig.capture(),
                                                         expectedNodePrefix.capture());
