@@ -430,11 +430,20 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
 }
 
 void TabletSplitITest::WaitForTestTableTabletsCompactionFinish(MonoDelta timeout) {
-  for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
-    ASSERT_OK(WaitFor([&peer] {
-      return peer->tablet_metadata()->has_been_fully_compacted();
+  ASSERT_OK(WaitFor([this] ()-> Result<bool> {
+    bool all_fully_compacted = true;
+    auto list = ListPostSplitChildrenTabletPeers();
+    if (!list.ok()) {
+      return false;
+    }
+    for (auto peer : list.get()) {
+      if (!peer->tablet_metadata()->has_been_fully_compacted()) {
+          all_fully_compacted = false;
+          break;
+      }
+    }
+    return all_fully_compacted;
     }, timeout * kTimeMultiplier, "Wait for post tablet split compaction to be completed"));
-  }
 }
 
 Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListSplitCompleteTabletPeers() {
