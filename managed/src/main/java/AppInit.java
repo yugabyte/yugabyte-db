@@ -91,10 +91,10 @@ public class AppInit {
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+          for (InstanceType instanceType : InstanceType.findByProvider(provider,
+            application.config())) {
             if (instanceType.instanceTypeDetails != null &&
-                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
