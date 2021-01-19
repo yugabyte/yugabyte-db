@@ -517,7 +517,7 @@ public class AWSInitializer extends AbstractInitializer {
           throw new UnsupportedOperationException(msg);
         } else {
           // TODO: hardcode me not?
-          volumeCount = 2;
+          volumeCount = 0;
           volumeSizeGB = 250;
           volumeType = VolumeType.EBS;
         }
