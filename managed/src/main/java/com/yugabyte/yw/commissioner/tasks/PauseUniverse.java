@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import java.util.UUID;
 
 public class PauseUniverse extends UniverseTaskBase {
@@ -36,7 +37,8 @@ public class PauseUniverse extends UniverseTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
+      // Update the universe DB with the update to be performed and set the
+      // 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = null;
       // unlockUniverseForUpdate();
@@ -45,20 +47,20 @@ public class PauseUniverse extends UniverseTaskBase {
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
-        createPauseServerTasks(
-          universe.getNodes()
-        ).setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+        createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
 
       // Run all the tasks.
       subTaskGroupQueue.run();
+
     } catch (Throwable t) {
       // try {
-      //   unlockUniverseForUpdate();
+      // unlockUniverseForUpdate();
       // } catch (Throwable t1) {
-        // Ignore the error
+      // Ignore the error
       // }
-      // If for any reason pause universe fails we would just unlock the universe for update
+      // If for any reason pause universe fails we would just unlock the universe for
+      // update
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }

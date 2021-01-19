@@ -28,13 +28,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class PauseServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
-    // IP of node to be deleted.
+    // IP of node to be paused.
     public String nodeIP = null;
   }
 
   @Override
   protected PauseServer.Params taskParams() {
-    return (PauseServer.Params)taskParams;
+    return (PauseServer.Params) taskParams;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(PauseServer.class);
@@ -49,8 +49,18 @@ public class PauseServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as stopping also can not set the node state to stopped as it will be not reachable.
+    // Update the node state as stopping also can not set the node state to stopped
+    // as it will be not reachable.
     setNodeState(NodeDetails.NodeState.Stopping);
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.universePaused = true;
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    saveUniverseDetails(updater);
 
     try {
       ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());

@@ -60,11 +60,21 @@ public class ResumeServer extends NodeTaskBase {
     // Update the node state as resuming..
     // setNodeState(NodeDetails.NodeState.Starting);
     // Execute the ansible command.
+
     try {
       ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
       processShellResponse(response);
       setNodeState(NodeDetails.NodeState.Live);
       resumeUniverse(taskParams().nodeName);
+      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.universePaused = false;
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      saveUniverseDetails(updater);
     } catch (Exception e) {
       throw e;
     }
