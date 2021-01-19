@@ -370,6 +370,9 @@ message PgsqlReadRequestPB {
   // available in beta version for SPLIT_AT feature. The release version for SPLIT AT does not need
   // to be compatible with the beta version as SPLIT AT feature were not used.
   optional bytes DEPRECATED_max_partition_key = 25;
+
+  // Does this request correspond to scanning the indexed table for backfill?
+  optional bool is_for_backfill = 29 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

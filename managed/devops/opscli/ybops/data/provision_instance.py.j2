@@ -29,17 +29,19 @@ def construct_command(args, is_preflight=False):
         {%- if air_gap %}
         '--air_gap',
         {%- endif %}
+        {%- if install_node_exporter %}
+        '--install_node_exporter',
+        {%- endif %}
     ]
 
     if is_preflight:
         cmd.extend([
-            '--precheck_type', 'configure'
+            '--precheck_type', 'provision'
         ])
     else:
         cmd.extend([
             '--local_package_path', '{{local_package_path}}',
             {%- if install_node_exporter %}
-            '--install_node_exporter',
             '--node_exporter_user', '{{ node_exporter_user }}',
             '--node_exporter_port', '{{ node_exporter_port }}',
             {%- endif %}

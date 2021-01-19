@@ -7,14 +7,19 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
 import java.util.HashSet;
@@ -158,8 +163,40 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
+  public static Backup createBackup(UUID customerUUID, UUID universeUUID,
+                                    UUID configUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    params.tableUUID = UUID.randomUUID();
+    return Backup.create(customerUUID, params);
+  }
+
+  public static Schedule createScheduleBackup(UUID customerUUID,UUID universeUUID,
+                                              UUID configUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    params.tableUUID = UUID.randomUUID();
+    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000);
+  }
+
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
     return CustomerConfig.createCallHomeConfig(customer.uuid, level);
+  }
+
+  public static CustomerConfig createAlertConfig(Customer customer, String alertingEmail,
+      boolean sendAlertsToYb, boolean reportOnlyErrors) {
+    AlertingData data = new AlertingData();
+    data.sendAlertsToYb = sendAlertsToYb;
+    data.alertingEmail = alertingEmail;
+    data.reportOnlyErrors = reportOnlyErrors;
+
+    return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
   /*
