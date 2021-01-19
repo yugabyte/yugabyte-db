@@ -32,6 +32,7 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
+  private Provider onpremProvider;
   private Customer defaultCustomer;
   private InstanceType.InstanceTypeDetails defaultDetails;
 
@@ -42,6 +43,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    onpremProvider = ModelFactory.onpremProvider(defaultCustomer);
     InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
     volumeDetails.volumeSizeGB = 100;
     volumeDetails.volumeType = InstanceType.VolumeType.EBS;
@@ -107,8 +109,22 @@ public class InstanceTypeTest extends FakeDBApplication {
     possibleTypes.add("c3.large");
     for (InstanceType it : instanceTypeList) {
       assertTrue(possibleTypes.contains(it.getInstanceTypeCode()));
+      assertNotNull(it.instanceTypeDetails);
     }
   }
+
+  @Test
+  public void testFindByProviderOnprem() {
+    Provider newProvider = ModelFactory.onpremProvider(defaultCustomer);
+    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
+    assertEquals(1, instanceTypeList.size());
+
+    InstanceType it = instanceTypeList.get(0);
+    assertTrue(it.getInstanceTypeCode().equals("bar"));
+    assertNotNull(it.instanceTypeDetails);
+  }
+
 
   @Test
   public void testFindByProviderWithUnSupportedInstances() {
@@ -139,7 +155,7 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertEquals(250, volumeDetails.volumeSizeGB.intValue());
     assertEquals(InstanceType.VolumeType.EBS, volumeDetails.volumeType);
     assertEquals(String.format("/mnt/d%d", 0), volumeDetails.mountPath);
-    assertThat(instanceTypeList.get(0).getInstanceTypeDetails().getVolumeDetailsList().size(),
+    assertThat(instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
       allOf(notNullValue(), equalTo(1)));
   }
 
