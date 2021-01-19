@@ -181,7 +181,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       std::shared_ptr<tablet::TabletPeer>* tablet_peer,
       const bool colocated = false);
 
-  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state) override;
+  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state, log::Log* raft_log) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED

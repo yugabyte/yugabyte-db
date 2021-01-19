@@ -3239,14 +3239,6 @@ size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
   return queue_->EvictLogCache(bytes_to_evict);
 }
 
-Status RaftConsensus::CopyLogTo(const std::string& dest_dir) {
-  return queue_->CopyLogTo(dest_dir);
-}
-
-Status RaftConsensus::FlushLogIndex() {
-  return queue_->FlushLogIndex();
-}
-
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
 }
