@@ -647,7 +647,7 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   return result;
 }
 
-std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const auto& peer) {
     return peer->tablet_metadata() &&
