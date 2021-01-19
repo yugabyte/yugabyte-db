@@ -60,6 +60,9 @@ const mapDispatchToProps = (dispatch) => {
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
     },
+    showPauseUniverseModal: () => {
+      dispatch(openDialog('pauseUniverseModal'));
+    },
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
     },
@@ -74,6 +77,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
     },
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid)).then((response) => {

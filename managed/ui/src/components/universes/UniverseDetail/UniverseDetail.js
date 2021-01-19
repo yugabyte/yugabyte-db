@@ -186,6 +186,7 @@ class UniverseDetail extends Component {
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
+      showPauseUniverseModal,
       closeModal,
       customer,
       customer: { currentCustomer },
