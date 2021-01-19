@@ -1364,6 +1364,31 @@ CREATE AGGREGATE ag_catalog.age_percentiledisc(float8, float8)
 );
 
 --
+-- aggregate transfer/final functions for collect
+--
+CREATE FUNCTION ag_catalog.age_collect_aggtransfn(internal, variadic "any")
+RETURNS internal
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_collect_aggfinalfn(internal)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE AGGREGATE ag_catalog.age_collect(variadic "any")
+(
+    stype = internal,
+    sfunc = ag_catalog.age_collect_aggtransfn,
+    finalfunc = ag_catalog.age_collect_aggfinalfn,
+    parallel = safe
+);
+
+--
 -- function for typecasting an agtype value to another agtype value
 --
 CREATE FUNCTION ag_catalog.agtype_typecast_numeric(agtype)

@@ -545,15 +545,29 @@ static void fill_agtype_value(agtype_container *container, int index,
     }
     else if (AGTE_IS_STRING(entry))
     {
+        char *string_val;
+        int string_len;
+
         result->type = AGTV_STRING;
-        result->val.string.val = base_addr + offset;
-        result->val.string.len = get_agtype_length(container, index);
+        /* get the position and length of the string */
+        string_val = base_addr + offset;
+        string_len = get_agtype_length(container, index);
+        /* we need to do a deep copy of the string value */
+        result->val.string.val = pnstrdup(string_val, string_len);
+        result->val.string.len = string_len;
         Assert(result->val.string.len >= 0);
     }
     else if (AGTE_IS_NUMERIC(entry))
     {
+        Numeric numeric;
+        Numeric numeric_copy;
+
         result->type = AGTV_NUMERIC;
-        result->val.numeric = (Numeric)(base_addr + INTALIGN(offset));
+        /* we need to do a deep copy here */
+        numeric = (Numeric)(base_addr + INTALIGN(offset));
+        numeric_copy = (Numeric) palloc(VARSIZE(numeric));
+        memcpy(numeric_copy, numeric, VARSIZE(numeric));
+        result->val.numeric = numeric_copy;
     }
     /*
      * If this is an agtype.

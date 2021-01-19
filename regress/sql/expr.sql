@@ -1842,7 +1842,6 @@ SELECT * FROM cypher('UCSC', $$ RETURN stDevP() $$) AS (stDevP agtype);
 --
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55), percentileDisc(u.gpa, .55), percentileCont(u.gpa, .9), percentileDisc(u.gpa, .9) $$)
 AS (percentileCont1 agtype, percentileDisc1 agtype, percentileCont2 agtype, percentileDisc2 agtype);
-
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileCont(u.gpa, .55) $$)
 AS (percentileCont agtype);
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN percentileDisc(u.gpa, .55) $$)
@@ -1853,6 +1852,21 @@ SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(NULL, .5) $$) AS (percenti
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN percentileCont(.5, NULL) $$) AS (percentileCont agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(.5, NULL) $$) AS (percentileDisc agtype);
+
+--
+-- aggregate function collect()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.name), collect(u.age), collect(u.gpa), collect(u.zip) $$)
+AS (name agtype, age agtype, gqa agtype, zip agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.gpa), collect(u.gpa) $$)
+AS (gpa1 agtype, gpa2 agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.zip), collect(u.zip) $$)
+AS (zip1 agtype, zip2 agtype);
+SELECT * FROM cypher('UCSC', $$ RETURN collect(5) $$) AS (result agtype);
+-- should return an empty aray
+SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (collect agtype);
 
 --
 -- Cleanup

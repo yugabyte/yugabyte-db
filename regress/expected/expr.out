@@ -4418,6 +4418,49 @@ ERROR:  percentile value NULL is not a valid numeric value
 SELECT * FROM cypher('UCSC', $$ RETURN percentileDisc(.5, NULL) $$) AS (percentileDisc agtype);
 ERROR:  percentile value NULL is not a valid numeric value
 --
+-- aggregate function collect()
+--
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.name), collect(u.age), collect(u.gpa), collect(u.zip) $$)
+AS (name agtype, age agtype, gqa agtype, zip agtype);
+                                    name                                    |                 age                  |                          gqa                           |                  zip                  
+----------------------------------------------------------------------------+--------------------------------------+--------------------------------------------------------+---------------------------------------
+ ["Jack", "Jill", "Jim", "Rick", "Ann", "Derek", "Jessica", "Dave", "Mike"] | [21, 27, 32, 24, 23, 19, 20, 24, 18] | [3.0, 3.5, 3.75, 2.5, 3.8::numeric, 4.0, 3.9::numeric] | [94110, 95060, 96062, "95060", 90210]
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.gpa), collect(u.gpa) $$)
+AS (gpa1 agtype, gpa2 agtype);
+                          gpa1                          |                          gpa2                          
+--------------------------------------------------------+--------------------------------------------------------
+ [3.0, 3.5, 3.75, 2.5, 3.8::numeric, 4.0, 3.9::numeric] | [3.0, 3.5, 3.75, 2.5, 3.8::numeric, 4.0, 3.9::numeric]
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN collect(u.zip), collect(u.zip) $$)
+AS (zip1 agtype, zip2 agtype);
+                 zip1                  |                 zip2                  
+---------------------------------------+---------------------------------------
+ [94110, 95060, 96062, "95060", 90210] | [94110, 95060, 96062, "95060", 90210]
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ RETURN collect(5) $$) AS (result agtype);
+ result 
+--------
+ [5]
+(1 row)
+
+-- should return an empty aray
+SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
+ empty 
+-------
+ []
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (collect agtype);
+ERROR:  function ag_catalog.age_collect() does not exist
+LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (col...
+                                               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('UCSC', true);
