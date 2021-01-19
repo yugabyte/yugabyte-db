@@ -26,7 +26,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
 	OUT relations			text,
 	OUT cmd_type			text,
 	OUT elevel              int,
-    OUT sqlcode             int,
+    OUT sqlcode             TEXT,
     OUT message             text,
     OUT bucket_start_time   text,
 

@@ -24,6 +24,8 @@ PG_MODULE_MAGIC;
 #define PG_STAT_STATEMENTS_COLS         42  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
+#define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
+
 /*---- Initicalization Function Declarations ----*/
 void _PG_init(void);
 void _PG_fini(void);
@@ -104,10 +106,12 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 #endif
 
 static uint64 pgss_hash_string(const char *str, int len);
+char *unpack_sql_state(int sql_state);
+
 static void pgss_store(uint64 queryId,
 				const char *query,
 				uint64 elevel,
-				uint64 sqlerrcode,
+				char *sqlerrcode,
 				const char *message,
 				int query_location,
 				int query_len,
@@ -293,7 +297,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 			pgss_store(query->queryId,
 						pstate->p_sourcetext,
 						0, 						/* error elevel */
-						0, 						/* error sqlcode */
+						"", 						/* error sqlcode */
 						NULL, 					/* error message */
 						query->stmt_location,
 						query->stmt_len,
@@ -420,7 +424,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 			pgss_store(queryId,
 						queryDesc->sourceText,
 						0, 						/* error elevel */
-						0, 						/* error sqlcode */
+						"", 						/* error sqlcode */
 						NULL, 					/* error message */
 						queryDesc->plannedstmt->stmt_location,
 						queryDesc->plannedstmt->stmt_len,
@@ -605,7 +609,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			pgss_store(0,						/* query id, passing 0 to signal that it's a utility stmt */
 						queryString,			/* query text */
 						0, 						/* error elevel */
-						0, 						/* error sqlcode */
+						"", 						/* error sqlcode */
 						NULL, 					/* error message */
 						pstmt->stmt_location,
 						pstmt->stmt_len,
@@ -751,7 +755,7 @@ pg_get_client_addr(void)
 static void pgss_store(uint64 queryId,
 						const char *query,
 						uint64 elevel,
-						uint64 sqlcode,
+						char *sqlcode,
 						const char *message,
 						int query_location,
 						int query_len,
@@ -780,6 +784,8 @@ static void pgss_store(uint64 queryId,
 	int				cmd_len[CMD_LST];
 	char			application_name[APPLICATIONNAME_LEN];
 	int				application_name_len;
+	int				sqlcode_len = strlen(sqlcode);
+
 	Assert(query != NULL);
 	Assert(PGSM_ENABLED);
 
@@ -977,7 +983,9 @@ static void pgss_store(uint64 queryId,
 			}
 		}
 		e->counters.error.elevel = elevel;
-		e->counters.error.sqlcode = sqlcode;
+		for(i = 0; i < sqlcode_len; i++)
+			e->counters.error.sqlcode[i] = sqlcode[i];
+
 		for(i = 0; i < message_len; i++)
 			e->counters.error.message[i] = message[i];
 
@@ -998,7 +1006,7 @@ static void pgss_store(uint64 queryId,
 		e->counters.info.host = pg_get_client_addr();
 		e->counters.sysinfo.utime = utime;
 		e->counters.sysinfo.stime = stime;
-		if (sqlcode != 0)
+		if (sqlcode[0] != 0)
 			memset(&entry->counters.blocks, 0, sizeof(entry->counters.blocks));
 		SpinLockRelease(&e->mutex);
 		}
@@ -1205,7 +1213,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 
 		values[i++] = TextArrayGetTextDatum(tmp.info.cmd_type, CMD_LST);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
-		values[i++] = Int64GetDatumFast(tmp.error.sqlcode);
+		if (strlen(tmp.error.sqlcode) <= 0)
+			values[i++] = CStringGetTextDatum("0");
+		else
+			values[i++] = CStringGetTextDatum(tmp.error.sqlcode);
+
 		if (strlen(tmp.error.message) == 0)
 			nulls[i++] = true;
 		else
@@ -2394,7 +2406,7 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 			pgss_store(parse->queryId,				/* query id */
 						query_string,				/* query text */
 						0, 							/* error elevel */
-						0, 							/* error sqlcode */
+						"", 							/* error sqlcode */
 						NULL, 						/* error message */
 						parse->stmt_location,
 						parse->stmt_len,
@@ -2525,7 +2537,7 @@ pgsm_emit_log_hook(ErrorData *edata)
 		pgss_store(queryid,
 					debug_query_string ? debug_query_string : "",
 					edata->elevel,
-					edata->sqlerrcode,
+					unpack_sql_state(edata->sqlerrcode),
 					edata->message,
 					0,
 					debug_query_string ? strlen(debug_query_string) : 0,
@@ -2632,5 +2644,21 @@ time_diff(struct timeval end, struct timeval start)
 	mend = ((double) end.tv_sec * 1000.0 + (double) end.tv_usec / 1000.0);
 	mstart   = ((double) start.tv_sec * 1000.0 + (double) start.tv_usec / 1000.0);
 	return mend - mstart;
+}
+
+char *
+unpack_sql_state(int sql_state)
+{
+    static char buf[12];
+    int         i;   
+
+    for (i = 0; i < 5; i++) 
+    {    
+        buf[i] = PGUNSIXBIT(sql_state);
+        sql_state >>= 6;
+    }    
+
+    buf[i] = '\0';
+    return buf;
 }
 

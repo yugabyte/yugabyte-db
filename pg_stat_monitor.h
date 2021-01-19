@@ -90,7 +90,7 @@
 #define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUFFER_BUCKET)
 #define QUERY_MARGIN 						100
 #define MIN_QUERY_LEN						10
-
+#define SQLCODE_LEN                         20
 typedef struct GucVariables
 {
 	int		guc_variable;
@@ -167,8 +167,8 @@ typedef struct QueryInfo
 typedef struct ErrorInfo
 {
 	int64	elevel;							/* error elevel */
-	int64	sqlcode;						/* error sqlcode  */
-	char			message[ERROR_MESSAGE_LEN];   	/* error message text */
+	char    sqlcode[SQLCODE_LEN];						/* error sqlcode  */
+	char	message[ERROR_MESSAGE_LEN];   	/* error message text */
 } ErrorInfo;
 
 typedef struct Calls
