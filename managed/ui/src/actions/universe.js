@@ -30,6 +30,10 @@ export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 
+// Pause Universe
+export const PAUSE_UNIVERSE = 'PAUSE_UNIVERSE';
+export const PAUSE_UNIVERSE_RESPONSE = 'PAUSE_UNIVERSE_RESPONSE';
+
 // Read replicas
 export const ADD_READ_REPLICA = 'ADD_READ_REPLICA';
 export const ADD_READ_REPLICA_RESPONSE = 'ADD_READ_REPLICA_RESPONSE';
@@ -218,6 +222,25 @@ export function deleteUniverseResponse(response) {
   return {
     type: DELETE_UNIVERSE_RESPONSE,
     payload: response
+  };
+}
+
+// This method will handle the pause universe async call.
+export function pauseUniverse(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  // const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`);
+  console.log(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`, '******* async call');
+  // return {
+  //   type: PAUSE_UNIVERSE,
+  //   payload: request
+  // };
+}
+
+export function pauseUniverseResponse(response) {
+  console.log(response, '********* pause universe reponse');
+  return {
+    type: PAUSE_UNIVERSE_RESPONSE,
+    // payload: response
   };
 }
 

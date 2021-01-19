@@ -77,7 +77,6 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
-      dispatch(closeUniverseDialog());
     },
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid)).then((response) => {

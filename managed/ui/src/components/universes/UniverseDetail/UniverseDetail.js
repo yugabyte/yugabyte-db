@@ -15,13 +15,14 @@ import {
   UniverseAppsModal,
   UniverseConnectModal,
   UniverseOverviewContainerNew,
-  EncryptionKeyModalContainer
+  EncryptionKeyModalContainer,
+  PauseUniverseContainer
 } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { LiveQueries } from '../../queries';
-import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isEmptyObject, isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isOnpremUniverse, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
@@ -193,6 +194,19 @@ class UniverseDetail extends Component {
       params: { tab }
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
+    const clusters = universe?.currentUniverse?.data?.universeDetails?.clusters;
+    const statusCheck = universe?.currentUniverse?.data?.universeDetails?.updateSucceeded;
+
+    // This variable will store the universe provider type which helps to enable
+    // Pause Universe functionality.
+    // TODO: For now, we're enabling the Pause Universe for providerType==='aws'
+    // only. This functionality needs to be enabled for all the cloud providers and
+    // once that's done this needs to be removed.
+    const providerType = isNonEmptyArray(clusters)
+      ? clusters.map((cluster) => {
+        return cluster?.userIntent?.providerType;
+      })
+      : null;
 
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
@@ -511,16 +525,13 @@ class UniverseDetail extends Component {
                         </span>
                       </YBMenuItem>
 
-                      <YBMenuItem
-                        onClick={showRollingRestartModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.restartUniverse'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-refresh fa-fw">
-                          Initiate Rolling Restart
+                      <YBMenuItem onClick={() => showSubmenu('universeControls')}>
+                        <YBLabelWithIcon icon="fa fa-pencil">
+                          Modify Universe State
                         </YBLabelWithIcon>
+                        <span className="pull-right">
+                          <i className="fa fa-chevron-right submenu-icon" />
+                        </span>
                       </YBMenuItem>
 
                       {!isReadOnlyUniverse && (
@@ -546,18 +557,6 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         }
                       />
-                      <MenuItem divider />
-                      <YBMenuItem
-                        onClick={showDeleteUniverseModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.deleteUniverse'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
-                          Delete Universe
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
                     </>
                   )}
                   subMenus={{
@@ -583,6 +582,49 @@ class UniverseDetail extends Component {
                           Encryption at-Rest
                         </YBMenuItem>
                       </>
+                    ),
+                    universeControls: (backToMainMenu) => (
+                      <>
+                        <MenuItem onClick={backToMainMenu}>
+                          <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
+                        </MenuItem>
+                        <MenuItem divider />
+                        <YBMenuItem
+                          onClick={showRollingRestartModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.restartUniverse'
+                          )}
+                        >
+                          {/* <YBLabelWithIcon icon="fa fa-refresh fa-fw"> */}
+                            Initiate Rolling Restart
+                        {/* </YBLabelWithIcon> */}
+                        </YBMenuItem>
+
+                        {isDefinedNotNull(providerType)
+                          && providerType.toString() === 'aws'
+                          && statusCheck &&
+                          <YBMenuItem
+                            onClick={showPauseUniverseModal}
+                          >
+                            {/* <YBLabelWithIcon icon="fa fa-pause-circle-o fa-fw"> */}
+                              Pause Universe
+                          {/* </YBLabelWithIcon> */}
+                          </YBMenuItem>
+                        }
+
+                        <YBMenuItem
+                          onClick={showDeleteUniverseModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.deleteUniverse'
+                          )}
+                        >
+                          {/* <YBLabelWithIcon icon="fa fa-trash-o fa-fw"> */}
+                            Delete Universe
+                        {/* </YBLabelWithIcon> */}
+                        </YBMenuItem>
+                      </>
                     )
                   }}
                 />
@@ -605,6 +647,13 @@ class UniverseDetail extends Component {
           onHide={closeModal}
           title="Delete Universe: "
           body="Are you sure you want to delete the universe? You will lose all your data!"
+          type="primary"
+        />
+        <PauseUniverseContainer
+          visible={showModal && visibleModal === 'pauseUniverseModal'}
+          onHide={closeModal}
+          title="Pause Universe: "
+          body="Are you sure you want to pasue the universe?"
           type="primary"
         />
 
