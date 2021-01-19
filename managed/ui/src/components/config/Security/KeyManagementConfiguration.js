@@ -235,6 +235,13 @@ class KeyManagementConfiguration extends Component {
     }
   };
 
+  /**
+   * Shows list view on click of cancel button by turning the listView flag ON.
+   */
+  showListView = () => {
+    this.setState({ listView: true });
+  }
+
   render() {
     const { configList } = this.props;
     const { listView, enabledIAMProfile } = this.state;
@@ -330,6 +337,12 @@ class KeyManagementConfiguration extends Component {
                   btnClass={'btn btn-orange'}
                   disabled={false}
                   btnType="submit"
+                />
+                <YBButton
+                  btnText={'Cancel'}
+                  btnClass={'btn btn-orange'}
+                  disabled={false}
+                  onClick={this.showListView}
                 />
               </div>
             </form>
