@@ -2397,23 +2397,34 @@ CHECKED_STATUS WaitForBackfillStage(
     PGConn* conn,
     const std::string& index_name,
     const MonoDelta& index_state_flags_update_delay) {
-  const MonoTime start_time = MonoTime::Now();
-  const std::map<std::string, bool> index_state_flags{
-    {"indislive", true},
-    {"indisready", true},
-    {"indisvalid", false},
-  };
+  LOG(INFO) << "Waiting for pg_index indislive to be true";
+  RETURN_NOT_OK(WaitFor(
+      std::bind(IsAtTargetIndexStateFlags, conn, index_name, std::map<std::string, bool>{
+          {"indislive", true},
+          {"indisready", false},
+          {"indisvalid", false},
+        }),
+      12s,
+      "Wait for pg_index indislive=true",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      100ms /* max_delay */));
 
   LOG(INFO) << "Waiting for pg_index indisready to be true";
   RETURN_NOT_OK(WaitFor(
-      std::bind(IsAtTargetIndexStateFlags, conn, index_name, index_state_flags),
-      index_state_flags_update_delay * 2,
-      Format("Wait for index state flags to hit target: $0", index_state_flags)));
+      std::bind(IsAtTargetIndexStateFlags, conn, index_name, std::map<std::string, bool>{
+          {"indislive", true},
+          {"indisready", true},
+          {"indisvalid", false},
+        }),
+      index_state_flags_update_delay + 5s,
+      "Wait for pg_index indisready=true",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      100ms /* max_delay */));
 
   LOG(INFO) << "Waiting till (approx) the end of the delay after committing indisready true";
-  SleepFor(
-      (index_state_flags_update_delay * 2)
-      - (MonoTime::Now() - start_time));
+  SleepFor(index_state_flags_update_delay);
 
   return Status::OK();
 }
@@ -2501,6 +2512,7 @@ class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
     more_tserver_flags.push_back("--TEST_ysql_index_state_flags_update_delay_ms=7000");
     more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=7000");
   }
+  // TODO(jason): add const MonoDelta vars for times, and update all redundant code below.
 };
 
 // Make sure that read time (and write time) for backfill works.  Simulate this situation:
@@ -2797,10 +2809,10 @@ TEST_F_EX(
     };
 
     LOG(INFO) << "Wait for indislive index state flag";
-    // Deadline is 3s
+    // Deadline is 12s
     ASSERT_OK(WaitFor(
         std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
-        3s,
+        12s,
         Format("Wait for index state flags to hit target: $0", index_state_flags)));
 
     LOG(INFO) << "Do insert and delete";
@@ -2821,11 +2833,11 @@ TEST_F_EX(
     LOG(INFO) << "Wait for indisready index state flag";
     // Deadline is
     //   7s for sleep between indislive and indisready
-    // + 3s for extra
-    // = 10s
+    // + 5s for extra
+    // = 12s
     ASSERT_OK(WaitFor(
         std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
-        10s,
+        12s,
         Format("Wait for index state flags to hit target: $0", index_state_flags)));
   }
 
@@ -2843,9 +2855,9 @@ TEST_F_EX(
     LOG(INFO) << "Do insert";
     // Deadline is
     //   4s for remainder of 7s sleep between get safe time and do backfill
-    // + 3s for extra
-    // = 7s
-    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 7s, CoarseMonoClock::Duration::max());
+    // + 5s for extra
+    // = 9s
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 9s, CoarseMonoClock::Duration::max());
     while (true) {
       Status status = conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 'a')", kTableName);
       LOG(INFO) << "Got " << yb::ToString(status);
@@ -2879,6 +2891,89 @@ TEST_F_EX(
                   != std::string::npos) << result.status();
       ASSERT_TRUE(waiter.Wait());
     }
+  }
+}
+
+// Simulate this situation:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (i, j, PRIMARY KEY (i))
+//                                                INSERT (1, 'a')
+//   CREATE UNIQUE INDEX (j)
+//   - indislive
+//   - indisready
+//   - backfill stage
+//     - get safe time for read
+//                                                DELETE (1, 'a')
+//                                                (delete (1, 'a') to index)
+//     - do the actual backfill
+//       (insert (1, 'a') to index)
+//   - indisvalid
+// This test is for issue #6811.  Remember, backfilled rows get written with write time = safe time,
+// so they should have an MVCC timestamp lower than that of the deletion.  If deletes to the index
+// aren't written, then this test will always fail because the backfilled row has no delete to cover
+// it.  If deletes to the index aren't retained, then this test will fail if compactions get rid of
+// the delete before the backfilled row gets written.
+TEST_F_EX(
+    PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillRetainDeletes),
+    PgLibPqTestIndexBackfillSlow) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const std::map<std::string, bool> index_state_flags{
+    {"indislive", true},
+    {"indisready", true},
+    {"indisvalid", false},
+  };
+  const MonoDelta& kIndexStateFlagsUpdateDelay = MonoDelta::FromMilliseconds(
+      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
+        cluster_->tserver_daemons()[0]->GetFlag("TEST_ysql_index_state_flags_update_delay_ms")))));
+  const MonoDelta& kSlowDownBackfillDelay = MonoDelta::FromMilliseconds(
+      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
+        cluster_->tserver_daemons()[0]->GetFlag("TEST_slowdown_backfill_by_ms")))));
+  const std::string& kIndexName = "i";
+  const std::string& kNamespaceName = "yugabyte";
+  const std::string& kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j char, PRIMARY KEY (i))", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'a')", kTableName));
+
+  std::thread create_index_thread([&] {
+    LOG(INFO) << "Creating index";
+    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+  });
+
+  ASSERT_OK(WaitForBackfillStage(&conn, kIndexName, kIndexStateFlagsUpdateDelay));
+
+  LOG(INFO) << "Waiting out half the delay of executing backfill";
+  SleepFor(kSlowDownBackfillDelay / 2);
+
+  LOG(INFO) << "Deleting row";
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
+
+  // It should still be in the backfill stage.
+  ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
+
+  LOG(INFO) << "Waiting for create index thread to complete";
+  create_index_thread.join();
+
+  // Check.
+  const Result<PGResultPtr>& result = conn.FetchFormat(
+      "SELECT count(*) FROM $0 WHERE j = 'a'", kTableName);
+  if (result.ok()) {
+    int count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
+    ASSERT_EQ(count, 0);
+  } else if (result.status().IsNetworkError()) {
+    Status s = result.status();
+    const std::string msg = s.message().ToBuffer();
+    if (msg.find("Given ybctid is not associated with any row in table") == std::string::npos) {
+      FAIL() << "unexpected status: " << s;
+    }
+    FAIL() << "delete to index was not present by the time backfill happened: " << s;
+  } else {
+    Status s = result.status();
+    FAIL() << "unexpected status: " << s;
   }
 }
 

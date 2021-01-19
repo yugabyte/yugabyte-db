@@ -508,17 +508,18 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   RETURN_NOT_OK(ReadColumns(data, &table_row));
   if (table_row.IsEmpty()) {
     // Row not found.
-    response_->set_skipped(true);
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
-    // permission during an online schema migration.
+    // permission during an online schema migration.  num_deleted should be 0 because we don't want
+    // to report back to the user that we deleted 1 row.  response should not set skipped because it
+    // will prevent tombstone intents from getting applied.
     // TODO(jason): apply deletes only when this is an index table going through a schema migration,
     // not just when backfill is enabled (issue #5686).
     if (FLAGS_ysql_disable_index_backfill) {
+      response_->set_skipped(true);
       return Status::OK();
-    } else {
-      num_deleted = 0;
     }
+    num_deleted = 0;
   }
 
   // TODO(neil) Add support for WHERE clause.
