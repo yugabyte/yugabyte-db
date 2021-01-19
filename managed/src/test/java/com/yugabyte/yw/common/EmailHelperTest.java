@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
