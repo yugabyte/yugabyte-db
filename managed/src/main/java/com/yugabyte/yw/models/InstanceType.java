@@ -196,10 +196,11 @@ public class InstanceType extends Model {
       .eq("active", true)
       .findList();
     if (provider.code.equals("aws")) {
-      entries = populateDefaultsIfEmpty(entries, config);
+      return populateDefaultsIfEmpty(entries, config);
+    } else {
+      return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
+        entry.getInstanceTypeCode())).collect(Collectors.toList());
     }
-    
-    return entries;
   }
 
   public static InstanceType createWithMetadata(Provider provider, String instanceTypeCode,
