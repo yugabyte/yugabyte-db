@@ -2,6 +2,7 @@
 
 import React, { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';
+import * as momentTimezone from 'moment-timezone';
 
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
@@ -236,7 +237,7 @@ class HealthInfoPanel extends PureComponent {
     let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
       const healthCheckData = JSON.parse([...healthCheck.data].reverse()[0]);
-      const lastUpdateDate = moment(healthCheckData.timestamp);
+      const lastUpdateDate = momentTimezone.utc(healthCheckData.timestamp).local();
       if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
         const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);
         const now = Date.now() / 1000;
