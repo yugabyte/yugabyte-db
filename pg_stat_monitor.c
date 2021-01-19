@@ -940,7 +940,7 @@ static void pgss_store(uint64 queryId,
 		/* increment only in case of PGSS_EXEC */
 		if (kind == PGSS_EXEC)
 		{
-			for (i = 0; i < MAX_RESPONSE_BUCKET - 1; i++)
+			for (i = 0; i < MAX_RESPONSE_BUCKET; i++)
 			{
 				if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
 				{
@@ -949,7 +949,7 @@ static void pgss_store(uint64 queryId,
 				}
 			}
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
-				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
+				e->counters.resp_calls[MAX_RESPONSE_BUCKET]++;
 		}
 
 		for (i = 0; i < application_name_len; i++)
@@ -1226,7 +1226,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		for (kind = 0; kind < PGSS_NUMKIND; kind++)
 		{
 			if (tmp.calls[kind].calls == 0)
+			{
+				/*  Query of pg_stat_monitor itslef started from zero count */
 				tmp.calls[kind].calls++;
+				if (kind == PGSS_EXEC)
+					tmp.resp_calls[0]++;
+			}
 			values[i++] = Int64GetDatumFast(tmp.calls[kind].calls);
 			values[i++] = Float8GetDatumFast(tmp.time[kind].total_time);
 			values[i++] = Float8GetDatumFast(tmp.time[kind].min_time);
@@ -1251,7 +1256,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_written);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
-		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, 10);
+		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);

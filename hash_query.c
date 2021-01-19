@@ -155,7 +155,6 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 	{
 		pgss->bucket_entry[pgss->current_wbucket]++;
 		/* New entry, initialize it */
-
 		/* reset the statistics */
 		memset(&entry->counters, 0, sizeof(Counters));
 		/* set the appropriate initial usage count */
@@ -165,7 +164,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 		entry->encoding = encoding;
 	}
 	if (entry == NULL)
-		elog(FATAL, "%s", "Ibrar");
+		elog(FATAL, "%s", "pg_stat_monitor: out of memory");
 	return entry;
 }
 
