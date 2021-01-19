@@ -18,6 +18,7 @@ import * as Yup from 'yup';
 import { regionsData } from '../PublicCloud/views/providerRegionsData';
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns
 //  a list of supported KMS Configurations
@@ -140,6 +141,12 @@ class KeyManagementConfiguration extends Component {
               className={'kube-provider-input-field'}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="IAM Profile"
+              content="If IAM Profile selected then we'll use the EC2 instance metadata credentials to make API request."
+            />
+          </Col>
         </Row>
         <Row className="config-provider-row" key={'access-key-field'}>
           <Col lg={3}>
@@ -151,6 +158,12 @@ class KeyManagementConfiguration extends Component {
               component={YBFormInput}
               disabled={this.state.enabledIAMProfile}
               className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Access Key"
+              content="If user didn't select the IAM profile then(required) they must provide the AWS access key id."
             />
           </Col>
         </Row>
@@ -166,6 +179,12 @@ class KeyManagementConfiguration extends Component {
               className={'kube-provider-input-field'}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Secret Key"
+              content="If user didn't select the IAM profile then(required) they must provide the AWS secret key id."
+            />
+          </Col>
         </Row>
         <Row className="config-provider-row" key={'region-field'}>
           <Col lg={3}>
@@ -179,6 +198,12 @@ class KeyManagementConfiguration extends Component {
               className={'kube-provider-input-field'}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Region"
+              content="This is the region that the CMK lives in(required)."
+            />
+          </Col>
         </Row>
         <Row className="cmk-id-row" key={'cmk-id-field'}>
           <Col lg={3}>
@@ -190,6 +215,12 @@ class KeyManagementConfiguration extends Component {
               component={YBFormInput}
               placeholder={'CMK ID'}
               className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Customer Master Key"
+              content="The user can choose to provide their own CMK if not then we'll create one."
             />
           </Col>
         </Row>
@@ -304,6 +335,12 @@ class KeyManagementConfiguration extends Component {
                         component={YBFormInput}
                         placeholder={'Configuration Name'}
                         className={'kube-provider-input-field'}
+                      />
+                    </Col>
+                    <Col lg={1} className="config-zone-tooltip">
+                      <YBInfoTip
+                        title="Confriguration Name"
+                        content="The name of the KMS confriguration(required)."
                       />
                     </Col>
                   </Row>
