@@ -80,8 +80,11 @@ If upgrading between any major versions of pg_partman (2.x -> 3.x, etc), please 
 
 EXAMPLES
 --------
+For setting up native partitioning with pg_partman on a brand new table, or to migrate an existing normal table to native partitioning, see [pg_partman_howto_native.md](doc/pg_partman_howto_native.md).
 
-Please see the [pg_partman_howto.md file](doc/pg_partman_howto.md) in the doc folder for examples on how to setup partitioning. 
+For migrating a trigger-based partitioned table to native partitioning using pg_partman, see [migrate_to_native.md](doc/migrate_to_native.md).
+
+Other HowTo documents are also available in the documents folder.
 
 See the [pg_partman.md file](doc/pg_partman.md) in the doc folder for full details on all commands and options for pg_partman.
 
