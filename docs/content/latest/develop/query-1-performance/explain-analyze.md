@@ -1,15 +1,15 @@
 ---
-title: Optimizing queries with EXPLAIN and EXPLAIN ANALYZE
-linkTitle: EXPLAIN and EXPLAIN ANALYZE
+title: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
+linkTitle: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
-  - /develop/query-performance/explain-analyze/
-headerTitle: EXPLAIN and EXPLAIN ANALYZE
+  - /develop/query-1-performance/explain-analyze/
+headerTitle: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
 image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: explain-analyze
-    parent: query-performance 
+    parent: query-1-performance
     weight: 566
 isTocNested: true
 showAsideToc: true
@@ -29,15 +29,15 @@ EXPLAIN [ ( option [, ...] ) ] sql_statement;
 
 The *option* and its values are described in the following table. The most important option is `ANALYZE`.
 
-| Option     | Value                          | Description                                                  |
-| ---------- | ------------------------------ | ------------------------------------------------------------ |
-| `ANALYZE ` | `boolean`                      | Executes the *sql_statement* before receiving any run-time statistics.<br/>Since `EXPLAIN ANALYZE` discards the actual output, to perform analysis of any statement without affecting the data, you must wrap `EXPLAIN ANALYZE` in a transaction using the following syntax:<br/>`BEGIN;`<br/>`EXPLAIN ANALYZE sql_statement;`<br/>`ROLLBACK;` |
-| `VERBOSE ` | `boolean`                      | Displays detailed information about the query plan. <br/>The default value is `FALSE`. |
-| `COSTS `   | `boolean`                      | Provides the estimated initial and total costs of each plan node. In addition, estimates the number of rows and the width of each row in the query plan.<br/>The default value is `TRUE`. |
-| `BUFFERS ` | `boolean`                      | Provides information about the most input-output intensive parts of the query. <br/>The default value is `FALSE`. <br/>You can only use this option when `ANALYZE` is set to `TRUE`. |
-| `TIMING `  | `boolean`                      | Provides information about the actual startup time and the time spent in each node of the output. <br/>The default value is `TRUE`. <br/>You can only use this option when `ANALYZE` is set to `TRUE`. |
-| `SUMMARY ` | `boolean`                      | Provides additional information, such as the total time after the query plan. The value of this option is `TRUE` when `ANALYZE` is set to `TRUE`. |
-| `FORMAT `  | `{ TEXT | XML | JSON | YAML }` | Allows you to define the query plan output format. <br/>The default value is `TEXT`. |
+| Option  | Value                           | Description                                                  |
+| ------- | ------------------------------- | ------------------------------------------------------------ |
+| ANALYZE | boolean                         | Executes the *sql_statement* before receiving any run-time statistics.<br/>Since EXPLAIN ANALYZE discards the actual output, to perform analysis of any statement without affecting the data, you must wrap EXPLAIN ANALYZE in a transaction using the following syntax:<br/>BEGIN;<br/>EXPLAIN ANALYZE *sql_statement*;<br/>ROLLBACK; |
+| VERBOSE | boolean                         | Displays detailed information about the query plan. <br/>The default value is FALSE. |
+| COSTS   | boolean                         | Provides the estimated initial and total costs of each plan node. In addition, estimates the number of rows and the width of each row in the query plan.<br/>The default value is TRUE. |
+| BUFFERS | boolean                         | Provides information about the most input-output intensive parts of the query. <br/>The default value is FALSE. <br/>You can only use this option when ANALYZE is set to TRUE. |
+| TIMING  | boolean                         | Provides information about the actual startup time and the time spent in each node of the output. <br/>The default value is TRUE. <br/>You can only use this option when ANALYZE is set to TRUE. |
+| SUMMARY | boolean                         | Provides additional information, such as the total time after the query plan. The value of this option is TRUE when ANALYZE is set to TRUE. |
+| FORMAT  | { TEXT \| XML \| JSON \| YAML } | Allows you to define the query plan output format. <br/>The default value is TEXT. |
 
 ### Examples
 
