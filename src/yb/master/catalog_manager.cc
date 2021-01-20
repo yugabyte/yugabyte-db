@@ -8300,12 +8300,17 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
     blacklistState.Reset();
   }
 
-  LOG(INFO) << "Set blacklist size = " << blacklist.hosts_size() << " with load "
-            << blacklist.initial_replica_load();
-
   for (const auto& pb : blacklist.hosts()) {
     blacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial load.
+  if (blacklist.has_initial_replica_load()) {
+    blacklistState.initial_load_ = blacklist.initial_replica_load();
+  }
+
+  LOG(INFO) << "Set blacklist size = " << blacklistState.tservers_.size() << " with load "
+            << blacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8318,12 +8323,17 @@ Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
     leaderBlacklistState.Reset();
   }
 
-  LOG(INFO) << "Set leader blacklist size = " << leader_blacklist.hosts_size() << " with load "
-            << leader_blacklist.initial_leader_load();
-
   for (const auto& pb : leader_blacklist.hosts()) {
     leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial leader load.
+  if (leader_blacklist.has_initial_leader_load()) {
+    leaderBlacklistState.initial_load_ = leader_blacklist.initial_leader_load();
+  }
+
+  LOG(INFO) << "Set leader blacklist size = " << leaderBlacklistState.tservers_.size()
+            << " with load " << leaderBlacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8613,7 +8623,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   }
 
   LOG(INFO) << "Blacklisted count " << blacklist_replicas
-            << "across " << state.tservers_.size()
+            << " across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
 
   // Case when a blacklisted servers did not have any starting load.
