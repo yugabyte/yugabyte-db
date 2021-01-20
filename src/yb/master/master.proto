@@ -940,6 +940,9 @@ message CreateTableRequestPB {
 
   // For YSQL tables, this denotes the tablespace that this table is associated with.
   optional bytes tablespace_id = 21;
+
+  // This field should be used to create or restore table with a fixed set of partitions.
+  repeated PartitionPB partitions = 22;
 }
 
 message CreateTableResponsePB {

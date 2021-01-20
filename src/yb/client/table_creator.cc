@@ -105,6 +105,11 @@ YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* t
   return *this;
 }
 
+YBTableCreator &YBTableCreator::add_partition(const Partition& partition) {
+    partitions_.push_back(partition);
+    return *this;
+}
+
 YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
                                                         int32_t num_buckets) {
   return add_hash_partitions(columns, num_buckets, 0);
@@ -263,6 +268,13 @@ Status YBTableCreator::Create() {
   req.set_num_tablets(num_tablets_);
 
   req.mutable_partition_schema()->CopyFrom(partition_schema_);
+
+  if (!partitions_.empty()) {
+    for (const auto& p : partitions_) {
+      auto * np = req.add_partitions();
+      p.ToPB(np);
+    }
+  }
 
   // Index mapping with data-table being indexed.
   if (index_info_.has_indexed_table_id()) {
