@@ -15,6 +15,9 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/client/client-test-util.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/jsonreader.h"
@@ -543,6 +546,54 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithDrop
   ));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithDefinedPartitions)) {
+  const int kNumPartitions = 3;
+
+  const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+
+  // Allocate the partitions.
+  Partition partitions[kNumPartitions];
+  const uint16_t max_interval = PartitionSchema::kMaxPartitionKey;
+  const string key1 = PartitionSchema::EncodeMultiColumnHashValue(max_interval / 10);
+  const string key2 = PartitionSchema::EncodeMultiColumnHashValue(max_interval * 3 / 4);
+
+  partitions[0].set_partition_key_end(key1);
+  partitions[1].set_partition_key_start(key1);
+  partitions[1].set_partition_key_end(key2);
+  partitions[2].set_partition_key_start(key2);
+
+  // create a table
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumPartitions)
+                .add_partition(partitions[0])
+                .add_partition(partitions[1])
+                .add_partition(partitions[2])
+                .Create());
+
+  const string& keyspace = kTableName.namespace_name();
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"}));
+
+  const client::YBTableName kNewTableName(YQL_DATABASE_CQL, "new_my_keyspace", "test-table");
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(kNewTableName, -1, &tablets, RequireTabletsRunning::kFalse));
+  for (int i = 0 ; i < kNumPartitions; ++i) {
+    Partition p;
+    Partition::FromPB(tablets[i].partition(), &p);
+    ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
+  }
 }
 
 }  // namespace tools

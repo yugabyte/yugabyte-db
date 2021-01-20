@@ -562,4 +562,46 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreat
                     "requirement for the minimum number of TS met"));
 }
 
+TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
+  const int kNumReplicas = 3;
+  const int kNumTablets = 2;
+
+  const int kNumPartitions = kNumTablets;
+
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  // Allocate the partitions.
+  Partition partitions[kNumPartitions];
+  const uint16_t interval = PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
+
+  partitions[0].set_partition_key_end(PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[1].set_partition_key_start(PartitionSchema::EncodeMultiColumnHashValue(interval));
+
+  // create a table
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .add_partition(partitions[0])
+                .add_partition(partitions[1])
+                .Create());
+
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(
+      kTableName, -1, &tablets, RequireTabletsRunning::kFalse));
+  for (int i = 0 ; i < kNumPartitions; ++i) {
+    Partition p;
+    Partition::FromPB(tablets[i].partition(), &p);
+    ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
+  }
+}
+
 }  // namespace yb

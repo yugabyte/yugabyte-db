@@ -2579,7 +2579,26 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     req.set_num_tablets(1);
   } else {
     s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-    RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+    if (req.partitions_size() > 0) {
+      if (req.partitions_size() != num_tablets) {
+        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      }
+      string last;
+      for (const auto& p : req.partitions()) {
+        Partition np;
+        Partition::FromPB(p, &np);
+        if (np.partition_key_start() != last) {
+          Status s = STATUS(InvalidArgument,
+                            "Partitions does not cover the full partition keyspace");
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+        }
+        last = np.partition_key_end();
+        partitions.push_back(std::move(np));
+      }
+    } else {
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+    }
   }
 
   // For index table, populate the index info.
