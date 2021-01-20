@@ -53,13 +53,16 @@ export default class AZPlacementInfo extends Component {
     placementInfo: PropTypes.object.isRequired
   };
   render() {
-    const { placementInfo, placementCloud } = this.props;
-    if (!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) {
+    const { placementInfo, placementCloud, providerCode } = this.props;
+    let currentStatusType;
+
+    // If placementInfo and placementCloud is empty and provier is not onprem then return
+    if ((!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) && providerCode !== "onprem") {
       return <span />;
     }
 
     const replicationFactor = placementInfo.replicationFactor;
-    const regionList = placementCloud.regionList;
+    const regionList = placementCloud?.regionList || [];
     let multiRegion = true;
     let multiAz = true;
 
@@ -93,8 +96,8 @@ export default class AZPlacementInfo extends Component {
         }
       }
     });
+    
 
-    let currentStatusType;
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;
     } else if (replicationFactor === 1) {
