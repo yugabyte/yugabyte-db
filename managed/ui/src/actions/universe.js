@@ -651,3 +651,21 @@ export function fetchLiveQueries(universeUUID, cancelFn) {
 
   return request;
 }
+
+export function createAlertDefinition(universeUUID, data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
+  return axios.post(endpoint, data);
+}
+
+export function getAlertDefinition(universeUUID, alertName) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
+  return axios.get(endpoint).then(resp => resp.data);
+}
+
+export function updateAlertDefinition(alertDefinitionUUID, data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
+  return axios.put(endpoint, data);
+}

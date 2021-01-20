@@ -104,6 +104,10 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
 DEFINE_bool(load_balancer_skip_leader_as_remove_victim, false,
             "Should the LB skip a leader as a possible remove candidate.");
 
+DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
+                 "For testing purposes, number of milliseconds to wait after counting and "
+                 "finding pending tasks.");
+
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
 namespace yb {
@@ -177,7 +181,7 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
       is_enabled_(FLAGS_enable_load_balancing),
       cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
-  ResetGlobalState();
+  ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;
 }
@@ -227,22 +231,41 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   int pending_add_replica_tasks = 0;
   int pending_remove_replica_tasks = 0;
   int pending_stepdown_leader_tasks = 0;
-  bool is_txn_table;
 
   for (const auto& table : GetTableMap()) {
+    if (SkipLoadBalancing(*table.second)) {
+      continue;
+    }
     const TableId& table_id = table.first;
     ResetTableStatePtr(table_id, options);
 
-    CountPendingTasksUnlocked(table_id,
-                              &pending_add_replica_tasks,
-                              &pending_remove_replica_tasks,
-                              &pending_stepdown_leader_tasks);
+    bool is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+    state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+    InitializeTSDescriptors();
+
+    Status s = CountPendingTasksUnlocked(table_id,
+                                         &pending_add_replica_tasks,
+                                         &pending_remove_replica_tasks,
+                                         &pending_stepdown_leader_tasks);
+    if (!s.ok()) {
+      // Found uninitialized ts_meta, so don't load balance this table yet.
+      LOG(WARNING) << "Skipping load balancing " << table.first << ": " << StatusToString(s);
+      per_table_states_.erase(table_id);
+      master_errors++;
+      continue;
+    }
   }
 
   if (pending_add_replica_tasks + pending_remove_replica_tasks + pending_stepdown_leader_tasks> 0) {
     LOG(INFO) << "Total pending adds=" << pending_add_replica_tasks << ", total pending removals="
               << pending_remove_replica_tasks << ", total pending leader stepdowns="
               << pending_stepdown_leader_tasks;
+    if (PREDICT_FALSE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms > 0)) {
+      LOG(INFO) << "Sleeping after finding pending tasks for "
+                << FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms << " ms";
+      SleepFor(
+          MonoDelta::FromMilliseconds(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms));
+    }
   }
 
   set_remaining(pending_add_replica_tasks, &remaining_adds);
@@ -260,13 +283,11 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     auto it = per_table_states_.find(table.first);
     if (it == per_table_states_.end()) {
-      LOG(DFATAL) << "Unable to find the state for table " << table.first;
+      // If the table state doesn't exist, it was not fully initialized in the previous iteration.
+      VLOG(1) << "Unable to find the state for table " << table.first;
       continue;
     }
     state_ = it->second.get();
-
-    is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
-    state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
 
     // Prepare the in-memory structures.
     auto handle_analyze_tablets = AnalyzeTabletsUnlocked(table.first);
@@ -304,10 +325,6 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // We may have modified global loads, so we need to reset this state's load.
     state_->SortLoad();
-
-    is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
-    state_->use_preferred_zones_ = !is_txn_table ||
-                                   FLAGS_transaction_tables_use_preferred_zones;
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -426,9 +443,7 @@ bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
-  TSDescriptorVector ts_descs;
-  GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
+  for (const auto& ts_desc : global_state_->ts_descs_) {
     // Report if any ts has a pending delete.
     if (ts_desc->HasTabletDeletePending()) {
       LOG(INFO) << Format("tablet server $0 has a pending delete for tablets $1",
@@ -437,9 +452,13 @@ void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
   }
 }
 
-void ClusterLoadBalancer::ResetGlobalState() {
+void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   per_table_states_.clear();
   global_state_ = std::make_unique<GlobalLoadState>();
+  if (initialize_ts_descs) {
+    // Only call GetAllReportedDescriptors once for a LB run, and then cache it in global_state_.
+    GetAllReportedDescriptors(&global_state_->ts_descs_);
+  }
 }
 
 void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* options) {
@@ -452,21 +471,6 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
 }
 
 Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
-  // Set the blacklist so we can also mark the tablet servers as we add them up.
-  state_->SetBlacklist(GetServerBlacklist());
-
-  // Set the leader blacklist so we can also mark the tablet servers as we add them up.
-  state_->SetLeaderBlacklist(GetLeaderBlacklist());
-
-  // Loop over live tablet servers to set empty defaults, so we can also have info on those
-  // servers that have yet to receive load (have heartbeated to the master, but have not been
-  // assigned any tablets yet).
-  TSDescriptorVector ts_descs;
-  GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
-    state_->UpdateTabletServer(ts_desc);
-  }
-
   vector<scoped_refptr<TabletInfo>> tablets;
   Status s = GetTabletsForTable(table_uuid, &tablets);
   YB_RETURN_NOT_OK_PREPEND(s, "Skipping table " + table_uuid + "due to error: ");
@@ -784,6 +788,11 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
       continue;
     }
 
+     // Don't move a replica right after split
+    if (ContainsKey(from_ts_meta.parent_data_tablets, tablet_id)) {
+      continue;
+    }
+
     if (VERIFY_RESULT(
         state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id)))) {
       non_over_replicated_tablets.insert(tablet_id);
@@ -1093,6 +1102,21 @@ Status ClusterLoadBalancer::MoveLeader(
   return state_->MoveLeader(tablet_id, from_ts, to_ts);
 }
 
+void ClusterLoadBalancer::InitializeTSDescriptors() {
+  // Set the blacklist so we can also mark the tablet servers as we add them up.
+  state_->SetBlacklist(GetServerBlacklist());
+
+  // Set the leader blacklist so we can also mark the tablet servers as we add them up.
+  state_->SetLeaderBlacklist(GetLeaderBlacklist());
+
+  // Loop over live tablet servers to set empty defaults, so we can also have info on those
+  // servers that have yet to receive load (have heartbeated to the master, but have not been
+  // assigned any tablets yet).
+  for (const auto& ts_desc : global_state_->ts_descs_) {
+    state_->UpdateTabletServer(ts_desc);
+  }
+}
+
 // CatalogManager indirection methods that are set as virtual to be bypassed in testing.
 //
 void ClusterLoadBalancer::GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const {
@@ -1150,7 +1174,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
           catalog_manager_->IsColocatedUserTable(table));
 }
 
-void ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
+Status ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
                                             int* pending_add_replica_tasks,
                                             int* pending_remove_replica_tasks,
                                             int* pending_stepdown_leader_tasks) {
@@ -1165,8 +1189,9 @@ void ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
   for (auto e : state_->pending_add_replica_tasks_[table_uuid]) {
     const auto& ts_uuid = e.second;
     const auto& tablet_id = e.first;
-    state_->AddStartingTablet(tablet_id, ts_uuid);
+    RETURN_NOT_OK(state_->AddStartingTablet(tablet_id, ts_uuid));
   }
+  return Status::OK();
 }
 
 void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,

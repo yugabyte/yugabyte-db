@@ -189,6 +189,8 @@ Options:
     Log the location of every command executed in this script
   --no-tests
     Do not build tests
+  --cmake-unit-tests
+    Run our unit tests for CMake code. This should be much faster than running the build.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -632,6 +634,8 @@ reduce_log_output=""
 
 resolve_java_dependencies=false
 
+run_cmake_unit_tests=false
+
 export YB_DOWNLOAD_THIRDPARTY=${YB_DOWNLOAD_THIRDPARTY:-1}
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
@@ -701,6 +705,12 @@ while [[ $# -gt 0 ]]; do
     ;;
     --gcc9)
       YB_COMPILER_TYPE="gcc9"
+    ;;
+    --clang10)
+      YB_COMPILER_TYPE="clang10"
+    ;;
+    --clang11)
+      YB_COMPILER_TYPE="clang11"
     ;;
     --zapcc)
       YB_COMPILER_TYPE="zapcc"
@@ -1003,6 +1013,9 @@ while [[ $# -gt 0 ]]; do
     --no-tests)
       export YB_DO_NOT_BUILD_TESTS=1
     ;;
+    --cmake-unit-tests)
+      run_cmake_unit_tests=true
+    ;;
     *)
 
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1027,6 +1040,14 @@ done
 # -------------------------------------------------------------------------------------------------
 # Finished parsing command-line arguments, post-processing them.
 # -------------------------------------------------------------------------------------------------
+
+if "$run_cmake_unit_tests"; then
+  # We don't even need the build root for these kinds of tests.
+  log "--cmake-unit-tests specified, only running CMake tests"
+  run_cmake_unit_tests
+
+  exit
+fi
 
 update_submodules
 
@@ -1280,7 +1301,7 @@ if "$no_ccache"; then
 fi
 
 if "$no_tcmalloc"; then
-  cmake_opts+=( -DYB_TCMALLOC_AVAILABLE=0 )
+  cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 
 detect_num_cpus_and_set_make_parallelism

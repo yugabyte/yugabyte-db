@@ -25,14 +25,14 @@ const mapStateToProps = (state) => {
 const mapDispatchToProps = (dispatch) => {
   return {
     addCustomerConfig: (config) => {
-      dispatch(addCustomerConfig(config)).then((response) => {
-        dispatch(addCustomerConfigResponse(response.payload));
+      return dispatch(addCustomerConfig(config)).then((response) => {
+        return dispatch(addCustomerConfigResponse(response.payload));
       });
     },
 
     deleteCustomerConfig: (configUUID) => {
-      dispatch(deleteCustomerConfig(configUUID)).then((response) => {
-        dispatch(deleteCustomerConfigResponse(response.payload));
+      return dispatch(deleteCustomerConfig(configUUID)).then((response) => {
+        return dispatch(deleteCustomerConfigResponse(response.payload));
       });
     },
 

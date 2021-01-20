@@ -562,15 +562,14 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
 }
 
 Status PgApiImpl::AlterTableAddColumn(PgStatement *handle, const char *name,
-                                      int order, const YBCPgTypeEntity *attr_type,
-                                      bool is_not_null) {
+                                      int order, const YBCPgTypeEntity *attr_type) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
-  return pg_stmt->AddColumn(name, attr_type, order, is_not_null);
+  return pg_stmt->AddColumn(name, attr_type, order);
 }
 
 Status PgApiImpl::AlterTableRenameColumn(PgStatement *handle, const char *oldname,
@@ -1003,6 +1002,15 @@ Status PgApiImpl::InsertStmtSetWriteTime(PgStatement *handle, const HybridTime w
   return Status::OK();
 }
 
+Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgInsert*>(handle)->SetIsBackfill(is_backfill);
+  return Status::OK();
+}
+
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
@@ -1223,6 +1231,10 @@ Result<bool> PgApiImpl::IsInitDbDone() {
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
+}
+
+Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
+  return pg_session_->GetSharedAuthKey();
 }
 
 // Transaction Control -----------------------------------------------------------------------------

@@ -793,8 +793,7 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
 
 				HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-														order, col_type,
-														colDef->is_not_null));
+														order, col_type));
 				++col;
 				ReleaseSysCache(typeTuple);
 				needsYBAlter = true;
@@ -887,6 +886,16 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 						if (newTypId == curTypId && newTypMod == curTypMod)
 						{
 							/* Types are the same, no changes will occur. */
+							break;
+						}
+						/* timestamp <-> timestamptz type change is allowed
+							if no rewrite is needed */
+						if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
+							break;
+						}
+						if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
 							break;
 						}
 						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

@@ -22,9 +22,10 @@ from texttable import Texttable
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+    YB_HOME_DIR
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, scp_package_to_tmp
+from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
 
 
 class AbstractMethod(object):
@@ -206,6 +207,11 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(DestroyInstancesMethod, self).__init__(base_command, "destroy")
 
+    def add_extra_args(self):
+        super(DestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to delete.")
+
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
         self.cloud.setup_ansible(args).run("destroy-instance.yml", self.extra_vars)
@@ -358,6 +364,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument('--remote_package_path', default=None,
+                                 help="Path to download thirdparty packages "
+                                      "for itest. Only for AWS/onprem")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -384,6 +393,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
         if args.node_exporter_user:
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
+        if args.remote_package_path:
+            self.extra_vars.update({"remote_package_path": args.remote_package_path})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -415,7 +426,7 @@ class ListInstancesMethod(AbstractInstancesMethod):
         if args.as_json:
             print(json.dumps(host_info))
         else:
-            print('\n'.join(["{}={}".format(k, v) for k, v in host_info.iteritems()]))
+            print('\n'.join(["{}={}".format(k, v) for k, v in host_info.items()]))
 
 
 class UpdateDiskMethod(AbstractInstancesMethod):
@@ -491,6 +502,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
+        self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
@@ -498,9 +510,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
-        self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
+        self.parser.add_argument('--certs_node_dir',
+                                 default=os.path.join(YB_HOME_DIR, "yugabyte-tls-config"))
         self.parser.add_argument('--encryption_key_source_file')
-        self.parser.add_argument('--encryption_key_target_dir', default="yugabyte-encryption-files")
+        self.parser.add_argument('--encryption_key_target_dir',
+                                 default="yugabyte-encryption-files")
 
         self.parser.add_argument('--master_http_port', default=7000)
         self.parser.add_argument('--master_rpc_port', default=7100)
@@ -615,6 +629,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # NOTE: we should only do this if we have to download the package...
             # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
+            start_time = time.time()
             if args.package and (args.tags is None or args.tags == "download-software"):
                 if args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
                     itest_extra_vars = self.extra_vars.copy()
@@ -624,13 +639,19 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     itest_extra_vars["tags"] = "itest"
                     self.cloud.setup_ansible(args).run(
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
+                    logging.info(("[app] Running itest tasks including S3 " +
+                                  "package download {} to {} took {:.3f} sec").format(
+                                args.itest_s3_package_path,
+                                args.search_pattern, time.time() - start_time))
                 else:
-                    scp_package_to_tmp(
+                    scp_to_tmp(
                         args.package,
                         self.extra_vars["private_ip"],
                         self.extra_vars["ssh_user"],
                         self.extra_vars["ssh_port"],
                         args.private_key_file)
+                    logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
+                        args.package, args.search_pattern, time.time() - start_time))
 
         logging.info("Configuring Instance: {}".format(args.search_pattern))
         ssh_options = {
@@ -641,6 +662,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
         if args.use_custom_certs:
+            if args.rotating_certs:
+                logging.info("Verifying root certs are the same.")
+                self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options)
         else:
@@ -654,8 +678,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
-        self.cloud.setup_ansible(args).run(
-            "configure-{}.yml".format(args.type), self.extra_vars, host_info)
+        # If we are just rotating certs, we don't need to do any configuration changes.
+        if not args.rotating_certs:
+            self.cloud.setup_ansible(args).run(
+                "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):
@@ -691,7 +717,7 @@ class ControlInstanceMethod(AbstractInstancesMethod):
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot run ctl commands"
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot run ctl commands"
                                     .format(args.search_pattern))
 
         if host_info['server_type'] != self.YB_SERVER_TYPE:
@@ -724,10 +750,10 @@ class AccessCreateVaultMethod(AbstractMethod):
         if args.vault_password is None:
             vault_password = generate_random_password()
             args.vault_password = "{}.vault_password".format(file_prefix)
-            with file(args.vault_password, "w") as f:
+            with open(args.vault_password, "w") as f:
                 f.write(vault_password)
         elif os.path.exists(args.vault_password):
-            with file(args.vault_password) as f:
+            with open(args.vault_password, "r") as f:
                 vault_password = f.read().strip()
 
             if vault_password is None:

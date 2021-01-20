@@ -20,6 +20,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
+import static org.mockito.Mockito.mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,14 +28,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+
+import org.yb.client.YBClient;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 
 import play.libs.Json;
 
@@ -44,7 +48,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   @InjectMocks
   Commissioner commissioner;
   Universe defaultUniverse;
-  ShellProcessHandler.ShellResponse dummyShellResponse;
+  ShellResponse dummyShellResponse;
+  YBClient mockClient;
 
   @Before
   public void setUp() {
@@ -66,7 +71,19 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-    dummyShellResponse = new ShellProcessHandler.ShellResponse();
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+
+    mockClient = mock(YBClient.class);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {}
+
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
+    dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }

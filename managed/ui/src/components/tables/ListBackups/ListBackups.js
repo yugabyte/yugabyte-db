@@ -278,7 +278,13 @@ export default class ListBackups extends Component {
   };
 
   render() {
-    const { currentCustomer, universeBackupList, universeTableTypes, title } = this.props;
+    const {
+      currentCustomer,
+      currentUniverse,
+      universeBackupList,
+      universeTableTypes,
+      title
+    } = this.props;
     const { showModal, taskUUID, showAlert, alertType, selectedRowList } = this.state;
     if (
       getPromiseState(universeBackupList).isLoading() ||
@@ -324,6 +330,7 @@ export default class ListBackups extends Component {
           >
             <TableAction
               currentRow={row}
+              disabled={currentUniverse.universeDetails.backupInProgress}
               actionType="restore-backup"
               onSubmit={(data) => this.handleModalSubmit('Restore', data)}
               onError={() => this.handleModalSubmit('Restore')}
@@ -375,6 +382,9 @@ export default class ListBackups extends Component {
     };
     return (
       <div id="list-backups-content">
+        {currentUniverse.universeDetails.backupInProgress && (
+          <Alert bsStyle="info">Backup is in progress at the moment</Alert>
+        )}
         {showAlert && (
           <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
             {taskUUID ? (
@@ -398,16 +408,18 @@ export default class ListBackups extends Component {
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
                     <TableAction
+                      disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
                       className="table-action"
-                      btnClass={'btn-orange'}
+                      btnClass="btn-orange"
                       actionType="create-backup"
                       isMenuItem={false}
                       onSubmit={(data) => this.handleModalSubmit('Backup', data)}
                       onError={() => this.handleModalSubmit('Backup')}
                     />
                     <TableAction
+                      disabled={currentUniverse.universeDetails.backupInProgress}
                       className="table-action"
-                      btnClass={'btn-default'}
+                      btnClass="btn-default"
                       actionType="restore-backup"
                       isMenuItem={false}
                       onSubmit={(data) => this.handleModalSubmit('Restore', data)}

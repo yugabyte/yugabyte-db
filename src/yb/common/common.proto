@@ -322,6 +322,9 @@ message IndexInfoPB {
   // The mangled-name flag is kept on both IndexInfo and IndexTable as the same mangled-name is
   // used in both IndexInfo and IndexTable columns.
   optional bool use_mangled_column_name = 11 [ default = false ];  // Newer index has mangled name.
+
+  // When backfill fails with error, the first message that it failed with.
+  optional string backfill_error_message = 31;
 }
 
 message HostPortPB {
@@ -495,11 +498,13 @@ message TransactionMetadataPB {
 message ReadHybridTimePB {
   optional fixed64 read_ht = 1;
 
-  optional fixed64 local_limit_ht = 2;
+  optional fixed64 DEPRECATED_max_of_read_time_and_local_limit_ht = 2;
 
   optional fixed64 global_limit_ht = 3;
 
   optional fixed64 in_txn_limit_ht = 4;
+
+  optional fixed64 local_limit_ht = 5;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl

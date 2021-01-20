@@ -35,6 +35,11 @@ cmake_minimum_required(VERSION 3.7.0)
 
 project(YugabyteDB)
 
+message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
+message("-- CMAKE_SYSTEM_NAME:      ${CMAKE_SYSTEM_NAME}")
+message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+message("-- CMAKE_SYSTEM:           ${CMAKE_SYSTEM}")
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
 include(YugabyteFunctions)
@@ -67,10 +72,8 @@ else()
   set(BUILD_TESTS ON)
 endif()
 
-get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
-string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
-list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
 message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
+parse_build_root_basename()
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
@@ -189,14 +192,17 @@ endif()
 
 INIT_COMPILER_TYPE_FROM_BUILD_ROOT()
 
-# TODO: this is complicated by the fact that we are trying to build third-party dependencies
-# here if necessary, and that the compiler is sometimes (e.g. Clang 7 with the Linuxbrew-based
-# setup) part of thoise third-party dependencies. Therefore, we don't yet know the exact compiler
-# version. If we know that we are not using a third-party setup where we build our own Clang,
-# we include the CompilerInfo module early.
+# TODO: this is complicated by the fact that we are trying to build third-party dependencies here if
+# necessary, and that the compiler is sometimes part of those third-party dependencies (e.g. Clang 7
+# with the Linuxbrew-based setup). Therefore, we don't yet know the exact compiler version. If we
+# know that we are not using a third-party setup where we build our own Clang, or if we are not
+# planning to invoke the third-party dependency build from here, we include the CompilerInfo module
+# early. We also always do that on macOS where we only use Clang.
 
 set(INCLUDE_COMPILER_INFO_EARLY FALSE)
-if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" OR NOT REBUILD_THIRDPARTY)
+if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" OR
+   NOT REBUILD_THIRDPARTY OR
+   APPLE)
   set(INCLUDE_COMPILER_INFO_EARLY TRUE)
 endif()
 if(INCLUDE_COMPILER_INFO_EARLY)
@@ -208,13 +214,12 @@ if(INCLUDE_COMPILER_INFO_EARLY)
 endif()
 
 # This helps find the right third-party build directory.
-if (YB_USE_TSAN)
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
-elseif (YB_USE_ASAN)
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
-elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
+elseif ("${COMPILER_FAMILY}" STREQUAL "clang")
   if(NOT APPLE AND
-     NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
+     (NOT EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx" OR
+      "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0"))
     # This must be a Clang third-party build where we use "uninstrumented" instead of
     # "clang_uninstrumented" because everything is built with Clang.
     set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
@@ -334,7 +339,7 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
   # Remove this check when all Clang builds will use libc++.
-  if("${USING_SANITIZERS}" OR APPLE)
+  if("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$" OR APPLE)
     ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
     ADD_CXX_FLAGS("-Wthread-safety-analysis")
   endif()
@@ -379,7 +384,7 @@ endif()
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
-elseif(NOT "${USING_SANITIZERS}")
+elseif(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   message("Specifying linker flags to not allow any undefined symbols")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
 else()
@@ -482,8 +487,11 @@ if (IS_CLANG)
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
-elseif("${COMPILER_FAMILY}" MATCHES "^gcc.*$")
-  # These flags are not understood by some versions.
+
+  if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0" AND APPLE)
+    ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
+  endif()
+elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
@@ -492,26 +500,8 @@ endif()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 
 # Flag to enable thread sanitizer (clang or gcc 4.8)
-if (${YB_USE_TSAN})
-  YB_SETUP_SANITIZER("TSAN")
-  ADD_CXX_FLAGS("-fsanitize=thread")
-
-  # Enables dynamic_annotations.h to actually generate code
-  ADD_CXX_FLAGS("-DDYNAMIC_ANNOTATIONS_ENABLED")
-
-  # changes atomicops to use the tsan implementations
-  ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
-
-  # Compile and link against the thirdparty TSAN instrumented libstdcxx.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
-elseif (${YB_USE_ASAN})
-  YB_SETUP_SANITIZER("ASAN")
-
-  ADD_CXX_FLAGS("-fsanitize=address")
-  ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
-
-  # Compile and link against the thirdparty ASAN instrumented libstdcxx.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  YB_SETUP_SANITIZER()
 elseif (NOT APPLE AND IS_CLANG)
   # Special setup for Clang on Linux. This is not needed on macOS.
   if (EXISTS "${YB_THIRDPARTY_DIR}/installed/clang_uninstrumented/libcxx")
@@ -531,19 +521,14 @@ if (NOT IS_CLANG)
   ADD_LINKER_FLAGS("-latomic")
 endif()
 
-# Clang does not support using ASAN and TSAN simultaneously.
-if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
-  message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")
-endif()
-
 # Flag to enable clang undefined behavior sanitizer
 # We explicitly don't enable all of the sanitizer flags:
 # - disable 'vptr' because it currently crashes somewhere in boost::intrusive::list code
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
-if (${YB_USE_UBSAN})
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
-          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.9")))
+if ("${YB_BUILD_TYPE}" STREQUAL "asan")
+  if(NOT ("${COMPILER_FAMILY}" STREQUAL "clang" OR
+          "${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.9"))
     message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 4.9")
   endif()
   set(CXX_NO_SANITIZE_FLAG "alignment")
@@ -555,7 +540,7 @@ if (${YB_USE_UBSAN})
   ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
 endif ()
 
-if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
+if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   # GCC 4.8 and 4.9 (latest as of this writing) don't allow you to specify a
   # sanitizer blacklist.
   if("${COMPILER_FAMILY}" STREQUAL "clang")
@@ -696,8 +681,8 @@ set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # C++-only flags.
-if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
-    ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 7.0)
+if (("${COMPILER_FAMILY}" STREQUAL "gcc") AND
+    ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0"))
   # Used with GCC 7.
   ADD_CXX_FLAGS("-faligned-new")
 endif()
@@ -743,6 +728,13 @@ set(YB_PGBACKEND_SHARED_LIB
 # Subdirectories
 # -------------------------------------------------------------------------------------------------
 
+# PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
+add_subdirectory(src/postgres)
+
+include_directories(${YB_BUILD_ROOT}/postgres/include)
+add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
+add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
+
 add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
@@ -764,9 +756,6 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
-
-# PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
-add_subdirectory(src/postgres)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 

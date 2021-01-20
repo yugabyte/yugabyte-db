@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -57,7 +58,7 @@ public class DeleteBackup extends AbstractTaskBase {
       if (backupParams.backupList != null) {
         for (BackupTableParams childBackupParams : backupParams.backupList) {
           childBackupParams.actionType = BackupTableParams.ActionType.DELETE;
-          ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(childBackupParams);
+          ShellResponse response = tableManager.deleteBackup(childBackupParams);
           JsonNode jsonNode = Json.parse(response.message);
           if (response.code != 0 || jsonNode.has("error")) {
             // Revert state to completed since it couldn't get deleted.
@@ -71,7 +72,7 @@ public class DeleteBackup extends AbstractTaskBase {
         }
       } else {
         backupParams.actionType = BackupTableParams.ActionType.DELETE;
-        ShellProcessHandler.ShellResponse response = tableManager.deleteBackup(backupParams);
+        ShellResponse response = tableManager.deleteBackup(backupParams);
         JsonNode jsonNode = Json.parse(response.message);
         if (response.code != 0 || jsonNode.has("error")) {
           // Revert state to completed since it couldn't get deleted.

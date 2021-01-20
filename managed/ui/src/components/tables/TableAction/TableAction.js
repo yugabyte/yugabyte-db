@@ -4,12 +4,12 @@ import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import {
   BulkImportContainer,
-  DropTableContainer,
   CreateBackupContainer,
   RestoreBackupContainer,
   DeleteBackupContainer
 } from '../../../components/tables';
 import { ImportReleaseContainer, UpdateReleaseContainer } from '../../../components/releases';
+import { ReleaseStateEnum } from '../../releases/UpdateRelease/UpdateRelease';
 import { MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBButton } from '../../common/forms/fields';
@@ -73,17 +73,7 @@ export default class TableAction extends Component {
     let modalContainer = null;
     let btnLabel = null;
     let btnIcon = null;
-    if (actionType === 'drop') {
-      btnLabel = 'Drop Table';
-      btnIcon = 'fa fa-trash';
-      modalContainer = (
-        <DropTableContainer
-          visible={this.state.showModal}
-          onHide={this.closeModal}
-          tableInfo={this.state.selectedRow}
-        />
-      );
-    } else if (actionType === 'import') {
+    if (actionType === 'import') {
       btnLabel = 'Bulk Import';
       btnIcon = 'fa fa-download';
       modalContainer = (
@@ -158,17 +148,17 @@ export default class TableAction extends Component {
         case 'disable-release':
           btnLabel = 'Disable';
           btnIcon = 'fa fa-ban';
-          action = 'DISABLED';
+          action = ReleaseStateEnum.DISABLED;
           break;
         case 'delete-release':
           btnLabel = 'Delete';
           btnIcon = 'fa fa-trash';
-          action = 'DELETED';
+          action = ReleaseStateEnum.DELETED;
           break;
         case 'active-release':
           btnLabel = 'Active';
           btnIcon = 'fa fa-check';
-          action = 'ACTIVE';
+          action = ReleaseStateEnum.ACTIVE;
           break;
         default:
           break;

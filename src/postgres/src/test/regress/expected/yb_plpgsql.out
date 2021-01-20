@@ -92,22 +92,6 @@ ERROR:  COLLATE not supported yet
 LINE 2: declare a text collate "en_US";
                        ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
-create or replace function unsupported5() returns void as $$
-declare a refcursor;
-begin
-end$$ language plpgsql;
-ERROR:  Declare Cursor Variable not supported yet
-LINE 2: declare a refcursor;
-                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-create or replace function unsupported3() returns void as $$
-declare a cursor;
-begin
-end$$ language plpgsql;
-ERROR:  Declare Cursor Variable not supported yet
-LINE 2: declare a cursor;
-                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 create table test(k int, v int);
 create procedure intermediate_commit() as $$
 begin

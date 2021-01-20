@@ -326,7 +326,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
     auto result = WriteRow(
         session, KeyForTransactionAndIndex(0, r),
         ValueForTransactionAndIndex(0, r, WriteOpType::UPDATE), WriteOpType::UPDATE);
-    ASSERT_TRUE(!result.ok() && result.status().IsTryAgain()) << result;
+    ASSERT_OK(result);
   }
 
   txn2->Abort();

@@ -67,6 +67,10 @@ uint64_t YBGetActiveCatalogCacheVersion() {
 	return yb_catalog_cache_version;
 }
 
+void YBResetCatalogVersion() {
+  yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+}
+
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
@@ -430,7 +434,7 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-    HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
 	}
 }
 

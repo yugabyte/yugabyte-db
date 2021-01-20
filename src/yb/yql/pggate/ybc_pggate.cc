@@ -357,8 +357,8 @@ YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
 }
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type, bool is_not_null) {
-  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type, is_not_null));
+                                   const YBCPgTypeEntity *attr_type) {
+  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type));
 }
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
@@ -650,6 +650,10 @@ YBCStatus YBCPgInsertStmtSetWriteTime(YBCPgStatement handle, const uint64_t writ
   }
 }
 
+YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_backfill) {
+  return ToYBCStatus(pgapi->InsertStmtSetIsBackfill(handle, is_backfill));
+}
+
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -887,6 +891,10 @@ const bool YBCGetDisableTransparentCacheRefreshRetry() {
 
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
+}
+
+YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
+  return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
 }
 
 int32_t YBCGetMaxReadRestartAttempts() {

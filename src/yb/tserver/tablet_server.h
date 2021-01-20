@@ -107,7 +107,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   MetricsSnapshotter* metrics_snapshotter() { return metrics_snapshotter_.get(); }
 
   void set_fail_heartbeats_for_tests(bool fail_heartbeats_for_tests) {
-    base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, 1);
+    base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, fail_heartbeats_for_tests);
   }
 
   bool fail_heartbeats_for_tests() const {
@@ -193,6 +193,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Returns the file descriptor of this tablet server's shared memory segment.
   int GetSharedMemoryFd();
+
+  uint64_t GetSharedMemoryPostgresAuthKey();
 
   // Currently only used by cdc.
   virtual int32_t cluster_config_version() const {

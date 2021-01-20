@@ -18,6 +18,9 @@ public class UserTaskDetails {
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
+    // Perform preflight checks to determine if the node is ready to be configured or provisioned.
+    PreflightChecks(true),
+
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
     Provisioning,
@@ -143,6 +146,23 @@ public class UserTaskDetails {
 
     // Start master process on a node
     StartingMasterProcess,
+
+    // Rotate Node Certs.
+    RotatingCert;
+
+    private boolean alwaysRunAll;
+
+    SubTaskGroupType() {
+      this.alwaysRunAll = false;
+    }
+
+    SubTaskGroupType(boolean alwaysRunAll) {
+      this.alwaysRunAll = alwaysRunAll;
+    }
+
+    public boolean getAlwaysRunAll() {
+      return this.alwaysRunAll;
+    }
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -152,6 +172,11 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case PreflightChecks:
+        title = "Preflight Checks";
+        description = "Perform preflight checks to determine if node is ready" +
+          " to be provisioned/configured.";
+          break;
       case Provisioning:
         title = "Provisioning";
         description = "Deploying machines of the required config into the desired cloud and" +
@@ -308,6 +333,10 @@ public class UserTaskDetails {
       case StartingMasterProcess:
         title = "Starting Master Process";
         description = "Waiting for node to start the master process.";
+        break;
+      case RotatingCert:
+        title = "Rotating Cert";
+        description = "Changing certs.";
         break;
       case CreateNamespace:
         title = "Creating Namespace";

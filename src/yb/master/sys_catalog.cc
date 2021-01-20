@@ -564,7 +564,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           raft_pool(),
           tablet_prepare_pool(),
           nullptr /* retryable_requests */,
-          yb::OpId() /* split_op_id */),
+          consensus::SplitOpInfo()),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

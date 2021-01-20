@@ -94,6 +94,8 @@ DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
               "The segment size for transaction status tablet log roll-overs, in bytes.");
+DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
+                 "Time (in ms) to delay tablet bootstrap by.");
 
 namespace yb {
 namespace tablet {
@@ -211,9 +213,9 @@ struct ReplayState {
   // committed.
   OpId committed_op_id;
 
-  // The id of the split operation designated for this tablet added to Raft log.
-  // See comments for ReplicateState::split_op_id_.
-  OpId split_op_id;
+  // Parameters of the split operation added to Raft log and designated for this tablet .
+  // See comments for ReplicateState::split_op_info_.
+  consensus::SplitOpInfo split_op_info;
 
   // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
   // safe to apply and delete from this map based on the commit index included into each REPLICATE
@@ -297,26 +299,30 @@ Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tab
       Format("Unexpected operation $0 instead of SPLIT_OP", msg));
   const auto tablet_id_to_split = msg.split_request().tablet_id();
 
-  if (!split_op_id.empty()) {
+  if (!split_op_info.op_id.empty()) {
     if (tablet_id_to_split == tablet_id) {
       return STATUS_FORMAT(
           IllegalState,
           "There should be at most one SPLIT_OP designated for tablet $0 but we got two: "
           "$1, $2",
-          tablet_id, split_op_id, msg.id());
+          tablet_id, split_op_info.op_id, msg.id());
     }
 
     return STATUS_FORMAT(
         IllegalState,
         "Unexpected SPLIT_OP $0 designated for another tablet $1 after we've already "
         "replayed SPLIT_OP $2 for this tablet $3",
-        msg.id(), tablet_id_to_split, split_op_id, tablet_id);
+        msg.id(), tablet_id_to_split, split_op_info.op_id, tablet_id);
   }
 
   if (tablet_id_to_split == tablet_id) {
     // We might be asked to replay SPLIT_OP designated for a different (ancestor) tablet, will
     // just ignore it in this case.
-    split_op_id = OpId::FromPB(msg.id());
+    const auto& split_request = msg.split_request();
+    split_op_info = {
+      .op_id = OpId::FromPB(msg.id()),
+      .child_tablet_ids = { split_request.new_tablet1_id(), split_request.new_tablet2_id() }
+    };
   }
   return Status::OK();
 }
@@ -435,6 +441,26 @@ ReplayDecision ShouldReplayOperation(
   return {index > regular_flushed_index};
 }
 
+bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
+  if (!replicate.has_write_request()) {
+    return false;
+  }
+  const auto& write_request = replicate.write_request();
+  if (!write_request.has_write_batch()) {
+    return false;
+  }
+  const auto& write_batch = write_request.write_batch();
+  if (write_batch.has_transaction()) {
+    return true;
+  }
+  for (const auto& pair : write_batch.write_pairs()) {
+    if (!pair.key().empty() && pair.key()[0] == docdb::ValueTypeAsChar::kExternalTransactionId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // anonymous namespace
 
 YB_STRONGLY_TYPED_BOOL(NeedsRecovery);
@@ -512,6 +538,11 @@ class TabletBootstrap {
       consensus_info->last_id = MinimumOpId();
       consensus_info->last_committed_id = MinimumOpId();
       return Status::OK();
+    }
+
+    // Only sleep if this isn't a new tablet, since we only want to delay on restart when testing.
+    if (PREDICT_FALSE(FLAGS_TEST_tablet_bootstrap_delay_ms > 0)) {
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_tablet_bootstrap_delay_ms));
     }
 
     // If there were blocks, there must be segments to replay. This is required by Raft, since we
@@ -865,7 +896,7 @@ class TabletBootstrap {
     }
     switch (op_type) {
       case consensus::WRITE_OP:
-        return PlayWriteRequest(replicate);
+        return PlayWriteRequest(replicate, already_applied_to_regular_db);
 
       case consensus::CHANGE_METADATA_OP:
         return PlayChangeMetadataRequest(replicate);
@@ -978,9 +1009,7 @@ class TabletBootstrap {
             ? replicate->transaction_state().status()
             : TransactionStatus::ABORTED,  // should not be used
         // write_op_has_transaction
-        replicate->has_write_request() &&
-            replicate->write_request().has_write_batch() &&
-            replicate->write_request().write_batch().has_transaction());
+        WriteOpHasTransaction(*replicate));
 
     HandleRetryableRequest(*replicate, entry_time);
 
@@ -1320,7 +1349,7 @@ class TabletBootstrap {
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
-    consensus_info->split_op_id = MakeOpIdPB(replay_state_->split_op_id);
+    consensus_info->split_op_info = replay_state_->split_op_info;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
@@ -1329,7 +1358,8 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayWriteRequest(ReplicateMsg* replicate_msg) {
+  CHECKED_STATUS PlayWriteRequest(
+      ReplicateMsg* replicate_msg, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
@@ -1359,7 +1389,8 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    auto apply_status = tablet_->ApplyRowOperations(&operation_state);
+    auto apply_status = tablet_->ApplyRowOperations(
+        &operation_state, already_applied_to_regular_db);
     // Failure is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;

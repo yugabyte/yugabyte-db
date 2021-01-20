@@ -10,8 +10,15 @@ import {
   fetchFailedSubTasks,
   fetchFailedSubTasksResponse,
   fetchTaskProgress,
-  fetchTaskProgressResponse
+  fetchTaskProgressResponse,
+  retryTask,
+  retryTaskResponse
 } from '../../../actions/tasks';
+import {
+  fetchUniverseList,
+  fetchUniverseListResponse
+} from '../../../actions/universe';
+
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -32,6 +39,16 @@ const mapDispatchToProps = (dispatch) => {
     fetchCurrentTaskDetail: (taskUUID) => {
       dispatch(fetchTaskProgress(taskUUID)).then((response) => {
         dispatch(fetchTaskProgressResponse(response.payload));
+      });
+    },
+    retryCurrentTask: (taskUUID) => {
+      return dispatch(retryTask(taskUUID)).then((response) => {
+        return dispatch(retryTaskResponse(response.payload));
+      });
+    },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
       });
     },
     resetCustomerTasks: () => {

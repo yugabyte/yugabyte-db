@@ -127,6 +127,8 @@ call populate_t(
 
 The results from `regr_slope()` and `regr_intercept()` line up well with what you'd expect.
 
+The section [Scatter-plot for synthetic data](../../../covid-data-case-study/analyze-the-covidcast-data/scatter-plot-for-2020-10-21/#scatter-plot-for-synthetic-data) shows a scatter plot of the data in table _"t"_ (created with actual arguments for procedure _"populate_t()"_ that that section specifies) with the straight line whose slope and y-axis intercept, as returned by `regr_slope()` and `regr_intercept()`, superimposed.
+
 ## regr_r2()
 
 **Purpose:** Returns the square of the correlation coefficient, [`corr()`](../covar-corr/#corr).

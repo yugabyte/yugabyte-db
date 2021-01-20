@@ -52,7 +52,7 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
         <WizardStepper activeStep={WizardStep.Security} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
-        <div className="wizard-step-wrapper__form">
+        <div className="wizard-step-wrapper__col-form">
           <FormProvider {...formMethods}>
             <Grid fluid>
               <div className="security-config">
@@ -65,7 +65,7 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="security-config__row">
-                  <Col sm={2} className="security-config__label-col">
+                  <Col sm={2}>
                     <I18n className="security-config__label">Enable Authentication</I18n>
                   </Col>
                   <Col sm={6}>
@@ -106,7 +106,7 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="security-config__row">
-                  <Col sm={2} className="security-config__label-col">
+                  <Col sm={2}>
                     <I18n className="security-config__label">Root Certificate</I18n>
                   </Col>
                   <Col sm={6}>
@@ -135,7 +135,7 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
                   </Col>
                 </Row>
                 <Row className="security-config__row">
-                  <Col sm={2} className="security-config__label-col security-config__padded">
+                  <Col sm={2} className="security-config__padded">
                     <I18n className="security-config__label">Key Management Service Config</I18n>
                   </Col>
                   <Col sm={6}>
@@ -167,7 +167,6 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
               </Button>
             </div>
 
-            {/*
             <Row>
               <Col xs={4}>
                 <pre>Form Values: {JSON.stringify(formMethods.watch(), null, 8)}</pre>
@@ -179,10 +178,10 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
                 <pre>Errors: {JSON.stringify(formMethods.errors, null, 8)}</pre>
               </Col>
             </Row>
-            */}
+
           </FormProvider>
         </div>
-        <div className="wizard-step-wrapper__summary">
+        <div className="wizard-step-wrapper__col-summary">
           <Summary formData={formData} />
         </div>
       </div>

@@ -35,6 +35,10 @@ class PgInsert : public PgDmlWrite {
     write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
   }
 
+  void SetIsBackfill(const bool is_backfill) {
+    write_req_->set_is_backfill(is_backfill);
+  }
+
  private:
   std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
     return target_desc_->NewPgsqlInsert();

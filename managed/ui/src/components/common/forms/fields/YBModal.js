@@ -6,19 +6,24 @@ import { Modal } from 'react-bootstrap';
 import YBButton from './YBButton';
 import './stylesheets/YBModal.scss';
 
+const ENTER_KEY_CODE = 13;
+const ESC_KEY_CODE = 27;
+
 export default class YBModal extends Component {
-  escFunction = (event) => {
-    const { onHide } = this.props;
-    if (event.keyCode === 27) {
+  handleKeyPressFunction = (event) => {
+    const { onHide, submitOnCarriage, onFormSubmit } = this.props;
+    if (event.keyCode === ESC_KEY_CODE) {
       onHide(event);
+    } else if (event.keyCode === ENTER_KEY_CODE && submitOnCarriage) {
+      onFormSubmit();
     }
   };
 
   componentDidMount() {
-    document.addEventListener('keydown', this.escFunction, false);
+    document.addEventListener('keydown', this.handleKeyPressFunction, false);
   }
   componentWillUnmount() {
-    document.removeEventListener('keydown', this.escFunction, false);
+    document.removeEventListener('keydown', this.handleKeyPressFunction, false);
   }
 
   render() {
@@ -88,7 +93,10 @@ export default class YBModal extends Component {
 }
 
 YBModal.propTypes = {
-  title: PropTypes.string.isRequired,
+  title: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.object
+  ]).isRequired,
   visible: PropTypes.bool,
   size: PropTypes.oneOf(['large', 'small', 'xsmall']),
   formName: PropTypes.string,

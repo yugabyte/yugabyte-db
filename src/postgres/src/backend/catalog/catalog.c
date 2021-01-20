@@ -235,7 +235,7 @@ IsSharedRelation(Oid relationId)
 		relationId == DbRoleSettingRelationId ||
 		relationId == ReplicationOriginRelationId ||
 		relationId == SubscriptionRelationId ||
-		relationId == YBCatalogVersionRelationId) 
+		relationId == YBCatalogVersionRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -602,7 +602,7 @@ GetTableOidFromRelOptions(List *relOptions,
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 		if (strcmp(def->defname, "table_oid") == 0)
 		{
-			table_oid = defGetInt32(def);
+			table_oid = strtol(defGetString(def), NULL, 10);
 			if (OidIsValid(table_oid))
 			{
 				Relation pg_class_desc =

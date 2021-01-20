@@ -350,7 +350,17 @@ class ControlScript(object):
         tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tarpath))
+
+        if self.configs.temp_data.get("collect_logs_stdout"):
+            Output.log("Logs are packaged into {}".format(tarpath))
+            if tarfile.is_tarfile(tarpath):
+                with open(tarpath, 'rb') as tar_fd:
+                    if sys.version_info[0] == 3:
+                        sys.stdout.buffer.write(tar_fd.read())
+                    else:
+                        sys.stdout.write(tar_fd.read())
+        else:
+            Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -1134,6 +1144,9 @@ class ControlScript(object):
             if path:
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
+        if args.parser == "collect_logs":
+            self.configs.temp_data["collect_logs_stdout"] = args.stdout
+
         if args.parser == "start":
             if args.data_dir is not None:
                 config_data_dir = self.configs.saved_data.get("data_dir")
@@ -1265,6 +1278,14 @@ class ControlScript(object):
             func = getattr(self, parser_name, None)
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
+
+        # Docker: Redirect the logs.tar.gz to stdout
+        for cmd in ("collect_logs",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
+                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                action="store_true", default=False)
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -1440,6 +1461,7 @@ class Configs(object):
             "daemon": True,
             "ui": False,
             "initial_scripts_dir": "",
+            "collect_logs_stdout": False,
         }
         self.config_file = config_file
 
@@ -1907,7 +1929,7 @@ class YsqlProxy(object):
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd + ["-c", "create database {}".format(db)]
+        cmd = self.cmd + ["-c", "create database \"{}\"".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
@@ -1936,7 +1958,7 @@ class YsqlProxy(object):
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
-        cmd = self.cmd + ["-c", "create role {} with LOGIN SUPERUSER password '{}';".
+        cmd = self.cmd + ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
@@ -1955,7 +1977,7 @@ class YsqlProxy(object):
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd + ["-c", "alter database {} owner to {};".format(db, new_owner)]
+        cmd = self.cmd + ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
@@ -1999,7 +2021,7 @@ class YcqlProxy(object):
     # Create specified superuser
     def create_user(self, ycql_username, ycql_password):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE ROLE {} WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
+                "CREATE ROLE \"{}\" WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
                 format(ycql_username, ycql_password)]
         run_process_checked(cmd, log_cmd=False)
 
@@ -2026,7 +2048,7 @@ class YcqlProxy(object):
     # Create specified keyspace
     def create_keyspace(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE KEYSPACE {};".format(keyspace)]
+                "CREATE KEYSPACE \"{}\";".format(keyspace)]
         run_process_checked(cmd)
 
     # Runs ycqlsh with specified files.

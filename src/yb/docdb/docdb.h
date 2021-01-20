@@ -139,10 +139,34 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     HybridTime* restart_read_ht,
     const std::string& table_name);
 
+struct ExternalTxnApplyStateData {
+  HybridTime commit_ht;
+  IntraTxnWriteId write_id = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+  }
+};
+
+using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
+
+void AddPairToWriteBatch(
+    const KeyValuePairPB& kv_pair,
+    HybridTime hybrid_time,
+    int write_id,
+    ExternalTxnApplyState* apply_external_transactions,
+    rocksdb::WriteBatch* regular_write_batch,
+    rocksdb::WriteBatch* intents_write_batch);
+
+// Prepares non transaction write batch.
+// Batch could contain intents for external transactions, in this case those intents
+// will be added to intents_write_batch.
 void PrepareNonTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch);
+    rocksdb::DB* intents_db,
+    rocksdb::WriteBatch* regular_write_batch,
+    rocksdb::WriteBatch* intents_write_batch);
 
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
@@ -226,6 +250,28 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     rocksdb::WriteBatch* intents_batch);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
+
+// Class that is used while combining external intents into single key value pair.
+class ExternalIntentsProvider {
+ public:
+  // Set output key.
+  virtual void SetKey(const Slice& slice) = 0;
+
+  // Set output value.
+  virtual void SetValue(const Slice& slice) = 0;
+
+  // Get next external intent, returns false when there are no more intents.
+  virtual boost::optional<std::pair<Slice, Slice>> Next() = 0;
+
+  virtual const Uuid& InvolvedTablet() = 0;
+
+  virtual ~ExternalIntentsProvider() = default;
+};
+
+// Combine external intents into single key value pair.
+void CombineExternalIntents(
+    const TransactionId& txn_id,
+    ExternalIntentsProvider* provider);
 
 }  // namespace docdb
 }  // namespace yb

@@ -101,6 +101,7 @@ class PgApiImpl {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion();
+  Result<uint64_t> GetSharedAuthKey();
 
   // Setup the table to store sequences data.
   CHECKED_STATUS CreateSequencesDataTable();
@@ -230,7 +231,7 @@ class PgApiImpl {
                                PgStatement **handle);
 
   CHECKED_STATUS AlterTableAddColumn(PgStatement *handle, const char *name,
-                                     int order, const YBCPgTypeEntity *attr_type, bool is_not_null);
+                                     int order, const YBCPgTypeEntity *attr_type);
 
   CHECKED_STATUS AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                         const char *newname);
@@ -383,6 +384,8 @@ class PgApiImpl {
   CHECKED_STATUS InsertStmtSetUpsertMode(PgStatement *handle);
 
   CHECKED_STATUS InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
+
+  CHECKED_STATUS InsertStmtSetIsBackfill(PgStatement *handle, const bool is_backfill);
 
   //------------------------------------------------------------------------------------------------
   // Update.

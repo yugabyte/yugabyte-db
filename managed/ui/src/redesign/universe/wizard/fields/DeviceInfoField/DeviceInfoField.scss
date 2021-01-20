@@ -3,21 +3,8 @@
 .device-info-field {
   display: flex;
 
-  &__row {
-    margin-top: 22px;
-    display: flex;
-    align-items: center;
-  }
-
-  &__label-col {
-    min-width: 180px;
-  }
-
-  &__label {
-    display: block;
-    color: $YB_TEXT_2;
-    font-size: 16px;
-  }
+  @include wizard-form-row();
+  @include wizard-form-text-label();
 
   &__inputs-block {
     display: flex;
@@ -30,10 +17,7 @@
     }
   }
 
-  &__label {
-    display: block;
-    color: $YB_TEXT_2;
-    font-size: 16px;
+  &__label--margin-right {
     margin-right: 20px;
   }
 

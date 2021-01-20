@@ -30,8 +30,14 @@ import time
 
 from subprocess import check_call
 
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext, mkdir_p, quote_for_bash, \
-        is_verbose_mode
+from yugabyte_pycommon import (
+    init_logging,
+    run_program,
+    WorkDirContext,
+    mkdir_p,
+    quote_for_bash,
+    is_verbose_mode
+)
 
 from yb import common_util
 from yb.tool_base import YbBuildToolBase
@@ -432,6 +438,14 @@ class PostgresBuilder(YbBuildToolBase):
 
             if not rerun_configure:
                 logging.error("Standard error from configure:\n" + configure_result.stderr)
+                config_log_path = os.path.join(self.pg_build_root, "config.log")
+                if os.path.exists(config_log_path):
+                    with open(config_log_path) as config_log_file:
+                        config_log_str = config_log_file.read()
+                    logging.info(f"Contents of {config_log_path}:")
+                    sys.stderr.write(config_log_str + "\n")
+                else:
+                    logging.warning(f"File not found: {config_log_path}")
                 raise RuntimeError("configure failed")
 
             configure_result = run_program(
@@ -543,10 +557,14 @@ class PostgresBuilder(YbBuildToolBase):
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
-                run_program(
-                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
-                    error_ok=True
-                ).print_output_and_raise_error_if_failed()
+
+                make_result = run_program(
+                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True, error_ok=True
+                )
+                if make_result.failure():
+                    make_result.print_output_to_stdout()
+                    raise RuntimeError("PostgreSQL compilation failed")
+
                 if self.build_type == 'compilecmds':
                     logging.info(
                             "Not running make install in the %s directory since we are only "

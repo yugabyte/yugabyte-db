@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUni
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -29,6 +30,7 @@ import org.yb.client.YBClient;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.*;
@@ -45,7 +47,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   @InjectMocks
   Commissioner commissioner;
   Universe defaultUniverse;
-  ShellProcessHandler.ShellResponse dummyShellResponse;
+  ShellResponse dummyShellResponse;
   YBClient mockClient;
   ModifyUniverseConfig modifyUC;
   AbstractModifyMasterClusterConfig amuc;
@@ -68,18 +70,27 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    dummyShellResponse = new ShellProcessHandler.ShellResponse();
+    dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
     // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
     amuc = mock(AbstractModifyMasterClusterConfig.class);
+
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+      new ChangeMasterClusterConfigResponse(1111, "", null);
+
     try {
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", null, null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
+    // WaitForServer mock.
+    mockWaits(mockClient);
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -94,6 +105,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   }
 
   List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE = ImmutableList.of(
+      TaskType.PrecheckNode,
       TaskType.AnsibleSetupServer,
       TaskType.AnsibleUpdateNodeInfo,
       TaskType.AnsibleConfigureServers,
@@ -107,6 +119,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   );
 
   List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS = ImmutableList.of(
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),

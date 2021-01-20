@@ -365,7 +365,6 @@ DefineIndex(Oid relationId,
 	LockRelId	heaprelid;
 	LOCKMODE	lockmode;
 	int			i;
-	YBIndexPermissions actual_index_permissions;
 	bool		is_indexed_table_colocated = false;
 
 	/*
@@ -452,17 +451,6 @@ DefineIndex(Oid relationId,
 	 * supported.  See issue #6215.
 	 */
 	if (is_indexed_table_colocated)
-		stmt->concurrent = false;
-	/*
-	 * Backfilling unique indexes is currently not supported.  This is desired
-	 * when there would be no concurrency issues (e.g. `CREATE TABLE ... (...
-	 * UNIQUE (...))`).  However, it is not desired in cases where there could
-	 * be concurrency issues (e.g. `CREATE UNIQUE INDEX ...`, `ALTER TABLE ...
-	 * ADD UNIQUE (...)`).  For now, just use the fast path in all cases.
-	 * TODO(jason): support backfill for unique indexes, and use the online
-	 * path for the appropriate statements (issue #4899).
-	 */
-	if (stmt->concurrent && stmt->unique)
 		stmt->concurrent = false;
 
 	/*
@@ -1056,15 +1044,17 @@ DefineIndex(Oid relationId,
 
 	if (partitioned)
 	{
+		PartitionDesc partdesc;
+
 		/*
 		 * Unless caller specified to skip this step (via ONLY), process each
 		 * partition to make sure they all contain a corresponding index.
 		 *
 		 * If we're called internally (no stmt->relation), recurse always.
 		 */
-		if (!stmt->relation || stmt->relation->inh)
+		partdesc = RelationGetPartitionDesc(rel);
+		if ((!stmt->relation || stmt->relation->inh) && partdesc->nparts > 0)
 		{
-			PartitionDesc partdesc = RelationGetPartitionDesc(rel);
 			int			nparts = partdesc->nparts;
 			Oid		   *part_oids = palloc(sizeof(Oid) * nparts);
 			bool		invalidate_parent = false;
@@ -1331,7 +1321,7 @@ DefineIndex(Oid relationId,
 	                           true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
-	
+
 	/*
 	 * Delay after committing pg_index update.  Although it is controlled by a
 	 * test flag, it currently helps (but does not guarantee) correctness
@@ -1346,15 +1336,6 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
-	HandleYBStatus(YBCPgWaitUntilIndexPermissionsAtLeast(MyDatabaseId,
-														 relationId,
-														 indexRelationId,
-														 YB_INDEX_PERM_READ_WRITE_AND_DELETE,
-														 &actual_index_permissions));
-	if (actual_index_permissions != YB_INDEX_PERM_READ_WRITE_AND_DELETE)
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("index backfill failed")));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry

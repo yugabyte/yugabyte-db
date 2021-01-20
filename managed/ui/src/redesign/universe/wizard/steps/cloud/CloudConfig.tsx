@@ -56,7 +56,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
         <WizardStepper activeStep={WizardStep.Cloud} clickableTabs={isEditMode} onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
-        <div className="wizard-step-wrapper__form">
+        <div className="wizard-step-wrapper__col-form">
           <FormProvider {...formMethods}>
             <Grid fluid>
               <div className="cloud-config">
@@ -73,7 +73,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="cloud-config__row">
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     <I18n className="cloud-config__label">Name</I18n>
                   </Col>
                   <Col sm={8}>
@@ -82,7 +82,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="cloud-config__row">
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     <I18n className="cloud-config__label">Provider</I18n>
                   </Col>
                   <Col sm={8}>
@@ -91,7 +91,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="cloud-config__row">
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     <I18n className="cloud-config__label">Regions</I18n>
                   </Col>
                   <Col sm={10}>
@@ -100,7 +100,7 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="cloud-config__row">
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     <I18n className="cloud-config__label">Replication Factor</I18n>
                   </Col>
                   <Col sm={10}>
@@ -118,13 +118,13 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="cloud-config__row">
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     <I18n className="cloud-config__label">Replica Placement</I18n>
                   </Col>
                   <Col sm={4}>
                     <ReplicaPlacementToggleField disabled={isEditMode} />
                   </Col>
-                  <Col sm={2} className="cloud-config__label-col">
+                  <Col sm={2}>
                     {/* TODO: show "Pod" for kuber provider */}
                     <I18n className="cloud-config__label cloud-config__label--right">
                       Total Nodes
@@ -168,8 +168,8 @@ export const CloudConfig: FC<CloudConfigProps> = ({ dispatch }) => {
             */}
           </FormProvider>
         </div>
-        <div className="wizard-step-wrapper__summary">
-          <Summary formData={{ ...formData, cloudConfig: formMethods.getValues() }} />
+        <div className="wizard-step-wrapper__col-summary">
+          <Summary formData={{ ...formData, cloudConfig: formMethods.watch() }} />
         </div>
       </div>
     </div>

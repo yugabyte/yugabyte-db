@@ -565,7 +565,7 @@ fi
 
 set_default_compiler_type
 find_or_download_thirdparty
-find_compiler_by_type "$YB_COMPILER_TYPE"
+find_compiler_by_type
 
 if [[ $cc_or_cxx == "compiler-wrapper.sh" && $compiler_args_str == "--version" ]]; then
   # Allow invoking this script not through a symlink but directly in one special case: when trying
@@ -600,6 +600,14 @@ if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-}
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
+
+  if [ -z "${USER:-}" ]; then
+    if whoami &> /dev/null; then
+      USER="$(whoami)"
+    else
+      fatal_error "No USER variable in env and no whoami to detect it"
+    fi
+  fi
 
   # Ensure CCACHE puts temporary files on the local disk.
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}

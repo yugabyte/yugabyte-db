@@ -65,5 +65,5 @@ To install Yugabyte Platform on Airgapped hosts, without access to any Internet 
   - `22` – SSH
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
 - The Yugabyte Platform airgapped install package (contact Yugabyte support)
-- A Yugabyte Platform license file (contact Yugabyte Support)
+- A Yugabyte Platform license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form)
 - Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. If this is not set up, set up passwordless SSH.

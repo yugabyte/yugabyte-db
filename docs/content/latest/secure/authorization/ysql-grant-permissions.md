@@ -5,7 +5,7 @@ linkTitle: Grant privileges
 description: Grant YSQL privileges in YugabyteDB
 menu:
   latest:
-    name: Grant privileges
+    name: Grant Privileges
     identifier: ysql-grant-permissions
     parent: authorization
     weight: 735  

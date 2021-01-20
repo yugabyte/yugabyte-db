@@ -10,7 +10,7 @@ import { YBPanelItem } from '../../panels';
 import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import { MetricsPanel } from '../../metrics';
-
+import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
 import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
@@ -18,7 +18,7 @@ const METRIC_NAME = 'tserver_async_replication_lag_micros';
 const MILLI_IN_MIN = 60000.0;
 const MILLI_IN_SEC = 1000.0;
 
-export default class ListBackups extends Component {
+export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
@@ -26,12 +26,8 @@ export default class ListBackups extends Component {
     };
   }
 
-  static defaultProps = {
-    title: 'Replication'
-  };
-
   static propTypes = {
-    currentUniverse: PropTypes.object.isRequired
+    universe: PropTypes.object.isRequired
   };
 
   componentDidMount() {
@@ -44,7 +40,7 @@ export default class ListBackups extends Component {
   }
 
   queryMetrics = (graphFilter) => {
-    const { currentUniverse } = this.props;
+    const { universe: { currentUniverse }} = this.props;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
       : 'all';
@@ -59,10 +55,10 @@ export default class ListBackups extends Component {
 
   render() {
     const {
-      title,
-      currentUniverse,
+      universe: { currentUniverse },
       graph: { metrics }
     } = this.props;
+
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     if (!isNonEmptyArray(nodeDetails)) {
@@ -153,10 +149,12 @@ export default class ListBackups extends Component {
       <div>
         <YBPanelItem
           header={
-            <div className="container-title clearfix spacing-top">
-              <div className="pull-left">
-                <h2 className="task-list-header content-title pull-left">{title}</h2>
-              </div>
+            <div className="replication-header">
+              <h2>Replication</h2>
+              <ReplicationAlertModalBtn
+                universeUUID={currentUniverse.data.universeUUID}
+                disabled={!showMetrics}
+              />
             </div>
           }
           body={
@@ -181,4 +179,4 @@ export default class ListBackups extends Component {
       </div>
     );
   }
-}
+};

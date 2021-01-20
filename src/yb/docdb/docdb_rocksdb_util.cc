@@ -380,6 +380,12 @@ rocksdb::InternalIterator* WrapIterator(
   return iterator;
 }
 
+void AddSupportedFilterPolicy(
+    const rocksdb::BlockBasedTableOptions::FilterPolicyPtr& filter_policy,
+    rocksdb::BlockBasedTableOptions* table_options) {
+  table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
+}
+
 } // namespace
 
 void InitRocksDBOptions(
@@ -437,13 +443,14 @@ void InitRocksDBOptions(
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
     const auto filter_block_size_bits = table_options.filter_block_size * 8;
-    table_options.filter_policy = std::make_unique<const DocDbAwareV2FilterPolicy>(
+    table_options.filter_policy = std::make_unique<const DocDbAwareV3FilterPolicy>(
         filter_block_size_bits, options->info_log.get());
     table_options.supported_filter_policies =
         std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();
-    const auto supported_policy = std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
-            filter_block_size_bits, options->info_log.get());
-    table_options.supported_filter_policies->emplace(supported_policy->Name(), supported_policy);
+    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
+            filter_block_size_bits, options->info_log.get()), &table_options);
+    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareV2FilterPolicy>(
+            filter_block_size_bits, options->info_log.get()), &table_options);
   }
 
   if (FLAGS_use_multi_level_index) {
@@ -700,30 +707,7 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
   return impl_->ModifyFlushedFrontier(frontier);
 }
 
-bool HasPendingCompaction(rocksdb::DB* db) {
-  uint64_t compaction_pending = 0;
-  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-  return compaction_pending > 0;
-}
-
-bool HasRunningCompaction(rocksdb::DB* db) {
-  uint64_t running_compactions = 0;
-  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-  return running_compactions > 0;
-}
-
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  auto s = ForceFullRocksDBCompactAsync(db);
-  if (s.ok()) {
-    while (HasPendingCompaction(db) || HasRunningCompaction(db)) {
-      std::this_thread::sleep_for(10ms);
-    }
-  } else {
-    LOG(WARNING) << s;
-  }
-}
-
-Status ForceFullRocksDBCompactAsync(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");

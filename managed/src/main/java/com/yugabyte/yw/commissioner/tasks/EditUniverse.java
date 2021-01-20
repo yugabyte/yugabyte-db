@@ -45,6 +45,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
+      checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
 
@@ -120,6 +121,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     if (!nodesToProvision.isEmpty()) {
+      createPrecheckTasks(nodesToProvision)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -157,6 +161,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         throw new IllegalStateException(errMsg);
       }
     }
+
+    // All necessary nodes are created. Data moving will coming soon.
+    createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.ToJoinCluster)
+        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     // Creates the primary cluster by first starting the masters.
     if (!newMasters.isEmpty()) {

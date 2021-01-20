@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
@@ -66,9 +67,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
       LOG.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
-      ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+      ShellResponse response = getNodeManager().nodeCommand(
           NodeManager.NodeCommandType.Provision, taskParams());
-      logShellResponse(response);
+      processShellResponse(response);
     }
   }
 }

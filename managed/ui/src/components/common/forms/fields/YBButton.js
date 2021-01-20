@@ -33,7 +33,7 @@ export default class YBButton extends PureComponent {
           <YBLoadingLinearIcon />
         ) : (
           <Fragment>
-            <i className={className}></i>
+            {className && <i className={className}></i>}
             {btnText}
           </Fragment>
         )}

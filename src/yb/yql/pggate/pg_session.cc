@@ -53,7 +53,6 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
              "Timeout for WaitUntilIndexPermissionsAtLeast RPCs from client to master initiated "
              "from YSQL layer.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
-TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, runtime);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 namespace yb {
@@ -336,7 +335,7 @@ Status PgSessionAsyncRunResult::GetStatus(const PgSession& pg_session) {
   SCHECK(InProgress(), IllegalState, "Request must be in progress");
   auto status = future_status_.get();
   future_status_ = std::future<Status>();
-  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetPendingErrors(), status));
+  RETURN_NOT_OK(CombineErrorsToStatus(session_->GetAndClearPendingErrors(), status));
   for (const auto& bop : buffered_operations_) {
     RETURN_NOT_OK(pg_session.HandleResponse(*bop.operation, bop.relation_id));
   }
@@ -1071,7 +1070,7 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
     RETURN_NOT_OK(ApplyOperation(session, transactional, buffered_op));
   }
   const auto status = session->FlushFuture().get();
-  RETURN_NOT_OK(CombineErrorsToStatus(session->GetPendingErrors(), status));
+  RETURN_NOT_OK(CombineErrorsToStatus(session->GetAndClearPendingErrors(), status));
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(HandleResponse(*buffered_op.operation, buffered_op.relation_id));
   }
@@ -1081,6 +1080,14 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   if (tserver_shared_object_) {
     return (**tserver_shared_object_).ysql_catalog_version();
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
+Result<uint64_t> PgSession::GetSharedAuthKey() {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).postgres_auth_key();
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }

@@ -152,11 +152,18 @@ public class Backup extends Model {
   }
 
   // We need to set the taskUUID right after commissioner task is submitted.
-  public synchronized void setTaskUUID(UUID taskUUID) {
+
+  /**
+   * @param taskUUID to set if none set previously
+   * @return true if the call ends up setting task uuid.
+   */
+  public synchronized boolean setTaskUUID(UUID taskUUID) {
     if (this.taskUUID == null) {
       this.taskUUID = taskUUID;
       save();
+      return true;
     }
+    return false;
   }
 
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
@@ -197,9 +204,25 @@ public class Backup extends Model {
     // We only allow state transition from InProgress to a valid state
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState) ||
-        (this.state == BackupState.Completed && newState == BackupState.Deleted)) {
+        (this.state == BackupState.Completed && newState == BackupState.Deleted) ||
+        // This condition is for the case in which the delete fails and we need
+        // to reset the state.
+        (this.state == BackupState.Deleted && newState == BackupState.Completed)) {
       this.state = newState;
       save();
     }
+  }
+
+  public static boolean existsStorageConfig(UUID customerConfigUUID) {
+    List<Backup> backupList = find.query().where()
+        .or()
+          .eq("state", BackupState.Completed)
+          .eq("state", BackupState.InProgress)
+        .endOr()
+        .findList();
+    backupList = backupList.stream()
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+        .collect(Collectors.toList());
+    return backupList.size() != 0;
   }
 }

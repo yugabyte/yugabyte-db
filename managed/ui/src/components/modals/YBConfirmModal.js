@@ -38,6 +38,7 @@ export default class YBConfirmModal extends Component {
           cancelLabel={cancelLabel}
           submitLabel={confirmLabel}
           onFormSubmit={this.submitConfirmModal}
+          submitOnCarriage
         >
           {this.props.children}
         </YBModal>

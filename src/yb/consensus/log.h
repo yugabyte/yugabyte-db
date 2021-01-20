@@ -297,6 +297,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // Flushes necessary files and uses hard links where it is safe.
   CHECKED_STATUS CopyTo(const std::string& dest_wal_dir);
 
+  // Waits until all entries flushed, then reset last received op id to specified one.
+  CHECKED_STATUS ResetLastSyncedEntryOpId(const OpId& op_id);
+
  private:
   friend class LogTest;
   friend class LogTestBase;

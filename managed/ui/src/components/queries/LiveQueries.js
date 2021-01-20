@@ -5,12 +5,13 @@ import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
 import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import Highlight from 'react-highlight';
+import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
 import { useApiQueriesFetch, filterBySearchTokens } from './queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
+import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 
 import './LiveQueries.scss';
 
@@ -70,6 +71,7 @@ const LiveQueriesComponent = ({ location }) => {
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
   const searchInput = useRef(null);
+  const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useApiQueriesFetch({
@@ -81,7 +83,10 @@ const LiveQueriesComponent = ({ location }) => {
 
   useEffect(() => {
     if (location.search) {
-      if ('nodeName' in location.query) {
+      if (
+        'nodeName' in location.query &&
+        location.query.nodeName.toLowerCase() !== 'all'
+      ) {
         setSearchTokens([
           {
             label: 'Node Name',
@@ -91,7 +96,7 @@ const LiveQueriesComponent = ({ location }) => {
         ]);
       }
     }
-  }, []);
+  }, [location.search, location.query]);
 
   useEffect(() => {
     const searchDropdownHandler = (ev) => {
@@ -116,7 +121,7 @@ const LiveQueriesComponent = ({ location }) => {
         setType('YCQL');
       }
     }
-  }, [ycqlQueries, ysqlQueries]);
+  }, [type, ycqlQueries, ysqlQueries]);
 
   // Gets the location of searchInput element and sets left pixels
   useLayoutEffect(() => {
@@ -132,8 +137,15 @@ const LiveQueriesComponent = ({ location }) => {
   }, [searchInput, searchTokens]);
 
   const getTserverLink = (cell, row) => {
+    const tserverPort = currentUniverse?.data?.universeDetails.communicationPorts.tserverHttpPort;
+    const href = getProxyNodeAddress(universeUUID, customer, row.privateIp, tserverPort);
+
     return (
-      <a href={`http://${row.privateIp}/`} title={cell} target="_blank">
+      <a href={href}
+        title={cell}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         {cell}
       </a>
     );
@@ -184,7 +196,7 @@ const LiveQueriesComponent = ({ location }) => {
               <i
                 className="fa fa-times-circle remove-chip"
                 onClick={() => {
-                  let newTokens = [...searchTokens];
+                  const newTokens = [...searchTokens];
                   newTokens.splice(idx, 1);
                   setSearchTokens(newTokens);
                   clearBtnClick();
@@ -258,7 +270,7 @@ const LiveQueriesComponent = ({ location }) => {
     const truncatedText = cell.length > 50 ? `${cell.substring(0, 50)}...` : cell;
     return (
       <div className="query-container">
-        <Highlight className="sql">{truncatedText}</Highlight>
+        <Highlighter type="sql" text={truncatedText} element="pre" />
       </div>
     );
   };

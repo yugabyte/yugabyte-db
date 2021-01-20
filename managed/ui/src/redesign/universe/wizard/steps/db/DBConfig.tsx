@@ -53,7 +53,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
         <WizardStepper activeStep={WizardStep.Db} clickableTabs onChange={submit} />
       </div>
       <div className="wizard-step-wrapper__container">
-        <div className="wizard-step-wrapper__form">
+        <div className="wizard-step-wrapper__col-form">
           <FormProvider {...formMethods}>
             <Grid fluid>
               <div className="db-config">
@@ -66,7 +66,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="db-config__row">
-                  <Col sm={2} className="db-config__label-col">
+                  <Col sm={2}>
                     <I18n className="db-config__label">DB Version</I18n>
                   </Col>
                   <Col sm={6}>
@@ -75,7 +75,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
                 </Row>
 
                 <Row className="db-config__row">
-                  <Col sm={2} className="db-config__label-col">
+                  <Col sm={2}>
                     <I18n className="db-config__label">Preferred Leaders</I18n>
                   </Col>
                   <Col sm={10}>
@@ -85,18 +85,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
 
                 <AdvancedSettings expanded={false}>
                   <Row className="db-config__row db-config__row--align-top">
-                    <Col sm={2} className="db-config__label-col">
-                      <I18n className="db-config__label db-config__label--margin-top">
-                        Override Ports
-                      </I18n>
-                    </Col>
-                    <Col sm={10}>
-                      <CommunicationPortsField disabled={isEditMode} />
-                    </Col>
-                  </Row>
-
-                  <Row className="db-config__row db-config__row--align-top">
-                    <Col sm={2} className="db-config__label-col">
+                    <Col sm={2}>
                       <I18n className="db-config__label db-config__label--margin-top">
                         Config Flags
                       </I18n>
@@ -104,6 +93,17 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
                     <Col sm={10}>
                       <MasterFlagsField disabled={isEditMode} />
                       <TServerFlagsField disabled={isEditMode} />
+                    </Col>
+                  </Row>
+
+                  <Row className="db-config__row db-config__row--align-top">
+                    <Col sm={2}>
+                      <I18n className="db-config__label db-config__label--margin-top">
+                        Override Ports
+                      </I18n>
+                    </Col>
+                    <Col sm={10}>
+                      <CommunicationPortsField disabled={isEditMode} />
                     </Col>
                   </Row>
                 </AdvancedSettings>
@@ -153,7 +153,7 @@ export const DBConfig: FC<DBConfigProps> = ({ dispatch }) => {
             */}
           </FormProvider>
         </div>
-        <div className="wizard-step-wrapper__summary">
+        <div className="wizard-step-wrapper__col-summary">
           <Summary formData={formData} />
         </div>
       </div>

@@ -1,5 +1,6 @@
 ```
-update ::= [ WITH [ RECURSIVE ] with_query [ , ... ] ]  UPDATE 
+update ::= [ WITH [ RECURSIVE ] with_query 
+             [ , with_clause_substatement_defn [ ... ] ] ]  UPDATE 
            [ ONLY ] table_name [ * ] [ [ AS ] alias ]  SET update_item 
            [ , ... ] [ WHERE boolean_expression
                        | WHERE CURRENT OF cursor_name ]  

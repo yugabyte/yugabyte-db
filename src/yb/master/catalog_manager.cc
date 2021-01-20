@@ -125,7 +125,6 @@
 #include "yb/master/yql_views_vtable.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
@@ -242,6 +241,9 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
 DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
                  "Number of seconds to sleep during a remote bootstrap.");
 
+DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
+                 "Number of milliseconds to sleep during the processing of a tablet batch.");
+
 DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, false,
                  "This is only used in tests to simulate a failure where the table information is "
                  "persisted in syscatalog, but the tablet information is not yet persisted and "
@@ -275,8 +277,7 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-// TODO(jason): get rid of this when closing issue #6234.
-DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 1000, // 1 min.
+DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 0,
     "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
     " index in the master index map.");
 TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
@@ -336,6 +337,21 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
 DEFINE_int32(tablet_split_limit_per_table, 256,
              "Limit of the number of tablets per table for tablet splitting. Limitation is "
              "disabled if this value is set to 0.");
+
+DEFINE_double(heartbeat_safe_deadline_ratio, .20,
+              "When the heartbeat deadline has this percentage of time remaining, "
+              "the master should halt tablet report processing so it can respond in time.");
+DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_CAPABILITY(TabletReportLimit);
+
+DEFINE_int32(partitions_vtable_cache_refresh_secs, 30,
+             "Amount of time to wait before refreshing the system.partitions cached vtable.");
+
+DEFINE_int32(txn_table_wait_min_ts_count, 1,
+             "Minimum Number of TS to wait for before creating the transaction status table."
+             " Default value is 1. We wait for atleast --replication_factor if this value"
+             " is smaller than that");
+TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
 namespace yb {
 namespace master {
@@ -541,6 +557,8 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
       (!is_transactional && GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
   return !disabled;
 }
+
+constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
 }  // anonymous namespace
 
@@ -849,12 +867,15 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   permissions_manager_->BuildRecursiveRolesUnlocked();
 
   if (FLAGS_enable_ysql) {
+    // Number of TS to wait for before creating the txn table.
+    auto wait_ts_count = std::max(FLAGS_txn_table_wait_min_ts_count, FLAGS_replication_factor);
+
     LOG_WITH_PREFIX(INFO)
         << "YSQL is enabled, will create the transaction status table when "
-        << FLAGS_replication_factor << " tablet servers are online";
-    master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this] {
+        << wait_ts_count << " tablet servers are online";
+    master_->ts_manager()->SetTSCountCallback(wait_ts_count, [this, wait_ts_count] {
       LOG_WITH_PREFIX(INFO)
-          << FLAGS_replication_factor
+          << wait_ts_count
           << " tablet servers registered, creating the transaction status table";
       // Retry table creation until it succeedes. It might fail initially because placement UUID
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
@@ -1106,6 +1127,9 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
       << "kNumSystemTables is " << kNumSystemTables << " but " << system_tablets_.size()
       << " tables were created";
 
+  // Cache the system.partitions tablet so we can access it in RebuildYQLSystemPartitions.
+  RETURN_NOT_OK(GetYQLPartitionsVTable(&system_partitions_tablet_));
+
   return Status::OK();
 }
 
@@ -1126,6 +1150,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     auto table_ids_map_checkout = table_ids_map_.CheckOut();
     sys_catalog_table_iter = table_ids_map_checkout->emplace(table->id(), table).first;
     table_names_map_[{kSystemSchemaNamespaceId, kSysCatalogTableName}] = table;
+    table->set_is_system();
 
     RETURN_NOT_OK(sys_catalog_->AddItem(table.get(), term));
     table->mutable_metadata()->CommitMutation();
@@ -1150,6 +1175,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_table_id(table->id());
     metadata.add_table_ids(table->id());
 
+    table->set_is_system();
     table->AddTablet(tablet.get());
 
     auto tablet_map_checkout = tablet_map_.CheckOut();
@@ -1169,7 +1195,7 @@ Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceName& namespace_name,
                                                   const NamespaceId& namespace_id,
                                                   int64_t term) {
-  YQLVirtualTable* vtable = new T(master_);
+  YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
   return PrepareSystemTable(
       table_name, namespace_name, namespace_id, vtable->schema(), term, vtable);
 }
@@ -1187,6 +1213,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   bool create_table = true;
   if (table != nullptr) {
     LOG_WITH_PREFIX(INFO) << "Table " << namespace_name << "." << table_name << " already created";
+
+    // Mark the table as a system table.
+    table->set_is_system();
 
     Schema persisted_schema;
     RETURN_NOT_OK(table->GetSchema(&persisted_schema));
@@ -1209,8 +1238,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     if (!tablets.empty()) {
       // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
-      system_tablets_[tablets[0]->tablet_id()] =
-          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+      auto tablet = tablets[0];
+      system_tablets_[tablet->tablet_id()] =
+          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablet->tablet_id());
       return Status::OK();
     } else {
       // Table is already created, only need to create tablets now.
@@ -1239,6 +1269,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, true /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr, &tablets, nullptr, &table));
+    // Mark the table as a system table.
     LOG_WITH_PREFIX(INFO) << "Inserted new " << namespace_name << "." << table_name
                           << " table info into CatalogManager maps";
     // Update the on-disk table state to "running".
@@ -1271,10 +1302,13 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
+  // Mark the table as a system table.
+  table->set_is_system();
 
   // Finally create the appropriate tablet object.
-  system_tablets_[tablets[0]->tablet_id()] =
-      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+  auto tablet = tablets[0];
+  system_tablets_[tablet->tablet_id()] =
+      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablet->tablet_id());
   return Status::OK();
 }
 
@@ -1436,6 +1470,8 @@ bool CatalogManager::StartShutdown() {
     state_ = kClosing;
   }
 
+  refresh_yql_partitions_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -1445,6 +1481,7 @@ bool CatalogManager::StartShutdown() {
 
 void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
+  refresh_yql_partitions_task_.CompleteShutdown();
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -1621,6 +1658,13 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
+  // Make sure that the index appears to not have been added to the table until the tservers apply
+  // the alter and respond back.
+  // Heed issue #6233.
+  if (!l->data().pb.has_fully_applied_schema()) {
+    MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&l->mutable_data()->pb);
+  }
+
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
@@ -1744,7 +1788,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
 namespace {
 
-Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
+Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   const auto& source_partition = tablet_info.LockForRead()->data().pb.partition();
 
@@ -1758,12 +1802,13 @@ Result<std::array<PartitionPB, 2>> CreateNewTabletsPartition(
         source_partition.partition_key_end(), split_partition_key);
   }
 
-  std::array<PartitionPB, 2> new_tablets_partition;
+  std::array<PartitionPB, kNumSplitParts> new_tablets_partition;
 
   new_tablets_partition.fill(source_partition);
 
   new_tablets_partition[0].set_partition_key_end(split_partition_key);
   new_tablets_partition[1].set_partition_key_start(split_partition_key);
+  static_assert(kNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
 
   return new_tablets_partition;
 }
@@ -1795,17 +1840,27 @@ Status CatalogManager::DoSplitTablet(
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
-  constexpr auto kNumSplitParts = 2;
+  const auto source_table_lock = source_tablet_info->table()->LockForWrite();
+  const auto source_tablet_lock = source_tablet_info->LockForWrite();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
   std::array<TabletId, kNumSplitParts> new_tablet_ids;
   for (int i = 0; i < kNumSplitParts; ++i) {
-    auto* new_tablet_info = VERIFY_RESULT(
-        RegisterNewTabletForSplit(*source_tablet_info, new_tablets_partition[i]));
-    new_tablet_ids[i] = new_tablet_info->id();
+    if (i < source_tablet_lock->data().pb.split_tablet_ids_size()) {
+      // Post-split tablet `i` has been already registered.
+      new_tablet_ids[i] = source_tablet_lock->data().pb.split_tablet_ids(i);
+    } else {
+      auto* new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
+          source_tablet_info.get(), new_tablets_partition[i], source_table_lock.get()));
+
+      new_tablet_ids[i] = new_tablet_info->id();
+      source_tablet_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet_info->id());
+    }
   }
+  source_tablet_lock->Commit();
+  source_table_lock->Commit();
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -1978,6 +2033,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
       return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
         "An error occurred while inserting to sys-tablets: "), resp);
     }
+    table->set_is_system();
     table->AddTablet(sys_catalog_tablet.get());
     tablet_lock->Commit();
   }
@@ -2944,12 +3000,8 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   //    currently it makes YCQL index backfill unstable - which is indicated by intermittent
   //    failures of various tests under CppCassandraDriverTest - mostly TestCreateIndex.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
-    // TODO(alex, jason): This is a quick fix to make sure we treat unique index as non-backfilling.
-    //    We should remove this once we've implemented #4899.
-    bool is_unique_index = pb.has_index_info() && pb.index_info().is_unique();
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
     if (pb.table_type() == PGSQL_TABLE_TYPE &&
-        !is_unique_index &&
         IsUserCreatedTable(*table) &&
         IsIndexBackfillEnabled(pb.table_type(),
                                pb.schema().table_properties().is_transactional())) {
@@ -2966,9 +3018,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           resp->set_done(true);
-          // We need to wait to hopefully avoid consistency issues.
-          // TODO(jason): get rid of this when closing issue #6234.
-          VLOG(1) << "Wait to give tservers time to apply schema change";
+          // This wait was to give tservers time to apply schema changes and hopefully avoid
+          // consistency issues.  It should now be fixed, but it still exists for now because the
+          // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
+          // and the gflag.
           SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_backfill_is_create_table_done_delay_ms));
           break;
         }
@@ -3411,7 +3464,7 @@ Status CatalogManager::BackfillIndex(
     const BackfillIndexRequestPB* req,
     BackfillIndexResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableIdentifierPB index_table_identifier = req->table_identifier();
+  TableIdentifierPB index_table_identifier = req->index_identifier();
 
   scoped_refptr<TableInfo> index_table;
   RETURN_NOT_OK(FindTable(index_table_identifier, &index_table));
@@ -3435,6 +3488,7 @@ Status CatalogManager::BackfillIndex(
   {
     auto l = index_table->LockForRead();
     TableId indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(l->data().pb);
+    resp->mutable_table_identifier()->set_table_id(indexed_table_id);
     indexed_table = GetTableInfo(indexed_table_id);
   }
 
@@ -3507,7 +3561,10 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   auto l = indexed_table->LockForWrite();
   auto &indexed_table_data = *l->mutable_data();
 
-  MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+  // Heed issue #6233.
+  if (!l->data().pb.has_fully_applied_schema()) {
+    MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+  }
   auto *indexes = indexed_table_data.pb.mutable_indexes();
   for (int i = 0; i < indexes->size(); i++) {
     if (indexes->Get(i).table_id() == index_table_id) {
@@ -4208,10 +4265,11 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 }
 
 Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
-    const TabletInfo& source_tablet_info, const PartitionPB& partition) {
-  const auto tablet_lock = source_tablet_info.LockForRead();
+    TabletInfo* source_tablet_info, const PartitionPB& partition,
+    TableInfo::lock_type* table_write_lock) {
+  const auto tablet_lock = source_tablet_info->LockForRead();
 
-  const auto& table = source_tablet_info.table();
+  auto table = source_tablet_info->table();
   TabletInfo* new_tablet;
   {
     std::lock_guard<LockType> l(lock_);
@@ -4224,16 +4282,15 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
-  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info.tablet_id());
+  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
   {
     std::lock_guard<LockType> l(lock_);
-    auto table_lock = table->LockForWrite();
 
-    auto& table_pb = table_lock->mutable_data()->pb;
+    auto& table_pb = table_write_lock->mutable_data()->pb;
     table_pb.set_partitions_version(table_pb.partitions_version() + 1);
 
     RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
@@ -4250,14 +4307,12 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     // committed TabletInfo from the `table` ?
     new_tablet->mutable_metadata()->CommitMutation();
 
-    table_lock->Commit();
-
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
             << " (" << AsString(partition) << ") to split the tablet "
-            << source_tablet_info.tablet_id()
+            << source_tablet_info->tablet_id()
             << " (" << AsString(source_tablet_meta.partition())
             << ") for table " << table->ToString();
 
@@ -4353,6 +4408,65 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
           << yb::ToString(*resp);
+  return Status::OK();
+}
+
+Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                                GetColocatedTabletSchemaResponsePB* resp) {
+  VLOG(1) << "Servicing GetColocatedTabletSchema request for " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  // Lookup the given parent colocated table and verify if it exists.
+  scoped_refptr<TableInfo> parent_colocated_table;
+  {
+    TRACE("Looking up table");
+    RETURN_NOT_OK(FindTable(req->parent_colocated_table(), &parent_colocated_table));
+    TRACE("Locking table");
+    auto l = parent_colocated_table->LockForRead();
+    RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
+  }
+
+  if (!parent_colocated_table->colocated() || !IsColocatedParentTable(*parent_colocated_table)) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE,
+                      STATUS(InvalidArgument, "Table provided is not a parent colocated table"));
+  }
+
+  // Next get all the user tables that are in the database.
+  ListTablesRequestPB listTablesReq;
+  ListTablesResponsePB ListTablesResp;
+
+  listTablesReq.mutable_namespace_()->set_id(parent_colocated_table->namespace_id());
+  listTablesReq.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  listTablesReq.set_exclude_system_tables(true);
+  Status status = ListTables(&listTablesReq, &ListTablesResp);
+  if (!status.ok() || ListTablesResp.has_error()) {
+    LOG(ERROR) << "Error while listing tables: " << status;
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
+  }
+
+  // Get the table schema for each colocated table.
+  for (const auto& t : ListTablesResp.tables()) {
+    // Need to check if this table is colocated first.
+    scoped_refptr<TableInfo> table;
+    TableIdentifierPB t_pb;
+    t_pb.set_table_id(t.id());
+    TRACE("Looking up table");
+    RETURN_NOT_OK(FindTable(t_pb, &table));
+
+    if (table->colocated()) {
+      // Now we can get the schema for this table.
+      GetTableSchemaRequestPB schemaReq;
+      GetTableSchemaResponsePB schemaResp;
+      schemaReq.mutable_table()->Swap(&t_pb);
+      status = GetTableSchema(&schemaReq, &schemaResp);
+      if (!status.ok() || schemaResp.has_error()) {
+        LOG(ERROR) << "Error while getting table schema: " << status;
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
+      }
+      resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -4540,14 +4654,7 @@ NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& t
 }
 
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  TabletInfos tablets;
-  table.GetAllTablets(&tablets);
-  for (const auto& tablet : tablets) {
-    if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
-      return true;
-    }
-  }
-  return false;
+  return table.is_system();
 }
 
 // True if table is created by user.
@@ -4587,8 +4694,12 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
 }
 
+bool CatalogManager::IsColocatedParentTableId(const TableId& table_id) const {
+  return table_id.find(kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
 bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
-  return table.id().find(kColocatedParentTableIdSuffix) != std::string::npos;
+  return IsColocatedParentTableId(table.id());
 }
 
 bool CatalogManager::IsTablegroupParentTable(const TableInfo& table) const {
@@ -4661,13 +4772,12 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
 
 bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
                                                          const ConsensusStatePB& cstate) {
-  TabletInfo::ReplicaMap locs;
-  tablet->GetReplicaLocations(&locs);
-  if (locs.size() != cstate.config().peers_size()) {
+  auto locs = tablet->GetReplicaLocations();
+  if (locs->size() != cstate.config().peers_size()) {
     return true;
   }
   for (auto iter = cstate.config().peers().begin(); iter != cstate.config().peers().end(); iter++) {
-      if (locs.find(iter->permanent_uuid()) == locs.end()) {
+      if (locs->find(iter->permanent_uuid()) == locs->end()) {
         return true;
       }
   }
@@ -4702,10 +4812,6 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   // Maps a tablet ID to its corresponding tablet report (owned by 'full_report').
   map<TabletId, const ReportedTabletPB*> reports;
 
-  // Maps a tablet ID to its corresponding tablet report update (owned by
-  // 'full_report_update').
-  map<TabletId, ReportedTabletUpdatesPB*> updates;
-
   // Maps a tablet ID to its corresponding TabletInfo.
   map<TabletId, scoped_refptr<TabletInfo>> tablet_infos;
 
@@ -4721,12 +4827,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     for (const ReportedTabletPB& report : full_report.updated_tablets()) {
       const string& tablet_id = report.tablet_id();
 
-      // 1a. Prepare an update entry for this tablet. Every tablet in the
-      // report gets one, even if there's no change to it.
-      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-      update->set_tablet_id(tablet_id);
-
-      // 1b. Find the tablet, deleting/skipping it if it can't be found.
+      // 1a. Find the tablet, deleting/skipping it if it can't be found.
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       if (!tablet) {
         // It'd be unsafe to ask the tserver to delete this tablet without first
@@ -4743,19 +4844,24 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         } else {
           LOG(WARNING) << "Ignoring report from unknown tablet " << tablet_id;
         }
+        // Every tablet in the report that is processed gets a heartbeat response entry.
+        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+        update->set_tablet_id(tablet_id);
         continue;
       }
       if (!tablet->table() || FindOrNull(*table_ids_map_, tablet->table()->id()) == nullptr) {
         auto table_id = tablet->table() == nullptr ? "(null)" : tablet->table()->id();
         LOG(INFO) << "Got report from an orphaned tablet " << tablet_id << " on table " << table_id;
         tablets_to_delete.insert(tablet_id);
+        // Every tablet in the report that is processed gets a heartbeat response entry.
+        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+        update->set_tablet_id(tablet_id);
         continue;
       }
 
-      // 1c. Found the tablet, update local state. If multiple tablets with the
+      // 1b. Found the tablet, update local state. If multiple tablets with the
       // same ID are in the report, all but the last one will be ignored.
       reports[tablet_id] = &report;
-      updates[tablet_id] = update;
       tablet_infos[tablet_id] = tablet;
     }
   }
@@ -4765,6 +4871,10 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     SendDeleteTabletRequest(tablet_id, TABLET_DATA_DELETED, boost::none, nullptr, ts_desc,
         "Report from an orphaned tablet");
   }
+
+  // Calculate the deadline for this expensive loop coming up.
+  const auto safe_deadline = rpc->GetClientDeadline() -
+    (FLAGS_heartbeat_rpc_timeout_ms * 1ms * FLAGS_heartbeat_safe_deadline_ratio);
 
   // Doing batched processing with inner 'for' loops.  Ensure we iterate all tablets with 'while'.
   auto tablet_iter = tablet_infos.begin();
@@ -4802,7 +4912,12 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       const scoped_refptr<TabletInfo>& tablet = tablet_iter->second;
       const scoped_refptr<TableInfo>& table = tablet->table();
       const ReportedTabletPB& report = *FindOrDie(reports, tablet_id);
-      ReportedTabletUpdatesPB* update = FindOrDie(updates, tablet_id);
+
+      // Prepare an heartbeat response entry for this tablet, now that we're going to process it.
+      // Every tablet in the report that is processed gets one, even if there are no changes to it.
+      ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+      update->set_tablet_id(tablet_id);
+
       // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
       tablet_write_locks[tablet_id] = tablet->LockForWrite();
       auto& table_lock = table_read_locks[table->id()];
@@ -4996,7 +5111,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                 << " to that committed in log index " << cstate.config().opid_index()
                 << " with leader state from term " << cstate.current_term();
           ReconcileTabletReplicasInLocalMemoryWithReport(
-            tablet, ts_desc->permanent_uuid(), cstate, report.state());
+            tablet, ts_desc->permanent_uuid(), cstate, report);
 
           // 6d(iv). Update the consensus state. Don't use 'prev_cstate' after this.
           LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
@@ -5020,9 +5135,9 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           if (GetAtomicFlag(&FLAGS_enable_register_ts_from_raft) &&
               ReplicaMapDiffersFromConsensusState(tablet, cstate)) {
              ReconcileTabletReplicasInLocalMemoryWithReport(
-               tablet, ts_desc->permanent_uuid(), cstate, report.state());
+               tablet, ts_desc->permanent_uuid(), cstate, report);
           } else {
-            UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report.state(), tablet);
+            UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report, tablet);
           }
         }
 
@@ -5065,7 +5180,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // When a tablet server is restarted, it sends a full tablet report with all of its tablets
         // in the NOT_STARTED state, so this would make the load balancer think that all the
         // tablets are being remote bootstrapped at once, so only process incremental reports here.
-        UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report.state(), tablet);
+        UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report, tablet);
       }
     } // Finished one round of batch processing.
 
@@ -5118,17 +5233,40 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
       WARN_NOT_OK(ScheduleTask(rpc), Substitute("Failed to send $0", rpc->description()));
     }
     rpcs.clear();
+
+    // 14. Check deadline. Need to exit before processing all batches if we're close to timing out.
+    if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit) && tablet_iter != tablet_infos.end()) {
+      // [TESTING] Inject latency before processing a batch to test deadline.
+      if (PREDICT_FALSE(FLAGS_TEST_inject_latency_during_tablet_report_ms > 0)) {
+        LOG(INFO) << "Sleeping in CatalogManager::ProcessTabletReport for "
+                  << FLAGS_TEST_inject_latency_during_tablet_report_ms << " ms";
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_inject_latency_during_tablet_report_ms));
+      }
+
+      // Return from here at configured safe heartbeat deadline to give the response packet time.
+      if (safe_deadline < CoarseMonoClock::Now()) {
+        LOG(INFO) << "Reached Heartbeat deadline. Returning early after processing "
+                  << full_report_update->tablets_size() << " tablets";
+        full_report_update->set_processing_truncated(true);
+        return Status::OK();
+      }
+    }
   } // Loop to process the next batch until fully iterated.
 
   if (!full_report.is_incremental()) {
+    // A full report may take multiple heartbeats.
+    // The TS communicates how much is left to process for the full report beyond this specific HB.
+    bool completed_full_report = !full_report.has_remaining_tablet_count()
+                               || full_report.remaining_tablet_count() == 0;
     if (full_report.updated_tablets_size() == 0) {
       LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
     } else if (!ts_desc->has_tablet_report()) {
-      LOG(INFO) << ts_desc->permanent_uuid() << " now has it's first full report: "
+      LOG(INFO) << ts_desc->permanent_uuid()
+                << (completed_full_report ? " finished" : " receiving") << " first full report: "
                 << full_report.updated_tablets_size() << " tablets.";
     }
-    // Do not unset full tablet report missing for ts desc for an incremental case.
-    ts_desc->set_has_tablet_report(true);
+    // We have a tablet report only once we're done processing all the chunks of the initial report.
+    ts_desc->set_has_tablet_report(completed_full_report);
   }
 
   // 14. Queue background processing if we had updates.
@@ -6582,10 +6720,9 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     const scoped_refptr<TabletInfo>& tablet,
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
-    const RaftGroupStatePB& replica_state) {
-  TabletInfo::ReplicaMap replica_locations;
-  TabletInfo::ReplicaMap prev_rl;
-  tablet->GetReplicaLocations(&prev_rl);
+    const ReportedTabletPB& report) {
+  auto replica_locations = std::make_shared<TabletInfo::ReplicaMap>();
+  auto prev_rl = tablet->GetReplicaLocations();
 
   for (const consensus::RaftPeerPB& peer : consensus_state.config().peers()) {
     shared_ptr<TSDescriptor> ts_desc;
@@ -6623,43 +6760,43 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
 
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
     bool use_existing = false;
-    TabletReplica* existing_replica;
+    const TabletReplica* existing_replica;
     if (peer.permanent_uuid() != sender_uuid) {
-      auto it = prev_rl.find(ts_desc->permanent_uuid());
-      if (it != prev_rl.end()) {
+      auto it = prev_rl->find(ts_desc->permanent_uuid());
+      if (it != prev_rl->end()) {
         existing_replica = &it->second;
         // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
         use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
       }
     }
     if (use_existing) {
-      InsertOrDie(&replica_locations, existing_replica->ts_desc->permanent_uuid(),
+      InsertOrDie(replica_locations.get(), existing_replica->ts_desc->permanent_uuid(),
           *existing_replica);
     } else {
       TabletReplica replica;
-      CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, replica_state, &replica);
-      InsertOrDie(&replica_locations, replica.ts_desc->permanent_uuid(), replica);
+      CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, report, &replica);
+      InsertOrDie(replica_locations.get(), replica.ts_desc->permanent_uuid(), replica);
     }
   }
 
   // Update the local tablet replica set. This deviates from persistent state during bootstrapping.
-  tablet->SetReplicaLocations(std::move(replica_locations));
+  tablet->SetReplicaLocations(replica_locations);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void CatalogManager::UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                                       const ConsensusStatePB* consensus_state,
-                                                      const RaftGroupStatePB& replica_state,
+                                                      const ReportedTabletPB& report,
                                                       const scoped_refptr<TabletInfo>& tablet) {
   TabletReplica replica;
-  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, replica_state, &replica);
+  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, report, &replica);
   tablet->UpdateReplicaLocations(replica);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                                     const ConsensusStatePB* consensus_state,
-                                                    const RaftGroupStatePB& replica_state,
+                                                    const ReportedTabletPB& report,
                                                     TabletReplica* new_replica) {
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (consensus_state == nullptr) {
@@ -6667,11 +6804,14 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
   } else {
     CHECK(consensus_state != nullptr) << "No cstate: " << ts_desc->permanent_uuid()
-                                      << " - " << replica_state;
+                                      << " - " << report.state();
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
-  new_replica->state = replica_state;
+  if (report.has_processing_parent_data()) {
+      new_replica->processing_parent_data = report.processing_parent_data();
+  }
+  new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
     new_replica->time_updated = MonoTime::Now() - ts_desc->TimeSinceHeartbeat();
@@ -6744,6 +6884,10 @@ Status CatalogManager::EnableBgTasks() {
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
+  // Add bg thread to rebuild the system partitions thread.
+  refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
+  RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+      std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
   return Status::OK();
 }
 
@@ -6890,7 +7034,7 @@ void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo
 }
 
 void CatalogManager::SendSplitTabletRequest(
-    const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+    const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key) {
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
@@ -6902,14 +7046,11 @@ void CatalogManager::SendSplitTabletRequest(
       Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
 }
 
-void CatalogManager::DeleteTabletReplicas(
-    const TabletInfo* tablet,
-    const std::string& msg) {
-  TabletInfo::ReplicaMap locations;
-  tablet->GetReplicaLocations(&locations);
-  LOG(INFO) << "Sending DeleteTablet for " << locations.size()
+void CatalogManager::DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg) {
+  auto locations = tablet->GetReplicaLocations();
+  LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
-  for (const TabletInfo::ReplicaMap::value_type& r : locations) {
+  for (const TabletInfo::ReplicaMap::value_type& r : *locations) {
     SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED,
                             boost::none, tablet->table(), r.second.ts_desc, msg);
   }
@@ -7382,7 +7523,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
-  for (const TabletInfo* tablet : deferred.tablets_to_update) {
+  for (auto* tablet : deferred.tablets_to_update) {
     if (tablet->metadata().dirty().is_deleted()) {
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg());
     }
@@ -7541,8 +7682,7 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
 // pick proposed leader and start election.
 void CatalogManager::StartElectionIfReady(
     const consensus::ConsensusStatePB& cstate, TabletInfo* tablet) {
-  TabletInfo::ReplicaMap replicas;
-  tablet->GetReplicaLocations(&replicas);
+  auto replicas = tablet->GetReplicaLocations();
   int num_voters = 0;
   for (const auto& peer : cstate.config().peers()) {
     if (peer.member_type() == RaftPeerPB::VOTER) {
@@ -7551,14 +7691,14 @@ void CatalogManager::StartElectionIfReady(
   }
   int majority_size = num_voters / 2 + 1;
   int running_voters = 0;
-  for (const auto& replica : replicas) {
+  for (const auto& replica : *replicas) {
     if (replica.second.member_type == RaftPeerPB::VOTER) {
       ++running_voters;
     }
   }
 
   VLOG_WITH_PREFIX(4)
-      << __func__ << ": T " << tablet->tablet_id() << ": " << AsString(replicas) << ", voters: "
+      << __func__ << ": T " << tablet->tablet_id() << ": " << AsString(*replicas) << ", voters: "
       << running_voters << "/" << majority_size;
 
   if (running_voters < majority_size) {
@@ -7580,7 +7720,7 @@ void CatalogManager::StartElectionIfReady(
   }
 
   std::vector<std::string> possible_leaders;
-  for (const auto& replica : replicas) {
+  for (const auto& replica : *replicas) {
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
         if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
@@ -7600,7 +7740,7 @@ void CatalogManager::StartElectionIfReady(
         }
       }
     }
-    if (min_lexicographic.empty() || !replicas.count(min_lexicographic)) {
+    if (min_lexicographic.empty() || !replicas->count(min_lexicographic)) {
       LOG_WITH_PREFIX(INFO)
           << __func__ << ": Min lexicographic is not yet ready: " << min_lexicographic;
       return;
@@ -7778,20 +7918,26 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   TSRegistrationPB reg;
 
-  TabletInfo::ReplicaMap locs;
+  std::shared_ptr<const TabletInfo::ReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
     if (PREDICT_FALSE(l_tablet->data().is_deleted())) {
-      return STATUS(NotFound, "Tablet deleted", l_tablet->data().pb.state_msg());
+      std::vector<TabletId> split_tablet_ids;
+      for (const auto& split_tablet_id : l_tablet->data().pb.split_tablet_ids()) {
+        split_tablet_ids.push_back(split_tablet_id);
+      }
+      return STATUS(
+          NotFound, "Tablet deleted", l_tablet->data().pb.state_msg(),
+          SplitChildTabletIdsData(split_tablet_ids));
     }
 
     if (PREDICT_FALSE(!l_tablet->data().is_running())) {
-      return STATUS(ServiceUnavailable, "Tablet not running");
+      return STATUS_FORMAT(ServiceUnavailable, "Tablet $0 not running", tablet->id());
     }
 
-    tablet->GetReplicaLocations(&locs);
-    if (locs.empty() && l_tablet->data().pb.has_committed_consensus_state()) {
+    locs = tablet->GetReplicaLocations();
+    if (locs->empty() && l_tablet->data().pb.has_committed_consensus_state()) {
       cstate = l_tablet->data().pb.committed_consensus_state();
     }
 
@@ -7799,30 +7945,32 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
     locs_pb->mutable_partition()->CopyFrom(metadata.partition());
     locs_pb->set_split_depth(metadata.split_depth());
     locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
+    for (const auto& split_tablet_id : metadata.split_tablet_ids()) {
+      *locs_pb->add_split_tablet_ids() = split_tablet_id;
+    }
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());
-  locs_pb->set_stale(locs.empty());
+  locs_pb->set_stale(locs->empty());
 
   // If the locations are cached.
-  if (!locs.empty()) {
-    if (cstate.IsInitialized() && locs.size() != cstate.config().peers_size()) {
-      LOG(WARNING) << "Cached tablet replicas " << locs.size() << " does not match consensus "
+  if (!locs->empty()) {
+    if (cstate.IsInitialized() && locs->size() != cstate.config().peers_size()) {
+      LOG(WARNING) << "Cached tablet replicas " << locs->size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
 
-    for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
-      TSInformationPB tsinfo_pb = *replica.second.ts_desc->GetTSInformationPB();
+      auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
-      out_ts_info->set_permanent_uuid(tsinfo_pb.tserver_instance().permanent_uuid());
-      TakeRegistration(tsinfo_pb.mutable_registration()->mutable_common(), out_ts_info);
-      out_ts_info->set_placement_uuid(tsinfo_pb.registration().common().placement_uuid());
-      *out_ts_info->mutable_capabilities() = std::move(
-          *tsinfo_pb.mutable_registration()->mutable_capabilities());
+      out_ts_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
+      CopyRegistration(tsinfo_pb->registration().common(), out_ts_info);
+      out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
+      *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
     return Status::OK();
   }
@@ -7848,8 +7996,6 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) {
   RETURN_NOT_OK(CheckOnline());
-
-  locs_pb->mutable_replicas()->Clear();
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock<LockType> l(lock_);
@@ -7857,19 +8003,26 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
-
-  Status s = BuildLocationsForTablet(tablet_info, locs_pb);
+  Status s = GetTabletLocations(tablet_info, locs_pb);
 
   int num_replicas = 0;
   if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
       locs_pb->replicas().size() != num_replicas) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Expected replicas " << num_replicas << " but found "
-        << locs_pb->replicas().size() << " for tablet " << tablet_id << ": "
+        << locs_pb->replicas().size() << " for tablet " << tablet_info->id() << ": "
         << locs_pb->ShortDebugString() << THROTTLE_MSG;
   }
-
   return s;
+}
+
+Status CatalogManager::GetTabletLocations(
+    scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) {
+  RETURN_NOT_OK(CheckOnline());
+
+  DCHECK_EQ(locs_pb->replicas().size(), 0);
+  locs_pb->mutable_replicas()->Clear();
+  return BuildLocationsForTablet(tablet_info, locs_pb);
 }
 
 Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
@@ -8156,12 +8309,17 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
     blacklistState.Reset();
   }
 
-  LOG(INFO) << "Set blacklist size = " << blacklist.hosts_size() << " with load "
-            << blacklist.initial_replica_load();
-
   for (const auto& pb : blacklist.hosts()) {
     blacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial load.
+  if (blacklist.has_initial_replica_load()) {
+    blacklistState.initial_load_ = blacklist.initial_replica_load();
+  }
+
+  LOG(INFO) << "Set blacklist size = " << blacklistState.tservers_.size() << " with load "
+            << blacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8174,12 +8332,17 @@ Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
     leaderBlacklistState.Reset();
   }
 
-  LOG(INFO) << "Set leader blacklist size = " << leader_blacklist.hosts_size() << " with load "
-            << leader_blacklist.initial_leader_load();
-
   for (const auto& pb : leader_blacklist.hosts()) {
     leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial leader load.
+  if (leader_blacklist.has_initial_leader_load()) {
+    leaderBlacklistState.initial_load_ = leader_blacklist.initial_leader_load();
+  }
+
+  LOG(INFO) << "Set leader blacklist size = " << leaderBlacklistState.tservers_.size()
+            << " with load " << leaderBlacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8409,9 +8572,8 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistState& state, bool
       continue;
     }
 
-    TabletInfo::ReplicaMap locs;
-    tablet->GetReplicaLocations(&locs);
-    for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+    auto locs = tablet->GetReplicaLocations();
+    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
       if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
         continue;
       }
@@ -8470,7 +8632,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   }
 
   LOG(INFO) << "Blacklisted count " << blacklist_replicas
-            << "across " << state.tservers_.size()
+            << " across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
 
   // Case when a blacklisted servers did not have any starting load.
@@ -8522,11 +8684,28 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
 }
 
 Result<vector<TableDescription>> CatalogManager::CollectTables(
-    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes) {
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+    bool add_indexes,
+    bool include_parent_colocated_table) {
   vector<TableDescription> all_tables;
+  unordered_set<NamespaceId> parent_colocated_table_ids;
 
   for (const auto& table_id_pb : tables) {
     TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
+    if (include_parent_colocated_table && table_description.table_info->colocated()) {
+      // If a table is colocated, add its parent colocated table as well.
+      const auto parent_table_id =
+          table_description.namespace_info->id() + kColocatedParentTableIdSuffix;
+      auto result = parent_colocated_table_ids.insert(parent_table_id);
+      if (result.second) {
+        // We have not processed this parent table id yet, so do that now.
+        TableIdentifierPB parent_table_pb;
+        parent_table_pb.set_table_id(parent_table_id);
+        parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+        TableDescription parent_table_description = VERIFY_RESULT(DescribeTable(parent_table_pb));
+        all_tables.push_back(parent_table_description);
+      }
+    }
     all_tables.push_back(table_description);
 
     if (add_indexes) {
@@ -8557,6 +8736,47 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
   }
 
   return all_tables;
+}
+
+Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) {
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
+      std::make_pair(kSystemNamespaceId, kSystemPartitionsTableName));
+  SCHECK(table != nullptr, NotFound, "YQL system.partitions table not found");
+
+  vector<scoped_refptr<TabletInfo>> tablets;
+  table->GetAllTablets(&tablets);
+  SCHECK(tablets.size() == 1, NotFound, "YQL system.partitions tablet not found");
+  *tablet = std::dynamic_pointer_cast<SystemTablet>(
+      VERIFY_RESULT(GetSystemTablet(tablets[0]->tablet_id())));
+  return Status::OK();
+}
+
+void CatalogManager::RebuildYQLSystemPartitions() {
+  if (FLAGS_partitions_vtable_cache_refresh_secs > 0) {
+    ScopedLeaderSharedLock l(this);
+    if (l.catalog_status().ok() && l.leader_status().ok()) {
+      if (system_partitions_tablet_ != nullptr) {
+        auto s = down_cast<const YQLPartitionsVTable&>(
+            system_partitions_tablet_->QLStorage()).GenerateAndCacheData();
+        if (!s.ok()) {
+          LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
+        }
+      } else {
+        LOG(ERROR) << "Error finding system.partitions vtable.";
+      }
+    }
+  }
+
+  auto wait_time = FLAGS_partitions_vtable_cache_refresh_secs * 1s;
+  if (wait_time <= 0s) {
+    wait_time = kDefaultYQLPartitionsRefreshBgTaskSleep;
+  }
+  refresh_yql_partitions_task_.Schedule([this](const Status& status) {
+    WARN_NOT_OK(
+        background_tasks_thread_pool_->SubmitFunc(
+            std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)),
+        "Failed to schedule: RebuildYQLSystemPartitions");
+  }, wait_time);
 }
 
 }  // namespace master

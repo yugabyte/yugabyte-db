@@ -337,7 +337,10 @@ export default class OnPremConfiguration extends Component {
         return (
           <>
             {this.state.failedBootstrapMessage && (
-              <Alert bsStyle="danger" onDismiss={() => this.setState({ failedBootstrapMessage: null })}>
+              <Alert
+                bsStyle="danger"
+                onDismiss={() => this.setState({ failedBootstrapMessage: null })}
+              >
                 {this.state.failedBootstrapMessage}
               </Alert>
             )}

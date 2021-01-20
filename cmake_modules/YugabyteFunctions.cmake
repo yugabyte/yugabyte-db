@@ -160,21 +160,6 @@ endfunction()
 
 # Makes sure that we are using a supported compiler family.
 function(VALIDATE_COMPILER_TYPE)
-  set(USING_SANITIZERS FALSE PARENT_SCOPE)
-  if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
-    if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
-        NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
-      message(FATAL_ERROR
-              "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang' for "
-              "ASAN/TSAN/UBSAN builds. "
-              "YB_USE_ASAN=${YB_USE_ASAN}, "
-              "YB_USE_TSAN=${YB_USE_TSAN}, "
-              "YB_USE_UBSAN=${YB_USE_UBSAN}")
-    endif()
-    set(ENV{YB_COMPILER_TYPE} "clang")
-    set(USING_SANITIZERS TRUE PARENT_SCOPE)
-  endif()
-
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
   endif()
@@ -230,6 +215,12 @@ endfunction()
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
   if (RPATH_ENTRY STREQUAL "")
     message(FATAL_ERROR "Trying to add an empty rpath entry.")
+  endif()
+  if(NOT EXISTS "${RPATH_ENTRY}")
+    message(
+      WARNING
+      "Adding a non-existent rpath directory '${RPATH_ENTRY}'. This might be OK in case the "
+      "directory is created during the build.")
   endif()
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
   set(FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
@@ -344,7 +335,13 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
   set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_BUILD_TYPE}/libcxx")
+  if(NOT EXISTS "${LIBCXX_DIR}")
+    message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
+  endif()
   set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+  if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
+    message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
+  endif()
   ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
 
   # This needs to appear before adding third-party dependencies that have their headers in the
@@ -354,17 +351,80 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
 
   ADD_CXX_FLAGS("-nostdinc++")
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
+  if(NOT EXISTS "${LIBCXX_DIR}/lib")
+    message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+  endif()
 endmacro()
 
-macro(YB_SETUP_SANITIZER SANITIZER)
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang")))
-    message(FATAL_ERROR "Cannot use ${SANITIZER} without clang")
+# This is a macro because we need to call functions that set flags on the parent scope.
+macro(YB_SETUP_SANITIZER)
+  if(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+    message(
+      FATAL_ERROR
+      "YB_SETUP_SANITIZER can only be invoked for asan/tsan build types. "
+      "Build type: ${YB_BUILD_TYPE}.")
   endif()
 
-  string(TOLOWER "${SANITIZER}" LOWER_SANITIZER)
+  if("${COMPILER_FAMILY}" STREQUAL "clang")
+    message("Using instrumented libc++ (build type: ${YB_BUILD_TYPE})")
+    YB_SETUP_CLANG("${YB_BUILD_TYPE}")
+  else()
+    message("Not using ${SANITIZER}-instrumented standard C++ library for compiler family "
+            "${COMPILER_FAMILY} yet.")
+  endif()
 
-  message("Using ${SANITIZER}-instrumented libc++")
-  YB_SETUP_CLANG("${LOWER_SANITIZER}")
+  if("${YB_BUILD_TYPE}" STREQUAL "asan")
+    if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
+       NOT APPLE)
+      # TODO: see if we can use static libasan instead (requires third-party changes).
+      ADD_CXX_FLAGS("-shared-libasan")
+      ADD_LINKER_FLAGS("-lunwind")
+
+      # TODO: this is mostly needed because we depend on the ASAN runtime shared library and that
+      # depends on libc++ but does not have the rpath set correctly, so we have to add our own
+      # dependency on libc++ so it gets resolved using our rpath.
+      ADD_LINKER_FLAGS("-lc++")
+
+      execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
+        OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
+      if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:]+)(:.*|$)" )
+        set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR "Clang runtime directory does not exist: ${CLANG_RUNTIME_LIB_DIR}")
+        endif()
+        ADD_GLOBAL_RPATH_ENTRY("${CLANG_RUNTIME_LIB_DIR}")
+      else()
+        message(FATAL_ERROR
+                "Could not parse the output of 'clang -print-search-dirs': "
+                "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
+      endif()
+    endif()
+
+    ADD_CXX_FLAGS("-fsanitize=address")
+    ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
+
+    # Compile and link against the thirdparty ASAN instrumented libstdcxx.
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    if("${COMPILER_FAMILY}" STREQUAL "gcc")
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lubsan -ldl")
+      ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
+    endif()
+  elseif("${YB_BUILD_TYPE}" STREQUAL "tsan")
+    ADD_CXX_FLAGS("-fsanitize=thread")
+
+    # Enables dynamic_annotations.h to actually generate code
+    ADD_CXX_FLAGS("-DDYNAMIC_ANNOTATIONS_ENABLED")
+
+    # changes atomicops to use the tsan implementations
+    ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
+
+    # Compile and link against the thirdparty TSAN instrumented libstdcxx.
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+  else()
+    message(FATAL_ERROR "Invalid build type for YB_SETUP_SANITIZER: '${YB_BUILD_TYPE}'")
+  endif()
 endmacro()
 
 function(SHOW_FOUND_BOOST_DETAILS BOOST_LIBRARY_TYPE)
@@ -438,8 +498,47 @@ function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
           "${SHARED_LIB_PATH} (invoked from ${CMAKE_CURRENT_LIST_FILE})")
 endfunction()
 
-function(allow_using_postgres_libraries)
-  include_directories(${YB_BUILD_ROOT}/postgres/include)
-  add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
-  add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
+function(parse_build_root_basename)
+  get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
+  string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
+  list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
+  if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
+     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 4)
+    message(
+        FATAL_ERROR
+        "Wrong number of components of the build root basename: "
+        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3 or 4 components. "
+        "Basename: ${YB_BUILD_ROOT_BASENAME}")
+  endif()
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
+  set(YB_BUILD_TYPE "${YB_BUILD_TYPE}" PARENT_SCOPE)
+  if(NOT "${YB_COMPILER_TYPE}" STREQUAL "" AND
+     NOT "${YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+    message(
+        FATAL_ERROR
+        "The YB_COMPILER_TYPE CMake variable is already set to '${YB_COMPILER_TYPE}', but the "
+        "value auto-detected from the build root basename '${YB_BUILD_ROOT_BASENAME}' is "
+        "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
+  endif()
+
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 1 YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME)
+  if(NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
+     NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+    message(
+        FATAL_ERROR
+        "The YB_COMPILER_TYPE environment variable is already set to '${YB_COMPILER_TYPE}', but "
+        "the value auto-detected from the build root basename '${YB_BUILD_ROOT_BASENAME}' is "
+        "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
+  endif()
+  set(YB_COMPILER_TYPE "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}" PARENT_SCOPE)
+  set(ENV{YB_COMPILER_TYPE} "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
+
+  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 2 YB_LINKING_TYPE)
+  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(static|dynamic)$")
+    message(
+        FATAL_ERROR
+        "Invalid linking type from the build root basename '${YB_BUILD_ROOT_BASENAME}': "
+        "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
+  endif()
+  set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
 endfunction()

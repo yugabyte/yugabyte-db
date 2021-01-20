@@ -291,7 +291,6 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, backupState: getInitialState([]) };
     case UPDATE_BACKUP_STATE_RESPONSE:
       return setPromiseResponse(state, 'backupState', action);
-
     default:
       return state;
   }

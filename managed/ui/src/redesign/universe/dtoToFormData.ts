@@ -14,6 +14,7 @@ import {
   Universe
 } from '../helpers/dtos';
 import { PlacementUI } from './wizard/fields/PlacementsField/PlacementsField';
+import { defaultPorts } from './wizard/fields/CommunicationPortsField/CommunicationPortsEditor';
 
 const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
   universeName: '',
@@ -38,19 +39,7 @@ const DEFAULT_DB_CONFIG: DBConfigFormValue = {
   preferredLeaders: [],
   masterGFlags: {},
   tserverGFlags: {},
-  communicationPorts: {
-    masterHttpPort: 7000,
-    masterRpcPort: 7100,
-    tserverHttpPort: 9000,
-    tserverRpcPort: 9100,
-    redisServerHttpPort: 11000,
-    redisServerRpcPort: 6379,
-    yqlServerHttpPort: 12000,
-    yqlServerRpcPort: 9042,
-    ysqlServerHttpPort: 13000,
-    ysqlServerRpcPort: 5433,
-    nodeExporterPort: 9300
-  }
+  communicationPorts: defaultPorts
 };
 
 const DEFAULT_SECURITY_CONFIG: SecurityConfigFormValue = {

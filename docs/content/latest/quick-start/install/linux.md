@@ -65,6 +65,14 @@ showAsideToc: true
     ```
     Python 3.7.3
     ```
+{{< note title="Note" >}}
+
+By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
+One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
+
+Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`. 
+
+{{< /note >}}
 
 3. `wget` or `curl` is available.
 
@@ -82,25 +90,18 @@ showAsideToc: true
 
 4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
 
-{{< note title="Note" >}}
-
-By default CentOS 8 doesn’t have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
-One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
-
-{{< /note >}}
-
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.3.3.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.5.1.0-linux.tar.gz
     ```
 
 2. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.3.3.0-linux.tar.gz && cd yugabyte-2.3.3.0/
+    $ tar xvfz yugabyte-2.5.1.0-linux.tar.gz && cd yugabyte-2.5.1.0/
     ```
 
 ## Configure YugabyteDB

@@ -46,15 +46,10 @@ Before you install Yugabyte Platform on a Kubernetes cluster, make sure you:
 
 ### Create a yugabyte-helm service account
 
-1. Run the `wget` command to get a copy of the `yugabyte-rbac.yaml` YAML file.
+1. Run the following `kubectl` command to apply the YAML file.
 
 ```sh
-wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
-
-2. Run the following `kubectl` command to apply the YAML file.
-
-```sh
-$ kubectl apply -f yugabyte-rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
 The following output should appear:
@@ -82,9 +77,9 @@ To create a `kubeconfig` file for a yugabyte-helm service account:
 
 The following output should appear:
 
-    ```
-    Generated the kubeconfig file: /tmp/yugabyte-helm.conf
-    ```
+```
+Generated the kubeconfig file: /tmp/yugabyte-helm.conf
+```
 
 3. Upload the generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform provider configuration.
 
@@ -96,7 +91,7 @@ The following output should appear:
     kubectl create namespace yb-platform
     ```
 
-2. Apply the Yugabyte Platform secret (obtained from [Yugabyte Support](mailto:support@yugabyte.com) by running the following `kubectl create` command:
+2. Apply the Yugabyte Platform secret (obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
 
     ```sh
     $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform

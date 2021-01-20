@@ -113,7 +113,7 @@ export const DeviceInfoField: FC = () => {
         <>
           {deviceInfoFormValue && (
             <Row className="device-info-field__row">
-              <Col sm={2} className="device-info-field__label-col">
+              <Col sm={2}>
                 <I18n className="device-info-field__label">Volume Info</I18n>
               </Col>
               <Col sm={10}>
@@ -153,7 +153,7 @@ export const DeviceInfoField: FC = () => {
 
                   {deviceInfoFormValue.storageType && (
                     <div className="device-info-field__inputs-block device-info-field__inputs-block--storage-type">
-                      <I18n className="device-info-field__label">
+                      <I18n className="device-info-field__label device-info-field__label--margin-right">
                         {formData.cloudConfig.provider?.code === CloudType.aws
                           ? 'EBS Type'
                           : 'Storage Type (SSD)'}
@@ -184,7 +184,7 @@ export const DeviceInfoField: FC = () => {
 
                       {deviceInfoFormValue.storageType === StorageType.IO1 && (
                         <>
-                          <I18n className="device-info-field__label">Provisioned IOPS</I18n>
+                          <I18n className="device-info-field__label device-info-field__label--margin-right">Provisioned IOPS</I18n>
                           <Input
                             type="number"
                             min={1}

@@ -2457,7 +2457,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/*
 	 * Initialize result type, slot and projection.
 	 */
-	ExecInitResultTupleSlotTL(estate, &aggstate->ss.ps);
+	ExecInitResultTupleSlotTL(&aggstate->ss.ps);
 	ExecAssignProjectionInfo(&aggstate->ss.ps, NULL);
 
 	/*
@@ -2681,7 +2681,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		aggstate->hash_pergroup = pergroups;
 
 		find_hash_columns(aggstate);
-		build_hash_table(aggstate);
+
+		/* Skip massive memory allocation if we are just doing EXPLAIN */
+		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+			build_hash_table(aggstate);
+
 		aggstate->table_filled = false;
 	}
 

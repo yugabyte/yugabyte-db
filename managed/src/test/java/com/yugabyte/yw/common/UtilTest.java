@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
 
 import java.util.HashSet;
@@ -242,6 +243,19 @@ public class UtilTest extends FakeDBApplication {
       taskParams.nodeDetailsSet.add(currentNode);
 
       assertFalse(Util.areMastersUnderReplicated(currentNode, universe));
+    }
+
+    @Test
+    // @formatter:off
+    @Parameters({ "filename, filename", // no path
+                  ",",                  // empty name
+                  "null, null",         // null values
+                  "/test, test",
+                  "/part1/part2/filename, filename",
+                  "/part1/part2/," })
+    // @formatter:on
+    public void testGetFileName(@Nullable String fullName, @Nullable String fileName) {
+      assertEquals(fileName, Util.getFileName(fullName));
     }
 
     // TODO: Add tests for other functions

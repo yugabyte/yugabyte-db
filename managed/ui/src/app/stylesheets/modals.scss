@@ -45,11 +45,20 @@
   margin-right: 15px;
   font-size: 14px;
   background: #ffffff;
+  flex-basis: 40%;
 
-  img {
-    margin-left: 6px;
+  img, i {
+    margin: 0 6px 0 0;
+  }
+  i {
+    font-size: 16px;
   }
 }
+
+.social-media-btn.icon-end img {
+  margin: 0 0 0 6px;
+}
+
 .social-media-btn:hover {
   background-color: #e5e5e9;
   color: #000;
@@ -69,7 +78,7 @@
     display: inline-block;
     margin-right: 10px;
   }
-}
+  }
 
 .intro-message-container {
   display: flex;
@@ -88,8 +97,13 @@
     margin-bottom: 0;
 
     input[type='checkbox'] {
-      vertical-align: middle;
-      margin: 0;
+      vertical-align: text-bottom;
+      margin: 0 8px 0 0;
+      border-color: rgb(217, 217, 217);
+
+      &:hover {
+        border-color: $YB_ORANGE;
+      }
     }
   }
 }

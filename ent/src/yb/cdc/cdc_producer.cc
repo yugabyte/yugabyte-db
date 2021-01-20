@@ -43,6 +43,8 @@ using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
 
+YB_STRONGLY_TYPED_BOOL(ReplicateIntents);
+
 namespace {
 
 // Use boost::unordered_map instead of std::unordered_map because gcc release build
@@ -77,9 +79,13 @@ void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
 // This will look at transaction status to determine commit time to be used for CDC record.
 // Returns true if we need to stop processing WAL records beyond this, false otherwise.
 Result<bool> SetCommittedRecordIndexForReplicateMsg(
-    const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map, bool replicate_intents,
-    std::vector<RecordTimeIndex>* records) {
-
+    const ReplicateMsgPtr& msg, size_t index, const TxnStatusMap& txn_map,
+    ReplicateIntents replicate_intents, std::vector<RecordTimeIndex>* records) {
+  if (replicate_intents) {
+    // If we're replicating intents, we have no stop condition, so add the record and continue.
+    records->emplace_back(msg->hybrid_time(), index);
+    return false;
+  }
   switch (msg->op_type()) {
     case consensus::OperationType::UPDATE_TRANSACTION_OP: {
       if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
@@ -91,7 +97,7 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
     }
 
     case consensus::OperationType::WRITE_OP: {
-      if (msg->write_request().write_batch().has_transaction() && !replicate_intents) {
+      if (msg->write_request().write_batch().has_transaction()) {
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
             msg->write_request().write_batch().transaction().transaction_id()));
         const auto txn_status = txn_map.find(txn_id);
@@ -140,7 +146,7 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
 }
 
 Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
-    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, bool replicate_intents,
+    const ReplicateMsgs& msgs, const TxnStatusMap& txn_map, ReplicateIntents replicate_intents,
     OpId* checkpoint) {
   size_t index = 0;
   std::vector<RecordTimeIndex> records;
@@ -177,7 +183,7 @@ Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
 // This method will also set checkpoint to the op id of last processed record.
 Result<ReplicateMsgs> FilterAndSortWrites(const ReplicateMsgs& msgs,
                                           const TxnStatusMap& txn_map,
-                                          bool replicate_intents,
+                                          ReplicateIntents replicate_intents,
                                           OpId* checkpoint) {
   std::vector<RecordTimeIndex> records = VERIFY_RESULT(GetCommittedRecordIndexes(
       msgs, txn_map, replicate_intents, checkpoint));
@@ -271,14 +277,13 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
   return txn_map;
 }
 
-CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
-                                   const TxnStatusMap& txn_map,
-                                   CDCRecordPB* record) {
+CHECKED_STATUS SetRecordTime(const TransactionId& txn_id,
+                             const TxnStatusMap& txn_map,
+                             CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
   if (txn_status == txn_map.end()) {
     return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
   }
-  record->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
   record->set_time(txn_status->second.status_time.ToUint64());
   return Status::OK();
 }
@@ -288,7 +293,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
                                    const TxnStatusMap& txn_map,
                                    const StreamMetadata& metadata,
                                    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                   bool replicate_intents,
+                                   ReplicateIntents replicate_intents,
                                    GetChangesResponsePB* resp) {
   const auto& batch = msg->write_request().write_batch();
   const auto& schema = *tablet_peer->tablet()->schema();
@@ -329,17 +334,24 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        record->set_operation(CDCRecordPB_OperationType_DELETE);
+        record->set_operation(CDCRecordPB::DELETE);
       } else {
-        record->set_operation(CDCRecordPB_OperationType_WRITE);
+        record->set_operation(CDCRecordPB::WRITE);
       }
 
-      if (!replicate_intents && batch.has_transaction()) {
+      // Process intent records.
+      record->set_time(msg->hybrid_time());
+      if (batch.has_transaction()) {
+        if (!replicate_intents) {
           auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
               batch.transaction().transaction_id()));
-          RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
-      }  else {
-        record->set_time(msg->hybrid_time());
+          // If we're not replicating intents, set record time using the transaction map.
+          RETURN_NOT_OK(SetRecordTime(txn_id, txn_map, record));
+        } else {
+          record->mutable_transaction_state()->set_transaction_id(
+              batch.transaction().transaction_id());
+          record->mutable_transaction_state()->add_tablets(tablet_peer->tablet_id());
+        }
       }
     }
     prev_key = primary_key;
@@ -361,30 +373,26 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       }
     }
   }
-  if (replicate_intents) {
-    if (msg->has_transaction_state()) {
-      record = resp->add_records();
-      record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
-      if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
-        // Add the partition metadata so the consumer knows which tablets to apply the transaction
-        // to.
-        tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
-      }
-    }
-    if (batch.has_transaction()) {
-      record->mutable_transaction()->CopyFrom(batch.transaction());
-    }
-  }
   return Status::OK();
 }
 
 // Populate CDC record corresponding to WAL UPDATE_TRANSACTION_OP entry.
 CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
+                                         const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                         ReplicateIntents replicate_intents,
                                          CDCRecordPB* record) {
+  SCHECK(msg->has_transaction_state(), InvalidArgument,
+         Format("Update transaction message requires transaction_state: $0",
+                msg->ShortDebugString()));
   record->set_operation(CDCRecordPB_OperationType_WRITE);
-  record->set_time(msg->transaction_state().commit_hybrid_time());
+  record->set_time(replicate_intents ?
+      msg->hybrid_time() : msg->transaction_state().commit_hybrid_time());
   record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
-  // TODO: Deserialize record.
+  if (replicate_intents && msg->transaction_state().status() == TransactionStatus::APPLYING) {
+    // Add the partition metadata so the consumer knows which tablets to apply the transaction
+    // to.
+    tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+  }
   return Status::OK();
 }
 
@@ -399,7 +407,7 @@ Status GetChanges(const std::string& stream_id,
                   consensus::ReplicateMsgsHolder* msgs_holder,
                   GetChangesResponsePB* resp,
                   int64_t* last_readable_opid_index) {
-  bool replicate_intents = GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents);
+  auto replicate_intents = ReplicateIntents(GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents));
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
@@ -411,7 +419,6 @@ Status GetChanges(const std::string& stream_id,
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
   }
 
-  ReplicateMsgs messages = read_ops.messages;
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
@@ -422,17 +429,25 @@ Status GetChanges(const std::string& stream_id,
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
   }
-  messages = VERIFY_RESULT(FilterAndSortWrites(read_ops.messages, txn_map, replicate_intents,
-                                               &checkpoint));
+  ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
+      read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
   for (const auto& msg : messages) {
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
         if (!replicate_intents) {
-          RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
-          break;
+          RETURN_NOT_OK(PopulateTransactionRecord(
+              msg, tablet_peer, replicate_intents, resp->add_records()));
+        } else if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+          auto record = resp->add_records();
+          record->set_operation(CDCRecordPB::APPLY);
+          record->set_time(msg->hybrid_time());
+          auto* txn_state = record->mutable_transaction_state();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
+          txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
+          tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
         }
-        FALLTHROUGH_INTENDED;
+        break;
       case consensus::OperationType::WRITE_OP:
         RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata, tablet_peer,
                                           replicate_intents, resp));

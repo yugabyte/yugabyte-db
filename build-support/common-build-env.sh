@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-#@IgnoreInspection BashAddShebang
-
 # Copyright (c) YugaByte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -105,11 +103,6 @@ readonly MAX_EFFECTIVE_NUM_BUILD_WORKERS=10
 
 readonly MVN_OUTPUT_FILTER_REGEX
 
-# An even faster alternative to downloading a pre-built third-party dependency tarball from S3
-# or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
-# outside of main (non-thirdparty) YB codebase's build pipeline.
-readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY="$YB_JENKINS_NFS_HOME_DIR/thirdparty"
-
 readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
 
 readonly YB_SHARED_MVN_LOCAL_REPO="$YB_JENKINS_NFS_HOME_DIR/m2_repository"
@@ -153,6 +146,8 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc8
   gcc9
+  clang10
+  clang11
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -483,19 +478,6 @@ validate_cmake_build_type() {
   fi
 }
 
-ensure_using_clang() {
-  if [[ -n ${YB_COMPILER_TYPE:-} && $YB_COMPILER_TYPE != "clang" ]]; then
-    fatal "ASAN/TSAN builds require clang," \
-          "but YB_COMPILER_TYPE is already set to '$YB_COMPILER_TYPE'"
-  fi
-  YB_COMPILER_TYPE="clang"
-}
-
-enable_tsan() {
-  cmake_opts+=( "-DYB_USE_TSAN=1" )
-  ensure_using_clang
-}
-
 # This performs two configuration actions:
 # - Sets cmake_build_type based on build_type. cmake_build_type is what's being passed to CMake
 #   using the CMAKE_BUILD_TYPE variable. CMAKE_BUILD_TYPE can't be "asan" or "tsan".
@@ -517,9 +499,7 @@ set_cmake_build_type_and_compiler_type() {
 
   case "$build_type" in
     asan)
-      cmake_opts+=( "-DYB_USE_ASAN=1" "-DYB_USE_UBSAN=1" )
       cmake_build_type=fastdebug
-      ensure_using_clang
     ;;
     compilecmds)
       cmake_build_type=debug
@@ -533,11 +513,9 @@ set_cmake_build_type_and_compiler_type() {
       export YB_REMOTE_COMPILATION=0
     ;;
     tsan)
-      enable_tsan
       cmake_build_type=fastdebug
     ;;
     tsan_slow)
-      enable_tsan
       cmake_build_type=debug
     ;;
     *)
@@ -554,8 +532,16 @@ set_cmake_build_type_and_compiler_type() {
             "found YB_COMPILER_TYPE=$YB_COMPILER_TYPE."
     fi
   elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    # The default on Linux.
-    YB_COMPILER_TYPE=gcc
+    if [[ $build_type =~ ^(asan|tsan)$ ]]; then
+      # Use Clang by default for ASAN/TSAN builds.
+      YB_COMPILER_TYPE=clang
+    else
+      # The default on Linux.
+      YB_COMPILER_TYPE=gcc
+    fi
+  elif [[ $build_type =~ ^(asan|tsan)$ && $YB_COMPILER_TYPE == "gcc" ]]; then
+    fatal "Cannot use ASAN/TSAN with the 'gcc' compiler type. Has to be a specific version of " \
+          "GCC such as gcc8 or gcc9."
   fi
 
   validate_compiler_type
@@ -862,12 +848,19 @@ log_diagnostics_about_local_thirdparty() {
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
 # used in compiler-wrapper.sh.
 find_compiler_by_type() {
-  compiler_type=$1
-  validate_compiler_type "$1"
-  local compiler_type=$1
+  expect_num_args 0 "$@"
+  expect_vars_to_be_set YB_COMPILER_TYPE
+  if [[ -n ${YB_RESOLVED_CC_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
+    cc_executable=$YB_RESOLVED_CC_COMPILER
+    cxx_executable=$YB_RESOLVED_CXX_COMPILER
+    return
+  fi
+
+  validate_compiler_type "$YB_COMPILER_TYPE"
+
   unset cc_executable
   unset cxx_executable
-  case "$compiler_type" in
+  case "$YB_COMPILER_TYPE" in
     gcc)
       if [[ -n ${YB_GCC_PREFIX:-} ]]; then
         if [[ ! -d $YB_GCC_PREFIX/bin ]]; then
@@ -956,6 +949,19 @@ find_compiler_by_type() {
       cc_executable+=${YB_CLANG_SUFFIX:-}
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
+    clang10|clang11)
+      local clang_prefix_candidate
+      local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
+      local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
+      for clang_prefix_candidate in /usr/local/bin /usr/bin; do
+        if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
+              -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+          cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
+          cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          break
+        fi
+      done
+    ;;
     zapcc)
       if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
         cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
@@ -966,7 +972,7 @@ find_compiler_by_type() {
       fi
     ;;
     *)
-      fatal "Unknown compiler type '$compiler_type'"
+      fatal "Unknown compiler type '$YB_COMPILER_TYPE'"
   esac
 
   # -----------------------------------------------------------------------------------------------
@@ -997,11 +1003,14 @@ find_compiler_by_type() {
               "Compiler does not exist or is not executable at the path we set" \
               "$compiler_var_name to" \
               "(possibly applying 'which' expansion): $compiler_path" \
-              "(trying to use compiler type '$compiler_type')."
+              "(trying to use compiler type '$YB_COMPILER_TYPE')."
       fi
       eval $compiler_var_name=\"$compiler_path\"
     fi
   done
+
+  export YB_RESOLVED_CC_COMPILER=$cc_executable
+  export YB_RESOLVED_CXX_COMPILER=$cxx_executable
 }
 
 # Make pushd and popd quiet.
@@ -1022,9 +1031,6 @@ popd() {
 # Creates files such as thirdparty_url.txt, thirdparty_path.txt, linuxbrew_path.txt in the build
 # directory. This is only being done if the file does not exist.
 save_var_to_file_in_build_dir() {
-  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "1" ]]; then
-    return
-  fi
   expect_num_args 2 "$@"
   local value=$1
   if [[ -z ${value:-} ]]; then
@@ -1109,24 +1115,28 @@ download_thirdparty() {
   if ! is_centos; then
     return
   fi
-  # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
-  # link to download and install the appropriate Linuxbrew package.
-  local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
-  if [[ -f $linuxbrew_url_path ]]; then
-    local linuxbrew_url
-    linuxbrew_url=$(<"$linuxbrew_url_path")
-    download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
-    if [[ -n ${YB_LINUXBREW_DIR:-} &&
-          $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
-      log_thirdparty_and_toolchain_details
-      fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
-            "'$extracted_dir'"
+
+  # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
+  if [[ ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
+    # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
+    # link to download and install the appropriate Linuxbrew package.
+    local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
+    if [[ -f $linuxbrew_url_path ]]; then
+      local linuxbrew_url
+      linuxbrew_url=$(<"$linuxbrew_url_path")
+      download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
+      if [[ -n ${YB_LINUXBREW_DIR:-} &&
+            $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
+        log_thirdparty_and_toolchain_details
+        fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
+              "'$extracted_dir'"
+      fi
+      export YB_LINUXBREW_DIR=$extracted_dir
+      yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
+      save_brew_path_to_build_dir
+    else
+      fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
     fi
-    export YB_LINUXBREW_DIR=$extracted_dir
-    yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
-    save_brew_path_to_build_dir
-  else
-    fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
   fi
 }
 
@@ -1246,30 +1256,33 @@ save_paths_to_build_dir() {
 }
 
 detect_linuxbrew() {
-  if [[ ${YB_IS_BUILD_THIRDPARTY_SCRIPT:-0} == "0" && -z ${BUILD_ROOT:-} ]]; then
-    fatal "BUILD_ROOT is not set, and we are not building third-party dependencies, not trying" \
-          "to use the default version of Linuxbrew."
+  expect_vars_to_be_set YB_COMPILER_TYPE
+  if [[ -z ${BUILD_ROOT:-} ]]; then
+    fatal "BUILD_ROOT is not set, not trying to use the default version of Linuxbrew."
   fi
   if ! is_linux; then
     fatal "Expected this function to only be called on Linux"
+  fi
+  if is_ubuntu; then
+    # Not using Linuxbrew on Ubuntu.
+    unset YB_LINUXBREW_DIR
+    return
+  fi
+  if [[ $YB_COMPILER_TYPE =~ ^.*[0-9]+$ ]]; then
+    # Not allowing to use Linuxbrew if the compiler type mentions a specific compiler version, e.g.
+    # gcc9 or clang11.
+    unset YB_LINUXBREW_DIR
+    return
   fi
   if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
     export YB_LINUXBREW_DIR
     return
   fi
+
   if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
     yb_linuxbrew_dir_where_from=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
-    return
-  fi
-
-  unset YB_LINUXBREW_DIR
-  if ! is_linux; then
-    return
-  fi
-  if is_ubuntu; then
-    # Not using Linuxbrew on Ubuntu.
     return
   fi
 
@@ -1428,18 +1441,23 @@ detect_num_cpus() {
 }
 
 # Gets a random build worker host name. Output variable: build_workers (array).
+# shellcheck disable=SC2120
 get_build_worker_list() {
   expect_num_args 0 "$@"
-  declare -i num_attempts=1
-
   if [[ -z ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
     fatal "YB_BUILD_WORKERS_LIST_URL not set"
   fi
 
   declare -i attempt
-  for (( attempt=1; attempt <= $MAX_ATTEMPTS_TO_GET_BUILD_WORKER; attempt++ )); do
+  for (( attempt=1; attempt <= MAX_ATTEMPTS_TO_GET_BUILD_WORKER; attempt++ )); do
     # Note: ignoring bad exit codes and HTTP status codes here. We only look at the output and
     # if each build worker name is of the right format ("build-worker-..."), we consider it valid.
+    #
+    # Typically, when advice at https://github.com/koalaman/shellcheck/wiki/SC2207 is followed,
+    # the code ends up being unnecessarily complex for simple word splitting where all whitespace
+    # (new lines, spaces, etc.) has to be treated the same way.
+    #
+    # shellcheck disable=SC2207
     build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -1464,7 +1482,7 @@ get_build_worker_list() {
   done
 
   fatal "Could not get a build worker name from $YB_BUILD_WORKERS_LIST_URL in" \
-        "$MAX_ATTEMPTS_TO_GET_BUILD_WORKER attempts. Last output from curl: '$build_workers'"
+        "$MAX_ATTEMPTS_TO_GET_BUILD_WORKER attempts. Last output from curl: '${build_workers[*]}'"
 }
 
 detect_num_cpus_and_set_make_parallelism() {
@@ -1497,9 +1515,8 @@ detect_num_cpus_and_set_make_parallelism() {
 }
 
 validate_thirdparty_dir() {
-  ensure_directory_exists "$YB_THIRDPARTY_DIR/build_definitions"
-  ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
-  ensure_file_exists "$YB_THIRDPARTY_DIR/build_definitions/__init__.py"
+  ensure_file_exists "$YB_THIRDPARTY_DIR/build_thirdparty.sh"
+  ensure_directory_exists "$YB_THIRDPARTY_DIR/installed"
 }
 
 # Detect if we're running on Google Compute Platform. We perform this check lazily as there might be
@@ -1682,6 +1699,9 @@ find_or_download_thirdparty() {
   if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
     return
   fi
+  if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+    fatal "YB_COMPILER_TYPE is not set"
+  fi
   if ! "$is_clean_build"; then
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
       local thirdparty_url_from_file
@@ -1718,14 +1738,6 @@ find_or_download_thirdparty() {
     if ! using_default_thirdparty_dir; then
       export NO_REBUILD_THIRDPARTY=1
     fi
-    return
-  fi
-
-  if [[ -n ${YB_COMPILER_TYPE:-} &&
-        ${YB_COMPILER_TYPE} != "gcc" &&
-        ${YB_COMPILER_TYPE} != "clang" ]]; then
-    # For compiler types like clang11 or gcc8, don't attempt to use a prebuilt thirdparty archive
-    # yet (as of 11/01/2020). We will do that when we pre-build those archives.
     return
   fi
 
@@ -2172,9 +2184,15 @@ update_submodules() {
 }
 
 set_prebuilt_thirdparty_url() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     local auto_thirdparty_url=""
-    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}.txt
+    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
+    if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
+      # For compiler types like gcc9 or clang11, append the compiler type to the file path.
+      thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+    fi
+    thirdparty_url_file+=.txt
     if [[ -f $thirdparty_url_file ]]; then
       auto_thirdparty_url=$( read_file_and_trim "$thirdparty_url_file" )
       if [[ $auto_thirdparty_url != http://* && $auto_thirdparty_url != https://* ]]; then

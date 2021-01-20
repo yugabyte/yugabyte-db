@@ -15,10 +15,11 @@ export default class TaskListTable extends Component {
   };
   static propTypes = {
     taskList: PropTypes.array.isRequired,
-    overrideContent: PropTypes.object
+    overrideContent: PropTypes.object,
+    isCommunityEdition: PropTypes.bool
   };
   render() {
-    const { taskList, title, overrideContent } = this.props;
+    const { taskList, title, overrideContent, isCommunityEdition } = this.props;
 
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
@@ -44,7 +45,7 @@ export default class TaskListTable extends Component {
       <YBPanelItem
         header={<h2 className="task-list-header content-title">{title}</h2>}
         body={
-          !!overrideContent ? (
+          isCommunityEdition ? (
             overrideContent
           ) : (
             <BootstrapTable

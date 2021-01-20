@@ -119,6 +119,9 @@ const char* YBCFormatBytesAsStr(const char* data, size_t size);
 
 const char* YBCGetStackTrace();
 
+// Initializes global state needed for thread management, including CDS library initialization.
+void YBCInitThreading();
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

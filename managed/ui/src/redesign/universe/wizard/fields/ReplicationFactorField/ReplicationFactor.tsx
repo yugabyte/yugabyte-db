@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import React, { FC } from 'react';
 import './ReplicationFactor.scss';
 
@@ -19,13 +20,13 @@ export const ReplicationFactor: FC<ReplicationFactorProps> = ({
   };
 
   return (
-    <div className={`replication-factor ${disabled ? 'replication-factor--disabled' : ''}`}>
+    <div className={clsx('replication-factor', { 'replication-factor--disabled': disabled })}>
       {options.map((option) => (
         <div
           key={option}
-          className={`replication-factor__item ${
-            value === option ? 'replication-factor__item--selected' : ''
-          }`}
+          className={clsx('replication-factor__item', {
+            'replication-factor__item--selected': value === option
+          })}
           onClick={() => onClick(option)}
         >
           {option}

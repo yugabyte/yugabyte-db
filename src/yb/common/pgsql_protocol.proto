@@ -206,6 +206,9 @@ message PgsqlWriteRequestPB {
 
   // True only if this changes a system catalog table (or index).
   optional bool is_ysql_catalog_change = 17 [default = false];
+
+  // Does this request correspond to backfilling an index table?
+  optional bool is_backfill = 19 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -367,6 +370,9 @@ message PgsqlReadRequestPB {
   // available in beta version for SPLIT_AT feature. The release version for SPLIT AT does not need
   // to be compatible with the beta version as SPLIT AT feature were not used.
   optional bytes DEPRECATED_max_partition_key = 25;
+
+  // Does this request correspond to scanning the indexed table for backfill?
+  optional bool is_for_backfill = 29 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

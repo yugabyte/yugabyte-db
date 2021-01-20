@@ -36,6 +36,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -109,6 +110,7 @@ using rpc::RpcController;
 namespace client {
 
 using internal::GetTableSchemaRpc;
+using internal::GetColocatedTabletSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
@@ -297,6 +299,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(CreateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableSchema);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetColocatedTabletSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
@@ -763,17 +766,18 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
 }
 
 Status YBClient::Data::BackfillIndex(YBClient* client,
-                                     const YBTableName& table_name,
-                                     const TableId& table_id,
-                                     CoarseTimePoint deadline) {
+                                     const YBTableName& index_name,
+                                     const TableId& index_id,
+                                     CoarseTimePoint deadline,
+                                     bool wait) {
   BackfillIndexRequestPB req;
   BackfillIndexResponsePB resp;
 
-  if (table_name.has_table()) {
-    table_name.SetIntoTableIdentifierPB(req.mutable_table_identifier());
+  if (index_name.has_table()) {
+    index_name.SetIntoTableIdentifierPB(req.mutable_index_identifier());
   }
-  if (!table_id.empty()) {
-    req.mutable_table_identifier()->set_table_id(table_id);
+  if (!index_id.empty()) {
+    req.mutable_index_identifier()->set_table_id(index_id);
   }
 
   RETURN_NOT_OK((SyncLeaderMasterRpc<BackfillIndexRequestPB, BackfillIndexResponsePB>(
@@ -787,8 +791,55 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
 
-  LOG(INFO) << "Initiated backfill index " << req.table_identifier().ShortDebugString();
+  // Spin until the table is fully backfilled, if requested.
+  if (wait) {
+    RETURN_NOT_OK(WaitForBackfillIndexToFinish(
+        client,
+        resp.table_identifier().table_id(),
+        index_id,
+        deadline));
+  }
+
+  LOG(INFO) << "Backfilled index " << req.index_identifier().ShortDebugString();
   return Status::OK();
+}
+
+Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
+                                                 const TableId& table_id,
+                                                 const TableId& index_id,
+                                                 CoarseTimePoint deadline,
+                                                 bool* backfill_in_progress) {
+  DCHECK_ONLY_NOTNULL(backfill_in_progress);
+
+  YBTableInfo yb_table_info;
+  RETURN_NOT_OK(GetTableSchema(client,
+                               table_id,
+                               deadline,
+                               &yb_table_info));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+
+  *backfill_in_progress = true;
+  if (!index_info->backfill_error_message().empty()) {
+    *backfill_in_progress = false;
+    return STATUS(Aborted, index_info->backfill_error_message());
+  } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    *backfill_in_progress = false;
+  }
+
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForBackfillIndexToFinish(
+    YBClient* client,
+    const TableId& table_id,
+    const TableId& index_id,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      "Waiting on Backfill Index to be completed",
+      "Timed out waiting for Backfill Index",
+      std::bind(
+          &YBClient::Data::IsBackfillIndexInProgress, this, client, table_id, index_id, _1, _2));
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(
@@ -1197,6 +1248,46 @@ class GetTableSchemaRpc
   YBTableInfo* info_;
 };
 
+// Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
+class GetColocatedTabletSchemaRpc : public ClientMasterRpc<GetColocatedTabletSchemaRequestPB,
+                                                           GetColocatedTabletSchemaResponsePB> {
+ public:
+  GetColocatedTabletSchemaRpc(YBClient* client,
+                              StatusCallback user_cb,
+                              const YBTableName& parent_colocated_table,
+                              vector<YBTableInfo>* info,
+                              CoarseTimePoint deadline,
+                              rpc::Messenger* messenger,
+                              rpc::ProxyCache* proxy_cache);
+  GetColocatedTabletSchemaRpc(YBClient* client,
+                              StatusCallback user_cb,
+                              const TableId& parent_colocated_table_id,
+                              vector<YBTableInfo>* info,
+                              CoarseTimePoint deadline,
+                              rpc::Messenger* messenger,
+                              rpc::ProxyCache* proxy_cache);
+
+  std::string ToString() const override;
+
+  virtual ~GetColocatedTabletSchemaRpc();
+
+ private:
+  GetColocatedTabletSchemaRpc(YBClient* client,
+                              StatusCallback user_cb,
+                              const master::TableIdentifierPB& parent_colocated_table_identifier,
+                              vector<YBTableInfo>* info,
+                              CoarseTimePoint deadline,
+                              rpc::Messenger* messenger,
+                              rpc::ProxyCache* proxy_cache);
+
+  void CallRemoteMethod() override;
+  void ProcessResponse(const Status& status) override;
+
+  StatusCallback user_cb_;
+  master::TableIdentifierPB table_identifier_;
+  vector<YBTableInfo>* info_;
+};
+
 namespace {
 
 master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
@@ -1322,6 +1413,32 @@ void ClientMasterRpc<Req, Resp>::Finished(const Status& status) {
   ProcessResponse(new_status);
 }
 
+// Helper function to create YBTableInfo from GetTableSchemaResponsePB.
+Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, YBTableInfo* info) {
+  std::unique_ptr<Schema> schema = std::make_unique<Schema>(Schema());
+  RETURN_NOT_OK(SchemaFromPB(resp.schema(), schema.get()));
+  info->schema.Reset(std::move(schema));
+  info->schema.set_version(resp.version());
+  RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
+                                        GetSchema(&info->schema),
+                                        &info->partition_schema));
+
+  info->table_name.GetFromTableIdentifierPB(resp.identifier());
+  info->table_id = resp.identifier().table_id();
+  RETURN_NOT_OK(YBTable::PBToClientTableType(resp.table_type(), &info->table_type));
+  info->index_map.FromPB(resp.indexes());
+  if (resp.has_index_info()) {
+    info->index_info.emplace(resp.index_info());
+  }
+  if (resp.has_replication_info()) {
+    info->replication_info.emplace(resp.replication_info());
+  }
+  SCHECK_GT(info->table_id.size(), 0, IllegalState, "Running against a too-old master");
+  info->colocated = resp.colocated();
+
+  return Status::OK();
+}
+
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const YBTableName& table_name,
@@ -1375,27 +1492,74 @@ string GetTableSchemaRpc::ToString() const {
 void GetTableSchemaRpc::ProcessResponse(const Status& status) {
   auto new_status = status;
   if (new_status.ok()) {
-    std::unique_ptr<Schema> schema(new Schema());
-    new_status = SchemaFromPB(resp_.schema(), schema.get());
-    if (new_status.ok()) {
-      info_->schema.Reset(std::move(schema));
-      info_->schema.set_version(resp_.version());
-      new_status = PartitionSchema::FromPB(resp_.partition_schema(),
-                                           GetSchema(&info_->schema),
-                                           &info_->partition_schema);
+    new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+  }
+  if (!new_status.ok()) {
+    LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
+  }
+  user_cb_.Run(new_status);
+}
 
-      info_->table_name.GetFromTableIdentifierPB(resp_.identifier());
-      info_->table_id = resp_.identifier().table_id();
-      CHECK_OK(YBTable::PBToClientTableType(resp_.table_type(), &info_->table_type));
-      info_->index_map.FromPB(resp_.indexes());
-      if (resp_.has_index_info()) {
-        info_->index_info.emplace(resp_.index_info());
+GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(YBClient* client,
+                                                         StatusCallback user_cb,
+                                                         const YBTableName& table_name,
+                                                         vector<YBTableInfo>* info,
+                                                         CoarseTimePoint deadline,
+                                                         rpc::Messenger* messenger,
+                                                         rpc::ProxyCache* proxy_cache)
+    : GetColocatedTabletSchemaRpc(
+          client, user_cb, ToTableIdentifierPB(table_name), info, deadline, messenger,
+          proxy_cache) {
+}
+
+GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(YBClient* client,
+                                                         StatusCallback user_cb,
+                                                         const TableId& table_id,
+                                                         vector<YBTableInfo>* info,
+                                                         CoarseTimePoint deadline,
+                                                         rpc::Messenger* messenger,
+                                                         rpc::ProxyCache* proxy_cache)
+    : GetColocatedTabletSchemaRpc(
+          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, messenger, proxy_cache) {}
+
+GetColocatedTabletSchemaRpc::GetColocatedTabletSchemaRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const master::TableIdentifierPB& table_identifier,
+    vector<YBTableInfo>* info,
+    CoarseTimePoint deadline,
+    rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache)
+    : ClientMasterRpc(client, deadline, messenger, proxy_cache),
+      user_cb_(std::move(user_cb)),
+      table_identifier_(table_identifier),
+      info_(DCHECK_NOTNULL(info)) {
+  req_.mutable_parent_colocated_table()->CopyFrom(table_identifier_);
+}
+
+GetColocatedTabletSchemaRpc::~GetColocatedTabletSchemaRpc() {
+}
+
+void GetColocatedTabletSchemaRpc::CallRemoteMethod() {
+  master_proxy()->GetColocatedTabletSchemaAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetColocatedTabletSchemaRpc::Finished, this, Status::OK()));
+}
+
+string GetColocatedTabletSchemaRpc::ToString() const {
+  return Substitute("GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
+                    table_identifier_.ShortDebugString(), num_attempts());
+}
+
+void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
+  auto new_status = status;
+  if (new_status.ok()) {
+    for (const auto& resp : resp_.get_table_schema_response_pbs()) {
+      info_->emplace_back();
+      new_status = CreateTableInfoFromTableSchemaResp(resp, &info_->back());
+      if (!new_status.ok()) {
+        break;
       }
-      if (resp_.has_replication_info()) {
-        info_->replication_info.emplace(resp_.replication_info());
-      }
-      CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
-      info_->colocated = resp_.colocated();
     }
   }
   if (!new_status.ok()) {
@@ -1684,6 +1848,23 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
   return Status::OK();
 }
 
+Status YBClient::Data::GetColocatedTabletSchemaById(
+    YBClient* client,
+    const TableId& parent_colocated_table_id,
+    CoarseTimePoint deadline,
+    std::shared_ptr<std::vector<YBTableInfo>> info,
+    StatusCallback callback) {
+  auto rpc = rpc::StartRpc<GetColocatedTabletSchemaRpc>(
+      client,
+      callback,
+      parent_colocated_table_id,
+      info.get(),
+      deadline,
+      messenger_,
+      proxy_cache_.get());
+  return Status::OK();
+}
+
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
     YBClient* client,
     const TableId& table_id,
@@ -1696,30 +1877,23 @@ Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
                                deadline,
                                &yb_table_info));
 
-  const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
 Result<IndexPermissions> YBClient::Data::GetIndexPermissions(
     YBClient* client,
     const YBTableName& table_name,
-    const YBTableName& index_name,
+    const TableId& index_id,
     const CoarseTimePoint deadline) {
   YBTableInfo yb_table_info;
-  YBTableInfo yb_index_info;
 
   RETURN_NOT_OK(GetTableSchema(client,
                                table_name,
                                deadline,
                                &yb_table_info));
-  RETURN_NOT_OK(GetTableSchema(client,
-                               index_name,
-                               deadline,
-                               &yb_index_info));
 
-  const IndexInfo* index_info =
-      VERIFY_RESULT(yb_table_info.index_map.FindIndex(yb_index_info.table_id));
+  const IndexInfo* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
   return index_info->index_permissions();
 }
 
@@ -1760,6 +1934,24 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
     const CoarseDuration max_wait) {
   const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
   IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
+  YBTableInfo yb_index_info;
+  RETURN_NOT_OK(RetryFunc(
+      deadline,
+      "Waiting for index table schema",
+      "Timed out waiting for index table schema",
+      [&](CoarseTimePoint deadline, bool* retry) -> Status {
+        Status status = GetTableSchema(client,
+                                     index_name,
+                                     deadline,
+                                     &yb_index_info);
+        if (!status.ok()) {
+          *retry = retry_on_not_found;
+          return status;
+        }
+        *retry = false;
+        return Status::OK();
+      },
+      max_wait));
   RETURN_NOT_OK(RetryFunc(
       deadline,
       "Waiting for index to have desired permissions",
@@ -1768,7 +1960,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
         Result<IndexPermissions> result = GetIndexPermissions(
             client,
             table_name,
-            index_name,
+            yb_index_info.table_id,
             deadline);
         if (!result) {
           *retry = retry_on_not_found;
