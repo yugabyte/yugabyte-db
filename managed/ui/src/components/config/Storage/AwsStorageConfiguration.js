@@ -168,10 +168,20 @@ class AwsStorageConfiguration extends Component {
         </Col>
         {!isEmptyObject(s3Config) && (
           <Col lg={3}>
-            <div>
+            <div className="action-bar">
+              {s3Config.inUse && (
+                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                  placement="top"
+                >
+                  <span className="disable-delete fa-stack fa-2x">
+                    <i className="fa fa-trash-o fa-stack-1x"></i>
+                    <i className="fa fa-ban fa-stack-2x"></i>
+                  </span>
+                </YBInfoTip>
+              )}
               <YBButton
                 btnText={'Delete Configuration'}
-                disabled={submitting || loading || isEmptyObject(s3Config)}
+                disabled={s3Config.inUse || submitting || loading}
                 btnClass={'btn btn-default'}
                 onClick={
                   !isEmptyObject(s3Config)

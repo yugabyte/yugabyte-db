@@ -394,3 +394,22 @@
   font-weight: 700;
   font-size: 14px;
 }
+
+.action-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+
+  .disable-delete {
+    display: inline-block;
+    margin: 4px 20px 4px auto;
+    font-size: inherit;
+
+    .fa-ban {
+      color: $YB_FAIL_COLOR;
+    }
+  }
+  .provider-config-container button {    
+    margin-bottom: 0;
+  }
+}
