@@ -63,6 +63,9 @@ class YBTableCreator {
   // The creation of this table is dependent upon the success of this higher-level transaction.
   YBTableCreator& part_of_transaction(const TransactionMetadata* txn);
 
+  // Adds a partitions to the table.
+  YBTableCreator& add_partition(const Partition& partition);
+
   // Adds a set of hash partitions to the table.
   //
   // For each set of hash partitions added to the table, the total number of
@@ -167,6 +170,8 @@ class YBTableCreator {
   const YBSchema* schema_ = nullptr;
 
   PartitionSchemaPB partition_schema_;
+
+  std::vector<Partition> partitions_;
 
   int num_replicas_ = 0;
 

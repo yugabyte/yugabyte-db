@@ -920,6 +920,9 @@ message CreateTableRequestPB {
 
  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
   optional TransactionMetadataPB transaction = 20;
+
+  // This field should be used to create or restore table with a fixed set of partitions.
+  repeated PartitionPB partitions = 22;
 }
 
 message CreateTableResponsePB {
