@@ -127,6 +127,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
+    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -727,7 +728,9 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
+      this.setState({
+        enableNodeToNodeEncrypt: event.target.checked,
+        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked});
     }
   }
 
@@ -1024,6 +1027,19 @@ export default class ClusterFields extends Component {
     }
   }
 
+  /**
+   * This method is used to disable the ClientToNodeTLS field initially.
+   * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
+   * If ClientToNode TLS sets to enable and NodeToNode TLS sets to disable then
+   * ClientToNode TLS will be disabled.
+   * 
+   * @param isFieldReadOnly If true then readonly access.
+   * @param enableNodeToNodeEncrypt NodeToNodeTLS state.
+   */
+  clientToNodeEncryptField(isFieldReadOnly, enableNodeToNodeEncrypt) {
+    return isFieldReadOnly || !enableNodeToNodeEncrypt;
+  }
+
   render() {
     const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
     const { hasInstanceTypeChanged } = this.state;
@@ -1309,7 +1325,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={isFieldReadOnly}
+          isReadOnly={ this.clientToNodeEncryptField(isFieldReadOnly, this.state.enableNodeToNodeEncrypt)}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}

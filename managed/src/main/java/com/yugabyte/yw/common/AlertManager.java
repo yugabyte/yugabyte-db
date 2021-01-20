@@ -10,73 +10,72 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.*;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.Configuration;
-
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.ArrayList;
+import javax.mail.MessagingException;
+
+import java.util.Collections;
 import java.util.List;
 
 @Singleton
 public class AlertManager {
-  @Inject
-  HealthManager healthManager;
 
   @Inject
-  Configuration appConfig;
-
+  private EmailHelper emailHelper;
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
   public void sendEmail(Alert alert, String state) {
+    LOG.debug("sendEmail {}, state: {}", alert, state);
     if (!alert.sendEmail) {
       return;
     }
 
-    AlertDefinition definition = AlertDefinition.get(alert.definitionUUID);
-    Universe universe = Universe.get(definition.universeUUID);
-    ObjectNode alertData = Json.newObject()
-      .put("alert_name", definition.name)
-      .put("state", state)
-      .put("universe_name", universe.name);
     Customer customer = Customer.get(alert.customerUUID);
-    String customerTag = String.format("[%s][%s]", customer.name, customer.code);
-    List<String> destinations = new ArrayList<>();
-    String ybEmail = appConfig.getString("yb.health.default_email", null);
-    CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-    CustomerRegisterFormData.AlertingData alertingData =
-      Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-    if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
-      destinations.add(ybEmail);
-    }
-
-    if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
-      destinations.add(alertingData.alertingEmail);
-    }
-
-    // Skip sending email if there aren't any destinations to send it to
+    List<String> destinations = emailHelper.getDestinations(customer.uuid);
+    // Skip sending email if there aren't any destinations to send it to.
     if (destinations.isEmpty()) {
       return;
     }
 
-    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
-    CustomerRegisterFormData.SmtpData smtpData = null;
-    if (smtpConfig != null) {
-      smtpData =  Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
+    CustomerRegisterFormData.SmtpData smtpData = emailHelper.getSmtpData(customer.uuid);
+    // Skip if the SMTP configuration is not completely defined.
+    if (smtpData == null) {
+      return;
     }
 
-    healthManager.runCommand(
-      customerTag,
-      String.join(",", destinations),
-      smtpData,
-      alertData
-    );
+    String subject = String.format("Yugabyte Platform Alert - <%s>", customer.getTag());
+    AlertDefinition definition = alert.definitionUUID == null ? null
+        : AlertDefinition.get(alert.definitionUUID);
+    String content;
+    if (definition != null) {
+      Universe universe = Universe.get(definition.universeUUID);
+      content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
+          state);
+    } else {
+      Universe universe = alert.targetType == Alert.TargetType.UniverseType
+          ? Universe.get(alert.targetUUID)
+          : null;
+      if (universe != null) {
+        content = String.format("Common failure for universe '%s':\n%s.", universe.name,
+            alert.message);
+      } else {
+        content = String.format("Common failure for customer '%s':\n%s.", customer.name,
+            alert.message);
+      }
+    }
+
+    try {
+      emailHelper.sendEmail(customer, subject, String.join(",", destinations), smtpData,
+          Collections.singletonMap("text/plain; charset=\"us-ascii\"", content));
+    } catch (MessagingException e) {
+      LOG.error("Error sending email for alert {} in state '{}'", alert.uuid, state, e);
+    }
   }
 
   /**

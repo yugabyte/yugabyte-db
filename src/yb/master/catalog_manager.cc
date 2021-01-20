@@ -1831,6 +1831,7 @@ Status CatalogManager::DoSplitTablet(
 
   LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
+  const auto source_table_lock = source_tablet_info->table()->LockForWrite();
   const auto source_tablet_lock = source_tablet_info->LockForWrite();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
@@ -1842,14 +1843,15 @@ Status CatalogManager::DoSplitTablet(
       // Post-split tablet `i` has been already registered.
       new_tablet_ids[i] = source_tablet_lock->data().pb.split_tablet_ids(i);
     } else {
-      auto* new_tablet_info = VERIFY_RESULT(
-          RegisterNewTabletForSplit(*source_tablet_info, new_tablets_partition[i]));
+      auto* new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
+          source_tablet_info.get(), new_tablets_partition[i], source_table_lock.get()));
 
       new_tablet_ids[i] = new_tablet_info->id();
       source_tablet_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet_info->id());
     }
   }
   source_tablet_lock->Commit();
+  source_table_lock->Commit();
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -4254,10 +4256,11 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 }
 
 Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
-    const TabletInfo& source_tablet_info, const PartitionPB& partition) {
-  const auto tablet_lock = source_tablet_info.LockForRead();
+    TabletInfo* source_tablet_info, const PartitionPB& partition,
+    TableInfo::lock_type* table_write_lock) {
+  const auto tablet_lock = source_tablet_info->LockForRead();
 
-  const auto& table = source_tablet_info.table();
+  auto table = source_tablet_info->table();
   TabletInfo* new_tablet;
   {
     std::lock_guard<LockType> l(lock_);
@@ -4270,16 +4273,15 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
-  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info.tablet_id());
+  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
   // TODO(tsplit): consider and handle failure scenarios, for example:
   // - Crash or leader failover before sending out the split tasks.
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
   {
     std::lock_guard<LockType> l(lock_);
-    auto table_lock = table->LockForWrite();
 
-    auto& table_pb = table_lock->mutable_data()->pb;
+    auto& table_pb = table_write_lock->mutable_data()->pb;
     table_pb.set_partitions_version(table_pb.partitions_version() + 1);
 
     RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
@@ -4296,14 +4298,12 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     // committed TabletInfo from the `table` ?
     new_tablet->mutable_metadata()->CommitMutation();
 
-    table_lock->Commit();
-
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id()
             << " (" << AsString(partition) << ") to split the tablet "
-            << source_tablet_info.tablet_id()
+            << source_tablet_info->tablet_id()
             << " (" << AsString(source_tablet_meta.partition())
             << ") for table " << table->ToString();
 
@@ -5102,7 +5102,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                 << " to that committed in log index " << cstate.config().opid_index()
                 << " with leader state from term " << cstate.current_term();
           ReconcileTabletReplicasInLocalMemoryWithReport(
-            tablet, ts_desc->permanent_uuid(), cstate, report.state());
+            tablet, ts_desc->permanent_uuid(), cstate, report);
 
           // 6d(iv). Update the consensus state. Don't use 'prev_cstate' after this.
           LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
@@ -5126,9 +5126,9 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           if (GetAtomicFlag(&FLAGS_enable_register_ts_from_raft) &&
               ReplicaMapDiffersFromConsensusState(tablet, cstate)) {
              ReconcileTabletReplicasInLocalMemoryWithReport(
-               tablet, ts_desc->permanent_uuid(), cstate, report.state());
+               tablet, ts_desc->permanent_uuid(), cstate, report);
           } else {
-            UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report.state(), tablet);
+            UpdateTabletReplicaInLocalMemory(ts_desc, &cstate, report, tablet);
           }
         }
 
@@ -5171,7 +5171,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // When a tablet server is restarted, it sends a full tablet report with all of its tablets
         // in the NOT_STARTED state, so this would make the load balancer think that all the
         // tablets are being remote bootstrapped at once, so only process incremental reports here.
-        UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report.state(), tablet);
+        UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report, tablet);
       }
     } // Finished one round of batch processing.
 
@@ -6711,7 +6711,7 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     const scoped_refptr<TabletInfo>& tablet,
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
-    const RaftGroupStatePB& replica_state) {
+    const ReportedTabletPB& report) {
   auto replica_locations = std::make_shared<TabletInfo::ReplicaMap>();
   auto prev_rl = tablet->GetReplicaLocations();
 
@@ -6765,7 +6765,7 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
           *existing_replica);
     } else {
       TabletReplica replica;
-      CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, replica_state, &replica);
+      CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, report, &replica);
       InsertOrDie(replica_locations.get(), replica.ts_desc->permanent_uuid(), replica);
     }
   }
@@ -6777,17 +6777,17 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
 
 void CatalogManager::UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                                       const ConsensusStatePB* consensus_state,
-                                                      const RaftGroupStatePB& replica_state,
+                                                      const ReportedTabletPB& report,
                                                       const scoped_refptr<TabletInfo>& tablet) {
   TabletReplica replica;
-  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, replica_state, &replica);
+  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, report, &replica);
   tablet->UpdateReplicaLocations(replica);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                                     const ConsensusStatePB* consensus_state,
-                                                    const RaftGroupStatePB& replica_state,
+                                                    const ReportedTabletPB& report,
                                                     TabletReplica* new_replica) {
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (consensus_state == nullptr) {
@@ -6795,11 +6795,14 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
   } else {
     CHECK(consensus_state != nullptr) << "No cstate: " << ts_desc->permanent_uuid()
-                                      << " - " << replica_state;
+                                      << " - " << report.state();
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
-  new_replica->state = replica_state;
+  if (report.has_processing_parent_data()) {
+      new_replica->processing_parent_data = report.processing_parent_data();
+  }
+  new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
     new_replica->time_updated = MonoTime::Now() - ts_desc->TimeSinceHeartbeat();
@@ -7034,9 +7037,7 @@ void CatalogManager::SendSplitTabletRequest(
       Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
 }
 
-void CatalogManager::DeleteTabletReplicas(
-    const TabletInfo* tablet,
-    const std::string& msg) {
+void CatalogManager::DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg) {
   auto locations = tablet->GetReplicaLocations();
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
@@ -7513,7 +7514,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
-  for (const TabletInfo* tablet : deferred.tablets_to_update) {
+  for (auto* tablet : deferred.tablets_to_update) {
     if (tablet->metadata().dirty().is_deleted()) {
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg());
     }

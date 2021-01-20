@@ -438,6 +438,14 @@ class PostgresBuilder(YbBuildToolBase):
 
             if not rerun_configure:
                 logging.error("Standard error from configure:\n" + configure_result.stderr)
+                config_log_path = os.path.join(self.pg_build_root, "config.log")
+                if os.path.exists(config_log_path):
+                    with open(config_log_path) as config_log_file:
+                        config_log_str = config_log_file.read()
+                    logging.info(f"Contents of {config_log_path}:")
+                    sys.stderr.write(config_log_str + "\n")
+                else:
+                    logging.warning(f"File not found: {config_log_path}")
                 raise RuntimeError("configure failed")
 
             configure_result = run_program(

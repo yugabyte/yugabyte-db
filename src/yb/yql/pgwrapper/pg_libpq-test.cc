@@ -2420,6 +2420,79 @@ CHECKED_STATUS WaitForBackfillStage(
 
 } // namespace
 
+// Override the index backfill test to have delays for testing snapshot too old.
+class PgLibPqTestIndexBackfillSnapshotTooOld : public PgLibPqTestIndexBackfill {
+ public:
+  PgLibPqTestIndexBackfillSnapshotTooOld() {
+    more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=10000");
+    more_tserver_flags.push_back("--TEST_ysql_index_state_flags_update_delay_ms=0");
+    more_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3");
+  }
+};
+
+// Make sure that index backfill doesn't care about snapshot too old.  Force a situation where the
+// indexed table scan for backfill would occur after the committed history cutoff.  A compaction is
+// needed to update this committed history cutoff, and the retention period needs to be low enough
+// so that the cutoff is ahead of backfill's safe read time.  See issue #6333.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(BackfillSnapshotTooOld),
+          PgLibPqTestIndexBackfillSnapshotTooOld) {
+  const std::string kIndexName = "i";
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+  constexpr int kTimeoutSec = 3;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  // (Make it one tablet for simplicity.)
+  LOG(INFO) << "Create table...";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char) SPLIT INTO 1 TABLETS", kTableName));
+
+  LOG(INFO) << "Get table id for indexed table...";
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
+
+  // Insert something so that reading it would trigger snapshot too old.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('s')", kTableName));
+
+  std::thread create_index_thread([&] {
+    LOG(INFO) << "Create index...";
+    Status s = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (c)", kIndexName, kTableName);
+    if (!s.ok()) {
+      // We are doomed to fail the test.  Before that, let's see if it turns out to be "snapshot too
+      // old" or some other unexpected error.
+      ASSERT_TRUE(s.IsNetworkError()) << "got unexpected error: " << s;
+      ASSERT_TRUE(s.message().ToBuffer().find("Snapshot too old") != std::string::npos)
+          << "got unexpected error: " << s;
+      // It is "snapshot too old".  Fail now.
+      FAIL() << "got snapshot too old: " << s;
+    }
+  });
+
+  // Sleep until we are in the interval
+  //   (read_time + history_retention_interval, read_time + slowdown_backfill)
+  // = (read_time + 3s, read_time + 10s)
+  // Choose read_time + 5s.
+  LOG(INFO) << "Sleep...";
+  SleepFor(1s); // approximate setup time before getting to the backfill stage
+  SleepFor(5s);
+
+  LOG(INFO) << "Flush and compact indexed table...";
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      false /* is_compaction */));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      true /* is_compaction */));
+
+  LOG(INFO) << "Waiting for create index thread to finish...";
+  create_index_thread.join();
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
  public:
@@ -2695,7 +2768,7 @@ TEST_F_EX(PgLibPqTest,
 // This test is for issue #6208.
 TEST_F_EX(
     PgLibPqTest,
-    CreateUniqueIndexWriteAfterSafeTime,
+    YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWriteAfterSafeTime),
     PgLibPqTestIndexBackfillSlow) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const std::string& kIndexName = "i";

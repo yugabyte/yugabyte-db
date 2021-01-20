@@ -58,6 +58,12 @@ Start a new local universe with a replication factor of 1 (RF=1). We are passing
 - `--num_shards_per_tserver 4`  This flag controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
 
+
+{{< note title="Warning" >}}
+Setting `memstore_size` to such a low value is not recommended in production and is only being used here to illustrate the point by forcing flushes to happen more quickly.
+{{< /note >}}
+
+
 You can do this as shown below.
 
 ```sh

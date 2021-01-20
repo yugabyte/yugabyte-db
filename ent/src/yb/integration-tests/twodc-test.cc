@@ -76,6 +76,7 @@ DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
+DECLARE_int32(external_intent_cleanup_secs);
 
 namespace yb {
 
@@ -236,12 +237,13 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   }
 
   Status VerifyWrittenRecords(const YBTableName& producer_table,
-                              const YBTableName& consumer_table) {
+                              const YBTableName& consumer_table,
+                              int timeout_secs = kRpcTimeout) {
     return LoggedWaitFor([=]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, producer_client());
       auto consumer_results = ScanToStrings(consumer_table, consumer_client());
       return producer_results == consumer_results;
-    }, MonoDelta::FromSeconds(kRpcTimeout), "Verify written records");
+    }, MonoDelta::FromSeconds(timeout_secs), "Verify written records");
   }
 
   Status VerifyNumRecords(const YBTableName& table, YBClient* client, int expected_size) {
@@ -931,6 +933,46 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
 
   txn_1.second->CommitFuture().get();
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) == 0;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, CleanupAbortedTransactions) {
+  static const int kNumRecordsPerBatch = 5;
+  const uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({1 /* num_consumer_tablets */},
+                                              {1 /* num_producer_tablets */},
+                                              replication_factor));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  // After creating the cluster, make sure all producer tablets are being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1 /* num_producer_tablets */));
+  auto txn_0 = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  ASSERT_NO_FATALS(WriteIntents(0, kNumRecordsPerBatch, producer_client(), txn_0.first,
+                                tables[0]->name()));
+  // Wait for records to be replicated.
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) == kNumRecordsPerBatch * replication_factor;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster created intents"));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  // Then, set timeout to 0 and make sure we do cleanup on the next compaction.
+  SetAtomicFlag(0, &FLAGS_external_intent_cleanup_secs);
+  ASSERT_NO_FATALS(WriteIntents(kNumRecordsPerBatch, kNumRecordsPerBatch * 2, producer_client(),
+                                txn_0.first, tables[0]->name()));
+  // Wait for records to be replicated.
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) == 2 * kNumRecordsPerBatch * replication_factor;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster created intents"));
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) == 0;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
 }
 
 // Make sure when we compact a tablet, we retain intents.
@@ -955,9 +997,48 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, NoCleanupOfFlushedFiles) {
   ASSERT_NO_FATALS(WriteIntents(5, 10, producer_client(), txn_0.first, tables[0]->name()));
   ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(consumer_cluster()->CompactTablets());
+  // Wait for 5 seconds to make sure background CleanupIntents thread doesn't cleanup intents on the
+  // consumer.
   SleepFor(MonoDelta::FromSeconds(5));
   txn_0.second->CommitFuture().get();
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+  ASSERT_OK(WaitFor([&]() {
+    return CountIntents(consumer_cluster()) == 0;
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
+}
+
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, ManyToOneTabletMapping) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({2}, {5}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 5));
+
+  WriteTransactionalWorkload(0, 100, producer_client(), producer_txn_mgr(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, OneToManyTabletMapping) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({5}, {2}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer table from the list.
+  producer_tables.reserve(1);
+  producer_tables.push_back(tables[0]);
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+  WriteTransactionalWorkload(0, 50, producer_client(), producer_txn_mgr(), tables[0]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
 TEST_P(TwoDCTest, TestExternalWriteHybridTime) {

@@ -36,6 +36,7 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(certs_dir);
+DECLARE_string(ssl_protocols);
 DECLARE_string(TEST_public_hostname_suffix);
 
 using namespace std::literals;
@@ -113,6 +114,20 @@ void SecureConnectionTest::TestSimpleOps() {
 
 TEST_F(SecureConnectionTest, Simple) {
   TestSimpleOps();
+}
+
+class SecureConnectionTLS12Test : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_ssl_protocols = "tls12";
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, TLS12, SecureConnectionTLS12Test) {
+  TestSimpleOps();
+
+  FLAGS_ssl_protocols = "ssl2 ssl3,tls10 tls11";
+  ASSERT_NOK(CreateBadClient());
 }
 
 TEST_F(SecureConnectionTest, BigWrite) {
