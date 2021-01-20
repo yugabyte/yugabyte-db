@@ -258,6 +258,7 @@ class UniverseDetail extends Component {
         editTLSAvailability = 'disabled';
       }
     }
+
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
