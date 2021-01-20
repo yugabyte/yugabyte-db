@@ -948,6 +948,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
   req.set_num_tablets(table_data->num_tablets);
+  for (const auto& p : table_data->partitions) {
+    *req.add_partitions() = p;
+  }
   req.mutable_namespace_()->set_id(new_namespace_id);
   *req.mutable_partition_schema() = meta.partition_schema();
   *req.mutable_replication_info() = meta.replication_info();
@@ -1243,6 +1246,9 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
   ++table_data.num_tablets;
+  if (meta.has_partition()) {
+    table_data.partitions.push_back(meta.partition());
+  }
   return Status::OK();
 }
 
