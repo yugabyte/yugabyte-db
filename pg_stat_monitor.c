@@ -949,7 +949,7 @@ static void pgss_store(uint64 queryId,
 				}
 			}
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
-				e->counters.resp_calls[MAX_RESPONSE_BUCKET]++;
+				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
 
 		for (i = 0; i < application_name_len; i++)
@@ -986,7 +986,7 @@ static void pgss_store(uint64 queryId,
 		for(i = 0; i < sqlcode_len; i++)
 			e->counters.error.sqlcode[i] = sqlcode[i];
 
-		for(i = 0; i < message_len; i++)
+		for(i = 0; i < message_len && i < ERROR_MESSAGE_LEN; i++)
 			e->counters.error.message[i] = message[i];
 
 		e->counters.calls[kind].rows += rows;
