@@ -521,6 +521,7 @@ export default class ClusterFields extends Component {
 
     // Fire Configure only if either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (configureIntentValid()) {
+      toggleDisableSubmit(false);
       if (isNonEmptyObject(currentUniverse.data)) {
         if (!this.hasFieldChanged()) {
           const placementStatusObject = {
@@ -581,7 +582,7 @@ export default class ClusterFields extends Component {
     if (type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists)) {
       this.props.handleHasFieldChanged(
         this.hasFieldChanged() ||
-          !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
+        !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
       );
     } else {
       this.props.handleHasFieldChanged(true);
@@ -1154,7 +1155,7 @@ export default class ClusterFields extends Component {
       const currentProvider = this.getCurrentProvider(self.state.providerSelected);
       if (
         (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD'
-         || self.state.volumeType === 'NVME') &&
+          || self.state.volumeType === 'NVME') &&
         isDefinedNotNull(currentProvider)
       ) {
         const isInAws = currentProvider.code === 'aws';
@@ -1512,7 +1513,8 @@ export default class ClusterFields extends Component {
         });
     }
 
-    let placementStatus = <span />;
+    let placementStatus = null;
+    let placementStatusOnprem = null;
     const cluster =
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
@@ -1520,15 +1522,34 @@ export default class ClusterFields extends Component {
           _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
         );
     const placementCloud = getPlacementCloud(cluster);
-    if (self.props.universe.currentPlacementStatus && placementCloud) {
+    const regionAndProviderDefined = isNonEmptyArray(formValues[clusterType]?.regionList)
+      && isNonEmptyString(formValues[clusterType]?.provider);
+
+    // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
+    if (
+      self.props.universe.currentPlacementStatus && placementCloud
+      && regionAndProviderDefined
+    ) {
       placementStatus = (
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
           placementCloud={placementCloud}
+          providerCode={currentProvider.code}
+        />
+      );
+    } else if (currentProvider?.code === 'onprem' 
+      && !(this.state.numNodes <= this.state.maxNumNodes)
+      && self.props.universe.currentPlacementStatus
+      && isNonEmptyArray(formValues[clusterType].regionList)
+      && isNonEmptyString(formValues[clusterType].provider)
+    ) {
+      placementStatusOnprem = (
+        <AZPlacementInfo
+          placementInfo={self.props.universe.currentPlacementStatus}
+          providerCode={currentProvider.code}
         />
       );
     }
-
     const configTemplate = self.props.universe.universeConfigTemplate;
     const clusters = _.get(configTemplate, 'data.clusters', []);
     const showPlacementStatus =
@@ -1723,7 +1744,7 @@ export default class ClusterFields extends Component {
               )}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
-              {azSelectorTable}
+              {placementStatusOnprem  || regionAndProviderDefined && azSelectorTable}
             </Col>
           </Row>
         </div>
