@@ -16,7 +16,7 @@ import {
   UniverseConnectModal,
   UniverseOverviewContainerNew,
   EncryptionKeyModalContainer,
-  PauseUniverseContainer
+  ToggleUniverseStateContainer
 } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
@@ -187,7 +187,7 @@ class UniverseDetail extends Component {
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
-      showPauseUniverseModal,
+      showToggleUniverseStateModal,
       closeModal,
       customer,
       customer: { currentCustomer },
@@ -196,6 +196,7 @@ class UniverseDetail extends Component {
     const { showAlert, alertType, alertMessage } = this.state;
     const clusters = universe?.currentUniverse?.data?.universeDetails?.clusters;
     const statusCheck = universe?.currentUniverse?.data?.universeDetails?.updateSucceeded;
+    const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
 
     // This variable will store the universe provider type which helps to enable
     // Pause Universe functionality.
@@ -596,20 +597,14 @@ class UniverseDetail extends Component {
                             'universes.details.overview.restartUniverse'
                           )}
                         >
-                          {/* <YBLabelWithIcon icon="fa fa-refresh fa-fw"> */}
-                            Initiate Rolling Restart
-                        {/* </YBLabelWithIcon> */}
+                          Initiate Rolling Restart
                         </YBMenuItem>
 
                         {isDefinedNotNull(providerType)
                           && providerType.toString() === 'aws'
                           && statusCheck &&
-                          <YBMenuItem
-                            onClick={showPauseUniverseModal}
-                          >
-                            {/* <YBLabelWithIcon icon="fa fa-pause-circle-o fa-fw"> */}
-                              Pause Universe
-                          {/* </YBLabelWithIcon> */}
+                          <YBMenuItem onClick={showToggleUniverseStateModal}>
+                            {universePaused ? 'Pause Universe' : 'Restart Universe'}
                           </YBMenuItem>
                         }
 
@@ -620,9 +615,7 @@ class UniverseDetail extends Component {
                             'universes.details.overview.deleteUniverse'
                           )}
                         >
-                          {/* <YBLabelWithIcon icon="fa fa-trash-o fa-fw"> */}
-                            Delete Universe
-                        {/* </YBLabelWithIcon> */}
+                          Delete Universe
                         </YBMenuItem>
                       </>
                     )
@@ -649,12 +642,14 @@ class UniverseDetail extends Component {
           body="Are you sure you want to delete the universe? You will lose all your data!"
           type="primary"
         />
-        <PauseUniverseContainer
-          visible={showModal && visibleModal === 'pauseUniverseModal'}
+
+        <ToggleUniverseStateContainer
+          visible={showModal && visibleModal === 'toggleUniverseStateForm'}
           onHide={closeModal}
-          title="Pause Universe: "
-          body="Are you sure you want to pasue the universe?"
+          title={`${universePaused ? 'Pause' : 'Restart'} Universe: `}
+          body={`Are you sure you want to ${universePaused ? 'pause' : 'restart'} the universe?`}
           type="primary"
+          universePaused={universePaused}
         />
 
         <EncryptionKeyModalContainer

@@ -60,8 +60,8 @@ const mapDispatchToProps = (dispatch) => {
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
     },
-    showPauseUniverseModal: () => {
-      dispatch(openDialog('pauseUniverseModal'));
+    showToggleUniverseStateModal: () => {
+      dispatch(openDialog('toggleUniverseStateForm'));
     },
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));

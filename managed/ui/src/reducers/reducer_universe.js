@@ -15,6 +15,8 @@ import {
   DELETE_UNIVERSE_RESPONSE,
   PAUSE_UNIVERSE,
   PAUSE_UNIVERSE_RESPONSE,
+  RESTART_UNIVERSE,
+  RESTART_UNIVERSE_RESPONSE,
   FETCH_UNIVERSE_TASKS,
   FETCH_UNIVERSE_TASKS_RESPONSE,
   RESET_UNIVERSE_TASKS,
@@ -85,6 +87,7 @@ const INITIAL_STATE = {
   editUniverse: getInitialState({}),
   deleteUniverse: getInitialState({}),
   pauseUniverse: getInitialState({}),
+  restartUniverse: getInitialState({}),
   universeList: getInitialState([]),
   error: null,
   formSubmitSuccess: false,
@@ -128,6 +131,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'pauseUniverse', {});
     case PAUSE_UNIVERSE_RESPONSE:
       return setPromiseResponse(state, 'pauseUniverse', action);
+    case RESTART_UNIVERSE:
+      return setLoadingState(state, 'restartUniverse', {});
+    case RESTART_UNIVERSE_RESPONSE:
+      return setPromiseResponse(state, 'restartUniverse', action);
 
     // Co-Modal Operations
     case CLOSE_UNIVERSE_DIALOG:

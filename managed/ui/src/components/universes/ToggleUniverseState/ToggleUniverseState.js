@@ -6,23 +6,23 @@ import React, { Component } from 'react';
 import { YBModal, YBTextInput } from '../../common/forms/fields';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 
-export default class PauseUniverse extends Component {
+export default class ToggleUniverseState extends Component {
   constructor(props) {
     super(props);
-
-    // Initial State.
     this.state = {
       universeName: false
     };
   }
 
-  // This method is used to enable the delete button once the universe value is set.
   onChangeUniverseName = (value) => {
     this.setState({ universeName: value });
   };
 
-  // This method will return the modal body.
-  getPauseModal = () => {
+  closeDeleteModal = () => {
+    this.props.onHide();
+  };
+
+  getModalInfo = () => {
     const {
       body,
       universe: {
@@ -46,15 +46,16 @@ export default class PauseUniverse extends Component {
     );
   }
 
-  // This method is used to confirm whether the user needs to pause the universe or not.
-  universePauseConfirmation = () => {
+  toggleUniverseStateConfirmation = () => {
     const {
+      universePaused,
       universe: {
         currentUniverse: { data }
       }
     } = this.props;
-
-    this.props.submitPauseUniverse(data.universeUUID);
+    !universePaused
+    ? this.props.submitRestartUniverse(data.universeUUID)
+    : this.props.submitPauseUniverse(data.universeUUID);
   }
 
   render() {
@@ -72,17 +73,17 @@ export default class PauseUniverse extends Component {
     return (
       <YBModal
         visible={visible}
-        formName={'PauseUniverseForm'}
+        formName={'toggleUniverseStateForm'}
         onHide={onHide}
         submitLabel={'Yes'}
         cancelLabel={'No'}
         showCancelButton={true}
         title={title + name}
-        onFormSubmit={this.universePauseConfirmation}
+        onFormSubmit={this.toggleUniverseStateConfirmation}
         error={error}
         asyncValidating={this.state.universeName !== name}
       >
-        {this.getPauseModal()}
+        {this.getModalInfo()}
       </YBModal>
     );
   }
