@@ -68,7 +68,7 @@ Where
 - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
-- Inserting rows with TTL is not supported on tables that have indexes. 
+- Inserting rows with TTL is not supported on tables with transactions enabled. 
 
 ### `VALUES` clause
 
