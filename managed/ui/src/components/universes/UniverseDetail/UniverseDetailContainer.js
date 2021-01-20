@@ -10,6 +10,11 @@ import {
   getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../actions/tasks';
 
 import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
 
@@ -78,6 +83,16 @@ const mapDispatchToProps = (dispatch) => {
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid)).then((response) => {
         dispatch(getHealthCheckResponse(response.payload));
+      });
+    },
+    
+    fetchCustomerTasks: () => {
+      return dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          return dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          return dispatch(fetchCustomerTasksFailure(response.payload));
+        }
       });
     },
     getAlertsList: () => {
