@@ -6,6 +6,7 @@ import { YBTextInput, YBButton, YBToggle } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { YBConfirmModal } from '../../modals';
 import { isDefinedNotNull, isEmptyObject } from "../../../utils/ObjectUtils";
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 class AwsStorageConfiguration extends Component {
   state = {
@@ -115,15 +116,28 @@ class AwsStorageConfiguration extends Component {
             </Col>
           </Row>
         </Col>
-        {!isEmptyObject(s3Config) &&
+        {!isEmptyObject(s3Config) && (
           <Col lg={4}>
-            <div>
-              <YBButton btnText={"Delete Configuration"}
-                        disabled={ submitting || loading || isEmptyObject(s3Config) }
-                        btnClass={"btn btn-default"}
-                        onClick={!isEmptyObject(s3Config) ?
-                          showDeleteStorageConfig.bind(this, s3Config.name) :
-                          null}
+            <div className="action-bar">
+              {s3Config.inUse && (
+                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                  placement="top"
+                >
+                  <span className="disable-delete fa-stack fa-2x">
+                    <i className="fa fa-trash-o fa-stack-1x"></i>
+                    <i className="fa fa-ban fa-stack-2x"></i>
+                  </span>
+                </YBInfoTip>
+              )}
+              <YBButton
+                btnText={'Delete Configuration'}
+                disabled={s3Config.inUse || submitting || loading}
+                btnClass={'btn btn-default'}
+                onClick={
+                  !isEmptyObject(s3Config)
+                    ? showDeleteStorageConfig.bind(this, s3Config.name)
+                    : null
+                }
               />
               {isDefinedNotNull(config) &&
                 <YBConfirmModal
@@ -139,7 +153,7 @@ class AwsStorageConfiguration extends Component {
               }
             </div>
           </Col>
-        }
+        )}
       </Row>
     );
   }
