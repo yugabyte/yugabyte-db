@@ -2,11 +2,14 @@
 title: Optimizing queries with EXPLAIN and EXPLAIN ANALYZE
 linkTitle: EXPLAIN and EXPLAIN ANALYZE
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
+aliases:
+  - /develop/query-performance/explain-analyze/
 headerTitle: EXPLAIN and EXPLAIN ANALYZE
+image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: explain-analyze
-    parent: query-performance
+    parent: query-performance 
     weight: 566
 isTocNested: true
 showAsideToc: true
