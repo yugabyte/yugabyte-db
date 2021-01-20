@@ -2,7 +2,6 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import _ from 'lodash';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 const statusTypes = {
   singleRF: {
@@ -63,7 +62,7 @@ export default class AZPlacementInfo extends Component {
     }
 
     const replicationFactor = placementInfo.replicationFactor;
-    const regionList = _.get(placementCloud, "regionList", []);
+    const regionList = placementCloud?.regionList || [];
     let multiRegion = true;
     let multiAz = true;
 

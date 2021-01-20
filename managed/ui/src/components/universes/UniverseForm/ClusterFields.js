@@ -1526,9 +1526,9 @@ export default class ClusterFields extends Component {
       && isNonEmptyString(formValues[clusterType]?.provider);
 
     // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
-    if ((
+    if (
       self.props.universe.currentPlacementStatus && placementCloud
-      && regionAndProviderDefined)
+      && regionAndProviderDefined
     ) {
       placementStatus = (
         <AZPlacementInfo
@@ -1537,8 +1537,8 @@ export default class ClusterFields extends Component {
           providerCode={currentProvider.code}
         />
       );
-    } else if (currentProvider?.code === 'onprem' &&
-      !(this.state.numNodes <= this.state.maxNumNodes)
+    } else if (currentProvider?.code === 'onprem' 
+      && !(this.state.numNodes <= this.state.maxNumNodes)
       && self.props.universe.currentPlacementStatus
       && isNonEmptyArray(formValues[clusterType].regionList)
       && isNonEmptyString(formValues[clusterType].provider)
