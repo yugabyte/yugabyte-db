@@ -337,7 +337,6 @@ export default class ClusterFields extends Component {
           }
         }
       } else {
-        console.log("Inside else block inside else--", this.state.useTimeSync)
         // Initialize the form values if not exists
         updateFormField(`${clusterType}.numNodes`, 3);
         updateFormField(`${clusterType}.replicationFactor`, 3);
