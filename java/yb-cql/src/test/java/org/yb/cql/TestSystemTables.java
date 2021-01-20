@@ -68,6 +68,12 @@ public class TestSystemTables extends BaseCQLTest {
     builder.yqlSystemPartitionsVtableRefreshSecs(SYSTEM_PARTITIONS_REFRESH_SECS);
   }
 
+  @Override
+  protected int systemQueryCacheMsecs() {
+    // Disable the system query cache for spark tests.
+    return 0;
+  }
+
   @After
   public void verifyMasterReads() throws Exception {
     // Verify all reads went to the leader master.
@@ -127,7 +133,6 @@ public class TestSystemTables extends BaseCQLTest {
         String.format("--placement_region=%s", PLACEMENT_REGION));
     BaseMiniClusterTest.tserverArgs.add(
         String.format("--placement_zone=%s", PLACEMENT_ZONE));
-    BaseMiniClusterTest.tserverArgs.add("--cql_update_system_query_cache_msecs=0");
   }
 
   @Test
