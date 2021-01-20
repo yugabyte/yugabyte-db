@@ -196,7 +196,7 @@ class OnPremSuccess extends Component {
     }
 
     const universeExistsForProvider = (universeList.data || []).some(
-      (universe) => universe.provider && universe.provider.uuid === currentProvider.uuid
+      (universe) => universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
     );
     const buttons = (
       <span className="buttons pull-right">
