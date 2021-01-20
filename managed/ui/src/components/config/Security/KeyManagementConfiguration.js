@@ -143,8 +143,8 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="IAM Profile"
-              content="If IAM Profile selected then we'll use the EC2 instance metadata credentials to make API request."
+              title="Use IAM Profile"
+              content="Select to use an IAM profile attached to an EC2 instance running the platform."
             />
           </Col>
         </Row>
@@ -162,8 +162,8 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="Access Key"
-              content="If user didn't select the IAM profile then(required) they must provide the AWS access key id."
+              title="Access Key Id"
+              content="Enter your AWS access key ID."
             />
           </Col>
         </Row>
@@ -181,8 +181,8 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="Secret Key"
-              content="If user didn't select the IAM profile then(required) they must provide the AWS secret key id."
+              title="Secret Key Id"
+              content="Enter your AWS access key secret."
             />
           </Col>
         </Row>
@@ -201,7 +201,7 @@ class KeyManagementConfiguration extends Component {
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
               title="Region"
-              content="This is the region that the CMK lives in(required)."
+              content="Select the AWS region where the customer master key is located."
             />
           </Col>
         </Row>
@@ -219,8 +219,8 @@ class KeyManagementConfiguration extends Component {
           </Col>
           <Col lg={1} className="config-zone-tooltip">
             <YBInfoTip
-              title="Customer Master Key"
-              content="The user can choose to provide their own CMK if not then we'll create one."
+              title="Customer Master Key Id"
+              content="Enter the identifier for the customer master key. If an identifier is not entered, a CMK ID will be auto-generated."
             />
           </Col>
         </Row>
@@ -340,7 +340,7 @@ class KeyManagementConfiguration extends Component {
                     <Col lg={1} className="config-zone-tooltip">
                       <YBInfoTip
                         title="Confriguration Name"
-                        content="The name of the KMS confriguration(required)."
+                        content="The name of the KMS configuration (Required)."
                       />
                     </Col>
                   </Row>
