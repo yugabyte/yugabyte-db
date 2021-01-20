@@ -385,6 +385,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
   CHECKED_STATUS StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
 
+  // Step down the master leader and wait for a new leader to be elected.
+  CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
+
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
   CHECKED_STATUS GetIsMasterLeaderServiceReady(ExternalMaster* master);
 
@@ -442,9 +445,6 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForLeaderToAllowChangeConfig(
       const string& uuid,
       ConsensusServiceProxy* leader_proxy);
-
-  // Step down the master leader and wait for a new leader to be elected.
-  CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;
