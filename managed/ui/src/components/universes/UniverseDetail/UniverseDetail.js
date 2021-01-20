@@ -258,7 +258,6 @@ class UniverseDetail extends Component {
         editTLSAvailability = 'disabled';
       }
     }
-
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
@@ -371,6 +370,7 @@ class UniverseDetail extends Component {
               universe={universe}
               tasks={tasks}
               isCommunityEdition={!!customer.INSECURE_apiToken}
+              fetchCustomerTasks={this.props.fetchCustomerTasks}
             />
           </Tab.Pane>
         )
