@@ -32,7 +32,7 @@ DEFINE_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
 
 // Todo(Rahul): Enable this by default (https://github.com/yugabyte/yugabyte-db/issues/6128)
-DEFINE_bool(cdc_enable_replicate_intents, false,
+DEFINE_bool(cdc_enable_replicate_intents, true,
             "Enable replication of intents before they've been committed.");
 
 namespace yb {
