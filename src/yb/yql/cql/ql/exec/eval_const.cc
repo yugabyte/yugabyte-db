@@ -31,24 +31,28 @@ using strings::Substitute;
 CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
                                      QLValuePB *const_pb,
                                      bool negate) {
-  DCHECK(expr->expr_op() == ExprOperator::kConst ||
-         expr->expr_op() == ExprOperator::kCollection ||
-         expr->expr_op() == ExprOperator::kUMinus ||
-         expr->expr_op() == ExprOperator::kBindVar);
-
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
     SetNull(const_pb);
   }
 
-  if (expr->expr_op() == ExprOperator::kUMinus) {
-    return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), const_pb);
-  }
+  switch (expr->expr_op()) {
+    case ExprOperator::kUMinus:
+      return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), const_pb);
 
-  if (expr->expr_op() == ExprOperator::kBindVar) {
-    QLExpressionPB expr_pb;
-    RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
-    *const_pb = std::move(*expr_pb.mutable_value());
-    return Status::OK();
+    case ExprOperator::kBindVar: {
+      QLExpressionPB expr_pb;
+      RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
+      *const_pb = std::move(*expr_pb.mutable_value());
+      return Status::OK();
+    }
+
+    case ExprOperator::kConst:
+    case ExprOperator::kCollection:
+      break;
+
+    default:
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Invalid constant expression ($0)", expr->QLName());
   }
 
   const PTExpr *const_pt = expr.get();
@@ -95,7 +99,9 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
     }
 
     default:
-      LOG(FATAL) << "Unknown datatype for QL constant value";
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Unknown datatype ($0) for QL constant value",
+                               const_pt->ql_type_id());
   }
   return Status::OK();
 }
@@ -199,7 +205,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
 
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "varint",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "varint",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -224,7 +231,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *c
       break;
     }
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "decimal",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "decimal",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -262,7 +270,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
       break;
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "int",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "int",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -283,7 +292,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *co
       const_pb->set_double_value(value);
       break;
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "double",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "double",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -333,7 +343,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     }
 
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "text",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "text",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -345,7 +356,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *cons
       const_pb->set_bool_value(const_pt->value());
       break;
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "bool",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "bool",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -366,7 +378,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *co
       break;
     }
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "binary",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "binary",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -395,7 +408,8 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
       break;
     }
     default:
-      LOG(FATAL) << Substitute("Illegal datatype conversion: $0 to $1", "uuid",
+      return STATUS_SUBSTITUTE(RuntimeError,
+                               "Illegal datatype conversion: $0 to $1", "uuid",
                                InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
@@ -518,13 +532,14 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
         }
 
         default:
-          FATAL_INVALID_ENUM_VALUE(DataType, const_pt->ql_type()->param_type(0)->main());
+          return STATUS_SUBSTITUTE(InternalError, "unsupported type $0",
+                                   const_pt->ql_type()->param_type(0)->main());
       }
       break;
     }
 
     default:
-      FATAL_INVALID_ENUM_VALUE(DataType, const_pt->ql_type()->main());
+      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", const_pt->ql_type()->main());
   }
 
   return Status::OK();
