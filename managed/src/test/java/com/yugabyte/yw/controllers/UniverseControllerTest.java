@@ -21,6 +21,7 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -1312,6 +1313,26 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "Universe already exists");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testResetVersionUniverseBadUUID() {
+    UUID universeUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+      universeUUID + "/reset_version";
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertBadRequest(result, "No universe found with UUID: " + universeUUID);
+  }
+
+  @Test
+  public void testResetVersionUniverse() {
+    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+      u.universeUUID + "/reset_version";
+    assertNotEquals(Universe.get(u.universeUUID).version, -1);
+    Result result = doRequestWithAuthToken("PUT", url, authToken);
+    assertOk(result);
+    assertEquals(Universe.get(u.universeUUID).version, -1);
   }
 
   @Test

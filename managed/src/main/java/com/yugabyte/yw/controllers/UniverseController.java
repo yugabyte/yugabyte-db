@@ -723,6 +723,23 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that sets universe version number to -1
+   *
+   * @return result of settings universe version to -1 (either success if universe exists else
+   * failure
+   */
+  public Result resetVersion(UUID customerUUID, UUID universeUUID) {
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+    universe.resetVersion();
+    return ApiResponse.success();
+  }
+
+  /**
    * API that queues a task to update/edit a universe of a given customer.
    * This does not wait for the completion.
    *

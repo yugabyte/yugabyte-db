@@ -217,6 +217,11 @@ public class Universe extends Model {
     }
   }
 
+  public void resetVersion() {
+    this.version = -1;
+    this.update();
+  }
+
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {
   };
 
