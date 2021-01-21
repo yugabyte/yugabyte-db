@@ -684,4 +684,117 @@ public class TestCollectionTypes extends BaseCQLTest {
     //------------------------------------------------------------------------------------------
   }
 
+  @Test
+  public void TestCollectionLiterals() throws Exception {
+    String tableNameIntBlob = "test_collection_literals_int_blob";
+    String tableNameBlobBlob = "test_collection_literals_blob_blob";
+
+    createCollectionTable(tableNameIntBlob, "int", "blob");
+    createCollectionTable(tableNameBlobBlob, "blob", "blob");
+
+    String insertTemplateIntBlob = "INSERT INTO " + tableNameIntBlob +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s);";
+    String insertTemplateBlobBlob = "INSERT INTO " + tableNameBlobBlob +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s);";
+
+    // Insert with valid literals.
+    String insertStmt;
+    insertStmt = String.format(insertTemplateIntBlob, 1, 1,
+                                "{ 1 : 0x01, 2 : textAsBlob('2'), 3 : intAsBlob(3) }",
+                                "{ 1, 2, 3 }",
+                                "[ 0x01, textAsBlob('a'), intAsBlob(3) ]");
+    execute(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 1,
+                                "{ 0x01 : 0x01, 0x02 : textAsBlob('2'), 0x03 : intAsBlob(3) }",
+                                "{ 0x01, textAsBlob('a'), intAsBlob(3) }",
+                                "[ 0x01, textAsBlob('a'), intAsBlob(3) ]");
+    execute(insertStmt);
+
+    // Incorrect use of collection literals in SELECT fields.
+    runInvalidQuery(String.format("SELECT { 1 : 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { 1 : r } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { r : 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT [ 1 ] FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT [ r ] FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { r } FROM %s", tableNameIntBlob));
+
+    // Incorrect use of collection literals in WHERE clause.
+    String selectTemplate = "SELECT * FROM %s WHERE %s IN (%s)";
+    runInvalidQuery(String.format(selectTemplate, tableNameIntBlob, "vm",
+                                  "{ 1 : 0x01, 2 : textAsBlob('2'), 3 : intAsBlob(3) }"));
+    runInvalidQuery(String.format(selectTemplate, tableNameBlobBlob, "vs",
+                                  "{ 0x01, textAsBlob('a'), intAsBlob(3) }"));
+    runInvalidQuery(String.format(selectTemplate, tableNameIntBlob, "vl",
+                                  "[ 0x01, textAsBlob('a'), intAsBlob(3) ]"));
+
+    // Insert with invalid MAP literals.
+    insertStmt = String.format(insertTemplateIntBlob, 1, 2,
+                               "{ 1 : 1 }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 3,
+                               "{ r : 0x01 }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 4,
+                               "{ 1 : intAsBlob(r) }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 5,
+                               "{ 1 : cast(1 as blob) }", null, null);
+    runInvalidStmt(insertStmt);
+
+    // Insert with invalid SET literals.
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 6,
+                               null, "{ 1 }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 7,
+                               null, "{ r }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 8,
+                               null, "{ intAsBlob(r) }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 9,
+                               null, "{ cast(1 as blob) }", null);
+    runInvalidStmt(insertStmt);
+
+    // Insert with invalid LIST literals.
+    insertStmt = String.format(insertTemplateIntBlob, 1, 10,
+                               null, null, "[ 1 ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 11,
+                               null, null, "[ r ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 12,
+                               null, null, "[ intAsBlob(r) ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 13,
+                               null, null, "[ cast(r as blob) ]");
+    runInvalidStmt(insertStmt);
+
+    // Insert with mismatch datatype.
+    insertStmt = String.format(insertTemplateIntBlob, 2, 1,
+                               "{ textAsBlob('2') : 2 }", null, null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 2,
+                               "{ intAsBlob(3) : 3 }", null, null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 3,
+                               null, "{ textAsBlob('a') }", null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 4,
+                               null, "{ intAsBlob(3) }", null);
+    runInvalidQuery(insertStmt);
+  }
 }

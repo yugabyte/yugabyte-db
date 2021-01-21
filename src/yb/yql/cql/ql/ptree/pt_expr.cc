@@ -178,8 +178,7 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
   switch (op_) {
     case ExprOperator::kRef:
       // Only accept column references where they are explicitly allowed.
-      if (sem_context->sem_state() == nullptr ||
-          !sem_context->allowing_column_refs()) {
+      if (sem_context->sem_state() == nullptr || !sem_context->allowing_column_refs()) {
         return sem_context->Error(this,
                                   "Column references are not allowed in this context",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -387,47 +386,67 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       if (ql_type_->main() == SET && values_.size() > 0) {
         return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
       }
+
+      // Process keys and values.
+      // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
+      sem_state.set_allowing_column_refs(false);
 
       const shared_ptr<QLType>& key_type = expected_type->param_type(0);
       sem_state.SetExprState(key_type, YBColumnSchema::ToInternalDataType(key_type), bindvar_name);
       for (auto& key : keys_) {
         RETURN_NOT_OK(key->Analyze(sem_context));
+        RETURN_NOT_OK(key->CheckRhsExpr(sem_context));
       }
 
       const shared_ptr<QLType>& val_type = expected_type->param_type(1);
       sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& value : values_) {
         RETURN_NOT_OK(value->Analyze(sem_context));
+        RETURN_NOT_OK(value->CheckRhsExpr(sem_context));
       }
 
       sem_state.ResetContextState();
       break;
     }
     case SET: {
+      // Process values.
+      // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
+      sem_state.set_allowing_column_refs(false);
+
       const shared_ptr<QLType>& val_type = expected_type->param_type(0);
       sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& elem : values_) {
         RETURN_NOT_OK(elem->Analyze(sem_context));
+        RETURN_NOT_OK(elem->CheckRhsExpr(sem_context));
       }
       sem_state.ResetContextState();
       break;
     }
 
     case LIST: {
+      // Process values.
+      // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
+      sem_state.set_allowing_column_refs(false);
+
       const shared_ptr<QLType>& val_type = expected_type->param_type(0);
       sem_state.SetExprState(val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name);
       for (auto& elem : values_) {
         RETURN_NOT_OK(elem->Analyze(sem_context));
+        RETURN_NOT_OK(elem->CheckRhsExpr(sem_context));
       }
       sem_state.ResetContextState();
       break;
     }
 
     case USER_DEFINED_TYPE: {
+      // Process values.
+      // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
+      sem_state.set_allowing_column_refs(false);
+
       RETURN_NOT_OK(InitializeUDTValues(expected_type, sem_context));
       for (int i = 0; i < udtype_field_values_.size(); i++) {
         if (!udtype_field_values_[i]) {
@@ -440,6 +459,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
                                YBColumnSchema::ToInternalDataType(param_type),
                                bindvar_name);
         RETURN_NOT_OK(udtype_field_values_[i]->Analyze(sem_context));
+        RETURN_NOT_OK(udtype_field_values_[i]->CheckRhsExpr(sem_context));
       }
       sem_state.ResetContextState();
       break;
@@ -454,8 +474,8 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       } else {
         SemState sem_state(sem_context);
         sem_state.SetExprState(expected_type->param_type(0),
-                              YBColumnSchema::ToInternalDataType(expected_type->param_type(0)),
-                              bindvar_name);
+                               YBColumnSchema::ToInternalDataType(expected_type->param_type(0)),
+                               bindvar_name);
         RETURN_NOT_OK(Analyze(sem_context));
         sem_state.ResetContextState();
       }
@@ -743,6 +763,11 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     case QL_OP_NOT_IN:
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      // For IN operator, we check compatibility between op1's type and op2's value_type.
+      if (!sem_context->IsComparable(op1->ql_type_id(), op2->ql_type()->values_type()->main())) {
+        return sem_context->Error(this, "Cannot compare values of these datatypes",
+                                  ErrorCode::INCOMPARABLE_DATATYPES);
+      }
       break;
 
     default:
