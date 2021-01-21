@@ -32,15 +32,15 @@ INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) A
 CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 
+-- PK constraint
+CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 int);
+INSERT INTO tbl_include_pk SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
+ALTER TABLE tbl_include_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
+SELECT pg_get_indexdef(i.indexrelid)
+FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
+WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
+
 -- NOT SUPPORTED
---
--- -- PK constraint
--- CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 int);
--- INSERT INTO tbl_include_pk SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- ALTER TABLE tbl_include_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
--- SELECT pg_get_indexdef(i.indexrelid)
--- FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
--- WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
 --
 -- CREATE TABLE tbl_include_c4 (c1 int, c2 int, c3 int, c4 int);
 -- INSERT INTO tbl_include_c4 SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;

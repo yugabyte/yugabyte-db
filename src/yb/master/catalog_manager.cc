@@ -2007,17 +2007,6 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    // Verify that the table does not exist.
-    table = FindPtrOrNull(table_names_map_, {namespace_id, req->name()});
-    if (table != nullptr) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Object '$0.$1' already exists", ns->name(), table->name());
-      LOG(WARNING) << "Found table: " << table->ToStringWithState()
-                   << ". Failed creating PostgreSQL system table with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
-    }
-
     RETURN_NOT_OK(CreateTableInMemory(
         *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
@@ -3278,6 +3267,12 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
           return Status::OK();
         }
 
+        // We can't lookup YSQL table by name because Postgres concept of "schemas"
+        // introduces ambiguity.
+        if (ns->database_type() == YQL_DATABASE_PGSQL) {
+          return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
+        }
+
         namespace_id = ns->id();
       } else {
         return STATUS(InvalidArgument, "Neither keyspace id or keyspace name are specified");
@@ -4110,26 +4105,30 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
     }
 
-    std::lock_guard<LockType> catalog_lock(lock_);
-    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+    // Postgres handles name uniqueness constraints in it's own layer.
+    if (l->data().table_type() != PGSQL_TABLE_TYPE) {
+      std::lock_guard<LockType> catalog_lock(lock_);
+      VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
-    TRACE("Acquired catalog manager lock");
+      TRACE("Acquired catalog manager lock");
 
-    // Verify that the table does not exist.
-    scoped_refptr<TableInfo> other_table = FindPtrOrNull(
-        table_names_map_, {new_namespace_id, new_table_name});
-    if (other_table != nullptr) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Object '$0.$1' already exists",
-          GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
-      LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
-                   << ". Failed alterring table with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+      // Verify that the table does not exist.
+      scoped_refptr<TableInfo> other_table = FindPtrOrNull(
+          table_names_map_, {new_namespace_id, new_table_name});
+      if (other_table != nullptr) {
+        Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+            "Object '$0.$1' already exists",
+            GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
+        LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
+                     << ". Failed alterring table with error: "
+                     << s.ToString() << " Request:\n" << req->DebugString();
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+      }
+
+      // Acquire the new table name (now we have 2 name for the same table).
+      table_names_map_[{new_namespace_id, new_table_name}] = table;
     }
 
-    // Acquire the new table name (now we have 2 name for the same table).
-    table_names_map_[{new_namespace_id, new_table_name}] = table;
     table_pb.set_namespace_id(new_namespace_id);
     table_pb.set_name(new_table_name);
 
@@ -4216,15 +4215,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  // Remove the old name.
-  if (req->has_new_namespace() || req->has_new_table_name()) {
+  // Remove the old name. Not present if PGSQL.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+      (req->has_new_namespace() || req->has_new_table_name())) {
     TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
-        namespace_id, table_name);
+          namespace_id, table_name);
     std::lock_guard<LockType> l_map(lock_);
-    if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-        table_names_map_.erase({namespace_id, table_name}) != 1) {
-      PANIC_RPC(rpc, "Could not remove table from map, name=" + l->data().name());
-    }
+    table_names_map_.erase({namespace_id, table_name});
   }
 
   // Update the in-memory state.
@@ -4582,6 +4579,8 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
     YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) {
+  if (db_type == YQL_DATABASE_PGSQL)
+    return nullptr;
   SharedLock<LockType> l(lock_);
   const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
   return ns

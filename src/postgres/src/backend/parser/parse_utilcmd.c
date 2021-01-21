@@ -1676,7 +1676,11 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 		/* Add the operator class name, if non-default */
 		iparam->opclass = get_opclass(indclass->values[keyno], keycoltype);
 
-		iparam->ordering = SORTBY_DEFAULT;
+		if (opt & INDOPTION_HASH)
+			iparam->ordering = SORTBY_HASH;
+		else
+			iparam->ordering = SORTBY_DEFAULT;
+
 		iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
 
 		/* Adjust options if necessary */

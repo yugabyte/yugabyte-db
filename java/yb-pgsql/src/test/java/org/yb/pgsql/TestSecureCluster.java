@@ -67,10 +67,6 @@ public class TestSecureCluster extends BasePgSQLTest {
                "list_tablets");
   }
 
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
-  }
-
   @Override
   protected Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = super.getMasterAndTServerFlags();
