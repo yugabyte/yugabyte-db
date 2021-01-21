@@ -28,12 +28,15 @@ class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEcC2Client(Provider provider, Region r) {
-    Map<String, String> config = provider.getConfig();
+    return getEC2ClientInternal(provider.getConfig(), r.code);
+  }
+
+  private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(
       config.get("AWS_ACCESS_KEY_ID"),
       config.get("AWS_SECRET_ACCESS_KEY"));
     return AmazonEC2ClientBuilder.standard()
-      .withRegion(r.code)
+      .withRegion(regionCode)
       .withCredentials(credentialsProvider)
       .build();
   }
@@ -90,15 +93,8 @@ class AWSCloudImpl implements CloudAPI {
 
   @Override
   public boolean isValidCreds(Map<String, String> config, String region) {
-    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(
-      config.get("AWS_ACCESS_KEY_ID"),
-      config.get("AWS_SECRET_ACCESS_KEY"));
     try {
-      AmazonEC2 ec2Client = AmazonEC2ClientBuilder
-        .standard()
-        .withCredentials(credentialsProvider)
-        .withRegion(Regions.valueOf(region.toUpperCase()))
-        .build();
+      AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
       DryRunResult<DescribeInstancesRequest> dryRunResult = ec2Client
         .dryRun(new DescribeInstancesRequest());
       if(!dryRunResult.isSuccessful()) {
