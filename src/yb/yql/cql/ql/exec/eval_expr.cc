@@ -43,10 +43,23 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
     case ExprOperator::kNoOp:
       return Status::OK();
 
-    case ExprOperator::kConst:
-    case ExprOperator::kCollection: {
+    case ExprOperator::kConst: {
       QLValuePB *const_pb = expr_pb->mutable_value();
       return PTConstToPB(expr, const_pb);
+    }
+
+    case ExprOperator::kCollection: {
+      // First try to fold literals. Literal-folding is a bit faster than constant folding, so we
+      // keep this process although constant-folding can also fold literals.
+      QLValuePB *const_pb = expr_pb->mutable_value();
+      if (!PTConstToPB(expr, const_pb).ok()) {
+        // Use constant folding because literal-folding cannot fold expressions.
+        // Example: "List<BLOB>" with function calls.
+        //   [ TextAsBlob('a'), IntAsBlob(1) ]
+        RETURN_NOT_OK(PTExprToPB(static_cast<const PTCollectionExpr*>(expr.get()), expr_pb));
+        return EvalExpr(expr_pb, QLTableRow::empty_row());
+      }
+      return Status::OK();
     }
 
     case ExprOperator::kRef:
@@ -114,7 +127,17 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *ex
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb) {
+  // When processing constant folding by client, all columns are not yet accessible, and "PTRef"
+  // execution should returns an error to indicate that the folding effort failed.
   const ColumnDesc *col_desc = ref_pt->desc();
+  if (!col_desc) {
+    // Protection against crash. This happens when compiler failed to analyze a column ref.
+    // Example
+    //   SELECT [ i ] FROM tab;
+    // Expression "[ i ]" should have been analyzed and reported during semantic phase. However,
+    // it requires some effort to fix in semantic phase, this error is reported here for now.
+    return STATUS(RuntimeError, "Failed to read column value");
+  }
   ref_pb->set_column_id(col_desc->id());
   return Status::OK();
 }

@@ -12,6 +12,8 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.utils.Bytes;
+
 import com.datastax.driver.core.*;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -513,7 +515,7 @@ public class TestFrozenType extends BaseCQLTest {
   public void testFrozenUDTsInsideCollections() throws Exception {
     String tableName = "test_frozen_nested_col";
     String typeName = "test_udt_employee";
-    createType(typeName, "name text", "ssn bigint");
+    createType(typeName, "name text", "ssn bigint", "blb blob");
 
     String createStmt = "CREATE TABLE " + tableName + " (h int, r int, " +
         "v1 set<frozen<map<int, text>>>, v2 list<frozen<test_udt_employee>>," +
@@ -553,11 +555,15 @@ public class TestFrozenType extends BaseCQLTest {
         .set("ssn", 234L, Long.class);
     UDTValue udt3 = udtType.newValue()
         .set("name", "Jack", String.class)
+        .setBytes("blb", Bytes.fromHexString("0x61"));
+    UDTValue udt4 = udtType.newValue()
+        .set("name", "Jack", String.class)
         .set("ssn", 321L, Long.class);
 
     String udt1Lit = "{name : 'John', ssn : 123}";
     String udt2Lit = "{name : 'Jane', ssn : 234}";
-    String udt3Lit = "{name : 'Jack', ssn : 321}";
+    String udt3Lit = "{name : 'Jack', blb : textAsBlob('a')}";
+    String udt4Lit = "{name : 'Jack', ssn : 321}";
 
     //----------------------------------------------------------------------------------------------
     // Testing Insert
@@ -567,7 +573,7 @@ public class TestFrozenType extends BaseCQLTest {
           "INSERT INTO " + tableName + " (h, r, v1, v2) VALUES (%d, %d, %s, %s);";
       session.execute(String.format(insertTemplate, 1, 1,
           "{" + map1Lit + ", " + map2Lit + "}",
-          "[" + udt1Lit + ", " + udt2Lit + "]"));
+          "[" + udt1Lit + ", " + udt2Lit + ", " + udt3Lit + "]"));
       // Checking Row.
       String selectTemplate = "SELECT * FROM " + tableName + " WHERE h = %d AND r = %d";
       Iterator<Row> rows = runSelect(String.format(selectTemplate, 1, 1));
@@ -581,9 +587,10 @@ public class TestFrozenType extends BaseCQLTest {
       assertTrue(setValue.contains(map2));
 
       List<UDTValue> listValue = row.getList("v2", UDTValue.class);
-      assertEquals(2, listValue.size());
+      assertEquals(3, listValue.size());
       assertEquals(udt1, listValue.get(0));
       assertEquals(udt2, listValue.get(1));
+      assertEquals(udt3, listValue.get(2));
 
       assertFalse(rows.hasNext());
     }
@@ -615,7 +622,7 @@ public class TestFrozenType extends BaseCQLTest {
       String updateTemplate =
           "UPDATE " + tableName + " SET v2 = %s WHERE h = %d AND r = %d;";
       session.execute(String.format(updateTemplate,
-          "v2 + [" + udt3Lit + "]", 1, 1));
+          "v2 + [" + udt4Lit + "]", 1, 1));
       // Checking Row.
       String selectTemplate = "SELECT * FROM " + tableName + " WHERE h = %d AND r = %d";
       Iterator<Row> rows = runSelect(String.format(selectTemplate, 1, 1));
@@ -624,10 +631,11 @@ public class TestFrozenType extends BaseCQLTest {
       assertEquals(1, row.getInt("r"));
 
       List<UDTValue> listValue = row.getList("v2", UDTValue.class);
-      assertEquals(3, listValue.size());
+      assertEquals(4, listValue.size());
       assertTrue(listValue.contains(udt1));
       assertTrue(listValue.contains(udt2));
       assertTrue(listValue.contains(udt3));
+      assertTrue(listValue.contains(udt4));
 
       assertFalse(rows.hasNext());
     }
@@ -645,6 +653,7 @@ public class TestFrozenType extends BaseCQLTest {
       listValue.add(udt1);
       listValue.add(udt2);
       listValue.add(udt3);
+      listValue.add(udt4);
 
       String insertStmt = "INSERT INTO " + tableName + "(h, r, v1, v2) VALUES (?, ?, ?, ?);";
       session.execute(insertStmt, 2, 1, setValue, listValue);
