@@ -687,13 +687,13 @@ process_core_file() {
 
 # Used for both C++ and Java tests.
 stop_process_tree_supervisor() {
-  # process_supervisor_log_path should be set in run-test.sh.
-  expect_vars_to_be_set process_supervisor_log_path
-
   process_supervisor_success=true
   if [[ ${process_tree_supervisor_pid:-0} -eq 0 ]]; then
     return
   fi
+
+  # process_supervisor_log_path should be set in case process_tree_supervisor_pid is set.
+  expect_vars_to_be_set process_supervisor_log_path
 
   if ! kill -SIGUSR1 "$process_tree_supervisor_pid"; then
     log "Warning: could not stop the process tree supervisor (pid $process_tree_supervisor_pid)." \
