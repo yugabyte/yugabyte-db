@@ -4,11 +4,15 @@ headerTitle: 2.4.0 Stable Release Series
 linkTitle: v2.4.0 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series recommended for production deployments.
+aliases:
+  - /latest/releases/
 menu:
   latest:
     identifier: stable-releases
     parent: whats-new
-    weight: 2586 
+    weight: 2586
+isTocNested: true
+showAsideToc: false  
 ---
 
 
@@ -16,11 +20,9 @@ menu:
 
 # Release Notes
 
-# v2.4.0 - Jan 21, 2021
+# v2.4.0 - Jan 22, 2021
 
-
-
-## New Features
+### New Features
 
 ##### Yugabyte Platform
 
@@ -46,7 +48,7 @@ menu:
 - Ability to log slow running queries in YSQL ([#4817](https://github.com/YugaByte/yugabyte-db/issues/4817))
 - Introducing support for LDAP integration in YSQL API ([#6088](https://github.com/yugabyte/yugabyte-db/issues/6088))
 
-## Improvements
+### Improvements
 
 ##### Yugabyte Platform
 
@@ -132,7 +134,7 @@ menu:
 
 - Skip loading deleted table metadata into master memory ([#5122](https://github.com/yugabyte/yugabyte-db/issues/5122))
 
-## Bug Fixes
+### Bug Fixes
 
 ##### Yugabyte Platform
 
@@ -177,7 +179,7 @@ menu:
 
 - Retry on SSL_ERROR_WANT_WRITE ([#6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
 
-## Known Issues
+### Known Issues
 
 ##### Yugabyte Platform
 
@@ -192,9 +194,8 @@ menu:
 
   - While a tablet split is occurring, in-flight operations for both YCQL and YSQL APIs would currently receive errors. These would currently have to be retried at the application level currently. In the future, these will be transparently handled underneath the hood. The immediate impact for this would be that certain tools like TPCC or sysbench would fail while tablet splitting is happening.
 
----
 
-## Notes
+### Notes
 
 {{< note title="Release versioning" >}}
 
