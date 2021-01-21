@@ -12,6 +12,9 @@ package com.yugabyte.yw.common;
 
 import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfig;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import io.ebean.Model;
 import junit.framework.TestCase;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -30,7 +33,7 @@ import java.util.Map;
 import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
-public class PlatformBackupManagerTest extends TestCase {
+public class PlatformReplicationManagerTest extends TestCase {
   @Mock
   Config mockConfig;
 
@@ -42,6 +45,9 @@ public class PlatformBackupManagerTest extends TestCase {
 
   @Mock
   ShellProcessHandler shellProcessHandler;
+
+  @Mock
+  RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Before
   public void setUp() {
@@ -56,12 +62,14 @@ public class PlatformBackupManagerTest extends TestCase {
     String dbHost,
     int dbPort
   ) {
-    when(mockConfig.getString(PlatformBackupManager.PROMETHEUS_HOST_CONFIG_KEY))
+    when(mockConfig.getString(PlatformReplicationManager.PROMETHEUS_HOST_CONFIG_KEY))
       .thenReturn(prometheusHost);
-    when(mockConfig.getString(PlatformBackupManager.DB_USERNAME_CONFIG_KEY)).thenReturn(dbUsername);
-    when(mockConfig.getString(PlatformBackupManager.DB_PASSWORD_CONFIG_KEY)).thenReturn(dbPassword);
-    when(mockConfig.getString(PlatformBackupManager.DB_HOST_CONFIG_KEY)).thenReturn(dbHost);
-    when(mockConfig.getInt(PlatformBackupManager.DB_PORT_CONFIG_KEY)).thenReturn(dbPort);
+    when(mockConfig.getString(PlatformReplicationManager.DB_USERNAME_CONFIG_KEY))
+      .thenReturn(dbUsername);
+    when(mockConfig.getString(PlatformReplicationManager.DB_PASSWORD_CONFIG_KEY))
+      .thenReturn(dbPassword);
+    when(mockConfig.getString(PlatformReplicationManager.DB_HOST_CONFIG_KEY)).thenReturn(dbHost);
+    when(mockConfig.getInt(PlatformReplicationManager.DB_PORT_CONFIG_KEY)).thenReturn(dbPort);
   }
 
   private List<String> getExpectedPlatformBackupCommandArgs(
@@ -70,7 +78,8 @@ public class PlatformBackupManagerTest extends TestCase {
     String dbHost,
     int dbPort,
     String inputPath,
-    boolean isCreate
+    boolean isCreate,
+    String backupDir
   ) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
@@ -79,9 +88,7 @@ public class PlatformBackupManagerTest extends TestCase {
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
       expectedCommandArgs.add("--output");
-      expectedCommandArgs.add(
-        PlatformBackupManager.getOutputDir(mockConfig).toAbsolutePath().toString()
-      );
+      expectedCommandArgs.add(backupDir);
     } else {
       expectedCommandArgs.add("restore");
       expectedCommandArgs.add("--input");
@@ -123,26 +130,32 @@ public class PlatformBackupManagerTest extends TestCase {
     boolean isCreate
   ) {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
+    Map<String, String> expectedEnvVars = new HashMap<>();
+    if (!dbPassword.isEmpty()) {
+      expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
+    }
+
+    RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+
+    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(new ShellResponse());
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
+      actorSystem,
+      executionContext,
+      shellProcessHandler,
+      mockRuntimeConfigFactory,
+      null
+    ));
+
     List<String> expectedCommandArgs = getExpectedPlatformBackupCommandArgs(
       prometheusHost,
       dbUsername,
       dbHost,
       dbPort,
       inputPath,
-      isCreate
+      isCreate,
+      backupManager.getBackupDir().toAbsolutePath().toString()
     );
-    Map<String, String> expectedEnvVars = new HashMap<>();
-    if (!dbPassword.isEmpty()) {
-      expectedEnvVars.put(PlatformBackupManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
-    }
-
-    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(new ShellResponse());
-    PlatformBackupManager backupManager = spy(new PlatformBackupManager(
-      mockConfig,
-      actorSystem,
-      executionContext,
-      shellProcessHandler
-    ));
 
     if (isCreate) {
       backupManager.createBackup();
