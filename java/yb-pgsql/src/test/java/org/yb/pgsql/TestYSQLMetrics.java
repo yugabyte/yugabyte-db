@@ -220,7 +220,7 @@ public class TestYSQLMetrics extends BasePgSQLTest {
           "RETURN 0; END; $$ LANGUAGE PLPGSQL");
       final String query = "EXPLAIN(COSTS OFF, ANALYZE) SELECT func(500)";
       ResultSet result = statement.executeQuery(query);
-      AgregatedValue stat = getStatementStat(query);
+      AggregatedValue stat = getStatementStat(query);
       assertEquals(1, stat.count);
       while(result.next()) {
         if(result.isLast()) {
@@ -251,12 +251,12 @@ public class TestYSQLMetrics extends BasePgSQLTest {
     for(int i = 0; i < count; ++i) {
       statement.addBatch(query);
     }
-    AgregatedValue metric_before = getMetric(metric_name);
+    AggregatedValue metric_before = getMetric(metric_name);
     final long startTimeMillis = System.currentTimeMillis();
     statement.executeBatch();
     final double elapsed_local_time = System.currentTimeMillis() - startTimeMillis;
-    AgregatedValue metric_after = getMetric(metric_name);
-    AgregatedValue stat = getStatementStat(stat_name);
+    AggregatedValue metric_after = getMetric(metric_name);
+    AggregatedValue stat = getStatementStat(stat_name);
     assertEquals(String.format("Calls count for query %s", query), count, stat.count);
     assertEquals(String.format("'%s' count for query %s", metric_name, query),
                  count,
