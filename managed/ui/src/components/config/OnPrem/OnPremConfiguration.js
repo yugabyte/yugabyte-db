@@ -200,8 +200,9 @@ export default class OnPremConfiguration extends Component {
           // Update numNodesConfigured until done
           const numNodesConfigured = this.state.numNodesConfigured + Object.keys(response).length;
           this.setState({ numNodesConfigured: numNodesConfigured });
+          let nodeLength = config.nodes ? config.nodes.length : 0;
           // Launch configuration of access keys once all node instances are bootstrapped
-          if (numNodesConfigured === config.nodes.length) {
+          if (numNodesConfigured === nodeLength) {
             bootstrapSteps[currentStepIndex + 1].status = 'Running';
             if (
               config.key &&
