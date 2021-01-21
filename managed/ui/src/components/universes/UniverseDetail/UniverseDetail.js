@@ -604,7 +604,7 @@ class UniverseDetail extends Component {
                           && providerType.toString() === 'aws'
                           && statusCheck &&
                           <YBMenuItem onClick={showToggleUniverseStateModal}>
-                            {universePaused ? 'Pause Universe' : 'Restart Universe'}
+                            {!universePaused ? 'Pause Universe' : 'Restart Universe'}
                           </YBMenuItem>
                         }
 
@@ -646,8 +646,8 @@ class UniverseDetail extends Component {
         <ToggleUniverseStateContainer
           visible={showModal && visibleModal === 'toggleUniverseStateForm'}
           onHide={closeModal}
-          title={`${universePaused ? 'Pause' : 'Restart'} Universe: `}
-          body={`Are you sure you want to ${universePaused ? 'pause' : 'restart'} the universe?`}
+          title={`${!universePaused ? 'Pause' : 'Restart'} Universe: `}
+          body={`Are you sure you want to ${!universePaused ? 'pause' : 'restart'} the universe?`}
           type="primary"
           universePaused={universePaused}
         />

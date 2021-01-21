@@ -53,7 +53,7 @@ export default class ToggleUniverseState extends Component {
         currentUniverse: { data }
       }
     } = this.props;
-    !universePaused
+    universePaused
     ? this.props.submitRestartUniverse(data.universeUUID)
     : this.props.submitPauseUniverse(data.universeUUID);
   }

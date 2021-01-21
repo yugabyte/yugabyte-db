@@ -70,7 +70,7 @@ export default class UniverseStatus extends Component {
         <span className="status-pending-name">{statusText}</span>
       </div>
     );
-    if (!isDefinedNotNull(universePendingTask) && updateSucceeded && universePaused) {
+    if (!isDefinedNotNull(universePendingTask) && updateSucceeded && !universePaused) {
       statusClassName = 'good';
       if (showLabelText) {
         statusText = 'Ready';
@@ -82,7 +82,7 @@ export default class UniverseStatus extends Component {
           {statusText && <span>{statusText}</span>}
         </div>
       );
-    } else if (!isDefinedNotNull(universePendingTask) && updateSucceeded && !universePaused) {
+    } else if (!isDefinedNotNull(universePendingTask) && updateSucceeded && universePaused) {
       statusClassName = 'paused';
       if (showLabelText) {
         statusText = 'Paused';
