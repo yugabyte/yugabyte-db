@@ -21,7 +21,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
 
   private final M scope;
 
-  RuntimeConfig(Config config) {
+  public RuntimeConfig(Config config) {
     this(null, config);
   }
 
@@ -47,7 +47,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.setValueInternal(path, ConfigValueFactory.fromAnyRef(value));
-    LOG.info("After setValue {}", delegate());
+    LOG.debug("After setValue {}", delegate());
     return this;
   }
 }
