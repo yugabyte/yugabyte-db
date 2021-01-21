@@ -567,7 +567,8 @@ std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     auto* tserver = cluster->mini_tablet_server(i)->server();
     auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
     delta_changers.emplace_back(
-        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock()));
+        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(
+            hybrid_clock->physical_clock()));
   }
   return delta_changers;
 }

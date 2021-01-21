@@ -749,6 +749,12 @@ message TSHeartbeatRequestPB {
 
   // List of candidate tablets for split based on tablet splitting strategy and settings.
   repeated TabletForSplitPB tablets_for_split = 9;
+
+  // Physical time on tablet server
+  optional fixed64 ts_physical_time = 10;
+
+  // Hybrid time on tablet server
+  optional fixed64 ts_hybrid_time = 11;
 }
 
 message TSHeartbeatResponsePB {
