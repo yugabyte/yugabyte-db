@@ -1457,8 +1457,10 @@ export default class ClusterFields extends Component {
         />
       );
     }
-    // Only enable Time Sync Service toggle for AWS.
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === 'aws') {
+    // Only enable Time Sync Service toggle for AWS/GCP.
+    if (isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === 'aws' || currentProvider.code === 'gcp')) {
+      const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
       useTimeSync = (
         <Field
           name={`${clusterType}.useTimeSync`}
@@ -1466,8 +1468,8 @@ export default class ClusterFields extends Component {
           isReadOnly={isFieldReadOnly}
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
-          label="Use AWS Time Sync"
-          subLabel="Enable the AWS Time Sync functionality for the DB servers."
+          label={`Use ${providerCode} Time Sync`}
+          subLabel={`Enable the ${providerCode} Time Sync functionality for the DB servers.`}
         />
       );
     }
