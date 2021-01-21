@@ -11,7 +11,6 @@
 // under the License.
 //
 
-
 #include "yb/util/timestamp.h"
 #include "yb/util/date_time.h"
 #include "yb/gutil/strings/substitute.h"
@@ -36,6 +35,10 @@ string Timestamp::ToString() const {
 
 string Timestamp::ToFormattedString() const {
   return DateTime::TimestampToString(*this, DateTime::CqlOutputFormat);
+}
+
+string Timestamp::ToHumanReadableTime() const {
+  return DateTime::TimestampToString(*this, DateTime::HumanReadableOutputFormat);
 }
 
 } // namespace yb

@@ -142,7 +142,7 @@ class HybridClock : public Clock {
   // Enables check whether clock skew within configured bounds.
   static void EnableClockSkewControl();
 
-  const PhysicalClockPtr& TEST_clock() { return clock_; }
+  const PhysicalClockPtr& physical_clock() { return clock_; }
 
  private:
   enum State {
