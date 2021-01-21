@@ -177,11 +177,10 @@ public class InstanceType extends Model {
       .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
-      if (parsedJson != null) {
-        instanceType.instanceTypeDetails =
-          Json.fromJson(parsedJson, InstanceTypeDetails.class);
+      if (parsedJson == null || parsedJson.isNull()) {
+        instanceType.instanceTypeDetails = new InstanceTypeDetails();
       } else {
-          instanceType.instanceTypeDetails = new InstanceTypeDetails();
+        instanceType.instanceTypeDetails = Json.fromJson(parsedJson, InstanceTypeDetails.class);
       }
       if (instanceType.instanceTypeDetails.volumeDetailsList.isEmpty()) {
         instanceType.instanceTypeDetails.setVolumeDetailsList(

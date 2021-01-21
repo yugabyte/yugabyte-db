@@ -160,6 +160,27 @@ public class InstanceTypeTest extends FakeDBApplication {
   }
 
   @Test
+  public void testFindByProviderWithNullInstanceTypeDetails() {
+    InstanceType.upsert(defaultProvider.code, "c5.medium", 3, 10.0, null);
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY))
+      .thenReturn(1);
+    when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY))
+      .thenReturn(250);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    assertNotNull(instanceTypeList);
+    InstanceType.VolumeDetails volumeDetails = instanceTypeList
+      .get(0)
+      .instanceTypeDetails
+      .volumeDetailsList
+      .get(0);
+    assertEquals(250, volumeDetails.volumeSizeGB.intValue());
+    assertEquals(InstanceType.VolumeType.EBS, volumeDetails.volumeType);
+    assertEquals(String.format("/mnt/d%d", 0), volumeDetails.mountPath);
+    assertThat(instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
+      allOf(notNullValue(), equalTo(1)));
+  }
+
+  @Test
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
