@@ -530,11 +530,12 @@ public class NodeManager extends DevopsBase {
           }
         }
 
-        if (cloudType.equals(Common.CloudType.aws)) {
-          if (taskParam.useTimeSync) {
-            commandArgs.add("--use_chrony");
-          }
+        if (taskParam.useTimeSync
+            && (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))) {
+          commandArgs.add("--use_chrony");
+        }
 
+        if (cloudType.equals(Common.CloudType.aws)) {
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
