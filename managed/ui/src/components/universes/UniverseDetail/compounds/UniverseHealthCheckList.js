@@ -3,8 +3,9 @@
 import React, { Component } from 'react';
 import { Alert, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import moment from 'moment';
 import { sortBy, values } from 'lodash';
-import * as momentTimezone from 'moment-timezone';
+
 import { YBLoading } from '../../../common/indicators';
 import TreeNode from '../../../common/TreeNode';
 import { YBPanelItem } from '../../../panels';
@@ -224,7 +225,7 @@ const detailsFormatter = (cell, row) => {
 function prepareData(data) {
   return data.map((timeDataJson) => {
     const timeData = JSON.parse(timeDataJson);
-    const timestampMoment = momentTimezone.utc(timeData.timestamp).local();
+    const timestampMoment = moment.utc(timeData.timestamp).local();
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
       check.key = getKeyForCheck(check);
