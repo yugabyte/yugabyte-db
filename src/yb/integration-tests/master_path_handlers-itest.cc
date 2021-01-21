@@ -54,7 +54,7 @@ class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     Endpoint master_http_endpoint = cluster_->leader_mini_master()->bound_http_addr();
-    master_http_url_ = "http://" + ToString(master_http_endpoint);
+    master_http_url_ = "http://" + AsString(master_http_endpoint);
   }
 
   void DoTearDown() override {
