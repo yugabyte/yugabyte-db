@@ -371,6 +371,7 @@ class UniverseDetail extends Component {
               universe={universe}
               tasks={tasks}
               isCommunityEdition={!!customer.INSECURE_apiToken}
+              fetchCustomerTasks={this.props.fetchCustomerTasks}
             />
           </Tab.Pane>
         )

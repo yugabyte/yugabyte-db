@@ -5,6 +5,10 @@ import { TaskListTable, TaskProgressContainer } from '../../../tasks';
 import { TASK_SHORT_TIMEOUT } from '../../../tasks/constants';
 
 export class UniverseTaskList extends Component {
+  componentDidMount() {
+    this.props.fetchCustomerTasks();
+  }
+
   tasksForUniverse = () => {
     const {
       universe: {
