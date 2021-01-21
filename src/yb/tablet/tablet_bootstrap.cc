@@ -966,7 +966,7 @@ class TabletBootstrap {
     SplitOperationState state(
         tablet_.get(), nullptr /* consensus_for_abort */, data_.tablet_init_data.tablet_splitter,
         split_request);
-    return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&state);
+    return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&state, log_.get());
 
     // TODO(tsplit): In scope of https://github.com/yugabyte/yugabyte-db/issues/1461 add integration
     // tests for:

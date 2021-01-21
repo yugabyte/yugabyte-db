@@ -171,6 +171,9 @@ DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_per_table_greater_tha
                  "If greater than zero, this process will crash if for any table we exceed the "
                  "specified number of remote bootstrap sessions");
 
+DEFINE_test_flag(bool, crash_before_apply_tablet_split_op, false,
+                 "Crash inside TSTabletManager::ApplyTabletSplit before doing anything");
+
 DEFINE_test_flag(bool, force_single_tablet_failure, false,
                  "Force exactly one tablet to a failed state.");
 
@@ -930,7 +933,12 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) {
+Status TSTabletManager::ApplyTabletSplit(
+    tablet::SplitOperationState* op_state, log::Log* raft_log) {
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
+    LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
+  }
+
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -952,8 +960,12 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
 
-  auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
-  RETURN_NOT_OK(tablet_peer->raft_consensus()->FlushLogIndex());
+  if (raft_log == nullptr) {
+    auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
+    raft_log = tablet_peer->raft_consensus()->log().get();
+  }
+
+  RETURN_NOT_OK(raft_log->FlushIndex());
 
   auto& meta = *CHECK_NOTNULL(tablet->metadata());
 
@@ -1010,7 +1022,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
-    RETURN_NOT_OK(tablet_peer->raft_consensus()->CopyLogTo(dest_wal_dir));
+    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir));
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
