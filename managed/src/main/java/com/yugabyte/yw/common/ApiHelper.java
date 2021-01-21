@@ -39,6 +39,12 @@ public class ApiHelper {
     return handleJSONPromise(jsonPromise);
   }
 
+  public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers);
+    CompletionStage<JsonNode> jsonPromise = request.put(data).thenApply(WSResponse::asJson);
+    return handleJSONPromise(jsonPromise);
+  }
+
   // Helper method to creaete url object for given webpage string.
   public URL getUrl(String url) {
     try {
