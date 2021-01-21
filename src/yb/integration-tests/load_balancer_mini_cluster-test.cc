@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
@@ -79,17 +80,17 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
       ModifyPlacementInfo("cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
 
   // Disable load balancing.
-  SetAtomicFlag(false, &FLAGS_enable_load_balancing);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   // Increase the time between LB runs so we can better time things.
-  SetAtomicFlag(test_bg_task_wait_ms, &FLAGS_catalog_manager_bg_task_wait_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = test_bg_task_wait_ms;
   // Set this to delay the add task so that we can have a pending add.
-  SetAtomicFlag(test_bg_task_wait_ms + test_short_delay_ms,
-                &FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) =
+      test_bg_task_wait_ms + test_short_delay_ms;
   // Insert a pause after finding pending tasks so that the race condition can be hit.
-  SetAtomicFlag(4000, &FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 4000;
     // Don't allow for leader moves, only want add tasks.
-  SetAtomicFlag(0, &FLAGS_load_balancer_max_concurrent_moves);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 0;
 
   // Add new tserver in to force load balancer moves.
   tserver::TabletServerOptions extra_opts =
@@ -101,7 +102,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   const auto ts3_uuid = mini_cluster_->mini_tablet_server(3)->server()->permanent_uuid();
 
   // Re-enable the load balancer.
-  SetAtomicFlag(true, &FLAGS_enable_load_balancing);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
 
   // LB RUN #1 : Start an add server task.
 
@@ -155,9 +156,9 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
 
   // If it has yet to happen, bring back the tserver so that load balancing can complete.
   ts3_desc->SetRemoved(false);
-  SetAtomicFlag(1000, &FLAGS_catalog_manager_bg_task_wait_ms);
-  SetAtomicFlag(0, &FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
-  SetAtomicFlag(0, &FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 0;
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();

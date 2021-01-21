@@ -75,7 +75,9 @@ class SysCatalogTest : public YBTest {
   }
 
   void TearDown() override {
-    client_messenger_->Shutdown();
+    if (client_messenger_) {
+      client_messenger_->Shutdown();
+    }
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
