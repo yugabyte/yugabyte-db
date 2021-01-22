@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
@@ -47,6 +49,7 @@ public class Module extends AbstractModule {
   @Override
   public void configure() {
     // Bind Application Initializer
+    bind(RuntimeConfigFactory.class).to(DummyRuntimeConfigFactoryImpl.class).asEagerSingleton();
     bind(AppInit.class).asEagerSingleton();
     bind(ConfigHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService

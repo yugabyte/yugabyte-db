@@ -96,7 +96,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     dummyShellResponse = new ShellProcessHandler.ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    preflightSuccess = new ShellResponse();
+    preflightSuccess = new ShellProcessHandler.ShellResponse();
     preflightSuccess.message = "{\"test\": true}";
     when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
       .thenReturn(preflightSuccess);

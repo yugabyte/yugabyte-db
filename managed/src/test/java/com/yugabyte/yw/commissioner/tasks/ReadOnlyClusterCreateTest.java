@@ -74,7 +74,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-    preflightSuccessResponse = new ShellResponse();
+    preflightSuccessResponse = new ShellProcessHandler.ShellResponse();
     preflightSuccessResponse.message = "{\"test\": true}";
     when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
       .thenReturn(preflightSuccessResponse);

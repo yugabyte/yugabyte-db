@@ -5,18 +5,18 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.Configuration;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -29,7 +29,7 @@ public class AlertManager {
   HealthManager healthManager;
 
   @Inject
-  Configuration appConfig;
+  RuntimeConfigFactory runtimeConfigFactory;
 
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
@@ -48,12 +48,17 @@ public class AlertManager {
     Customer customer = Customer.get(alert.customerUUID);
     String customerTag = String.format("[%s][%s]", customer.name, customer.code);
     List<String> destinations = new ArrayList<>();
-    String ybEmail = appConfig.getString("yb.health.default_email", null);
     CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
     CustomerRegisterFormData.AlertingData alertingData =
       Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-    if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
-      destinations.add(ybEmail);
+    if (alertingData.sendAlertsToYb &&
+      runtimeConfigFactory.staticApplicationConf().hasPath("yb.health.default_email")) {
+      String ybEmail = runtimeConfigFactory
+        .staticApplicationConf()
+        .getString("yb.health.default_email");
+      if (!ybEmail.isEmpty()) {
+        destinations.add(ybEmail);
+      }
     }
 
     if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
@@ -68,7 +73,7 @@ public class AlertManager {
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
     CustomerRegisterFormData.SmtpData smtpData = null;
     if (smtpConfig != null) {
-      smtpData =  Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
+      smtpData = Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
     }
 
     healthManager.runCommand(
