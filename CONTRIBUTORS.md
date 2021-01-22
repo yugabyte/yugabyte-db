@@ -118,3 +118,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [tvesely](https://github.com/tvesely)
 * [wbkendall](https://github.com/wbkendall)
 * [skorobogatydmitry](https://github.com/skorobogatydmitry)
+* [datamgmt](https://github.com/datamgmt)
