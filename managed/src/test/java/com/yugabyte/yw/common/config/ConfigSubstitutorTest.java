@@ -20,7 +20,7 @@ import junitparams.Parameters;
 import junitparams.converters.Nullable;
 
 @RunWith(JUnitParamsRunner.class)
-public class RuntimeConfigTest {
+public class ConfigSubstitutorTest {
 
   @Rule
   public MockitoRule rule = MockitoJUnit.rule();
@@ -28,12 +28,8 @@ public class RuntimeConfigTest {
   @Mock
   private Config config;
 
-  private RuntimeConfig<Customer> rtConfig;
-
   @Before
   public void setUp() {
-    rtConfig = new RuntimeConfig<>(config);
-
     when(config.getString("yb.test.parameterA")).thenReturn("parameterA-value");
     when(config.getString("yb.test.parameterB")).thenReturn("parameterB-value");
     when(config.getString("yb.test.missing"))
@@ -56,6 +52,6 @@ public class RuntimeConfigTest {
   })
   // @formatter:on
   public void testApply(@Nullable String src, @Nullable String expectedResult) {
-    assertEquals(expectedResult, rtConfig.apply(src));
+    assertEquals(expectedResult, new ConfigSubstitutor(config).replace(src));
   }
 }
