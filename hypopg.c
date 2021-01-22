@@ -17,11 +17,14 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#include "access/transam.h"
 #if PG_VERSION_NUM >= 110000
 #include "catalog/partition.h"
 #include "nodes/pg_list.h"
 #include "utils/lsyscache.h"
 #endif
+#include "executor/spi.h"
+#include "utils/elog.h"
 
 #include "include/hypopg.h"
 #include "include/hypopg_import.h"
@@ -33,7 +36,14 @@ PG_MODULE_MAGIC;
 
 bool		isExplain;
 bool		hypo_is_enabled;
+bool		hypo_use_real_oids;
 MemoryContext HypoMemoryContext;
+
+/*--- Private variables ---*/
+
+static Oid last_oid = InvalidOid;
+static Oid min_fake_oid = InvalidOid;
+static bool oid_wraparound = false;
 
 /*--- Functions --- */
 
@@ -75,6 +85,7 @@ static void hypo_executorEnd_hook(QueryDesc *queryDesc);
 static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 
+static Oid hypo_get_min_fake_oid(void);
 static void hypo_get_relation_info_hook(PlannerInfo *root,
 										Oid relationObjectId,
 										bool inhparent,
@@ -125,6 +136,17 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
+	DefineCustomBoolVariable("hypopg.use_real_oids",
+							 "Use real oids rather than the range < 16384",
+							 NULL,
+							 &hypo_use_real_oids,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
 	EmitWarningsOnPlaceholders("hypopg");
 }
 
@@ -140,37 +162,112 @@ _PG_fini(void)
 }
 
 /*---------------------------------
- * Wrapper around GetNewRelFileNode
  * Return a new OID for an hypothetical index.
+ *
+ * To avoid locking on pg_class (required to safely call GetNewOidWithIndex or
+ * similar) and to be usable on a standby node, use the oids unused in the
+ * FirstBootstrapObjectId / FirstNormalObjectId range rather than real oids.
+ * For performance, always start with the biggest oid lesser than
+ * FirstNormalObjectId.  This way the loop to find an unused oid will only
+ * happens once a single backend has created more than ~2.5k hypothetical
+ * indexes.
+ *
+ * For people needing to have thousands of hypothetical indexes at the same
+ * time, we also allow to use the initial implementation that relies on real
+ * oids, which comes with all the limitations mentioned above.
  */
 Oid
 hypo_getNewOid(Oid relid)
 {
-	Relation	pg_class;
-	Relation	relation;
-	Oid			newoid;
-	Oid			reltablespace;
-	char		relpersistence;
+	Oid			newoid = InvalidOid;
 
-	/* Open the relation on which we want a new OID */
-	relation = table_open(relid, AccessShareLock);
+	if (hypo_use_real_oids)
+	{
+		Relation	pg_class;
+		Relation	relation;
+		Oid			reltablespace;
+		char		relpersistence;
 
-	reltablespace = relation->rd_rel->reltablespace;
-	relpersistence = relation->rd_rel->relpersistence;
+		/* Open the relation on which we want a new OID */
+		relation = table_open(relid, AccessShareLock);
 
-	/* Close the relation and release the lock now */
-	table_close(relation, AccessShareLock);
+		reltablespace = relation->rd_rel->reltablespace;
+		relpersistence = relation->rd_rel->relpersistence;
 
-	/* Open pg_class to aks a new OID */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
+		/* Close the relation and release the lock now */
+		table_close(relation, AccessShareLock);
 
-	/* ask for a new relfilenode */
-	newoid = GetNewRelFileNode(reltablespace, pg_class, relpersistence);
+		/* Open pg_class to aks a new OID */
+		pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
-	/* Close pg_class and release the lock now */
-	table_close(pg_class, RowExclusiveLock);
+		/* ask for a new relfilenode */
+		newoid = GetNewRelFileNode(reltablespace, pg_class, relpersistence);
 
+		/* Close pg_class and release the lock now */
+		table_close(pg_class, RowExclusiveLock);
+	}
+	else
+	{
+		/*
+		 * First, make sure we know what is the biggest oid smaller than
+		 * FirstNormalObjectId present in pg_class.  This can never change so
+		 * we cache the value.
+		 */
+		if (!OidIsValid(min_fake_oid))
+			min_fake_oid = hypo_get_min_fake_oid();
+
+		Assert(OidIsValid(min_fake_oid));
+
+		/* Make sure there's enough room to get one more Oid */
+		if (list_length(hypoIndexes) >= (FirstNormalObjectId - min_fake_oid))
+		{
+			ereport(ERROR,
+					(errmsg("hypopg: not more oid available"),
+					errhint("Remove hypothetical indexes "
+						"or enable hypopg.use_real_oids")));
+		}
+
+		while(!OidIsValid(newoid))
+		{
+			if (!OidIsValid(last_oid))
+				newoid = last_oid = min_fake_oid;
+			else
+				newoid = ++last_oid;
+
+			/* Check if we just exceeded the fake oids range */
+			if (newoid >= FirstNormalObjectId)
+			{
+				newoid = min_fake_oid;
+				last_oid = InvalidOid;
+				oid_wraparound = true;
+			}
+
+			/*
+			 * If we already used all available fake oids, we have to make sure
+			 * that the oid isn't used anymore.
+			 */
+			if (oid_wraparound)
+			{
+				if (hypo_get_index(newoid) != NULL)
+				{
+					/* We can't use this oid.  Reset newoid and start again */
+					newoid = InvalidOid;
+				}
+			}
+		}
+	}
+
+	Assert(OidIsValid(newoid));
 	return newoid;
+}
+
+/* Reset the state of the fake oid generator. */
+void
+hypo_reset_fake_oids(void)
+{
+	Assert(hypoIndexes == NIL);
+	last_oid = InvalidOid;
+	oid_wraparound = false;
 }
 
 /* This function setup the "isExplain" flag for next hooks.
@@ -340,6 +437,46 @@ hypo_executorEnd_hook(QueryDesc *queryDesc)
 		prev_ExecutorEnd_hook(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
+}
+
+/*
+ * Return the minmum usable oid in the FirstBootstrapObjectId -
+ * FirstNormalObjectId range.
+ */
+static Oid
+hypo_get_min_fake_oid(void)
+{
+	int			ret, nb;
+	Oid			oid = InvalidOid;
+
+	/*
+	 * Connect to SPI manager
+	 */
+	if ((ret = SPI_connect()) < 0)
+		/* internal error */
+		elog(ERROR, "SPI connect failure - returned %d", ret);
+
+	ret = SPI_execute("SELECT max(oid)"
+			" FROM pg_catalog.pg_class"
+			" WHERE oid < " CppAsString2(FirstNormalObjectId),
+			true, 1);
+	nb = SPI_processed;
+
+	if (ret != SPI_OK_SELECT || nb == 0)
+	{
+		SPI_finish();
+		elog(ERROR, "hypopg: could not find the minimum fake oid");
+	}
+
+	oid = atooid(SPI_getvalue(SPI_tuptable->vals[0],
+				 SPI_tuptable->tupdesc,
+				 1)) + 1;
+
+	/* release SPI related resources (and return to caller's context) */
+	SPI_finish();
+
+	Assert(OidIsValid(oid));
+	return oid;
 }
 
 /*

@@ -48,6 +48,40 @@ As you can see, hypopg version 1.1.0 is installed.  If you need to check using
 plain SQL, please refer to the `pg_extension table documentation
 <https://www.postgresql.org/docs/current/static/catalog-pg-extension.html>`_.
 
+Configuration
+-------------
+
+The following configuration parameters (GUCs) are available, and can be changed
+interactively:
+
+hypopg.enabled:
+  Default to ``on``.
+  Use this parameter to globally enable or disable HypoPG.  When HypoPG is
+  disabled, no hypothetical index will be used, but the defined hypothetical
+  indexes won't be removed.
+
+hypopg.use_real_oids:
+  Default to ``off``.
+  By default, HypoPG won't use "real" object identifiers, but instead borrow
+  ones from the ~ 14000 / 16384 (respectively the lowest unused oid less then
+  FirstNormalObjectId and FirstNormalObjectId) range, which are reserved by
+  PostgreSQL for future usage in future releases.  This doesn't cause any
+  problem, as the free range is dynamically computed the first time a
+  connection uses HypoPG, and has the advantage to work on a standby server.
+  But the drawback is that you can't have more than approximately 2500
+  hypothetical indexes at the same time, and creating a new hypothetical index
+  will become very slow once more than the maximum number of objects has been
+  created until ``hypopg_reset()`` is called.
+
+  If those drawbacks are problematic, you can enable this parameter.  HypoPG
+  will then ask for a real object identifier, which will need to obtain more
+  locks and won't work on a standby, but will allow to use the full range of
+  object identifiers.
+
+  Note that switching this parameter doesn't require to reset the entries, both
+  can coexist at the same time.
+
+
 Create a hypothetical index
 ---------------------------
 

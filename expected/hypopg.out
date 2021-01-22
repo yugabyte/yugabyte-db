@@ -162,3 +162,29 @@ SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on
  CREATE INDEX ON public.hypo USING btree (id DESC, id DESC, id DESC NULLS LAST, ((md5(val))::bpchar) bpchar_pattern_ops) WITH (fillfactor = 10) WHERE ((id < 1000) AND ((id + (1 % 2)) = 3))
 (1 row)
 
+-- Make sure the old Oid generator still works.  Test it while keeping existing
+-- entries, as both should be able to coexist.
+SET hypopg.use_real_oids = on;
+-- Should not use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id);');
+ nb 
+----
+  1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+

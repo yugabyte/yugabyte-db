@@ -311,6 +311,9 @@ hypo_index_reset(void)
 
 	list_free(hypoIndexes);
 	hypoIndexes = NIL;
+
+	hypo_reset_fake_oids();
+
 	return;
 }
 
