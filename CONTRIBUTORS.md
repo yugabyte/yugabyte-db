@@ -114,3 +114,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [ssung-yugabyte](https://github.com/ssung-yugabyte)
 * [cyruswadia](https://github.com/cyruswadia)
 * [chirag-yb](https://github.com/chirag-yb)
+* [grishshah](https://github.com/grishshah)
