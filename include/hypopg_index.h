@@ -120,6 +120,7 @@ PGDLLEXPORT Datum hypopg_get_indexdef(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hypopg_reset_index(PG_FUNCTION_ARGS);
 
 extern explain_get_index_name_hook_type prev_explain_get_index_name_hook;
+hypoIndex *hypo_get_index(Oid indexId);
 const char *hypo_explain_get_index_name_hook(Oid indexId);
 
 void		hypo_injectHypotheticalIndex(PlannerInfo *root,

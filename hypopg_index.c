@@ -1116,35 +1116,40 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
-/* Return the hypothetical index name is indexId is ours, NULL otherwise, as
+/*
+ * Return the stored hypothetical index for a given oid if any, NULL otherwise
+ */
+hypoIndex *
+hypo_get_index(Oid indexId)
+{
+	ListCell   *lc;
+
+	foreach(lc, hypoIndexes)
+	{
+		hypoIndex  *entry = (hypoIndex *) lfirst(lc);
+
+		if (entry->oid == indexId)
+			return entry;
+	}
+
+	return NULL;
+}
+
+/* Return the hypothetical index name ifs indexId is ours, NULL otherwise, as
  * this is what explain_get_index_name expects to continue his job.
  */
 const char *
 hypo_explain_get_index_name_hook(Oid indexId)
 {
-	char	   *ret = NULL;
-
 	if (isExplain)
 	{
-		/*
-		 * we're in an explain-only command. Return the name of the
-		 * hypothetical index name if it's one of ours, otherwise return NULL
-		 */
-		ListCell   *lc;
+		hypoIndex  *index = NULL;
 
-		foreach(lc, hypoIndexes)
-		{
-			hypoIndex  *entry = (hypoIndex *) lfirst(lc);
+		index = hypo_get_index(indexId);
 
-			if (entry->oid == indexId)
-			{
-				ret = entry->indexname;
-			}
-		}
+		if (index)
+			return index->indexname;
 	}
-
-	if (ret)
-		return ret;
 
 	if (prev_explain_get_index_name_hook)
 		return prev_explain_get_index_name_hook(indexId);
