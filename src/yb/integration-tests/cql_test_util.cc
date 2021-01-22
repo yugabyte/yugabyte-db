@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/cql_test_util.h"
+#include <cassandra.h>
 
 #include <thread>
 
@@ -125,6 +126,20 @@ std::string CassandraValue::ToString() const {
         result += CassandraValue(cass_iterator_get_map_value(iterator.get())).ToString();
       }
       result += "}";
+      return result;
+    }
+    case CASS_VALUE_TYPE_LIST: {
+      std::string result = "[";
+      CassIteratorPtr iterator(cass_iterator_from_collection(value_));
+      bool first = true;
+      while (cass_iterator_next(iterator.get())) {
+        if (!first) {
+          result += ", ";
+        }
+        first = false;
+        result += CassandraValue(cass_iterator_get_value(iterator.get())).ToString();
+      }
+      result += "]";
       return result;
     }
     default:
