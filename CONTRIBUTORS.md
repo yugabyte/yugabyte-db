@@ -110,4 +110,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [raffaelespazzoli](https://github.com/raffaelespazzoli)
 * [nmantrav2](https://github.com/nmantrav2)
 * [tsmull-11](https://github.com/tsmull-11)
-* [epratt-yb](https://github.com/eprat-yb)
+* [epratt-yb](https://github.com/epratt-yb)
