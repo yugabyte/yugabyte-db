@@ -709,6 +709,8 @@ class YBBackup:
             '--restore_keys_destination', required=False,
             help="Location to download universe encryption keys backup file to"
         )
+        parser.add_argument(
+            '--nfs_storage_path', required=False, help="NFS storage mount path")
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -1610,6 +1612,30 @@ class YBBackup:
         else:
             self.run_program(del_cmd)
 
+    def find_nfs_storage(self):
+        """
+        check whether the nfs backup storage path mounted on each table server
+        or not if we don't find storage path mounted on any one of them then we
+        raise exception
+        :param nfs_storage_path: provided nfs storage path
+        """
+        output = self.run_yb_admin(['list_all_tablet_servers'])
+        for line in output.splitlines():
+            if LEADING_UUID_RE.match(line):
+                fields = split_by_space(line)
+                ip_port = fields[1]
+                state = fields[3]
+                (ip, port) = ip_port.split(':')
+                if state == 'ALIVE':
+                    try:
+                         isNFSStoragePathExists = self.run_ssh_cmd(
+                             ['find', self.args.nfs_storage_path],
+                             ip)
+                    except Exception as ex:
+                        raise BackupException(
+                            ('Did not find nfs backup storage path: %s mounted on tablet server %s'
+                            % (self.args.nfs_storage_path, ip)))
+
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
         Upload metadata file and checksum file to the target backup location.
@@ -1761,6 +1787,10 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
+
+        if self.args.storage_type == 'nfs':
+            logging.info('Checking whether NFS backup storage path mounted on TServers or not')
+            self.find_nfs_storage()
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
