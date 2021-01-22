@@ -726,10 +726,9 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           MonoDelta::FromMilliseconds(schema_->table_properties().DefaultTimeToLive()) :
           MonoDelta::kMax;
 
-      // At YQL layer list indexes start at 0, but internally we start at 1.
-      int index = column_value.subscript_args(0).value().int32_value() + 1;
+      int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          *sub_path, {index}, {sub_doc}, data.read_time, data.deadline, request_.query_id(),
+          *sub_path, target_cql_index, sub_doc, data.read_time, data.deadline, request_.query_id(),
           default_ttl, ttl));
       break;
     }

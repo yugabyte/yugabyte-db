@@ -14,6 +14,7 @@
 #include "yb/integration-tests/cql_test_base.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -108,6 +109,35 @@ TEST_F(CqlTest, ConcurrentDeleteRowAndUpdateColumn) {
   }
   ASSERT_EQ(num_rows, kIterations);
   ASSERT_EQ(num_even, 0);
+}
+
+TEST_F(CqlTest, TestUpdateListIndexAfterOverwrite) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const std::string query) {
+    ASSERT_OK(session.ExecuteQuery(query));
+  };
+  cql("CREATE TABLE test(h INT, v LIST<INT>, PRIMARY KEY(h))");
+  cql("INSERT INTO test (h, v) VALUES (1, [1, 2, 3])");
+
+  auto select = [&]() -> Result<string> {
+    auto result = VERIFY_RESULT(session.ExecuteWithResult("SELECT * FROM test"));
+    auto iter = result.CreateIterator();
+    DFATAL_OR_RETURN_ERROR_IF(!iter.Next(), STATUS(NotFound, "Did not find result in test table."));
+    auto row = iter.Row();
+    auto key = row.Value(0).As<int>();
+    EXPECT_EQ(key, 1);
+    return row.Value(1).ToString();
+  };
+
+  cql("UPDATE test SET v = [4, 5, 6] where h = 1");
+  cql("UPDATE test SET v[0] = 7 WHERE h = 1");
+  auto res1 = ASSERT_RESULT(select());
+  EXPECT_EQ(res1, "[7, 5, 6]");
+
+  cql("INSERT INTO test (h, v) VALUES (1, [10, 11, 12])");
+  cql("UPDATE test SET v[0] = 8 WHERE h = 1");
+  auto res2 = ASSERT_RESULT(select());
+  EXPECT_EQ(res2, "[8, 11, 12]");
 }
 
 } // namespace yb

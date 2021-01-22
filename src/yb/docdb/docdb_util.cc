@@ -356,8 +356,8 @@ Status DocDBRocksDBUtil::ExtendList(
 
 Status DocDBRocksDBUtil::ReplaceInList(
     const DocPath &doc_path,
-    const std::vector<int>& indexes,
-    const std::vector<SubDocument>& values,
+    const int target_cql_index,
+    const SubDocument& value,
     const ReadHybridTime& read_ht,
     const HybridTime& hybrid_time,
     const rocksdb::QueryId query_id,
@@ -366,7 +366,8 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, indexes, values, read_ht, CoarseTimePoint::max(), query_id, default_ttl, ttl));
+      doc_path, target_cql_index, value, read_ht, CoarseTimePoint::max(), query_id, default_ttl,
+      ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
