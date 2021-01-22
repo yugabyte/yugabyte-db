@@ -1612,29 +1612,19 @@ class YBBackup:
         else:
             self.run_program(del_cmd)
 
-    def find_nfs_storage(self):
+    def find_nfs_storage(self, tserver_ip):
         """
-        check whether the nfs backup storage path mounted on each table server
-        or not if we don't find storage path mounted on any one of them then we
+        Finds the NFS storage path mounted on the given tserver.
+        if we don't find storage path mounted on given tserver IP we
         raise exception
-        :param nfs_storage_path: provided nfs storage path
+        :param tserver_ip: tablet server ip
         """
-        output = self.run_yb_admin(['list_all_tablet_servers'])
-        for line in output.splitlines():
-            if LEADING_UUID_RE.match(line):
-                fields = split_by_space(line)
-                ip_port = fields[1]
-                state = fields[3]
-                (ip, port) = ip_port.split(':')
-                if state == 'ALIVE':
-                    try:
-                         isNFSStoragePathExists = self.run_ssh_cmd(
-                             ['find', self.args.nfs_storage_path],
-                             ip)
-                    except Exception as ex:
-                        raise BackupException(
-                            ('Did not find nfs backup storage path: %s mounted on tablet server %s'
-                            % (self.args.nfs_storage_path, ip)))
+        try:
+            self.run_ssh_cmd(['find', self.args.nfs_storage_path], tserver_ip)
+        except Exception as ex:
+            raise BackupException(
+                ('Did not find nfs backup storage path: %s mounted on tablet server %s'
+                % (self.args.nfs_storage_path, tserver_ip)))
 
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
@@ -1790,7 +1780,20 @@ class YBBackup:
 
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
-            self.find_nfs_storage()
+            pool = ThreadPool(self.args.parallelism)
+            tablets_by_leader_ip = []
+
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        tablets_by_leader_ip.append(ip)
+            tserver_ips = list(tablets_by_leader_ip)
+            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
