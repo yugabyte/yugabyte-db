@@ -125,6 +125,7 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
+	EmitWarningsOnPlaceholders("hypopg");
 }
 
 void
