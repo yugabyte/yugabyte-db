@@ -81,6 +81,14 @@ hypopg.use_real_oids:
   Note that switching this parameter doesn't require to reset the entries, both
   can coexist at the same time.
 
+Supported access methods
+------------------------
+
+The following access methods are supported:
+
+- btree
+- brin
+- bloom (requires the bloom extension to be installed)
 
 Create a hypothetical index
 ---------------------------
