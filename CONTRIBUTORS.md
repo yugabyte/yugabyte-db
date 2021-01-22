@@ -124,4 +124,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [streddy-yb](https://github.com/streddy-yb)
 * [jaydeepkumara](https://github.com/jaydeepkumara)
 * [jitendra-12113](https://github.com/jitendra-12113)
-
+* [zhaoalex](https://github.com/zhaoalex)
