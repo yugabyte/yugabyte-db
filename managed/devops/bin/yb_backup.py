@@ -718,6 +718,23 @@ class YBBackup:
         if self.args.verbose:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
+        if self.args.storage_type == 'nfs':
+            logging.info('Checking whether NFS backup storage path mounted on TServers or not')
+            pool = ThreadPool(self.args.parallelism)
+            tablets_by_leader_ip = []
+
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        tablets_by_leader_ip.append(ip)
+            tserver_ips = list(tablets_by_leader_ip)
+            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
+
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
@@ -1777,24 +1794,6 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
-
-        if self.args.storage_type == 'nfs':
-            logging.info('Checking whether NFS backup storage path mounted on TServers or not')
-            pool = ThreadPool(self.args.parallelism)
-            tablets_by_leader_ip = []
-
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        tablets_by_leader_ip.append(ip)
-            tserver_ips = list(tablets_by_leader_ip)
-            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
-
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
 
