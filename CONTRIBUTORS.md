@@ -111,3 +111,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [nmantrav2](https://github.com/nmantrav2)
 * [tsmull-11](https://github.com/tsmull-11)
 * [epratt-yb](https://github.com/epratt-yb)
+* [ssung-yugabyte](https://github.com/ssung-yugabyte)
