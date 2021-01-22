@@ -126,3 +126,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [jitendra-12113](https://github.com/jitendra-12113)
 * [zhaoalex](https://github.com/zhaoalex)
 * [dcomingore](https://github.com/dcomingore)
+* [dotyjim-work](https://github.com/dotyjim-work)
