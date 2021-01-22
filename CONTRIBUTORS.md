@@ -120,3 +120,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [skorobogatydmitry](https://github.com/skorobogatydmitry)
 * [datamgmt](https://github.com/datamgmt)
 * [SergeyPotachev](https://github.com/SergeyPotachev)
+* [CharlotteRose](https://github.com/CharlotteRose)
