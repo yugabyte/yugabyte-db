@@ -26,7 +26,7 @@ WARNING:  hypopg: SQL order #3 is not a CREATE INDEX statement
   1
 (1 row)
 
-SELECT nspname, relname, amname FROM public.hypopg_list_indexes();
+SELECT nspname, relname, amname FROM public.hypopg_list_indexes;
  nspname | relname | amname 
 ---------+---------+--------
  public  | hypo    | btree

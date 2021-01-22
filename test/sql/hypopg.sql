@@ -25,7 +25,7 @@ ANALYZE hypo;
 SELECT COUNT(*) AS nb
 FROM public.hypopg_create_index('SELECT 1;CREATE INDEX ON hypo(id); SELECT 2');
 
-SELECT nspname, relname, amname FROM public.hypopg_list_indexes();
+SELECT nspname, relname, amname FROM public.hypopg_list_indexes;
 
 -- Should use hypothetical index
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
