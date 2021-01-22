@@ -26,6 +26,14 @@ PG_MODULE_MAGIC;
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
+#define _snprintf(_str_dst, _str_src, _len, _max_len)\
+do                                                   \
+{                                                    \
+	int i;                                           \
+	for(i = 0; i < _len && i < _max_len; i++)        \
+		_str_dst[i] = _str_src[i];                   \
+}while(0)
+
 /*---- Initicalization Function Declarations ----*/
 void _PG_init(void);
 void _PG_fini(void);
@@ -777,7 +785,7 @@ static void pgss_store(uint64 queryId,
 	int				encoding = GetDatabaseEncoding();
 	bool			reset = false;
 	bool			found = false;
-	int				i,j;
+	int             i;
 	pgssSharedState *pgss = pgsm_get_ss();
 	HTAB            *pgss_hash = pgsm_get_hash();
 	int				message_len = message ? strlen(message) : 0;
@@ -937,6 +945,7 @@ static void pgss_store(uint64 queryId,
 				e->counters.time[kind].max_time = total_time;
 		}
 
+
 		/* increment only in case of PGSS_EXEC */
 		if (kind == PGSS_EXEC)
 		{
@@ -951,9 +960,7 @@ static void pgss_store(uint64 queryId,
 			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 		}
-
-		for (i = 0; i < application_name_len; i++)
-				e->counters.info.application_name[i] = application_name[i];
+		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
 
 		found = false;
 		for (i = 0; i < REL_LST; i++)
@@ -961,8 +968,7 @@ static void pgss_store(uint64 queryId,
 				found = true;
 
 		if (!found)
-			for (i = 0; i < REL_LST; i++)
-				e->counters.info.relations[i] = pgss->relations[i];
+			_snprintf(e->counters.info.relations, pgss->relations, REL_LST, REL_LST);
 
 		found = false;
 		/* This is bit ugly hack to check we already updated the counter or not */
@@ -974,20 +980,12 @@ static void pgss_store(uint64 queryId,
 		if (!found)
 		{
 			for (i = 0; i < CMD_LST; i++)
-			{
-				for (j = 0; j < CMD_LEN; j++)
-				{
-					e->counters.info.cmd_type[i][j] = (cmd_len[i] <= CMD_LEN ? pgss->cmdTag[i][j] : 0);
-					pgss->cmdTag[i][j] = 0;
-				}
-			}
+				_snprintf(e->counters.info.cmd_type[i], pgss->cmdTag[i], cmd_len[i], CMD_LEN);
 		}
 		e->counters.error.elevel = elevel;
-		for(i = 0; i < sqlcode_len; i++)
-			e->counters.error.sqlcode[i] = sqlcode[i];
 
-		for(i = 0; i < message_len && i < ERROR_MESSAGE_LEN; i++)
-			e->counters.error.message[i] = message[i];
+		_snprintf(e->counters.error.sqlcode, sqlcode, sqlcode_len, SQLCODE_LEN);
+		_snprintf(e->counters.error.message, message, message_len, ERROR_MESSAGE_LEN);
 
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
