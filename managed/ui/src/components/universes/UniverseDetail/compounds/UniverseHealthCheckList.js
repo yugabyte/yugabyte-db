@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Alert, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import * as moment from 'moment';
+import moment from 'moment';
 import { sortBy, values } from 'lodash';
 
 import { YBLoading } from '../../../common/indicators';
@@ -225,7 +225,7 @@ const detailsFormatter = (cell, row) => {
 function prepareData(data) {
   return data.map((timeDataJson) => {
     const timeData = JSON.parse(timeDataJson);
-    const timestampMoment = moment(timeData.timestamp);
+    const timestampMoment = moment.utc(timeData.timestamp).local();
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
       check.key = getKeyForCheck(check);
