@@ -24,6 +24,7 @@
 #include "utils/lsyscache.h"
 #endif
 #include "executor/spi.h"
+#include "miscadmin.h"
 #include "utils/elog.h"
 
 #include "include/hypopg.h"
@@ -229,6 +230,8 @@ hypo_getNewOid(Oid relid)
 
 		while(!OidIsValid(newoid))
 		{
+			CHECK_FOR_INTERRUPTS();
+
 			if (!OidIsValid(last_oid))
 				newoid = last_oid = min_fake_oid;
 			else
