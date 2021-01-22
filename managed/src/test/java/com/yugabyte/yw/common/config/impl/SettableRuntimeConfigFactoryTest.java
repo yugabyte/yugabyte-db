@@ -1,4 +1,14 @@
-package com.yugabyte.yw.common.config;
+/*
+ * Copyright 2021 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
+
+package com.yugabyte.yw.common.config.impl;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -19,7 +29,7 @@ import java.util.Set;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class RuntimeConfigFactoryTest extends FakeDBApplication {
+public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
   // Key overridden in each scope
   public static final String YB_OVERRIDDEN_KEY = "yb.overridden.key";
@@ -77,8 +87,8 @@ public class RuntimeConfigFactoryTest extends FakeDBApplication {
   private Universe defaultUniverse;
   private Provider defaultProvider;
 
-  RuntimeConfigFactory configFactory =
-    new RuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap));
+  SettableRuntimeConfigFactory configFactory =
+    new SettableRuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap));
 
   @Before
   public void setUp() {

@@ -14,21 +14,20 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
-
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.ConfigSubstitutor;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertDefinitionFormData;
-import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.forms.AlertFormData;
-
+import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Result;
 import play.data.Form;
 import play.data.FormFactory;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import play.libs.Json;
+import play.mvc.Result;
 
 import java.util.List;
 import java.util.UUID;
@@ -40,7 +39,7 @@ public class AlertController extends AuthenticatedController {
   FormFactory formFactory;
 
   @Inject
-  private RuntimeConfigFactory configFactory;
+  private SettableRuntimeConfigFactory configFactory;
 
   /**
    * Lists alerts for given customer.
@@ -51,8 +50,8 @@ public class AlertController extends AuthenticatedController {
     }
 
     ArrayNode alerts = Json.newArray();
-    for (Alert alert: Alert.list(customerUUID)) {
-        alerts.add(alert.toJson());
+    for (Alert alert : Alert.list(customerUUID)) {
+      alerts.add(alert.toJson());
     }
 
     return ok(alerts);
@@ -65,7 +64,7 @@ public class AlertController extends AuthenticatedController {
       }
 
       ArrayNode alerts = Json.newArray();
-      for (Alert alert: Alert.listActive(customerUUID)) {
+      for (Alert alert : Alert.listActive(customerUUID)) {
         alerts.add(alert.toJson());
       }
 
@@ -97,7 +96,7 @@ public class AlertController extends AuthenticatedController {
     if (alerts.size() > 1) {
       return ApiResponse.error(CONFLICT,
         "May only update alerts that have been created once."
-        + "Use POST instead to create new alert.");
+          + "Use POST instead to create new alert.");
     } else if (alerts.size() == 1) {
       alerts.get(0).update(data.message);
     } else {
@@ -182,7 +181,8 @@ public class AlertController extends AuthenticatedController {
     if (definition == null) {
       return ApiResponse.error(BAD_REQUEST, "Could not find Alert Definition");
     }
-    definition.query = configFactory.forCustomer(customer).apply(definition.query);
+    definition.query =
+      new ConfigSubstitutor(configFactory.forCustomer(customer)).replace(definition.query);
     return ok(Json.toJson(definition));
   }
 
@@ -195,7 +195,8 @@ public class AlertController extends AuthenticatedController {
 
       AlertDefinition definition = AlertDefinition.get(alertDefinitionUUID);
       if (definition == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Alert Definition UUID: " + alertDefinitionUUID);
+        return ApiResponse.error(BAD_REQUEST,
+          "Invalid Alert Definition UUID: " + alertDefinitionUUID);
       }
 
       Universe universe = Universe.get(definition.universeUUID);

@@ -12,8 +12,8 @@ package com.yugabyte.yw.common;
 
 import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfig;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import io.ebean.Model;
 import junit.framework.TestCase;
 import junitparams.JUnitParamsRunner;
@@ -47,7 +47,7 @@ public class PlatformReplicationManagerTest extends TestCase {
   ShellProcessHandler shellProcessHandler;
 
   @Mock
-  RuntimeConfigFactory mockRuntimeConfigFactory;
+  SettableRuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Before
   public void setUp() {

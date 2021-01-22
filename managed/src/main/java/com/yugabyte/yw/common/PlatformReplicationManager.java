@@ -18,8 +18,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.config.RuntimeConfig;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -28,7 +28,6 @@ import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
 import java.io.File;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -58,7 +57,7 @@ public class PlatformReplicationManager extends DevopsBase {
 
   private final ExecutionContext executionContext;
 
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected String getCommandType() {
@@ -72,7 +71,7 @@ public class PlatformReplicationManager extends DevopsBase {
     ActorSystem actorSystem,
     ExecutionContext executionContext,
     ShellProcessHandler shellProcessHandler,
-    RuntimeConfigFactory runtimeConfigFactory,
+    SettableRuntimeConfigFactory runtimeConfigFactory,
     ApiHelper apiHelper
   ) {
     this.actorSystem = actorSystem;
