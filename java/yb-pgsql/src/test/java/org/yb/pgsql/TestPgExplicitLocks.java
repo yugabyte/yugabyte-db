@@ -54,17 +54,17 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       throw ex;
     }
 
-    boolean conflict_occured = false;
+    boolean conflict_occurred = false;
     try {
       String query = "update explicitlocks set vi=5 where h=0 and r=0";
       s2.execute(query);
     } catch (PSQLException ex) {
       if (ex.getMessage().contains("Conflicts with higher priority transaction")) {
         LOG.info("Conflict ERROR");
-        conflict_occured = true;
+        conflict_occurred = true;
       }
     }
-    assertEquals(conflict_occured, true);
+    assertEquals(conflict_occurred, true);
     LOG.info("Done with the test");
   }
 }

@@ -2928,14 +2928,14 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
   // Assumes that caller has locked universe.
   Status s = sys_catalog_->DeleteItem(universe.get(), leader_ready_term());
   if (!s.ok()) {
-    LOG(ERROR) << "An error occured while updating sys-catalog: " << s
+    LOG(ERROR) << "An error occurred while updating sys-catalog: " << s
                << ": universe_id: " << universe->id();
     return;
   }
   // Remove it from the map.
   std::lock_guard<LockType> catalog_lock(lock_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
-    LOG(ERROR) << "An error occured while removing replication info from map: " << s
+    LOG(ERROR) << "An error occurred while removing replication info from map: " << s
                << ": universe_id: " << universe->id();
   }
 }

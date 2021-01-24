@@ -287,7 +287,7 @@ public class EncryptionAtRestManager {
           result = RestoreKeyResult.RESTORE_SUCCEEDED;
         }
       } catch (Exception e) {
-        LOG.error("Error occured restoring universe key history", e);
+        LOG.error("Error occurred restoring universe key history", e);
       }
 
       return result;
