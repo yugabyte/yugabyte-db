@@ -104,7 +104,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
                         hp
                 )) {
                     throw new RuntimeException(
-                            "Timeout occured waiting for universe encryption key to be " +
+                            "Timeout occurred waiting for universe encryption key to be " +
                                     "set in memory"
                     );
                 }
