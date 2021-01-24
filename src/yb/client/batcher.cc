@@ -92,7 +92,7 @@ namespace internal {
 // TODO: instead of using a string error message, make Batcher return a status other than IOError.
 // (https://github.com/YugaByte/yugabyte-db/issues/702)
 const std::string Batcher::kErrorReachingOutToTServersMsg(
-    "Errors occured while reaching out to the tablet servers");
+    "Errors occurred while reaching out to the tablet servers");
 
 // About lock ordering in this file:
 // ------------------------------
