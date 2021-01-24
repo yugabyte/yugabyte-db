@@ -45,9 +45,10 @@ if sys.version_info[0] == 2:
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 2
+SSH_RETRY_LIMIT = 20
 DEFAULT_SSH_PORT = 22
-SSH_TIMEOUT = 5
+# Timeout in seconds.
+SSH_TIMEOUT = 15
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
