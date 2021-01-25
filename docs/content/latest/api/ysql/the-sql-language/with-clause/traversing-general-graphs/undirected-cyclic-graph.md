@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a general undirected cyclic graph
+title: Using a recursive CTE to traverse a general undirected cyclic graph
 headerTitle: Finding the paths in a general undirected cyclic graph
 linkTitle: undirected cyclic graph
-description: This section shows how to use a WITH clause recursive substatement to traverse a general undirected cyclic graph.
+description: This section shows how to use a recursive CTE to traverse a general undirected cyclic graph.
 menu:
   latest:
     identifier: undirected cyclic graph
@@ -107,7 +107,7 @@ This is the result:
  true
 ```
 
-It's easy to add this predicate to the `WITH` clause recursive substatement (in its _recursive term_). It's convenient to encapsulate the cycle-proof SQL in a _"language plpgsql"_ procedure so that the identity of the node chosen to seed the traversal can be named usefully. It's also useful to record the result in a table to allow trying various _ad hoc_ analysis queries after the fact.
+It's easy to add this predicate to the recursive CTE (in its _recursive term_). It's convenient to encapsulate the cycle-proof SQL in a _"language plpgsql"_ procedure so that the identity of the node chosen to seed the traversal can be named usefully. It's also useful to record the result in a table to allow trying various _ad hoc_ analysis queries after the fact.
 
 ##### `cr-find-paths-with-nocycle-check.sql`
 
@@ -186,7 +186,7 @@ The whitespace was added manually to separate the paths into groups of the same 
 
 ### Restrict down to a single shortest path to each non-seed node
 
-As explained in the section [Create a procedure to filter the paths from "raw_paths" to leave only a shortest path to each distinct terminal node](../common-code/#cr-restrict-to-shortest-paths-sql), the [Bacon Numbers](../bacon-numbers) problem requires only that (one of the) the shortest path(s) from one node to every other node is found. The following approach produces the required numbers _after the fact_ on the table of _all_ paths.
+As explained in the section [Create a procedure to filter the paths from "raw_paths" to leave only a shortest path to each distinct terminal node](../common-code/#cr-restrict-to-shortest-paths-sql), the [Bacon Numbers](../../bacon-numbers) problem requires only that (one of the) the shortest path(s) from one node to every other node is found. The following approach produces the required numbers _after the fact_ on the table of _all_ paths.
 
 Use the _["restrict_to_shortest_paths()"](../common-code/#cr-restrict-to-shortest-paths-sql)_ procedure to derive these paths and then show them:
 
@@ -213,9 +213,9 @@ Here is the result:
 
 ![undirected-cyclic-graph-shortest-paths](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/undirected-cyclic-graph-shortest-paths.jpg)
 
-Pruning after the fact in this way is a useful pedagogic device in that it clearly shows what information is sufficient to solve the [Bacon Numbers](../bacon-numbers) problem. However, pairs of actor nodes that are defined by the real IMDb data have huge numbers of connecting paths with a wide range of lengths because so many movies share the same subsets of many actors. This means that  when the approach that this section has explained is run on this kind of data, it takes a very long time to run and consumes a huge amount of memory for the ever-growing representation of the eventual result set. (There is no mechanism for spilling to disk.) The outcome is _either_ that the query fails to finish in reasonable time _or_ that it simply crashes with an "out of memory" error.
+Pruning after the fact in this way is a useful pedagogic device in that it clearly shows what information is sufficient to solve the [Bacon Numbers](../../bacon-numbers) problem. However, pairs of actor nodes that are defined by the real IMDb data have huge numbers of connecting paths with a wide range of lengths because so many movies share the same subsets of many actors. This means that  when the approach that this section has explained is run on this kind of data, it takes a very long time to run and consumes a huge amount of memory for the ever-growing representation of the eventual result set. (There is no mechanism for spilling to disk.) The outcome is _either_ that the query fails to finish in reasonable time _or_ that it simply crashes with an "out of memory" error.
 
-The remedy is obvious: at each repeat of the _recursive term_, compare the new about-to-be-accumulated rows with the entire set of already-accumulated rows and discard all new rows whose end node is the same as that of an already-found shorter path. It turns out that the constructs available to the SQL programmer of a `WITH` clause recursive substatement don't support this early pruning and so an approach must be designed that does allow this. This is the focus of the section [How to implement early path pruning](#how-to-implement-early-path-pruning).
+The remedy is obvious: at each repeat of the _recursive term_, compare the new about-to-be-accumulated rows with the entire set of already-accumulated rows and discard all new rows whose end node is the same as that of an already-found shorter path. It turns out that the constructs available to the SQL programmer of a recursive CTE don't support this early pruning and so an approach must be designed that does allow this. This is the focus of the section [How to implement early path pruning](#how-to-implement-early-path-pruning).
 
 ### Produce the sets of shortest paths starting from every node
 
@@ -438,7 +438,7 @@ In contrast, the identity predicate on _"node_2"_ will have no index support, Of
 
 ## How to implement early path pruning
 
-The design concept here is to implement the pseudocode (as specified in the [section that specifies the semantics of the `WITH` clause recursive substatement](../../recursive-with/#semantics)) for the SQL for the approach that uses the denormalized _"edges"_ table approach.
+The design concept here is to implement the pseudocode (as specified in the [section that specifies the semantics of the recursive CTE](../../recursive-cte/#semantics)) for the SQL for the approach that uses the denormalized _"edges"_ table approach.
 
 Then, because the intermediate data that is normally inaccessible to user-SQL is now exposed in ordinary tables, the pruning code can be added.
 
@@ -523,15 +523,15 @@ $body$;
 
 Notice how the tables are used:
 
-- The _"raw_paths_ table is used in place of the in-memory representation of the in-progress eventual final result set that the implementation of the `WITH` clause recursive substatement uses.
-- The _"temp_paths"_ and _"working_paths"_ tables implement the transient in-memory representations that are shown in the pseudocode that specifies how the `WITH` clause recursive substatement works. (See the section [Semantics](../../recursive-with/#semantics)) subsection of the main account of the [WITH clause recursive substatement](../../recursive-with/) ).
+- The _"raw_paths_ table is used in place of the in-memory representation of the in-progress eventual final result set that the implementation of the recursive CTE uses.
+- The _"temp_paths"_ and _"working_paths"_ tables implement the transient in-memory representations that are shown in the pseudocode that specifies how the recursive CTE works. (See the section [Semantics](../../recursive-cte/#semantics)) subsection of the main account of the [recursive CTE](../../recursive-cte/) ).
 - The _"raw_paths_trg"_ trigger is not needed to support the implementation. Rather, its purpose is only pedagogic.
 
 Notice that the early pruning logic is guarded by an `IF` test that does, or omits, the pruning according to the value supplied for a boolean input formal parameter.
 
-- It implements a `DELETE` statement whose `FROM` item is the _"temp_paths"_ table. This logic simply cannot be expressed using an explicit `WITH` clause recursive substatement for the simple reason that its implementation does not expose the structure that the _"temp_paths"_ table emulates for manipulation by user-written SQL.
-- The first leg of the pruning predicate eliminates all but the first path in the path sorting order to any particular node in the set that the current repetition of the _recursive term_ has found. This restriction is expressed in terms of the content of the _"temp_paths"_ table. Notice that the choice to retain the path that sorts first is the same choice that the _["filter_paths()"](../common-code/#cr-restrict-to-shortest-paths-sql)_ algorithm uses. This ensures a deterministic comparison between the result produced by the straightforward _"find_paths()"_ implementation that uses the `WITH` clause recursive substatement directly, followed by _"restrict_to_shortest_paths()"_, and the result produced by the early pruning implementation of _"find_paths()"_.
-- The second leg of the pruning predicate eliminates paths that the current repetition has found whose terminal is identical to that of any path found by any of the previous repetitions. These previously found paths are necessarily shorter than those that the present repetition finds. (See the code that inspects the _"repeat_nr"_ column in the _"raw_paths"_ table, and the associated explanation of its observed content, below.) This restriction is expressed in terms of the content of the under-construction ultimate result set in the _"raw_paths"_ table—which also is not exposed by user-written SQL when the explicit `WITH` clause recursive substatement is used.
+- It implements a `DELETE` statement whose `FROM` item is the _"temp_paths"_ table. This logic simply cannot be expressed using an explicit recursive CTE for the simple reason that its implementation does not expose the structure that the _"temp_paths"_ table emulates for manipulation by user-written SQL.
+- The first leg of the pruning predicate eliminates all but the first path in the path sorting order to any particular node in the set that the current repetition of the _recursive term_ has found. This restriction is expressed in terms of the content of the _"temp_paths"_ table. Notice that the choice to retain the path that sorts first is the same choice that the _["filter_paths()"](../common-code/#cr-restrict-to-shortest-paths-sql)_ algorithm uses. This ensures a deterministic comparison between the result produced by the straightforward _"find_paths()"_ implementation that uses the recursive CTE directly, followed by _"restrict_to_shortest_paths()"_, and the result produced by the early pruning implementation of _"find_paths()"_.
+- The second leg of the pruning predicate eliminates paths that the current repetition has found whose terminal is identical to that of any path found by any of the previous repetitions. These previously found paths are necessarily shorter than those that the present repetition finds. (See the code that inspects the _"repeat_nr"_ column in the _"raw_paths"_ table, and the associated explanation of its observed content, below.) This restriction is expressed in terms of the content of the under-construction ultimate result set in the _"raw_paths"_ table—which also is not exposed by user-written SQL when the explicit recursive CTE is used.
 
 First invoke this version of _"find_paths()"_ without pruning:
 

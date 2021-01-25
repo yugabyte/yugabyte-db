@@ -24,7 +24,7 @@ Before trying the code in this section, make sure that you have created the supp
 
 All of the `.sql` scripts that this section presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
-[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+[Download `recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip).
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start the master-script that invokes all the child scripts that jointly instantiate the synthetic actors and movies data set and compute the Bacon Numbers on it. Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the report that it produces on a dedicated spool directory and confirm that your report is identical to the reference copy that is delivered in the zip-file.
 {{< /tip >}}
@@ -227,7 +227,7 @@ Again, you see the expected nine edges:
  Steve  | James  | King Lear
 ```
 
-Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the `WITH` clause recursive substatement that finds the paths.
+Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the recursive CTE that finds the paths.
 
 ## Find the paths
 

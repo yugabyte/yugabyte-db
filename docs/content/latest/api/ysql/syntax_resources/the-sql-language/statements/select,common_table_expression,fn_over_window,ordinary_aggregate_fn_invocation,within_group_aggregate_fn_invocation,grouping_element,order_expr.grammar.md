@@ -1,7 +1,7 @@
 ```
-select ::= [ WITH [ RECURSIVE ] 
-             { with_clause_substatement_defn [ , ... ] } ]  SELECT 
-           [ ALL | DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 
+select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
+            SELECT [ ALL | 
+                     DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 
            [ * | { { expression
                      | fn_over_window
                      | ordinary_aggregate_fn_invocation
@@ -18,12 +18,12 @@ select ::= [ WITH [ RECURSIVE ]
            [ OFFSET integer [ ROW | ROWS ] ]  
            [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]
 
-with_clause_substatement_defn ::= name [ ( name [ , ... ] ) ] AS ( 
-                                  { select
-                                    | values
-                                    | insert
-                                    | update
-                                    | delete } )
+common_table_expression ::= name [ ( name [ , ... ] ) ] AS ( 
+                            { select
+                              | values
+                              | insert
+                              | update
+                              | delete } )
 
 fn_over_window ::= name  ( [ expression [ , ... ] | * ]  
                    [ FILTER ( WHERE boolean_expression ) ] OVER 

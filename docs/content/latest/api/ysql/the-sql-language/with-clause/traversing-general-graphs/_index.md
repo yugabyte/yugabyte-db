@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a general graph
-headerTitle: Using a WITH clause recursive substatement to traverse graphs of all kinds
+title: Using a recursive CTE to traverse a general graph
+headerTitle: Using a recursive CTE to traverse graphs of all kinds
 linkTitle: traversing general graphs
-description: This section shows how to use a WITH clause recursive substatement to traverse graphs of all kinds.
+description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -23,7 +23,7 @@ showAsideToc: true
 
 All of the `.sql` scripts that this section presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
-[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+[Download `recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip).
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start a couple of master-scripts. Simply start each in `ysqlsh`. You can run them time and again. They always finish silently. You can see the reports that they produce on dedicated spool directories and confirm that your reports are identical to the reference copies that are delivered in the zip-file.
 {{< /tip >}}
@@ -41,7 +41,7 @@ A _graph_ is a network of _nodes_ (sometimes called vertices) and _edges_ (somet
 - A graph might be just _a single set of connected nodes_, where every node can be reached from any other node; or it might be two or more isolated _subgraphs_ of mutually connected nodes where there exists no path between any pair of subgraphs.
 - The most general graph traversal scheme, therefore, must discover all the isolated _subgraphs_ and apply the required traversal scheme of each. This is beyond the scope of this overall section. It deals only with single connected graphs.
 
-You can use a `WITH` clause recursive substatement to find the paths in an _undirected_ _cyclic_ graph. But you must design the SQL explicitly to accommodate the fact that the edges are _undirected_ and you must include an explicit predicate to prevent cycles. Because each other kind of graph described below is a specialization of the graph whose description immediately precedes its description, you can, as mentioned, use progressively simpler SQL to trace paths in these—as long as you know, _a priori_, what kind of graph you're dealing with.
+You can use a recursive CTE to find the paths in an _undirected_ _cyclic_ graph. But you must design the SQL explicitly to accommodate the fact that the edges are _undirected_ and you must include an explicit predicate to prevent cycles. Because each other kind of graph described below is a specialization of the graph whose description immediately precedes its description, you can, as mentioned, use progressively simpler SQL to trace paths in these—as long as you know, _a priori_, what kind of graph you're dealing with.
 
 ## Undirected cyclic graph
 
@@ -49,7 +49,7 @@ Here is an example of such a graph.
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/undirected-cyclic-graph.jpg)
 
-The [Bacon Number problem](./bacon-number/) is specified in the context of this kind of graph. Actors have acted in one or more movies. And the cast of a movie is one or more actors. The set of actors of interest is represented as the nodes of a single connected graph, one of whose nodes is Kevin Bacon. When any pair of actors have acted in the same movie, an edge exist between the two of them.
+The [Bacon Numbers problem](../bacon-numbers/) is specified in the context of this kind of graph. Actors have acted in one or more movies. And the cast of a movie is one or more actors. The set of actors of interest is represented as the nodes of a single connected graph, one of whose nodes is Kevin Bacon. When any pair of actors have acted in the same movie, an edge exist between the two of them.
 
 - Setting aside notions like "starring role", "supporting role", and so on, the relationship between a pair of actors who acted in the same movie is symmetrical. So the graph is _undirected_.
 
@@ -81,7 +81,7 @@ A rooted tree is a specialization of the _directed_ _acyclic_ graph.
 
 ![rooted-tree](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/rooted-tree.jpg)
 
-The reporting tree for employees in an organization, whose traversal was discussed in the section [Case study—using a WITH clause recursive substatement to traverse a hierarchy](../emps-hierarchy/) is the canonical example of such a graph.
+The reporting tree for employees in an organization, whose traversal was discussed in the section [Case study—Using a recursive CTE to traverse an employee hierarchy](../emps-hierarchy/) is the canonical example of such a graph.
 
 ## Finding the paths in each of the four kinds of graph
 

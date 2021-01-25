@@ -151,7 +151,7 @@ You'll use the procedure _["create_path_table()"](#cr-cr-path-table-sql)_ to cre
 - _"raw_paths"_. This is the target table for the paths that each of the code examples for the various kinds of graph generates.
 - _"shortest_paths"_. This is the target table for the paths produced by procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_.
 - _"unq_containing_paths"_. This is the target table for the paths produced by procedure _["restrict_to_unq_containing_paths()"](#cr-restrict-to-unq-containing-paths-sql)_.
-- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL that implements what the `WITH` clause recursive substatement does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
+- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
 
 First create the _"raw_paths"_ and optionally adds a column and creates a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be be traced to help the developer see how the code works. (It has this effect only for the implementations of the _"find_paths()"_ procedure that implements early-path-pruning.) 
 
@@ -162,7 +162,7 @@ Because the purpose of the trigger is entirely pedagogical, because is not neede
 ##### `cr-raw-paths-with-tracing.sql`
 
 ```plpgsql
-call create_path_table('raw_paths',             false);
+call create_path_table('raw_paths', false);
 
 alter table raw_paths add column repeat_nr int;
 
@@ -211,11 +211,11 @@ create unique index shortest_paths_start_terminal_unq on shortest_paths(start(pa
 
 ## Create a procedure to restrict a set of paths to leave only a shortest path to each distinct terminal node
 
-The solution to the [Bacon Numbers](../bacon-numbers/) problem needs only the _shortest path_ to all those actors who have a transitive "both acted in the same movie" relationship to Kevin Bacon. But, in general, there will be _many_ paths that reflect this transitive relationship. Indeed, there might even be two or more paths that each has the same shortest length.
+The solution to the [Bacon Numbers](../../bacon-numbers/) problem needs only the _shortest path_ to all those actors who have a transitive "both acted in the same movie" relationship to Kevin Bacon. But, in general, there will be _many_ paths that reflect this transitive relationship. Indeed, there might even be two or more paths that each has the same shortest length.
 
 The _"restrict_to_shortest_paths()"_ procedure finds just one shortest path to each reachable node from the set of all paths to reachable nodes. When there do exist two or more shortest paths to the same node, it selects the first one in the path sorting order. The advantage of this scheme over picking one of the contenders randomly is that the result is deterministic. This allows for a meaningful comparison between the result from running two overall analyses in two different databases. This is crucial when the aim is to confirm that PostgreSQL and YugabyteDB produce the same result from the same starting data, where, without a reliable ordering scheme, differences in physical data storage might produce different actual orders of results.
 
-Notice how ordinary (non-recursive) `WITH` clause substatements are used, just as functions and procedures are used in procedural programming, to encapsulate and name distinct steps in the code. Try to implement the logic without using this technique. The exercise will very vividly highlight the expressive value that the `WITH` clause provides.
+Notice how ordinary (non-recursive) CTEs are used, just as functions and procedures are used in procedural programming, to encapsulate and name distinct steps in the code. Try to implement the logic without using this technique. The exercise will very vividly highlight the expressive value that the `WITH` clause provides.
 
 ##### `cr-restrict-to-shortest-paths.sql`
 
