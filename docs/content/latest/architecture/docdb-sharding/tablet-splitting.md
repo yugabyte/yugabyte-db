@@ -215,17 +215,11 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 
 {{</note >}}
 
-## Automatic tablet splitting [BETA]
-
-{{< note title="Note" >}}
-
-Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
+## Automatic tablet splitting
 
 Automatic tablet splitting enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
 
-For details on the architecture design, see [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting in the v2.2 release.
+For details on the architecture design, see [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md).
 
 ### Enable automatic tablet splitting
 
@@ -289,7 +283,7 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Manual and automatic tablet splitting are in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+Manual tablet splitting is currently in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 Here are known limitations that are planned to be resolved in the next releases:
 
