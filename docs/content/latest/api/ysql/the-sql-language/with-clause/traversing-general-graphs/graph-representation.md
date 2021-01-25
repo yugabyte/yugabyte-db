@@ -31,7 +31,7 @@ create table edges(
   constraint edges_pk primary key(node_1, node_2));
 ```
 
-A typical special case, like [computing Bacon Numbers](../bacon-numbers/), would specify _"node_1"_ and _"node_2"_ with names that are specific to the use case (like _"actor"_ and _"co_actor"_) whose values are the primary keys in a separate _"actors"_ table. This implies foreign key constraints, of course. The _"actors"_ table would have other columns (like "_given_name"_, _"family_name"_, and so on). Similarly, the _"edges"_ table would have at least one other column: the array of movies that the two connected actors have been in.
+A typical special case, like [computing Bacon Numbers](../../bacon-numbers/), would specify _"node_1"_ and _"node_2"_ with names that are specific to the use case (like _"actor"_ and _"co_actor"_) whose values are the primary keys in a separate _"actors"_ table. This implies foreign key constraints, of course. The _"actors"_ table would have other columns (like "_given_name"_, _"family_name"_, and so on). Similarly, the _"edges"_ table would have at least one other column: the array of movies that the two connected actors have been in.
 
 ## How to represent the undirected nature of the edges
 

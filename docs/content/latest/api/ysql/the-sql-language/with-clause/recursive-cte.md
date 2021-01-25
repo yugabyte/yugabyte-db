@@ -1,22 +1,22 @@
 ---
-title: WITH clause recursive substatement—SQL syntax and semantics
-linkTitle: recursive WITH
-headerTitle: The WITH clause recursive substatement
-description: This section specifies the syntax and semantics of the WITH clause recursive substatement
+title: recursive CTE—SQL syntax and semantics
+linkTitle: recursive CTE
+headerTitle: The recursive CTE
+description: This section specifies the syntax and semantics of the recursive CTE
 menu:
   latest:
-    identifier: recursive-with
+    identifier: recursive-cte
     parent: with-clause
     weight: 30
 isTocNested: true
 showAsideToc: true
 ---
 
-The optional `RECURSIVE` keyword fundamentally changes the meaning of a `WITH` clause substatement. The recursive variant lets you implement SQL solutions that, without it, at best require verbose formulations involving, for example, self-joins. In the limit, the `WITH` clause recursive substatement lets you implement SQL solutions that otherwise would require procedural programming.
+The optional `RECURSIVE` keyword fundamentally changes the meaning of a CTE. The recursive variant lets you implement SQL solutions that, without it, at best require verbose formulations involving, for example, self-joins. In the limit, the recursive CTE lets you implement SQL solutions that otherwise would require procedural programming.
 
 ## Syntax
 
-When the optional `RECURSIVE` keyword is used, the [`with_clause_substatement_defn`](../../../syntax_resources/grammar_diagrams/#with-clause-substatement-defn) must be a `SELECT` statement—and this must have a specific form as the `UNION` or `UNION ALL` of the so-called _non-recursive term_ and the _recursive term_, thus:
+When the optional `RECURSIVE` keyword is used, the [`common_table_expression`](../../../syntax_resources/grammar_diagrams/#common-table-expression) must be a `SELECT` statement—and this must have a specific form as the `UNION` or `UNION ALL` of the so-called _non-recursive term_ and the _recursive term_, thus:
 
 ```
 with
@@ -72,13 +72,41 @@ This is the result:
  5
 ```
 
-The [Semantics](#semantics) section explains how a `WITH` recursive substatement is evaluated. When you understand this, you can predict the result of this minimal example and, by induction, the result of any arbitrarily complex example.
+The [Semantics](#semantics) section explains how a recursive CTE is evaluated. When you understand this, you can predict the result of this minimal example and, by induction, the result of any arbitrarily complex example.
 
 ## Restrictions
 
-### Maximum one WITH clause recursive substatement
+The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantics](../with-clause-syntax-semantics/) implies a pair of restrictions.
 
-The attempt to define more than one recursive substatement within a particular `WITH` clause causes a generic _42601_ syntax error. You can work around this restriction by pushing it down by one level of nesting, thus:
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" /%}}
+  </div>
+</div>
+
+It shows that you can use the `RECURSIVE` keyword only immediately after the keyword `WITH` and that, therefore only the first CTE in a `WITH` clause can be a recursive CTE. These restrictions are illustrated in the immediately following sections [Maximum one recursive CTE](#maximum-one-recursive-cte) and [The recursive CTE must be first in the clause](#the-recursive-cte-must-be-first-in-the-clause).
+
+### Maximum one recursive CTE
+
+The attempt to define more than one recursive CTE within a particular `WITH` clause causes a generic _42601_ syntax error. You can work around this restriction by pushing it down by one level of nesting, thus:
 
 ```plpgsql
 with
@@ -125,7 +153,7 @@ This is the result:
   1
 ```
 
-### The WITH clause recursive substatement must be first in the clause
+### The recursive CTE must be first in the clause
 
 This code:
 
@@ -175,7 +203,7 @@ then the statement executes without error to produce this result:
   1
 ```
 
-Alternatively, you can push down the `WITH` clause recursive substatement one level as shown above.
+Alternatively, you can push down the recursive CTE one level as shown above.
 
 ### The recursive term must be parenthesised to allow this to use a WITH clause
 
@@ -295,7 +323,7 @@ In informal prose:
 
 - The _non-recursive term_ is invoked just once and establishes a starting relation.
 - The _recursive term_ is invoked time and again. On its first invocation, it acts on the relation produced by the evaluation of the _non-recursive term_. On subsequent invocations, it acts on the relation produced by its previous invocation.
-- Each successive term evaluation appends its output to the growing result of the recursive substatement.
+- Each successive term evaluation appends its output to the growing result of the recursive CTE.
 - The repeating invocation of the _recursive term_ stops when it produces an empty relation.
 
 ### Pseudocode definition of the semantics
@@ -497,14 +525,14 @@ select c1, c2 from recursive_with_results order by c1, c2;
 
 The result is identical to that produced by the SQL implementation that it emulates.
 
-The section [Using a WITH clause recursive substatement to traverse graphs of all kinds](../traversing-general-graphs/) shows how to do graph traversal of undirected and directed graphs using application-agnostic examples. When the graph is cyclic, it shows how to detect and prevent endless repetition.
+The section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) shows how to do graph traversal of undirected and directed graphs using application-agnostic examples. When the graph is cyclic, it shows how to detect and prevent endless repetition.
 
 ## Case studies
 
-The following two sections describe how to use a `WITH` clause recursive substatement to implement two practical cases:
+The following two sections describe how to use a recursive CTE to implement two practical cases:
 
-- [Case study—using a WITH clause recursive substatement to traverse a hierarchy](../emps-hierarchy) describes the use case (traversing an employee hierarchy) that is most commonly used to illustrate a practical application of the `WITH` clause recursive substatement. Different SQL databases with different variants of SQL use importantly different approaches. PostgreSQL, and therefore YSQL, have only standard SQL features here (and not, therefore, the `CONNECT BY PRIOR` feature that is typically used with Oracle Database). Neither do they have dedicated syntax to ask for breadth-first or depth-first traversal. Rather, these two kinds of traversal must be programmed explicitly. The explicit solutions use array functionality and are straightforward. Moreover, using this approach allows various second-order display choices easily to be implemented.
-- [Using a `WITH` clause recursive substatement to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Computing Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the `WITH` clause recursive substatement implements using explicit SQL. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
+- [Case study—Using a recursive CTE to traverse an employee hierarchy](../emps-hierarchy) describes the use case (traversing an employee hierarchy) that is most commonly used to illustrate a practical application of the recursive CTE. Different SQL databases with different variants of SQL use importantly different approaches. PostgreSQL, and therefore YSQL, have only standard SQL features here (and not, therefore, the `CONNECT BY PRIOR` feature that is typically used with Oracle Database). Neither do they have dedicated syntax to ask for breadth-first or depth-first traversal. Rather, these two kinds of traversal must be programmed explicitly. The explicit solutions use array functionality and are straightforward. Moreover, using this approach allows various second-order display choices easily to be implemented.
+- [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the recursive CTE implements using explicit SQL. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
 
 
 

@@ -16,7 +16,7 @@ showAsideToc: true
 
 All of the `.sql` scripts that this section presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
-[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+[Download `recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip).
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start the master-script that invokes all the child scripts that jointly instantiate the small and then the large IMDb data sets and compute the Bacon Numbers on these. Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the report that it produces on a dedicated spool directory and confirm that your reports are identical to the reference copies that are delivered in the zip-file.
 {{< /tip >}}
@@ -49,7 +49,7 @@ Alec Guinness|Lovesick (1983)
 ...
 ```
 
-After downloading it, rename it to `imdb-small.text` so that its name follows the same convention (a hyphen between the English words) that the all the other files that `recursive-with-case-studies.zip` contains. The information content is identical to what the _"cast_members"_ table was designed to represent. (See the [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql) script.) This means that the `ysqlsh` metacommand `\COPY` can be used, straightforwardly, to ingest the downloaded data.
+After downloading it, rename it to `imdb-small.text` so that its name follows the same convention (a hyphen between the English words) that the all the other files that [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) contains. The information content is identical to what the _"cast_members"_ table was designed to represent. (See the [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql) script.) This means that the `ysqlsh` metacommand `\COPY` can be used, straightforwardly, to ingest the downloaded data.
 
 However, as this script creates it, the _"actors"_ and _"movies"_ tables must be populated first so that the foreign key constraints to these from the _"cast_members"_ table will be satisfied when it its populated. Use this script to do the steps in the proper order and display the resulting table counts:
 
