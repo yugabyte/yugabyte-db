@@ -118,7 +118,7 @@ The whitespace was added by hand to group the results into the sets of five edge
 
 ## The number of paths in a maximally connected graph grows very much faster than linearly with the number of nodes
 
-Recall how the logic of the `WITH` clause recursive substatement from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql)  is expressed:
+Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql)  is expressed:
 
 ```
 with
@@ -273,11 +273,11 @@ Even if you did create a single-node YugabyteDB cluster so that it used your 1 T
 
 ## The stress test experiment
 
-The thought experiment, above, was described to show that the _"find_paths()"_ scheme that uses schema-level tables to implement the intermediate and final results for the `WITH` clause recursive substatement algorithm, without pruning, will inevitably reach a limit and crash when the target graph has too many paths. Similar reasoning shows that the ordinary, explicit, use of the `WITH` clause recursive substatement will inevitably crash, too, under similar circumstances. There's no point in trying to make more realistic estimates of the various sizes that will jointly conspire to bring eventual failure. Rather, an empirical test better serves the purpose.
+The thought experiment, above, was described to show that the _"find_paths()"_ scheme that uses schema-level tables to implement the intermediate and final results for the recursive CTE algorithm, without pruning, will inevitably reach a limit and crash when the target graph has too many paths. Similar reasoning shows that the ordinary, explicit, use of the recursive CTE will inevitably crash, too, under similar circumstances. There's no point in trying to make more realistic estimates of the various sizes that will jointly conspire to bring eventual failure. Rather, an empirical test better serves the purpose.
 
 Before doing the stress-test experiment, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/). But this time, make sure that you start by choosing the option that re-creates the _"raw_paths"_ table without the tracing code before you do some timing tests.)
 
-**Note:** The stress-test is implemented by a few scripts where all but one call other script(s). In order to run the whole test, you should create a directory on your computer and, when told to, save each script there with the name that's given. The [downloadable code zip](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip) arranges all of the scripts it includes in a directory tree that implements a useful classification scheme. This means that, in the files from the zip, the arguments of the `\i`, `\ir`, and `\o` metacommands are spelled differently than they are here to include directory names.
+**Note:** The stress-test is implemented by a few scripts where all but one call other script(s). In order to run the whole test, you should create a directory on your computer and, when told to, save each script there with the name that's given. The [downloadable code zip](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) arranges all of the scripts it includes in a directory tree that implements a useful classification scheme. This means that, in the files from the zip, the arguments of the `\i`, `\ir`, and `\o` metacommands are spelled differently than they are here to include directory names.
 
 ### Create some helpers
 
@@ -470,11 +470,11 @@ This leads to two conclusions:
 
 - It simply isn't feasible to use the native features of YugabyteDB, those of PostgreSQL, or indeed those of _any_ SQL database, to discover _all_ the paths in any typically highly connected graph that's likely to be interesting in practice—especially, for example, the IMDb data.
 
-- It _is_ straightforward to use ordinary SQL features to discover the _shortest_ paths in even very large and highly connected graphs. However, you cannot use the `WITH` clause recursive substatement for this purpose because it doesn't let you implement early pruning. Rather, you must use a table-based approach that implements the `WITH` clause recursive substatement's algorithm explicitly by hand.
+- It _is_ straightforward to use ordinary SQL features to discover the _shortest_ paths in even very large and highly connected graphs. However, you cannot use the recursive CTE for this purpose because it doesn't let you implement early pruning. Rather, you must use a table-based approach that implements the recursive CTE's algorithm explicitly by hand.
 
 ## Implication of the stress-test experiment for the implementation of the computation of of Bacon Numbers
 
-The introduction to the [Computing Bacon Numbers for actors listed in the IMDb](../../bacon-numbers/) section mentions this data set:
+The introduction to the section [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../../bacon-numbers/) mentions this data set:
 
 - [imdb.small.txt](http://cs.oberlin.edu/~gr151/imdb/imdb.small.txt): a... file with just a handful of performers (161), fully connected
 

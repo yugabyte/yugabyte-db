@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a directed acyclic graph
+title: Using a recursive CTE to traverse a directed acyclic graph
 headerTitle: Finding the paths in a directed acyclic graph
 linkTitle: directed acyclic graph
-description: This section shows how to use a WITH clause recursive substatement to traverse a directed acyclic graph.
+description: This section shows how to use a recursive CTE to traverse a directed acyclic graph.
 menu:
   latest:
     identifier: directed-acyclic-graph
