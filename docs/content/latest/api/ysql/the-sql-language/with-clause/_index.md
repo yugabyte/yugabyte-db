@@ -1,8 +1,8 @@
 ---
-title: The WITH clause [YSQL]
-headerTitle: The WITH clause (Common Table Expression)
+title: The WITH clause and common table expressions (a.k.a. CTEs) [YSQL]
+headerTitle: The WITH clause and common table expressions
 linkTitle: WITH clause
-description: How to use the WITH clause a.k.a. Common Table Expression
+description: How to use the WITH clause and common table expressions—a/k/a/ CTEs
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -13,28 +13,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
-
-{{< tip title="Download a zip of WITH clause demonstration scripts" >}}
-
-The [`recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip) file contains all the `.sql` scripts that illustrate these sections:
-
-- [Case study—using a WITH clause recursive substatement to traverse a hierarchy](./emps-hierarchy/)
-
-- [Using a WITH clause recursive substatement to traverse graphs of all kinds](./traversing-general-graphs/)
-
-- [Case study—computing Bacon Numbers for actors listed in the IMDb](./bacon-numbers/).
-
-After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
-{{< /tip >}}
+A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
 
 ## Introduction
 
-The `WITH` clause lets you name one or several SQL substatements. Such a substatement may be any of these kinds: `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE`. And the `WITH` clause is legal at the start of any of these kinds of statement : `SELECT`, `INSERT`, `UPDATE`, or `DELETE`. (`VALUES` is missing from the second list.) There are two kinds of `WITH` clause substatement: the _ordinary_ kind; and the _recursive_ kind.
+The `WITH` clause lets you name one or several so-called _common table expressions_. This latter term is a term of art, and doesn't reflect the spellings of SQL keywords. It is normally abbreviated to CTE, and this acronym will be used throughout the rest of the whole of this "WITH clause" section. See the section [WITH clause—SQL syntax and semantics](./with-clause-syntax-semantics) for the formal treatment.
 
-The statement text that the ordinary kind of `WITH` clause substatement names has the same syntax as the a SQL statement that you issue at top level. However, the recursive kind of substatement may be used _only_ in a `WITH` clause. Each such `WITH` clause component (the name, an optional parenthesized column list) and the substatement itself) is sometimes known as a _common table expression_.
+Briefly, a CTE names a SQL [sub]statement which may be any of these kinds: `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE`. And the `WITH` clause is legal at the start of any of these kinds of statement : `SELECT`, `INSERT`, `UPDATE`, or `DELETE`. (`VALUES` is missing from the second list.) There are two kinds of CTE: the _ordinary_ kind; and the _recursive_ kind.
 
-A `WITH` clause can, for example, be used to provide values for, say, an `INSERT` like this:
+The statement text that the ordinary kind of CTE names has the same syntax as the corresponding SQL statement that you issue at top level. However, a recursive CTE may be used _only_ in a `WITH` clause.
+
+A CTE can, for example, be used to provide values for, say, an `INSERT` like this:
 
 ```plpgsql
 set client_min_messages = warning;
@@ -50,13 +39,13 @@ select k, v from a;
 select k, v from t1 order by k;
 ```
 
-This component:
+This component is an example of a CTE:
 
 ```
 a(k, v) as (select g.v, g.v*2 from generate_series(11, 20) as g(v))
 ```
 
-is an example of a common table expression. The YSQL documentation avoids using the term _common table expression_
+Notice the (optional) parenthesised parameter list that follows the name, just as in the definition of a schema-level [`VIEW`](../statements/ddl_create_view).
 
 This is the result:
 
@@ -75,14 +64,14 @@ This is the result:
  20 | 40
 ```
 
-Moreover, data-changing substatements (`INSERT`, `UPDATE` , and `DELETE`) can be used in a `WITH` clause and, when these use a `RETURNING` clause, the returned values can be used in another data-changing statement like this:
+When data-changing CTEs (`INSERT`, `UPDATE` , and `DELETE` are named in a CTE, and, when these use a `RETURNING` clause, the returned values can be used in other CTEs and in the overall statement's final [sub]statement. Here os an example.
 
 ```plpgsql
 set client_min_messages = warning;
 drop table if exists t2 cascade;
 create table t2(k int primary key, v int not null);
 
-with moved_rows as (
+with moved_rows(k, v) as (
   delete from t1
   where k > 15
   returning k, v)
@@ -97,11 +86,26 @@ select k, v from moved_rows;
 order by table_name, k;
 ```
 
-The central notion is that a `WITH` clause lets you name one or more substatements (which each may be either `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE`) so that you can then refer to such a substatement by name, either in a subsequent substatement in that `WITH` clause or in the overall statement's final, main, substatement (which may be either `SELECT`, `INSERT`, `UPDATE`, or `DELETE`—but _not_ `VALUES`). In this way, a `WITH` clause substatement is analogous, in the declarative programming domain of SQL, to a procedure or a function in the imperative programming domain of a procedural language.
+This is the result:
 
-Notice that a schema-level view achieves the same effect, for `SELECT` or `VALUES`, as does a substatement in a view with respect to the named substatement's use. However a schema-level view cannot name a data-changing substatement. In this way, a `WITH` clause substatement brings valuable unique functionality. It also brings the modular programming benefit of hiding names, and the implementations that they stand for, from scopes that have no interest in them.
+```
+ table_name | k  | v  
+------------+----+----
+ t1         | 11 | 22
+ t1         | 12 | 24
+ t1         | 13 | 26
+ t1         | 14 | 28
+ t1         | 15 | 30
+ t2         | 16 | 32
+ t2         | 17 | 34
+ t2         | 18 | 36
+ t2         | 19 | 38
+ t2         | 20 | 40
+```
 
-Finally, the use of a _recursive_ substatement in a `WITH` clause enables graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a `WITH` clause recursive substatement allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
+The central notion is that each CTE that you name in a `WITH` clause can then be invoked by its name, either in a subsequent CTE in that `WITH` clause or in the overall statement's final, main, [sub]statement. In this way, a CTE is analogous, in the declarative programming domain of SQL, to a procedure or a function in the imperative programming domain of a procedural language, bringing the modular programming benefit of hiding names, and the implementations that they stand for, from scopes that have no interest in them.
+
+Finally, the use of a _recursive_ CTE in a `WITH` clause enables graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
 
 ```
  emps hierarchy 
@@ -123,17 +127,35 @@ The remainder of this section has the following subsections:
 
 - [`WITH` clause—SQL syntax and semantics](./with-clause-syntax-semantics/)
 
-- [The `WITH` clause recursive substatement](./recursive-with/)
+- [The recursive CTE](./recursive-cte/)
 
-- [Case study—using a WITH clause recursive substatement to traverse a hierarchy](./emps-hierarchy/)
+- [Case study—Using a recursive CTE to traverse an employee hierarchy](./emps-hierarchy/)
 
-- [Case study—computing Bacon Numbers for actors listed in the IMDb](./bacon-numbers/)
+- [Using a recursive CTE to traverse graphs of all kinds](./traversing-general-graphs/)
+
+- [Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](./bacon-numbers/)
 
 {{< tip title="Performance considerations." >}}
 
-A SQL statement that uses a `WITH` clause sometimes gets a worse execution plan than the semantically equivalent statement that _doesn’t_ use a `WITH` clause. The explanation is usually that a “push-down” optimization of a restriction or projection hasn’t penetrated into the `WITH` clause’s substatement. You can usually avoid this problem by manually pushing down what you’d hope would be done automatically into your spellings of the `WITH` clause’s substatements.
+A SQL statement that uses a `WITH` clause sometimes gets a worse execution plan than the semantically equivalent statement that _doesn’t_ use a `WITH` clause. The explanation is usually that a “push-down” optimization of a restriction or projection hasn’t penetrated into the `WITH` clause’s CTE. You can usually avoid this problem by manually pushing down what you’d hope would be done automatically into your spellings of the `WITH` clause’s CTEs.
 
 Anyway, the ordinary good practice principle holds even more here: always check the execution plans of the SQL statements that your application issues, on representative samples of data, before moving the code to the production environment.
 
 {{< /tip >}}
+
+{{< tip title="Download a zip of WITH clause demonstration scripts" >}}
+
+The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) file contains the `.sql` scripts that illustrate the use off the [recursive CTE](./recursive-cte/):
+
+- [Case study—Using a recursive CTE to traverse an employee hierarchy](./emps-hierarchy/)
+
+- [Using a recursive CTE to traverse graphs of all kinds](./traversing-general-graphs/)
+
+- [Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](./bacon-numbers/).
+
+All of these studies make heavy use of regular (i.e. non-recursive) CTEs. They therefore show the power of the CTE in a natural, rather than a contrived, way.
+
+After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
+{{< /tip >}}
+
 
