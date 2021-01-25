@@ -43,7 +43,7 @@ Use the `INSERT` statement to add one or more rows to the specified table.
   </div>
 </div>
 
-See the section [The WITH clause (Common Table Expression)](../../with-clause/) for mor information about the semantics of the `with_clause_substatement_defn` grammar rule.
+See the section [The WITH clause and common table expressions](../../with-clause/) for mor information about the semantics of the `common_table_expression` grammar rule.
 
 ## Semantics
 

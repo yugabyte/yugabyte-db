@@ -1,8 +1,8 @@
 ---
-title: Case study—using a WITH clause recursive substatement to compute Bacon Numbers on IMDb data
-headerTitle: Case study—computing Bacon Numbers for actors listed in the IMDb
+title: Case study—using a recursive CTE to compute Bacon Numbers on IMDb data
+headerTitle: Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb
 linkTitle: case study—Bacon Numbers from IMDb
-description: Case study showing how to use a WITH clause recursive substatement to solve the "Six Degrees of Kevin Bacon" problem using IMDb data.
+description: Case study showing how to use a recursive CTE to solve the "Six Degrees of Kevin Bacon" problem using IMDb data.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -64,7 +64,7 @@ Of course, the IMDb has facts like _date of birth_, _nationality_, and so on for
 
 Notice that the notion of a graph is so far only implied. A derived _"edges"_ table makes the graph explicit.  An edge exists between a pair of actors if they are both on the cast list of one or more movies. The SQL needed to populate the _"edges"_ table from the _"cast_members"_ table is straightforward.
 
-When the paths have been found, it's useful to be able to annotate each edge with the list of movies that are responsible for its existence. The annotation code could, of course, derive this information dynamically. But it simplifies the overall coding scheme if a denormalization is adopted to annotate the paths at the time that they are discovered. Another departure from strict purity simplifies the overall coding scheme further. If the row for the edge between a particular pair of actors records the _list_ of movies that brought it (rather than recording many edges, each with a single-valued _"movie"_ attribute), then the path-tracing code that the section [Using a `WITH` clause recursive substatement to traverse graphs of all kinds](../traversing-general-graphs/) presented can be used "as is". To this end, the columns that represent the actor pair in the _"edges"_ table are called _"node_1"_ and "_node_2"_ rather than the more natural _"actor_1"_ and _"actor_2"_.
+When the paths have been found, it's useful to be able to annotate each edge with the list of movies that are responsible for its existence. The annotation code could, of course, derive this information dynamically. But it simplifies the overall coding scheme if a denormalization is adopted to annotate the paths at the time that they are discovered. Another departure from strict purity simplifies the overall coding scheme further. If the row for the edge between a particular pair of actors records the _list_ of movies that brought it (rather than recording many edges, each with a single-valued _"movie"_ attribute), then the path-tracing code that the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) presented can be used "as is". To this end, the columns that represent the actor pair in the _"edges"_ table are called _"node_1"_ and "_node_2"_ rather than the more natural _"actor_1"_ and _"actor_2"_.
 
 This code creates the _"edges"_ table and the procedure that populates it.
 
@@ -225,5 +225,5 @@ The section [Computing Bacon Numbers for a small set of synthetic actors and mov
 
 The section [Computing Bacon Numbers for real IMDb data](./imdb-data/) shows how to ingest the raw _"imdb.small.txt"_ file into the same representation that was used for the synthetic data. (The subsection [Download and ingest some IMDb data](./imdb-data/#download-and-ingest-some-imdb-data) explains how to download the IMDb subset that this case study uses.)
 
-While a straightforward use of a `WITH` clause recursive substatement can be used to produce the solution for the small synthetic data set quickly, it fails to complete before crashing (see the section [Stress testing different find_paths() implementations on maximally connected graphs](../traversing-general-graphs/stress-test/)) when it's applied to the ingested *"imdb.small.txt"* data. The approach described in the [How to implement early path pruning](../traversing-general-graphs/undirected-cyclic-graph/#how-to-implement-early-path-pruning) section comes to the rescue.
+While a straightforward use of a recursive CTE can be used to produce the solution for the small synthetic data set quickly, it fails to complete before crashing (see the section [Stress testing different find_paths() implementations on maximally connected graphs](../traversing-general-graphs/stress-test/)) when it's applied to the ingested *"imdb.small.txt"* data. The approach described in the [How to implement early path pruning](../traversing-general-graphs/undirected-cyclic-graph/#how-to-implement-early-path-pruning) section comes to the rescue.
 
