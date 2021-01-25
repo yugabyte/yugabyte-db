@@ -130,3 +130,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [rjw-41x] (https://github.com/rjw-41x
 * [med-yb](https://github.com/med-yb
 * [mahendranbhat](https://github.com/mahendranbhat)
+* [gaurav061](https://github.com/gaurav061)
