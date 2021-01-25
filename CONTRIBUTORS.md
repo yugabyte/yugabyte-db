@@ -132,3 +132,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [mahendranbhat](https://github.com/mahendranbhat)
 * [nishantSharma459](https://github.com/nishantSharma459)
 * [gaurav061](https://github.com/gaurav061)
+* [sudheer](https://github.com/psudheer21)
