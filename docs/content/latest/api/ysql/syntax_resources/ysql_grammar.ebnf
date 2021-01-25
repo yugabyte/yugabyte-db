@@ -693,7 +693,7 @@ create_view = 'CREATE' [ 'OR' 'REPLACE' ] 'VIEW' qualified_name [ '(' name { ','
 deallocate = 'DEALLOCATE' [ 'PREPARE' ] ( name | 'ALL' ) ;
 
 (* 'DELETE' *)
-delete = [ 'WITH' [ 'RECURSIVE' ] with_clause_substatement_defn { ',' with_clause_substatement_defn } ] \
+delete = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
        'DELETE' 'FROM' [ 'ONLY' ] table_name [ '*' ] [ [ 'AS' ] alias ] \
        [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
        [ returning_clause ] ;
@@ -853,7 +853,7 @@ grant_role_spec = [ 'GROUP' ] role_name
 
 (* 'INSERT' *)
 
-insert = [ 'WITH' [ 'RECURSIVE' ] with_clause_substatement_defn { ',' with_clause_substatement_defn } ] \
+insert = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
            'INSERT' 'INTO' table_name [ 'AS' alias ] [ '(' column_names ')' ] \
                ( ( 'DEFAULT' 'VALUES' )
                | 'VALUES' '(' column_values ')' { ',' '(' column_values ')' }
@@ -957,7 +957,7 @@ revoke_role = 'REVOKE' [ 'ADMIN' 'OPTION' 'FOR' ]
 rollback = 'ROLLBACK' [ 'TRANSACTION' | 'WORK' ] ;
 
 (* 'SELECT' *)
-select = [ 'WITH' [ 'RECURSIVE' ] ( with_clause_substatement_defn { ',' with_clause_substatement_defn } ) ] \
+select = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
            'SELECT' [ 'ALL' | 'DISTINCT' [ 'ON' ( '(' expression { ',' expression } ')' ) ] ]
                [ '*' | ( ( ( expression | fn_over_window | ordinary_aggregate_fn_invocation | within_group_aggregate_fn_invocation ) [ [ 'AS' ] name ] )
                          { ',' ( ( expression | fn_over_window | ordinary_aggregate_fn_invocation | within_group_aggregate_fn_invocation ) [ [ 'AS' ] name ] ) } ) ] \
@@ -972,7 +972,9 @@ select = [ 'WITH' [ 'RECURSIVE' ] ( with_clause_substatement_defn { ',' with_cla
                [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
                [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] ;
 
-with_clause_substatement_defn = name [ '(' name { ',' name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
+with_clause = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] ;
+
+common_table_expression = name [ '(' name { ',' name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 
 select_expression = expression [ [ 'AS' ] name ] ;
 
@@ -1026,7 +1028,7 @@ truncate = 'TRUNCATE' [ 'TABLE' ]
 table_expr = [ 'ONLY' ] name [ '*' ] ;
 
 (* 'UPDATE' *)
-update = [ 'WITH' [ 'RECURSIVE' ] with_query { ',' with_clause_substatement_defn } ] \
+update = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] \
        'UPDATE' [ 'ONLY' ] table_name [ '*' ] [ [ 'AS' ] alias ] \
        'SET' update_item { ',' update_item }
        (* [ 'FROM' from_list ] \ *)

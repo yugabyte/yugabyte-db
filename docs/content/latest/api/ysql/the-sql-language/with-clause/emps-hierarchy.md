@@ -1,8 +1,8 @@
 ---
-title: Case study—using a WITH clause recursive substatement to traverse an employee hierarchy 
+title: Case study—using a recursive CTE to traverse an employee hierarchy 
 linkTitle: case study—traversing an employee hierarchy
-headerTitle: Case study—traversing an employee a hierarchy
-description: Case study to show how to traverse a hierarchy, breadth or depth first, using a WITH clause recursive substatement.
+headerTitle: Case study—using a recursive CTE to traverse an employee hierarchy
+description: Case study to show how to traverse a hierarchy, breadth or depth first, using a recursive CTE.
 menu:
   latest:
     identifier: emps-hierarchy
@@ -14,17 +14,17 @@ showAsideToc: true
 
 
 
-A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this explained in the section [Using a WITH clause recursive substatement to traverse graphs of all kinds](..//traversing-general-graphs/). 
+A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this explained in the section [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/). 
 
 The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key. A _"parent ID"_ column (list) references the table's primary key—the _"ID"_ column (list). This is  enforced by a foreign key constraint. (This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling.) The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
 
-The SQL that this section presents uses the simpler representation. But the section  [Using a WITH clause recursive substatement to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy.
+The SQL that this section presents uses the simpler representation. But the section  [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy.
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
 All of the `.sql` scripts that this case study presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
-[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+[Download `recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip).
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start the master-script. Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the report that it produces on a dedicated spool directory and confirm that your report is identical to the reference copy that is delivered in the zip-file.
 {{< /tip >}}
@@ -108,7 +108,7 @@ $body$;
 
 ## List the employees top-down with their immediate managers in breadth first order
 
-This simplest formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive substatement like this:
+This simplest formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive CTE like this:
 
 ##### `cr-view-top-down-simple.sql`
 
@@ -299,7 +299,7 @@ end;
 $body$;
 ```
 
-This "`UNION ALL` of two complementary `EXCEPT` queries" is the standard pattern for checking if two different relations have the same content. Notice how the use of a `WITH` clause with ordinary (non-recursive) substatements lets you express the logic in a maximally readable way.
+This "`UNION ALL` of two complementary `EXCEPT` queries" is the standard pattern for checking if two different relations have the same content. Notice how the use of a `WITH` clause with ordinary (non-recursive) CTEs lets you express the logic in a maximally readable way.
 
 ## List the path top-down from the ultimate manager to each employee in depth-first order
 

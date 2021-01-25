@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Syntax
 
-The [`with_clause_substatement_defn`](../../../syntax_resources/grammar_diagrams/#with-clause-substatement-defn) diagram is reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
+The [with_clause](../../../syntax_resources/grammar_diagrams/#with-clause)  and [`common_table_expression`](../../../syntax_resources/grammar_diagrams/#common-table-expression) diagrams are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -33,22 +33,24 @@ The [`with_clause_substatement_defn`](../../../syntax_resources/grammar_diagrams
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/with_clause_substatement_defn.grammar.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/with_clause_substatement_defn.diagram.md" /%}}
+    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
 
-The `WITH` clause lets you name a SQL statement which might be one of [`SELECT`](../../../the-sql-language/statements/dml_select/), [`VALUES`](../../../the-sql-language/statements/dml_values/), [`INSERT`](../../../the-sql-language/statements/dml_insert/), [`UPDATE`](../../../the-sql-language/statements/dml_update/), or [`DELETE`](../../../the-sql-language/statements/dml_delete/). You can then refer to the statement by name (just as if it were a schema-level view that names a `SELECT` statement) in a subsequent `WITH` clause substatement definition or in the statements final section. A very common use of the data-changing statements in the `WITH` clause is when they have a `RETURNING` clause. Then when you later refer to that statement by name, it behaves the same as if it were a named `SELECT` statement.
+The `WITH` clause lets you name a SQL statement which might be one of [`SELECT`](../../../the-sql-language/statements/dml_select/), [`VALUES`](../../../the-sql-language/statements/dml_values/), [`INSERT`](../../../the-sql-language/statements/dml_insert/), [`UPDATE`](../../../the-sql-language/statements/dml_update/), or [`DELETE`](../../../the-sql-language/statements/dml_delete/). You can then refer to the statement by name (just as if it were a schema-level view that names a `SELECT` statement) in a subsequent CTE definition or in the statement's final section. A very common use of the data-changing statements in the `WITH` clause is when they have a `RETURNING` clause. Then when you later refer to that statement by name, it behaves the same as if it were a named `SELECT` statement.
 
-The uniqueness scope for the name of the substatement definition is the relation names defined in a particular `WITH` clause the SQL statement. You can define column aliases compactly in the optional parenthesized list that follows the name of the substatement, just as you can with a schema-level view. See the section [Example where a substatement defined in the WITH clause itself has a WITH clause](#example-where-a-substatement-defined-in-the-with-clause-itself-has-a-with-clause).
+The uniqueness scope for the name of the CTE is the relation names defined in a particular `WITH` clause. You can define column aliases compactly in the optional parenthesized list that follows the name of the CTE, just as you can with a schema-level view. See the section [Example where a CTE defined in the WITH clause itself has a WITH clause](#example-where-a-cte-defined-in-the-with-clause-itself-has-a-with-clause).
 
-Notice that the `WITH` clause is legal in the `SELECT` statement, in each of the kinds of data-changing statements, but not in the `VALUES` statement. See the syntax diagrams for [`SELECT`](../../../syntax_resources/grammar_diagrams/#select), [`VALUES`](../../../syntax_resources/grammar_diagrams/#values), [`INSERT`](../../../syntax_resources/grammar_diagrams/#insert), [`UPDATE`](../../../syntax_resources/grammar_diagrams/#update), and [`DELETE`](../../../syntax_resources/grammar_diagrams/#delete).
+Notice that the `WITH` clause is legal in the `SELECT` statement and in each of the kinds of data-changing statements, but not in the `VALUES` statement. See the syntax diagrams for [`SELECT`](../../../syntax_resources/grammar_diagrams/#select), [`VALUES`](../../../syntax_resources/grammar_diagrams/#values), [`INSERT`](../../../syntax_resources/grammar_diagrams/#insert), [`UPDATE`](../../../syntax_resources/grammar_diagrams/#update), and [`DELETE`](../../../syntax_resources/grammar_diagrams/#delete).
 
-### Example that uses three data-changing substatements and a SELECT substatement in the WITH clause
+The recursive CTE is explained in a [dedicated section](../recursive-cte/).
+
+### Example that uses three data-changing CTEs and a SELECT CTE in the WITH clause
 
 First, create some test tables and inspect the contents.
 
@@ -103,7 +105,7 @@ This is the result:
  t3   | 9 | 18
 ```
 
-Now execute the example query. Notice that the `WITH` clause defines an `INSERT` substatement, an `UPDATE` substatement, a `DELETE` substatement, and a `SELECT` substatement. Each of the data-changing substatements has a `RETURNING` clause; and the `SELECT` substatement accesses the unions returned by each of these.
+Now execute the example query. Notice that the `WITH` clause defines an `INSERT` CTE, an `UPDATE` CTE, a `DELETE` CTE, and a `SELECT` CTE. Each of the data-changing CTEs has a `RETURNING` clause; and the `SELECT` CTE accesses the unions returned by each of these.
 
 ```plpgsql
 with 
@@ -166,7 +168,7 @@ This is the result:
  t3   |  7 | 14
 ```
 
-### Example that uses a VALUES substatements and a SELECT substatement in the WITH clause
+### Example that uses a VALUES CTE and a SELECT CTE in the WITH clause
 
 First, clear out the data from table _"t1"_ from the previous demonstration.
 
@@ -206,9 +208,9 @@ This is the result:
  12 | 99
 ```
 
-### Example where a substatement defined in the WITH clause itself has a WITH clause
+### Example where a CTE defined in the WITH clause itself has a WITH clause
 
-The following SQL statement uses _two_ `WITH` clauses. Each defines its own scope for the names of the substatements that they define. Notice that the name _"a2"_ is defined in three different scopes: schema scope; the scope of the outer `WITH` clause; and the scope of the inner `WITH` clause that the outer one begins with.
+The following SQL statement uses _two_ `WITH` clauses. Each defines its own scope for the names of the CTEs that they define. Notice that the name _"a2"_ is defined in three different scopes: schema scope; the scope of the outer `WITH` clause; and the scope of the inner `WITH` clause that the outer one begins with.
 
 The outer `WITH` clause simply cannot see the names that are defined in the inner `WITH` clause. But each of these `WITH` clauses can see a schema-level relation with a name that collides with a name defined in that `WITH` clause by qualifying it with the schema name. Column names are always defined within the scope of the relation that contains them.
 
