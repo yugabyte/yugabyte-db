@@ -7,11 +7,10 @@ headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
-  - /stable/deploy/
+  - /latest/deploy/
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: deploy
     weight: 634
 ---

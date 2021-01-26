@@ -3,14 +3,13 @@ title: DELETE statement [YCQL]
 headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /stable/api/cassandra/ddl_delete
-  - /stable/api/ycql/ddl_delete
+  - /latest/api/cassandra/ddl_delete
+  - /latest/api/ycql/ddl_delete
 isTocNested: true
 showAsideToc: true
 ---

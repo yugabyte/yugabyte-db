@@ -5,9 +5,8 @@ linkTitle: Restore data
 description: Restore data in YugabyteDB for YSQL
 aliases:
   - /manage/backup-restore/backing-up-data
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: restore-data
     parent: backup-restore
     weight: 703
@@ -17,13 +16,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/manage/backup-restore/restore-data" class="nav-link active">
+    <a href="/latest/manage/backup-restore/restore-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/manage/backup-restore/restore-data-ycql" class="nav-link">
+    <a href="/latest/manage/backup-restore/restore-data-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

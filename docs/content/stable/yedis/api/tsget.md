@@ -2,14 +2,13 @@
 title: TSGET
 linkTitle: TSGET
 description: TSGET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2420
 aliases:
-  - /stable/api/redis/tsget
-  - /stable/api/yedis/tsget
+  - /latest/api/redis/tsget
+  - /latest/api/yedis/tsget
 isTocNested: true
 showAsideToc: true
 ---

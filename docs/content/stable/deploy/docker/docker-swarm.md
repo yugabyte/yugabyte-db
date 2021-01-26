@@ -5,11 +5,10 @@ linkTitle: Docker
 description: Deploy a YugabyteDB cluster on Docker Swarm.
 aliases:
   - /deploy/docker-swarm/
-  - /stable/deploy/docker-swarm/
-  - /stable/deploy/docker/
-block_indexing: true
+  - /latest/deploy/docker-swarm/
+  - /latest/deploy/docker/
 menu:
-  stable:
+  latest:
     parent: deploy
     name: Docker
     identifier: docker-2-swarm
@@ -231,7 +230,7 @@ $ docker service create \
 --name yb-tserver \
 --network yugabytedb \
 --mount type=volume,source=yb-tserver,target=/mnt/data0 \
---publish 9000:9000 \
+--publish 9000:9000 --publish 5433:5433 --publish 9042:9042 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
 --rpc_bind_addresses=0.0.0.0:9100 \

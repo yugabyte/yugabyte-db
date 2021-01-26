@@ -2,14 +2,13 @@
 title: SETRANGE
 linkTitle: SETRANGE
 description: SETRANGE
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2280
 aliases:
-  - /stable/api/redis/setrange
-  - /stable/api/yedis/setrange
+  - /latest/api/redis/setrange
+  - /latest/api/yedis/setrange
 isTocNested: true
 showAsideToc: true
 ---

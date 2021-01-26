@@ -4,14 +4,13 @@ headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
 aliases:
-  - /stable/deploy/kubernetes/oss/
-  - /stable/deploy/kubernetes/oss/helm-chart/
-  - /stable/deploy/kubernetes/single-zone/oss/
-  - /stable/deploy/kubernetes/helm-chart/
-  - /stable/deploy/kubernetes/helm-configuration/
-block_indexing: true
+  - /latest/deploy/kubernetes/oss/
+  - /latest/deploy/kubernetes/oss/helm-chart/
+  - /latest/deploy/kubernetes/single-zone/oss/
+  - /latest/deploy/kubernetes/helm-chart/
+  - /latest/deploy/kubernetes/helm-configuration/
 menu:
-  stable:
+  latest:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-1
@@ -143,6 +142,16 @@ $ helm install yb-demo yugabytedb/yugabyte \
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 enableLoadBalancer=False --namespace yb-demo
 ```
+
+{{< note title="Important" >}}
+
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so 
+the cluster has room to startup. Example command:
+```
+minikube start --cpus 4 --memory 5120
+```
+
+{{< /note >}}
 
 ## Check the cluster status
 

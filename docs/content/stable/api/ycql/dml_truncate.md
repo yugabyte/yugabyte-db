@@ -3,14 +3,13 @@ title: TRUNCATE statement [YCQL]
 headerTitle: TRUNCATE
 linkTitle: TRUNCATE
 description: Use the TRUNCATE statement to remove all rows from a specified table.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /stable/api/cassandra/dml_truncate
-  - /stable/api/ycql/dml_truncate
+  - /latest/api/cassandra/dml_truncate
+  - /latest/api/ycql/dml_truncate
 isTocNested: true
 showAsideToc: true
 ---

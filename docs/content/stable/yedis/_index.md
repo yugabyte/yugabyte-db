@@ -6,13 +6,12 @@ description: The YEDIS API allows YugabyteDB to function as a clustered, auto-sh
 headcontent: 
 image: /images/section_icons/api/yedis.png
 aliases:
-  - /stable/api/redis
-  - /stable/api/yedis
+  - /latest/api/redis
+  - /latest/api/yedis
 type: page
 section: MISC
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: yedis
     weight: 2900
 ---

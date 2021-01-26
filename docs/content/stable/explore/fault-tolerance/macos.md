@@ -5,13 +5,12 @@ linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
 aliases:
   - /explore/fault-tolerance/
-  - /stable/explore/fault-tolerance/
-  - /stable/explore/cloud-native/fault-tolerance/
-  - /stable/explore/postgresql/fault-tolerance/
-  - /stable/explore/fault-tolerance-macos/
-block_indexing: true
+  - /latest/explore/fault-tolerance/
+  - /latest/explore/cloud-native/fault-tolerance/
+  - /latest/explore/postgresql/fault-tolerance/
+  - /latest/explore/fault-tolerance-macos/
 menu:
-  stable:
+  latest:
     identifier: fault-tolerance-1-macos
     parent: explore
     weight: 215
@@ -22,28 +21,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/fault-tolerance/macos" class="nav-link active">
+    <a href="/latest/explore/fault-tolerance/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/linux" class="nav-link">
+    <a href="/latest/explore/fault-tolerance/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/docker" class="nav-link">
+    <a href="/latest/explore/fault-tolerance/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance-kubernetes" class="nav-link">
+    <a href="/latest/explore/fault-tolerance-kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

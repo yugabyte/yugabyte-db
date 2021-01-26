@@ -2,14 +2,13 @@
 title: HSET
 linkTitle: HSET
 description: HSET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2180
 aliases:
-  - /stable/api/redis/hset
-  - /stable/api/yedis/hset
+  - /latest/api/redis/hset
+  - /latest/api/yedis/hset
 isTocNested: true
 showAsideToc: true
 ---

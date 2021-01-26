@@ -6,12 +6,11 @@ description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
-  - /stable/quick-start/test-cassandra/
-  - /stable/quick-start/test-ycql/
-  - /stable/api/ycql/quick-start/
-block_indexing: true
+  - /latest/quick-start/test-cassandra/
+  - /latest/quick-start/test-ycql/
+  - /latest/api/ycql/quick-start/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql
@@ -24,14 +23,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/explore/ysql" class="nav-link">
+    <a href="/latest/quick-start/explore/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/stable/quick-start/explore/ycql" class="nav-link active">
+    <a href="/latest/quick-start/explore/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

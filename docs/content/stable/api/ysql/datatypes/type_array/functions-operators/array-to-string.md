@@ -3,9 +3,8 @@ title: array_to_string()
 linkTitle: array_to_string()
 headerTitle: array_to_string()
 description: array_to_string()
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-to-string
     parent: array-functions-operators
 isTocNested: true

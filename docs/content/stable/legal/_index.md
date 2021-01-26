@@ -7,9 +7,8 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Learn about YugabyteDB licenses and third party software.
 type: page
 section: MISC
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: legal
     weight: 3000
 ---

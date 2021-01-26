@@ -3,9 +3,8 @@ title: Build a Python application using Apache Spark and YugabyteDB
 headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Python application using Apache Spark and YugabyteDB
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: apache-spark-3-python
     parent: ecosystem-integrations
     weight: 572

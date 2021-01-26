@@ -5,9 +5,8 @@ linkTitle: E-Commerce app
 description: Run an e-commerce sample application built on YugabyteDB.
 aliases:
   - /develop/realworld-apps/ecommerce-app/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: ecommerce-app
     parent: realworld-apps
     weight: 582

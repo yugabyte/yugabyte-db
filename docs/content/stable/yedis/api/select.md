@@ -2,14 +2,13 @@
 title: SELECT
 linkTitle: "SELECT "
 description: SELECT
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2038
 aliases:
-  - /stable/api/redis/select
-  - /stable/api/yedis/select
+  - /latest/api/redis/select
+  - /latest/api/yedis/select
 isTocNested: true
 showAsideToc: true
 ---

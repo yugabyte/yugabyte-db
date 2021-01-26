@@ -5,9 +5,8 @@ headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
 aliases:
   - /troubleshoot/nodes/check-logs/
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: troubleshoot-nodes
     weight: 844
 isTocNested: true

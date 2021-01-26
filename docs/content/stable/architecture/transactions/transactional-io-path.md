@@ -5,9 +5,8 @@ linkTitle: Transactional IO path
 description: Learn how YugabyteDB manages the write path of a transaction.
 aliases:
   - /architecture/transactions/transactional-io-path/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
     weight: 1156

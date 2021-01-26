@@ -2,14 +2,13 @@
 title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2300
 aliases:
-  - /stable/api/redis/smembers
-  - /stable/api/yedis/smembers
+  - /latest/api/redis/smembers
+  - /latest/api/yedis/smembers
 isTocNested: true
 showAsideToc: true
 ---

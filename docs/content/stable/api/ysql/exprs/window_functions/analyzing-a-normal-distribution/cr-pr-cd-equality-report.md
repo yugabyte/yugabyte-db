@@ -3,9 +3,8 @@ title: cr_pr_cd_equality_report.sql
 linkTitle: cr_pr_cd_equality_report.sql
 headerTitle: cr_pr_cd_equality_report.sql
 description: cr_pr_cd_equality_report.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: cr-pr-cd-equality-report
     parent: analyzing-a-normal-distribution
     weight: 60
@@ -21,7 +20,6 @@ create type pr_cd_equality_report_t as("count(*)" int, max_score text, max_ratio
 create or replace function pr_cd_equality_report(
   delta_threshold in double precision)
   returns SETOF pr_cd_equality_report_t
-  immutable
   language sql
 as $body$
   with

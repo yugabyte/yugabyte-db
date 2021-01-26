@@ -2,14 +2,13 @@
 title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2430
 aliases:
-  - /stable/api/redis/tslastn
-  - /stable/api/yedis/tslastn
+  - /latest/api/redis/tslastn
+  - /latest/api/yedis/tslastn
 isTocNested: true
 showAsideToc: true
 ---

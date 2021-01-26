@@ -2,14 +2,13 @@
 title: SET
 linkTitle: SET
 description: SET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2270
 aliases:
-  - /stable/api/redis/set
-  - /stable/api/yedis/set
+  - /latest/api/redis/set
+  - /latest/api/yedis/set
 isTocNested: true
 showAsideToc: true
 ---

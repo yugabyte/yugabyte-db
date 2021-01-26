@@ -3,9 +3,8 @@ title: jsonb_each() and json_each() [JSON]
 headerTitle: jsonb_each() and json_each()
 linkTitle: jsonb_each()
 description: Create a row set with columns "key" (as a SQL text) and "value" (as a SQL jsonb) from a JSON object.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: jsonb-each
     parent: json-functions-operators
     weight: 110

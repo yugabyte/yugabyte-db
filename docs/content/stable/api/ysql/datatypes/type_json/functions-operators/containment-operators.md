@@ -3,9 +3,8 @@ title: "@> and <@ (containment operators) [JSON]"
 headerTitle: "@> and <@ (containment operators)"
 linkTitle: "@> and <@ (containment)"
 description:  Test whether one jsonb value contains another jsonb value using the JSON containment operators (@> and <@).
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: containment-operators
     parent: json-functions-operators
     weight: 16

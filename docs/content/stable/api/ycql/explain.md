@@ -3,13 +3,12 @@ title: EXPLAIN statement [YCQL]
 headerTitle: EXPLAIN
 linkTitle: EXPLAIN
 description: Use the EXPLAIN statement to show the execution plan for a YCQL statement.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1320
 aliases:
-  - /stable/api/ycql/explain/
+  - /latest/api/ycql/explain/
 isTocNested: true
 showAsideToc: true
 ---

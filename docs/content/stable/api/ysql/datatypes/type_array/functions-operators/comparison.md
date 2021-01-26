@@ -3,9 +3,8 @@ title: Array comparison
 linkTitle: Array comparison
 headerTitle: Operators for comparing two arrays
 description: Operators for comparing two arrays
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-comparison
     parent: array-functions-operators
     weight: 20

@@ -3,13 +3,12 @@ title: nextval() function [YSQL]
 headerTitle: nextval()
 linkTitle: nextval()
 description: Returns the next value from the sequence cache for the current session. 
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: api-ysql-exprs-nextval
     parent: api-ysql-exprs
 aliases:
-  - /stable/api/ysql/exprs/func_nextval
+  - /latest/api/ysql/exprs/func_nextval
 isTocNested: true
 showAsideToc: true
 ---
@@ -100,7 +99,7 @@ nextval
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../commands/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../commands/ddl_drop_sequence)
+- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
 - [`currval()`](../func_currval)
 - [`lastval()`](../func_lastval)

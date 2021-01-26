@@ -2,14 +2,13 @@
 title: TSADD
 linkTitle: TSADD
 description: TSADD
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2400
 aliases:
-  - /stable/api/redis/tsadd
-  - /stable/api/yedis/tsadd
+  - /latest/api/redis/tsadd
+  - /latest/api/yedis/tsadd
 isTocNested: true
 showAsideToc: true
 ---

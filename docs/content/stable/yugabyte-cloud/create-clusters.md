@@ -4,12 +4,11 @@ linkTitle: Create clusters
 description: Create clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /stable/deploy/yugabyte-cloud/create-clusters/
-block_indexing: true
+  - /latest/deploy/yugabyte-cloud/create-clusters/
 menu:
-  stable:
+  latest:
     identifier: create-clusters
     parent: yugabyte-cloud
     weight: 641

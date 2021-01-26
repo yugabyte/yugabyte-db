@@ -5,9 +5,8 @@ linkTitle: 2. Install software
 description: Download and install YugabyteDB software to each node
 aliases:
   - /deploy/manual-deployment/install-software
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: deploy-manual-deployment-install-software
     parent: deploy-manual-deployment
     weight: 612

@@ -6,7 +6,7 @@ description: Configure Yugabyte Platform.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
 menu:
-  stable:
+  latest:
     identifier: configure-yugabyte-platform
     parent: yugabyte-platform
     weight: 642
@@ -58,18 +58,6 @@ menu:
       </div>
       <div class="body">
         Configure alerts and health checking.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="instance-tags/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Configure instance tags</div>
-      </div>
-      <div class="body">
-        Use Yugabyte Platform to edit instance tags.
       </div>
     </a>
   </div>

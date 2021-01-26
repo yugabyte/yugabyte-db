@@ -2,14 +2,13 @@
 title: GETSET
 linkTitle: GETSET
 description: GETSET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2090
 aliases:
-  - /stable/api/redis/getset
-  - /stable/api/yedis/getset
+  - /latest/api/redis/getset
+  - /latest/api/yedis/getset
 isTocNested: true
 showAsideToc: true
 ---

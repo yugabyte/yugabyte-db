@@ -2,14 +2,13 @@
 title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2060
 aliases:
-  - /stable/api/redis/exist
-  - /stable/api/yedis/exist
+  - /latest/api/redis/exist
+  - /latest/api/yedis/exist
 isTocNested: true
 showAsideToc: true
 ---

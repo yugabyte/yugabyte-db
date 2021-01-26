@@ -2,14 +2,13 @@
 title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2420
 aliases:
-  - /stable/api/redis/tscard
-  - /stable/api/yedis/tscard
+  - /latest/api/redis/tscard
+  - /latest/api/yedis/tscard
 isTocNested: true
 showAsideToc: true
 ---

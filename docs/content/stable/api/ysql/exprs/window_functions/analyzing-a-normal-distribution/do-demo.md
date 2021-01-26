@@ -3,9 +3,8 @@ title: do_demo.sql
 linkTitle: do_demo.sql
 headerTitle: do_demo.sql
 description: do_demo.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: do-demo
     parent: analyzing-a-normal-distribution
     weight: 170

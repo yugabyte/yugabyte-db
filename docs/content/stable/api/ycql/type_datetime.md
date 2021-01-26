@@ -3,16 +3,15 @@ title: Date and time data types (DATE, TIME, and TIMESTAMP) [YCQL]
 headerTitle: Date and time data types (DATE, TIME, and TIMESTAMP)
 linkTitle: DATE, TIME, and TIMESTAMP
 description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify dates and time.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1450
 aliases:
-  - /stable/api/cassandra/type_datetime
-  - /stable/api/cassandra/type_timestamp
-  - /stable/api/ycql/type_datetime
-  - /stable/api/ycql/type_timestamp
+  - /latest/api/cassandra/type_datetime
+  - /latest/api/cassandra/type_timestamp
+  - /latest/api/ycql/type_datetime
+  - /latest/api/ycql/type_timestamp
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,16 +3,15 @@ title: Spring Data YugabyteDB
 headerTitle: Spring Data YugabyteDB
 linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
-beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: spring-data-yugabytedb
     parent: drivers
     weight: 2943
 aliases:
-  - /stable/reference/connectors/spring-data-yugabytedb
+  - /latest/reference/connectors/spring-data-yugabytedb
 isTocNested: true
 showAsideToc: true
 ---
