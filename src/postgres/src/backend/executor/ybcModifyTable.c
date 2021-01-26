@@ -580,6 +580,20 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 
 	YBCForeignKeyReferenceCacheDeleteIndex(index, values, isnull);
 
+	/*
+	 * If index backfill hasn't finished yet, deletes to the index should be
+	 * persisted.  Normally, deletes aren't persisted when they can be
+	 * optimized out, but that breaks correctness if there's a pending
+	 * backfill.
+	 * TODO(jason): consider issue #6812.  We may be able to avoid persisting
+	 * deletes when indisready is false.
+	 * TODO(jason): consider how this will unnecessarily cause deletes to be
+	 * persisted when online dropping an index (issue #4936).
+	 */
+	if (!YBCGetDisableIndexBackfill() && !index->rd_index->indisvalid)
+		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
+														 true));
+
 	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
 }
 

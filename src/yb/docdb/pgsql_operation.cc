@@ -329,7 +329,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
       return ApplyUpdate(data);
 
     case PgsqlWriteRequestPB::PGSQL_DELETE:
-      return ApplyDelete(data);
+      return ApplyDelete(data, request_.is_delete_persist_needed());
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
@@ -502,7 +502,9 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyDelete(
+    const DocOperationApplyData& data,
+    const bool is_persist_needed) {
   int num_deleted = 1;
   QLTableRow table_row;
   RETURN_NOT_OK(ReadColumns(data, &table_row));
@@ -511,11 +513,9 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
     // permission during an online schema migration.  num_deleted should be 0 because we don't want
-    // to report back to the user that we deleted 1 row.  response should not set skipped because it
+    // to report back to the user that we deleted 1 row; response_ should not set skipped because it
     // will prevent tombstone intents from getting applied.
-    // TODO(jason): apply deletes only when this is an index table going through a schema migration,
-    // not just when backfill is enabled (issue #5686).
-    if (FLAGS_ysql_disable_index_backfill) {
+    if (!is_persist_needed) {
       response_->set_skipped(true);
       return Status::OK();
     }

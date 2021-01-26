@@ -400,6 +400,8 @@ YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
+YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is_persist_needed);
+
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
                                     YBCPgOid table_oid,

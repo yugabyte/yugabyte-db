@@ -1051,6 +1051,15 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
+Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDelete*>(handle)->SetIsPersistNeeded(is_persist_needed);
+  return Status::OK();
+}
+
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
