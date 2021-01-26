@@ -3,12 +3,9 @@ title: GETSET
 linkTitle: GETSET
 description: GETSET
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2090
-aliases:
-  - /latest/api/redis/getset
-  - /latest/api/yedis/getset
 isTocNested: true
 showAsideToc: true
 ---

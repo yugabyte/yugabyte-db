@@ -4,12 +4,10 @@ headerTitle: Client drivers for YCQL
 linkTitle: Client drivers for YCQL
 description: Lists the client drivers that you can use to build and access YCQL applications. 
 menu:
-  latest:
+  v2.4:
     identifier: ycql-client-libraries
     parent: drivers
     weight: 2942
-aliases:
-  - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---

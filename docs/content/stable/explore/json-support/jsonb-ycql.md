@@ -6,7 +6,7 @@ description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
 menu:
-  latest:
+  v2.4:
     name: JSON Support
     identifier: explore-json-support-2-ycql
     parent: explore

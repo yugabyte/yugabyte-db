@@ -3,10 +3,8 @@ title: System statistics
 linkTitle: System statistics
 headerTitle: Check system statistics
 description: How to check system statistics on your YugabyteDB cluster
-aliases:
-  - /troubleshoot/nodes/check-stats/
 menu:
-  latest:
+  v2.4:
     parent: troubleshoot-nodes
     weight: 846
 isTocNested: true

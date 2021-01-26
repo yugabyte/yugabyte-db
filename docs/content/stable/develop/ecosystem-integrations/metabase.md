@@ -2,10 +2,8 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
-aliases:
-  - /develop/ecosystem-integrations/metabase/
 menu:
-  latest:
+  v2.4:
     identifier: metabase
     parent: ecosystem-integrations
     weight: 576

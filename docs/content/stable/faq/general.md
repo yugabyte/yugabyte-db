@@ -3,15 +3,8 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
-aliases:
-  - /latest/faq/product/
-  - /latest/introduction/overview/
-  - /latest/introduction/benefits/
-  - /latest/introduction/core-features/
-  - /latest/introduction/
-  - /latest/faq/architecture/
 menu:
-  latest:
+  v2.4:
     identifier: faq-general
     parent: faq
     weight: 2710

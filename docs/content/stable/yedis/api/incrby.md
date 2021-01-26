@@ -3,12 +3,9 @@ title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2215
-aliases:
-  - /latest/api/redis/incrby
-  - /latest/api/yedis/incrby
 isTocNested: true
 showAsideToc: true
 ---

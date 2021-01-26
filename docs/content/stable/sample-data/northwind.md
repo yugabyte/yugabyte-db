@@ -4,7 +4,7 @@ headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
 menu:
-  latest:
+  v2.4:
     identifier: northwind
     parent: sample-data
     weight: 2752

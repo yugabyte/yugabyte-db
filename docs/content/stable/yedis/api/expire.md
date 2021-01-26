@@ -3,12 +3,9 @@ title: EXPIRE
 linkTitle: EXPIRE
 description: EXPIRE
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2061
-aliases:
-  - /latest/api/redis/expire
-  - /latest/api/yedis/expire
 isTocNested: true
 showAsideToc: true
 ---

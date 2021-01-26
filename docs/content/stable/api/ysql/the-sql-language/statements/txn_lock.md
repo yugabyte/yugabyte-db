@@ -4,11 +4,9 @@ headerTitle: LOCK
 linkTitle: LOCK
 description: Use the LOCK statement to lock a table.
 menu:
-  latest:
+  v2.4:
     identifier: txn_lock
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/txn_lock/
 isTocNested: true
 showAsideToc: true
 ---

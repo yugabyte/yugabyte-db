@@ -8,7 +8,7 @@ headcontent: Learn about YugabyteDB licenses and third party software.
 type: page
 section: MISC
 menu:
-  latest:
+  v2.4:
     identifier: legal
     weight: 3000
 ---

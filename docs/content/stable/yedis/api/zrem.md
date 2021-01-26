@@ -3,12 +3,9 @@ title: ZREM
 linkTitle: ZREM
 description: ZREM
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2530
-aliases:
-  - /latest/api/redis/zrem
-  - /latest/api/yedis/zrem
 isTocNested: true
 showAsideToc: true
 ---

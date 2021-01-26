@@ -5,10 +5,8 @@ linkTitle: Multi-Region Deployments
 description: Multi-Region Deployments in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
-aliases:
-  - /secure/authorization/
 menu:
-  latest:
+  v2.4:
     identifier: explore-multi-region-deployments
     parent: explore
     weight: 234

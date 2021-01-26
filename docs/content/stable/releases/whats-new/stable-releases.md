@@ -4,10 +4,8 @@ headerTitle: 2.4.0 Stable Release Series
 linkTitle: v2.4.0 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series recommended for production deployments.
-aliases:
-  - /latest/releases/
 menu:
-  latest:
+  v2.4:
     identifier: stable-releases
     parent: whats-new
     weight: 2586

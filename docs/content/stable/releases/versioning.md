@@ -5,7 +5,7 @@ linkTitle: Release versioning
 description: Explains the new release versioning convention for latest and stable releases.
 section: RELEASES
 menu:
-  latest:
+  v2.4:
     identifier: versioning
     weight: 2586
 isTocNested: true

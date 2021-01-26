@@ -4,7 +4,7 @@ linkTitle: SQL scripts
 headerTitle: SQL scripts for performing linear regression analysis on the COVIDcast data
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  v2.4:
     identifier: analysis-scripts
     parent: analyze-the-covidcast-data
     weight: 100

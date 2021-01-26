@@ -6,7 +6,7 @@ headcontent: Build your own YugabyteDB-as-a-Service on any cloud or Kubernetes i
 image: /images/section_icons/deploy/public-clouds.png
 section: YUGABYTE PLATFORM
 menu:
-  latest:
+  v2.4:
     identifier: yugabyte-platform
     weight: 600
 ---

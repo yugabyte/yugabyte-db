@@ -3,12 +3,9 @@ title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2555
-aliases:
-  - /latest/api/redis/punsubscribe
-  - /latest/api/yedis/punsubscribe
 isTocNested: true
 showAsideToc: true
 ---

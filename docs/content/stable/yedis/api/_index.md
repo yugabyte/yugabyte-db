@@ -6,7 +6,7 @@ summary: Reference for the YEDIS API
 image: /images/section_icons/api/yedis.png
 headcontent: 
 menu:
-  latest:
+  v2.4:
     identifier: api-yedis
     parent: yedis
     weight: 4000

@@ -2,10 +2,8 @@
 title: Compare Redis in-memory store with YugabyteDB
 linkTitle: Redis in-memory store
 description: Compare Redis in-memory store with YugabyteDB.
-aliases:
-  - /comparisons/redis/
 menu:
-  latest:
+  v2.4:
     parent: comparisons
     weight: 1129
 isTocNested: false

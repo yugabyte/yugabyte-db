@@ -4,7 +4,7 @@ headerTitle: Operations FAQ
 linkTitle: Operations FAQ
 description: Answers to common questions about operating YugabyteDB clusters
 menu:
-  latest:
+  v2.4:
     identifier: faq-operations
     parent: faq
     weight: 2720

@@ -3,12 +3,9 @@ title: SETEX
 linkTitle: SETEX
 description: SETEX
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2271
-aliases:
-  - /latest/api/redis/setex
-  - /latest/api/yedis/setex
 isTocNested: true
 showAsideToc: true
 ---

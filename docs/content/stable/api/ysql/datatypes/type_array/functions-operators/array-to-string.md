@@ -4,7 +4,7 @@ linkTitle: array_to_string()
 headerTitle: array_to_string()
 description: array_to_string()
 menu:
-  latest:
+  v2.4:
     identifier: array-to-string
     parent: array-functions-operators
 isTocNested: true

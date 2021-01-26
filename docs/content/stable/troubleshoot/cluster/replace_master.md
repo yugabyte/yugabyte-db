@@ -3,11 +3,8 @@ title: Replace a failed YB-Master
 headerTitle: Replace a failed YB-Master
 linkTitle: Replace a failed YB-Master
 description: Steps to replace a failed YB-Master in a YugabyteDB cluster.
-aliases:
-  - /troubleshoot/cluster/replace-master/
-  - /latest/troubleshoot/cluster/replace-master/
 menu:
-  latest:
+  v2.4:
     identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831

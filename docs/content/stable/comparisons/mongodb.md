@@ -3,10 +3,8 @@ title: Compare MongoDB with YugabyteDB
 headerTitle: MongoDB
 linkTitle: MongoDB
 description: Compare MongoDB with YugabyteDB.
-aliases:
-  - /comparisons/mongodb/
 menu:
-  latest:
+  v2.4:
     parent: comparisons
     weight: 1090
 isTocNested: false

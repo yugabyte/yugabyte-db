@@ -3,10 +3,8 @@ title: Compare Google Cloud Spanner with YugabyteDB
 headerTitle: Google Cloud Spanner
 linkTitle: Google Cloud Spanner
 description: Compare Google Cloud Spanner with YugabyteDB.
-aliases:
-  - /comparisons/google-spanner/
 menu:
-  latest:
+  v2.4:
     parent: comparisons
     weight: 1074
 ---

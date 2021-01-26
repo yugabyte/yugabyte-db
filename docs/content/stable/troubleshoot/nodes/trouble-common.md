@@ -4,7 +4,7 @@ linkTitle: Common error messages
 headerTitle: Understanding common error messages
 description: How to understand and recover from common error messages
 menu:
-  latest:
+  v2.4:
     parent: troubleshoot
     weight: 800
 isTocNested: true

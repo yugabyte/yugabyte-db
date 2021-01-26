@@ -3,7 +3,7 @@ title: Prisma
 linkTitle: Prisma
 description: Prisma
 menu:
-  latest:
+  v2.4:
     identifier: prisma
     parent: graphql
     weight: 583

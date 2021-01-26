@@ -7,7 +7,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 section: RELEASES
 headcontent:
 menu:
-  latest:
+  v2.4:
     identifier: releases
     weight: 900
 ---

@@ -5,10 +5,8 @@ linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png
-aliases:
-  - /secure/tls-encryption/
 menu:
-  latest:
+  v2.4:
     identifier: tls-encryption
     parent: secure
     weight: 725

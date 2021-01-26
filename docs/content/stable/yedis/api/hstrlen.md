@@ -3,12 +3,9 @@ title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2190
-aliases:
-  - /latest/api/redis/hstrlen
-  - /latest/api/yedis/hstrlen
 isTocNested: true
 showAsideToc: true
 ---

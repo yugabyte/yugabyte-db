@@ -3,10 +3,8 @@ title: Compare Vitess with YugabyteDB
 headerTitle: Vitess
 linkTitle: Vitess
 description: Compare Vitess with YugabyteDB.
-aliases:
-  - /comparisons/vitess/
 menu:
-  latest:
+  v2.4:
     parent: comparisons
     weight: 1077
 isTocNested: false

@@ -5,11 +5,9 @@ linkTitle: FAQs
 description: FAQs
 image: /images/section_icons/index/faq.png
 headcontent:
-aliases:
-  - /faq/
 section: FAQ
 menu:
-  latest:
+  v2.4:
     identifier: faq
     weight: 2730
 ---

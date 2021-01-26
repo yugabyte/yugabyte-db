@@ -4,11 +4,9 @@ headerTitle: END
 linkTitle: END
 description: Use the `END` statement to commit the current transaction.
 menu:
-  latest:
+  v2.4:
     identifier: txn_end
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/txn_end/
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,12 +3,9 @@ title: HMGET
 linkTitle: HMGET
 description: HMGET
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2160
-aliases:
-  - /latest/api/redis/hmget
-  - /latest/api/yedis/hmget
 isTocNested: true
 showAsideToc: true
 ---

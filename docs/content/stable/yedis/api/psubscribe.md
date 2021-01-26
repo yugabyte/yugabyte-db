@@ -3,12 +3,9 @@ title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2554
-aliases:
-  - /latest/api/redis/psubscribe
-  - /latest/api/yedis/psubscribe
 isTocNested: true
 showAsideToc: true
 ---

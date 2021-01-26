@@ -3,14 +3,8 @@ title: Explore follower reads on macOS
 headerTitle: Follower reads
 linkTitle: Follower reads
 description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on macOS.
-aliases:
-  - /explore/tunable-reads/
-  - /latest/explore/tunable-reads/
-  - /latest/explore/follower-reads/
-  - /latest/explore/high-performance/tunable-reads/
-  - /latest/explore/follower-reads-macos/
 menu:
-  latest:
+  v2.4:
     identifier: follower-reads-1-macos
     parent: explore
     weight: 235

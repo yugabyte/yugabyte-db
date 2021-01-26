@@ -3,12 +3,8 @@ title: Hash & range sharding
 headerTitle: Hash & range sharding
 linkTitle: Hash & range sharding
 description: Learn how YugabyteDB uses hash and range sharding for horizontal scaling.
-aliases:
-  - /latest/architecture/docdb/sharding/
-  - /latest/architecture/concepts/sharding/
-  - /latest/architecture/concepts/docdb/sharding/
 menu:
-  latest:
+  v2.4:
     identifier: docdb-sharding
     parent: architecture-docdb-sharding
     weight: 1142

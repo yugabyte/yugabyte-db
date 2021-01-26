@@ -6,7 +6,7 @@ description: Verify that users and clients are who they say they are.
 headcontent: Verify that users and clients are who they say they are.
 image: /images/section_icons/secure/authorization.png
 menu:
-  latest:
+  v2.4:
     identifier: authentication
     parent: secure
     weight: 720

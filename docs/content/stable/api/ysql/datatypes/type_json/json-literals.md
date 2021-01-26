@@ -4,7 +4,7 @@ headerTitle: JSON literals
 linkTitle: JSON literals
 description: JSON literals.
 menu:
-  latest:
+  v2.4:
     identifier: json-literals
     parent: api-ysql-datatypes-json
     weight: 10

@@ -3,12 +3,9 @@ title: PTTL
 linkTitle: PTTL
 description: PTTL
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2235
-aliases:
-  - /latest/api/redis/pttl
-  - /latest/api/yedis/pttl
 isTocNested: true
 showAsideToc: true
 ---

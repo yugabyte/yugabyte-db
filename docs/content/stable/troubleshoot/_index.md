@@ -5,11 +5,9 @@ linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues.
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
-aliases:
-  - /troubleshoot/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  v2.4:
     identifier: troubleshoot
     weight: 1000
 ---

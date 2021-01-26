@@ -3,12 +3,9 @@ title: TSRANGEBYTIME
 linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2440
-aliases:
-  - /latest/api/redis/tsrangebytime
-  - /latest/api/yedis/tsrangebytime
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,12 +3,9 @@ title: HLEN
 linkTitle: HLEN
 description: HLEN
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2150
-aliases:
-  - /latest/api/redis/hlen
-  - /latest/api/yedis/hlen
 isTocNested: true
 showAsideToc: true
 ---

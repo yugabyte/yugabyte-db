@@ -3,10 +3,8 @@ title: Build a YugabyteDB application using C++ and YEDIS
 headerTitle: Build an application using C++
 linkTitle: C++
 description: Use C++ to build a YugabyteDB application that interacts with YEDIS
-aliases:
-  - /latest/yedis/develop/client-drivers/cpp
 menu:
-  latest:
+  v2.4:
     identifier: client-drivers-yedis-cpp
     parent: develop-yedis
 isTocNested: true

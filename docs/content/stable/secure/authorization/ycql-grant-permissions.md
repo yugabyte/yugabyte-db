@@ -4,7 +4,7 @@ headerTitle: Grant privileges
 linkTitle: Grant privileges
 description: Grant YCQL privileges in YugabyteDB
 menu:
-  latest:
+  v2.4:
     name: Grant Privileges
     identifier: ycql-grant-permissions
     parent: authorization

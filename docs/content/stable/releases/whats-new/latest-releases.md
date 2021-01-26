@@ -5,10 +5,8 @@ linkTitle: v2.5 (latest)
 description: Enhancements, changes, and resolved issues in the latest release series.
 headcontent: Features, enhancements, and resolved issues in the latest release series.
 image: /images/section_icons/quick_start/install.png
-aliases:
-  - /latest/releases/
 menu:
-  latest:
+  v2.4:
     parent: whats-new
     identifier: latest-release
     weight: 2585

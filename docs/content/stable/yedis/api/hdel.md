@@ -3,12 +3,9 @@ title: HDEL
 linkTitle: HDEL
 description: HDEL
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2100
-aliases:
-  - /latest/api/redis/hdel
-  - /latest/api/yedis/hdel
 isTocNested: true
 showAsideToc: true
 ---

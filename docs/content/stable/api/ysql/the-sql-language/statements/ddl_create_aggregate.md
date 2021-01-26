@@ -4,11 +4,9 @@ headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
 description: Use the CREATE AGGREGATE statement to create an aggregate function.
 menu:
-  latest:
+  v2.4:
     identifier: ddl_create_aggregate
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_aggregate/
 isTocNested: true
 showAsideToc: true
 ---

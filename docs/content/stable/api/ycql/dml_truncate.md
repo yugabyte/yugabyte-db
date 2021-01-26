@@ -4,12 +4,9 @@ headerTitle: TRUNCATE
 linkTitle: TRUNCATE
 description: Use the TRUNCATE statement to remove all rows from a specified table.
 menu:
-  latest:
+  v2.4:
     parent: api-cassandra
     weight: 1330
-aliases:
-  - /latest/api/cassandra/dml_truncate
-  - /latest/api/ycql/dml_truncate
 isTocNested: true
 showAsideToc: true
 ---

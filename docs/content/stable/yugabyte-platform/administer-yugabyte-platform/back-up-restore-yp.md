@@ -3,10 +3,8 @@ title: Back up and restore Yugabyte Platform
 headerTitle: Back up and restore Yugabyte Platform
 linkTitle: Back up and restore Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
-aliases:
-  - /latest/manage/enterprise-edition/back-up-restore-yp
 menu:
-  latest:
+  v2.4:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 10

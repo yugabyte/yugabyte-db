@@ -3,12 +3,9 @@ title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2233
-aliases:
-  - /latest/api/redis/pexpire
-  - /latest/api/yedis/pexpire
 isTocNested: true
 showAsideToc: true
 ---

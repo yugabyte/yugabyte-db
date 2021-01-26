@@ -4,7 +4,7 @@ headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on Linux.
 menu:
-  latest:
+  v2.4:
     identifier: colocated-tables-2-linux
     parent: explore
     weight: 245

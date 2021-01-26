@@ -3,12 +3,9 @@ title: ROLE
 linkTitle: ROLE
 description: ROLE
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2240
-aliases:
-  - /latest/api/redis/role
-  - /latest/api/yedis/role
 isTocNested: true
 showAsideToc: true
 ---

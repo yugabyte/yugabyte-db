@@ -4,11 +4,9 @@ headerTitle: DocDB sharding layer
 linkTitle: DocDB sharding layer
 description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 image: /images/section_icons/architecture/concepts.png
-aliases:
-  - /latest/architecture/docdb/sharding
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
-  latest:
+  v2.4:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130

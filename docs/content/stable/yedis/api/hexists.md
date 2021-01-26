@@ -3,12 +3,9 @@ title: HEXISTS
 linkTitle: HEXISTS
 description: HEXISTS
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2110
-aliases:
-  - /latest/api/redis/hexists
-  - /latest/api/yedis/hexists
 isTocNested: true
 showAsideToc: true
 ---

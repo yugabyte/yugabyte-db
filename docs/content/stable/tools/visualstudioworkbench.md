@@ -4,7 +4,7 @@ headerTitle: Visual Studio Code
 linkTitle: Visual Studio Code
 description: Configure Visual Studio Code to work with YCQL.
 menu:
-  latest:
+  v2.4:
     identifier: visualstudioworkbench
     parent: tools
     weight: 2760

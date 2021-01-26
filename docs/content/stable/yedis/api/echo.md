@@ -3,12 +3,9 @@ title: ECHO
 linkTitle: ECHO
 description: ECHO
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2050
-aliases:
-  - /latest/api/redis/echo
-  - /latest/api/yedis/del
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,12 +3,9 @@ title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
 menu:
-  latest:
+  v2.4:
     parent: api-yedis
     weight: 2510
-aliases:
-  - /latest/api/redis/zcard
-  - /latest/api/yedis/zcard
 isTocNested: true
 showAsideToc: true
 ---

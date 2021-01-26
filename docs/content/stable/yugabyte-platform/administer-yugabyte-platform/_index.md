@@ -5,10 +5,8 @@ linkTitle: Administer Yugabyte Platform
 description: Administer Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer Yugabyte Platform.
-aliases:
-  - /latest/yugabyte-platform/administer-yp
 menu:
-  latest:
+  v2.4:
     identifier: administer-yugabyte-platform
     parent: yugabyte-platform
     weight: 649
