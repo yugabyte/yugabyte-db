@@ -17,9 +17,11 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/common/schema.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/mini_master.h"
+#include "yb/tools/yb-admin_client.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
@@ -41,22 +43,9 @@ const std::string kKeyspaceName("my_keyspace");
 const uint kNumMasters(3);
 const uint kNumTablets(3);
 
-class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
+template <class T>
+class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
  public:
-  void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
-    MiniClusterOptions opts;
-    // Set low heartbeat timeout.
-    FLAGS_tserver_unresponsive_timeout_ms = 5000;
-    opts.num_tablet_servers = kNumTablets;
-    opts.num_masters = num_masters();
-    cluster_.reset(new MiniCluster(env_.get(), opts));
-    ASSERT_OK(cluster_->Start());
-
-    Endpoint master_http_endpoint = cluster_->leader_mini_master()->bound_http_addr();
-    master_http_url_ = "http://" + AsString(master_http_endpoint);
-  }
-
   void DoTearDown() override {
     cluster_->Shutdown();
   }
@@ -72,8 +61,25 @@ class MasterPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
     return kNumMasters;
   }
 
- private:
+  using YBMiniClusterTestBase<T>::cluster_;
   string master_http_url_;
+};
+
+class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
+ public:
+  void SetUp() override {
+    YBMiniClusterTestBase::SetUp();
+    MiniClusterOptions opts;
+    // Set low heartbeat timeout.
+    FLAGS_tserver_unresponsive_timeout_ms = 5000;
+    opts.num_tablet_servers = kNumTablets;
+    opts.num_masters = num_masters();
+    cluster_.reset(new MiniCluster(env_.get(), opts));
+    ASSERT_OK(cluster_->Start());
+
+    Endpoint master_http_endpoint = cluster_->leader_mini_master()->bound_http_addr();
+    master_http_url_ = "http://" + AsString(master_http_endpoint);
+  }
 };
 
 bool verifyTServersAlive(int n, const string& result) {
@@ -298,6 +304,78 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
     content.clear();
     ASSERT_OK(curl.FetchURL(url, &content));
   }
+}
+
+class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
+ public:
+  void SetUp() override {
+    YBMiniClusterTestBase::SetUp();
+    ExternalMiniClusterOptions opts;
+    // Set low heartbeat timeout.
+    FLAGS_tserver_unresponsive_timeout_ms = 5000;
+    opts.num_tablet_servers = kNumTablets;
+    opts.num_masters = num_masters();
+    cluster_.reset(new ExternalMiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
+
+    HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
+    master_http_url_ = "http://" + ToString(master_http_endpoint);
+  }
+};
+
+TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExternalItest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+  // Create table.
+  // TODO(5016): Consolidate into some standardized helper code.
+  client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
+  client::YBSchema schema;
+  client::YBSchemaBuilder b;
+  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("int_val")->Type(INT32)->NotNull();
+  b.AddColumn("string_val")->Type(STRING)->NotNull();
+  ASSERT_OK(b.Build(&schema));
+  std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(table_name)
+      .schema(&schema)
+      .hash_schema(YBHashSchema::kMultiColumnHash)
+      .Create());
+  std::shared_ptr<client::YBTable> table;
+  ASSERT_OK(client->OpenTable(table_name, &table));
+
+  // Verify replication info is empty.
+  faststring result;
+  auto url = Format("/table?id=$0", table->id());
+  TestUrl(url, &result);
+  const string& result_str = result.ToString();
+  size_t pos = result_str.find("Replication Info", 0);
+  ASSERT_NE(pos, string::npos);
+  ASSERT_EQ(result_str.find("live_replicas", pos + 1), string::npos);
+
+  // Verify cluster level replication info.
+  auto yb_admin_client_ = std::make_unique<yb::tools::enterprise::ClusterAdminClient>(
+    cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  ASSERT_OK(yb_admin_client_->Init());
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
+  TestUrl(url, &result);
+  const string& cluster_str = result.ToString();
+  pos = cluster_str.find("Replication Info", 0);
+  ASSERT_NE(pos, string::npos);
+  pos = cluster_str.find("placement_zone", pos + 1);
+  ASSERT_NE(pos, string::npos);
+  ASSERT_EQ(cluster_str.substr(pos + 17, 4), "zone");
+
+  // Verify table level replication info.
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+    table->name(), "cloud.region.anotherzone", 3, "table_uuid"));
+  TestUrl(url, &result);
+  const string& table_str = result.ToString();
+  pos = table_str.find("Replication Info", 0);
+  ASSERT_NE(pos, string::npos);
+  pos = table_str.find("placement_zone", pos + 1);
+  ASSERT_NE(pos, string::npos);
+  ASSERT_EQ(table_str.substr(pos + 17, 11), "anotherzone");
 }
 
 } // namespace master
