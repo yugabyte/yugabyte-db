@@ -23,7 +23,7 @@ Client-to-server TLS encryption is not supported for YEDIS. Before you can enabl
 
 {{< /note >}}
 
-Yugabyte Platform lets you create a new self-signed certificate, use an existing self-signed certificate, or upload a third-party certificate from external providers, such as Venafi or DigiCert (which is only available for manual installations).
+Yugabyte Platform lets you create a new self-signed certificate, use an existing self-signed certificate, or upload a third-party certificate from external providers, such as Venafi or DigiCert (which is only available for an on-premise cloud provider).
 
 In the current release, you can enable and disable TLS encryption during universe creation; you cannot  change these settings after a universe has been created.  
 
