@@ -4,9 +4,8 @@ linkTitle: Literals
 headerTitle: Creating an array value using a literal
 description: Creating an array value using a literal
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-literals
     parent: api-ysql-datatypes-array
     weight: 20

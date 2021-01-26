@@ -5,9 +5,8 @@ linkTitle: PostgreSQL
 description: Compare PostgreSQL with YugabyteDB.
 aliases:
   - /comparisons/postgresql/
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: comparisons
     weight: 1128
 isTocNested: false

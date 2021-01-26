@@ -2,14 +2,13 @@
 title: TTL
 linkTitle: TTL
 description: TTL
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2470
 aliases:
-  - /stable/api/redis/ttl
-  - /stable/api/yedis/ttl
+  - /latest/api/redis/ttl
+  - /latest/api/yedis/ttl
 isTocNested: true
 showAsideToc: true
 ---

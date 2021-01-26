@@ -2,14 +2,13 @@
 title: GET
 linkTitle: GET
 description: GET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2070
 aliases:
-  - /stable/api/redis/get
-  - /stable/api/yedis/get
+  - /latest/api/redis/get
+  - /latest/api/yedis/get
 isTocNested: true
 showAsideToc: true
 ---

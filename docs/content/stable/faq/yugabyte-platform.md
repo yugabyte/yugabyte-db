@@ -4,10 +4,9 @@ headerTitle: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about the Yugabyte Platform and YugaWare.
 aliases:
-  - /stable/faq/enterprise-edition/
-block_indexing: true
+  - /latest/faq/enterprise-edition/
 menu:
-  stable:
+  latest:
     identifier: faq-yugabyte-platform
     parent: faq
     weight: 2750

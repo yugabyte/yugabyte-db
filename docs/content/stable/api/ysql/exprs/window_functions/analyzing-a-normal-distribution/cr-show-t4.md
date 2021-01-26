@@ -3,9 +3,8 @@ title: cr_show_t4.sql
 linkTitle: cr_show_t4.sql
 headerTitle: cr_show_t4.sql
 description: cr_show_t4.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: cr-show-t4
     parent: analyzing-a-normal-distribution
     weight: 30
@@ -17,7 +16,6 @@ Save this script as `cr_show_t4.sql`.
 -- Function to report on some useful overall measures of t4.
 create or replace function show_t4()
   returns table(t varchar)
-  immutable
   language plpgsql
 as $body$
 declare

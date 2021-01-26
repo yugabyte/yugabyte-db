@@ -3,14 +3,13 @@ title: BOOLEAN data type [YCQL]
 headerTitle: BOOLEAN data type
 linkTitle: BOOLEAN
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1380
 aliases:
-  - /stable/api/cassandra/type_bool
-  - /stable/api/ycql/type_bool
+  - /latest/api/cassandra/type_bool
+  - /latest/api/ycql/type_bool
 isTocNested: true
 showAsideToc: true
 ---

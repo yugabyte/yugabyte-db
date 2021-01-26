@@ -3,9 +3,8 @@ title: "? and ?| and ?& (key or value existence operators) [JSON]"
 headerTitle: "? and ?| and ?& (key or value existence operators)"
 linkTitle: "? and ?| and ?& (key or value existence)"
 description: Test if JSONB values exist as keys in an object or as string value(s) in array.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: key-or-value-existence-operators
     parent: json-functions-operators
     weight: 17

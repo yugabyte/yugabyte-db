@@ -3,9 +3,8 @@ title: array_remove()
 linkTitle: array_remove()
 headerTitle: array_remove()
 description: array_remove()
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-remove
     parent: array-functions-operators
 isTocNested: true

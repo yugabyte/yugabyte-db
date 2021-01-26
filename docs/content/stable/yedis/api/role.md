@@ -2,14 +2,13 @@
 title: ROLE
 linkTitle: ROLE
 description: ROLE
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2240
 aliases:
-  - /stable/api/redis/role
-  - /stable/api/yedis/role
+  - /latest/api/redis/role
+  - /latest/api/yedis/role
 isTocNested: true
 showAsideToc: true
 ---

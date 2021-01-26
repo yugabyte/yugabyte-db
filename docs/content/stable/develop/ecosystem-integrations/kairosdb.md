@@ -4,9 +4,8 @@ linkTitle: KairosDB
 description: KairosDB
 aliases:
   - /develop/ecosystem-integrations/kairosdb/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: kairosdb
     parent: ecosystem-integrations
     weight: 574

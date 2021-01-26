@@ -2,14 +2,13 @@
 title: SCARD
 linkTitle: SCARD
 description: SCARD
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2260
 aliases:
-  - /stable/api/redis/scard
-  - /stable/api/yedis/scard
+  - /latest/api/redis/scard
+  - /latest/api/yedis/scard
 isTocNested: true
 showAsideToc: true
 ---

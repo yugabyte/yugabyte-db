@@ -3,9 +3,8 @@ title: Array properties
 linkTitle: Array properties
 headerTitle: Functions for reporting the geometric properties of an array
 description: Functions for reporting the geometric properties of an array
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-properties
     parent: array-functions-operators
 isTocNested: true

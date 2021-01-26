@@ -3,9 +3,8 @@ title: Array concatenation functions and operators
 linkTitle: Array concatenation
 headerTitle: Array concatenation functions and operators
 description: Array concatenation functions and operators
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-concatenation
     parent: array-functions-operators
     weight: 40

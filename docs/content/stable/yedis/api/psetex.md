@@ -2,14 +2,13 @@
 title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2272
 aliases:
-  - /stable/api/redis/psetex
-  - /stable/api/yedis/psetex
+  - /latest/api/redis/psetex
+  - /latest/api/yedis/psetex
 isTocNested: true
 showAsideToc: true
 ---

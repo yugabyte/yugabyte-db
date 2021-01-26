@@ -5,9 +5,8 @@ linkTitle: MongoDB
 description: Compare MongoDB with YugabyteDB.
 aliases:
   - /comparisons/mongodb/
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: comparisons
     weight: 1090
 isTocNested: false

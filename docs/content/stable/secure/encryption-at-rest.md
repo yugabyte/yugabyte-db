@@ -7,12 +7,11 @@ headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/encryption-at-rest
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: encryption-at-rest
     parent: secure
-    weight: 725
+    weight: 735
 isTocNested: true
 showAsideToc: true
 ---

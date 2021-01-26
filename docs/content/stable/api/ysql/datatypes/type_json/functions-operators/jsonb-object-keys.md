@@ -3,9 +3,8 @@ title: jsonb_object_keys() and json_object_keys() [JSON]
 headerTitle: jsonb_object_keys() and json_object_keys()
 linkTitle: jsonb_object_keys() 
 description: Transform the list of key names in the supplied JSON object into a set (that is, table) of text values.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: jsonb-object-keys
     parent: json-functions-operators
     weight: 160

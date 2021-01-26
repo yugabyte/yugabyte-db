@@ -5,9 +5,8 @@ headerTitle: Troubleshooting overview
 description: Troubleshooting overview
 aliases:
   - /troubleshoot/overview/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702

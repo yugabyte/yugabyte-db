@@ -4,11 +4,10 @@ headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).
 aliases:
-  - /stable/architecture/concepts/universe/
-  - /stable/architecture/concepts/single-node/
-block_indexing: true
+  - /latest/architecture/concepts/universe/
+  - /latest/architecture/concepts/single-node/
 menu:
-  stable:
+  latest:
     identifier: architecture-concepts-universe
     parent: key-concepts
     weight: 1122

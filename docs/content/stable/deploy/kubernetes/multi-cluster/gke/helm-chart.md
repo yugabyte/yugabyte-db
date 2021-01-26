@@ -3,16 +3,15 @@ title: Deploy a multi-region cluster on Google Kubernetes Engine (GKE) using Hel
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a multi-region YugabyteDB cluster that spans 3 GKE clusters across 3 regions.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: deploy-kubernetes-mc
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
 aliases:
-  - /stable/deploy/kubernetes/multi-cluster/gke
-  - /stable/deploy/kubernetes/multi-cluster/gke/helm-chart
+  - /latest/deploy/kubernetes/multi-cluster/gke
+  - /latest/deploy/kubernetes/multi-cluster/gke/helm-chart
 type: page
 isTocNested: true
 showAsideToc: true
@@ -20,7 +19,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>

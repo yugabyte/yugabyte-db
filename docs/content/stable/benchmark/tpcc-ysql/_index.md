@@ -8,9 +8,8 @@ image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /benchmark/tpcc
   - /benchmark/tpcc-ysql
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
@@ -39,7 +38,7 @@ To download the TPC-C binaries, run the following commands.
 
 ```sh
 $ cd $HOME
-$ wget https://github.com/yugabyte/tpcc/releases/download/1.3/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/download/1.4/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```

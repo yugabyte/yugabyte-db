@@ -5,18 +5,17 @@ linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
-  - /stable/quick-start/explore-ysql/
-  - /stable/quick-start/explore/
+  - /latest/quick-start/explore-ysql/
+  - /latest/quick-start/explore/
   - /quick-start/test-postgresql/
-  - /stable/quick-start/test-postgresql/
-  - /stable/quick-start/test-ysql/
-  - /stable/explore/postgresql/joins/
-  - /stable/explore/postgresql/aggregations/
-  - /stable/explore/postgresql/expressions/
-  - /stable/explore/postgresql/views/
-block_indexing: true
+  - /latest/quick-start/test-postgresql/
+  - /latest/quick-start/test-ysql/
+  - /latest/explore/postgresql/joins/
+  - /latest/explore/postgresql/aggregations/
+  - /latest/explore/postgresql/expressions/
+  - /latest/explore/postgresql/views/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-1-ysql
@@ -29,14 +28,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/explore/ysql" class="nav-link active">
+    <a href="/latest/quick-start/explore/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/stable/quick-start/explore/ycql" class="nav-link">
+    <a href="/latest/quick-start/explore/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

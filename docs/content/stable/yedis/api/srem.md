@@ -2,14 +2,13 @@
 title: SREM
 linkTitle: SREM
 description: SREM
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2310
 aliases:
-  - /stable/api/redis/srem
-  - /stable/api/yedis/srem
+  - /latest/api/redis/srem
+  - /latest/api/yedis/srem
 isTocNested: true
 showAsideToc: true
 ---

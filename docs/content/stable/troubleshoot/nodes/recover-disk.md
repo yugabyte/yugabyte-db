@@ -5,9 +5,8 @@ headerTitle: Recover failing disk
 description: Learn how to recover failing disk
 aliases:
   - /troubleshoot/nodes/disk-failure/
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: troubleshoot-nodes
     weight: 849
 isTocNested: true

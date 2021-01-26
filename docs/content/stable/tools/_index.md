@@ -7,12 +7,10 @@ headcontent: Interactive third party clients that you can use with YugabyteDB to
 image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
-  - /stable/develop/tools/
-type: page
+  - /latest/develop/tools/
 section: REFERENCE
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: tools
     weight: 2900
 ---

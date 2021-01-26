@@ -5,11 +5,10 @@ linkTitle: ycqlsh
 description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
 aliases:
   - /develop/tools/cqlsh/
-  - /stable/develop/tools/cqlsh/
-  - /stable/admin/cqlsh/
-block_indexing: true
+  - /latest/develop/tools/cqlsh/
+  - /latest/admin/cqlsh/
 menu:
-  stable:
+  latest:
     identifier: ycqlsh
     parent: admin
     weight: 2460

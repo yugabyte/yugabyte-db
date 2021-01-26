@@ -4,12 +4,11 @@ linkTitle: Create databases
 description: Create databases
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /stable/deploy/yugabyte-cloud/create-databases/
-block_indexing: true
+  - /latest/deploy/yugabyte-cloud/create-databases/
 menu:
-  stable:
+  latest:
     identifier: create-databases
     parent: yugabyte-cloud
     weight: 643

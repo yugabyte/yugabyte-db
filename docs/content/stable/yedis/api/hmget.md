@@ -2,14 +2,13 @@
 title: HMGET
 linkTitle: HMGET
 description: HMGET
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2160
 aliases:
-  - /stable/api/redis/hmget
-  - /stable/api/yedis/hmget
+  - /latest/api/redis/hmget
+  - /latest/api/yedis/hmget
 isTocNested: true
 showAsideToc: true
 ---

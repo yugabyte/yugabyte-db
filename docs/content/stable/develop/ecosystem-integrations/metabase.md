@@ -4,9 +4,8 @@ linkTitle: Metabase
 description: Metabase
 aliases:
   - /develop/ecosystem-integrations/metabase/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: metabase
     parent: ecosystem-integrations
     weight: 576

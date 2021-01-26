@@ -6,11 +6,10 @@ description: Explore sample applications running on YugabyteDB.
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:
-  - /stable/quick-start/run-sample-apps/
+  - /latest/quick-start/run-sample-apps/
   - /quick-start/run-sample-apps/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: explore-sample-apps
     parent: develop
     weight: 581

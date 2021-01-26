@@ -3,14 +3,13 @@ title: Subscripted expressions [YCQL]
 headerTitle: Subscripted expressions
 linkTitle: Subscripted expressions
 description: Use subscripted expressions to access elements in a multi-element value, such as a map collection by using the [] operator.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1340
 aliases:
-  - /stable/api/cassandra/expr_subscript
-  - /stable/api/ycql/expr_subscript
+  - /latest/api/cassandra/expr_subscript
+  - /latest/api/ycql/expr_subscript
 isTocNested: true
 showAsideToc: true
 ---

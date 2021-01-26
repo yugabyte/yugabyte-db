@@ -5,9 +5,8 @@ linkTitle: Apache Cassandra
 description: Compare Apache Cassandra with YugabyteDB.
 aliases:
   - /comparisons/cassandra/
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: comparisons
     weight: 1120
 isTocNested: false

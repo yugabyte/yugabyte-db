@@ -2,14 +2,13 @@
 title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2190
 aliases:
-  - /stable/api/redis/hstrlen
-  - /stable/api/yedis/hstrlen
+  - /latest/api/redis/hstrlen
+  - /latest/api/yedis/hstrlen
 isTocNested: true
 showAsideToc: true
 ---

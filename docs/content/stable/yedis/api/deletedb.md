@@ -2,14 +2,13 @@
 title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2034
 aliases:
-  - /stable/api/redis/deletedb
-  - /stable/api/yedis/deletedb
+  - /latest/api/redis/deletedb
+  - /latest/api/yedis/deletedb
 isTocNested: true
 showAsideToc: true
 ---

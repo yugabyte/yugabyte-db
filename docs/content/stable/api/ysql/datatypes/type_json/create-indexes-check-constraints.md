@@ -3,9 +3,8 @@ title: Indexes and check constraints on json and jsonb columns
 headerTitle: Create indexes and check constraints on JSON columns
 linkTitle: Indexes and check constraints
 description: Create indexes and check constraints on "json" and "jsonb" columns.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: create-indexes-check-constraints
     parent: api-ysql-datatypes-json
     weight: 40
@@ -107,7 +106,6 @@ The high-level point is that YSQL allows you to express a constraint using any e
 ```plpgsql
 create function top_level_keys_ok(json_obj in jsonb)
   returns boolean
-  immutable
   language plpgsql
 as
 $body$

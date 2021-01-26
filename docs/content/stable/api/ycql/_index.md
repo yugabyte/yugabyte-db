@@ -6,15 +6,14 @@ description: YCQL is a semi-relational API that is best fit for internet-scale O
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: api-cassandra
     parent: api
     weight: 3000
 aliases:
-  - /stable/api/ycql/
-  - /stable/api/cassandra/
+  - /latest/api/ycql/
+  - /latest/api/cassandra/
 isTocNested: false
 showAsideToc: true
 ---

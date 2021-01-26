@@ -7,11 +7,10 @@ headcontent: Instructions for manually deploying YugabyteDB.
 image: /images/section_icons/deploy/manual-deployment.png
 aliases:
   - /deploy/multi-node-cluster/
-  - /stable/deploy/multi-node-cluster/
+  - /latest/deploy/multi-node-cluster/
   - /deploy/manual-deployment/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 610

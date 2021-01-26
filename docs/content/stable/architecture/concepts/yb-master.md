@@ -4,10 +4,9 @@ headerTitle: YB-Master Service
 linkTitle: YB-Master Service
 description: Learn how the YB-Master service manages tablet (aka shard) metadata and coordinates cluster configuration changes.
 aliases:
-  - /stable/architecture/concepts/yb-master/
-block_indexing: true
+  - /latest/architecture/concepts/yb-master/
 menu:
-  stable:
+  latest:
     identifier: architecture-concepts-yb-master
     parent: key-concepts
     weight: 1126

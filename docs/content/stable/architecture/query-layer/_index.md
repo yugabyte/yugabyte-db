@@ -7,10 +7,9 @@ image: /images/section_icons/index/api.png
 headcontent: 
 aliases:
   - /architecture/query-layer/
-  - /stable/architecture/concepts/yql/
-block_indexing: true
+  - /latest/architecture/concepts/yql/
 menu:
-  stable:
+  latest:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110

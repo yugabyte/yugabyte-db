@@ -6,9 +6,8 @@ headcontent:
 image: /images/section_icons/index/develop.png
 aliases:
   - /develop/
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: develop-yedis
     parent: yedis
     weight: 2900

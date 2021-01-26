@@ -2,14 +2,13 @@
 title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2545
 aliases:
-  - /stable/api/redis/zscore
-  - /stable/api/yedis/zscore
+  - /latest/api/redis/zscore
+  - /latest/api/yedis/zscore
 isTocNested: true
 showAsideToc: true
 ---

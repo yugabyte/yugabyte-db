@@ -4,10 +4,9 @@ headerTitle: Back up data
 linkTitle: Back up data
 description: Back up YCQL data in YugabyteDB.
 aliases:
-  - /stable/manage/backup-restore/backing-up-data
-block_indexing: true
+  - /latest/manage/backup-restore/backing-up-data
 menu:
-  stable:
+  latest:
     identifier: back-up-data-ycql
     parent: backup-restore
     weight: 703
@@ -17,13 +16,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/manage/backup-restore/back-up-data" class="nav-link">
+    <a href="/latest/manage/backup-restore/back-up-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/manage/backup-restore/back-up-data-ycql" class="nav-link active">
+    <a href="/latest/manage/backup-restore/back-up-data-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

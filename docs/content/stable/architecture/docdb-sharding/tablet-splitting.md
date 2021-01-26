@@ -3,9 +3,8 @@ title: Tablet splitting
 headerTitle: Tablet splitting
 linkTitle: Tablet splitting
 description: Learn about tablet splitting mechanisms for resharding data, including presplitting, manual, and automatic.
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: docdb-tablet-splitting
     parent: architecture-docdb-sharding
     weight: 1143
@@ -97,8 +96,8 @@ CREATE TABLE customers (
 
 For YSQL API support, see:
 
-* [CREATE TABLE ... SPLIT INTO](../../../api/ysql/commands/ddl_create_table/#split-into) and the example, [Create a table specifying the number of tablets](../../../api/ysql/commands/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
-* [CREATE INDEX ... SPLIT INTO](../../../api/ysql/commands/ddl_create_index/#split-into) and the example, [Create an index specifying the number of tablets](../../../api/ysql/commands/ddl_create_index/#create-an-index-specifying-the-number-of-tablets).
+* [CREATE TABLE ... SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) and the example, [Create a table specifying the number of tablets](../../../api/ysql/the-sql-language/statements/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
+* [CREATE INDEX ... SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_index/#split-into) and the example, [Create an index specifying the number of tablets](../../../api/ysql/the-sql-language/statements/ddl_create_index/#create-an-index-specifying-the-number-of-tablets).
 
 For YCQL API support, see:
 
@@ -129,7 +128,7 @@ CREATE TABLE customers (
 
 For YSQL API details, see:
 
-* [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/commands/ddl_create_table/#split-at-values) for use with range-partitioned tables.
+* [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-partitioned tables.
 
 ## Manual tablet splitting [BETA]
 

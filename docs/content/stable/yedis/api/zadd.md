@@ -2,14 +2,13 @@
 title: ZADD
 linkTitle: ZADD
 description: ZADD
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2500
 aliases:
-  - /stable/api/redis/zadd
-  - /stable/api/yedis/zadd
+  - /latest/api/redis/zadd
+  - /latest/api/yedis/zadd
 isTocNested: true
 showAsideToc: true
 ---

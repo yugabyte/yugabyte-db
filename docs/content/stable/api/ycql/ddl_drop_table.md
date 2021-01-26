@@ -3,14 +3,13 @@ title: DROP TABLE statement [YCQL]
 headerTitle: DROP TABLE
 linkTitle: DROP TABLE
 description: Use the DROP TABLE statement to remove a table and all of its data from the database.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1270
 aliases:
-  - /stable/api/cassandra/ddl_drop_table
-  - /stable/api/ycql/ddl_drop_table
+  - /latest/api/cassandra/ddl_drop_table
+  - /latest/api/ycql/ddl_drop_table
 isTocNested: true
 showAsideToc: true
 ---

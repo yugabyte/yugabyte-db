@@ -2,14 +2,13 @@
 title: TSRANGEBYTIME
 linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2440
 aliases:
-  - /stable/api/redis/tsrangebytime
-  - /stable/api/yedis/tsrangebytime
+  - /latest/api/redis/tsrangebytime
+  - /latest/api/yedis/tsrangebytime
 isTocNested: true
 showAsideToc: true
 ---

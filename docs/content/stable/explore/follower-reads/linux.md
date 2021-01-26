@@ -4,10 +4,9 @@ headerTitle: Follower reads
 linkTitle: Follower reads
 description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on Linux.
 aliases:
-  - /stable/explore/follower-reads-linux/
-block_indexing: true
+  - /latest/explore/follower-reads-linux/
 menu:
-  stable:
+  latest:
     identifier: follower-reads-2-linux
     parent: explore
     weight: 235
@@ -18,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/follower-reads/macos" class="nav-link">
+    <a href="/latest/explore/follower-reads/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/follower-reads/linux" class="nav-link active">
+    <a href="/latest/explore/follower-reads/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

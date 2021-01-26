@@ -6,13 +6,12 @@ description: Follow the steps to quickly get started using YEDIS (Redis-compatib
 image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
   - /quick-start/test-redis/
-  - /stable/quick-start/test-redis/
-  - /stable/quick-start/test-yedis/
-  - /stable/yedis/quick-start/test-redis/
-  - /stable/api/yedis/quick-start/
-block_indexing: true
+  - /latest/quick-start/test-redis/
+  - /latest/quick-start/test-yedis/
+  - /latest/yedis/quick-start/test-redis/
+  - /latest/api/yedis/quick-start/
 menu:
-  stable:
+  latest:
     parent: yedis
     weight: 2800
 type: page

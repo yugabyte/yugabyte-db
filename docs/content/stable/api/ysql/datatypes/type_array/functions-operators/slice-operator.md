@@ -3,9 +3,8 @@ title: The array slice operator
 linkTitle: Array slice operator 
 headerTitle: The array slice operator
 description: The array slice operator
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: array-slice-operator
     parent: array-functions-operators
     weight: 30

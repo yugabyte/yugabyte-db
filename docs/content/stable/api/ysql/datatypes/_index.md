@@ -5,14 +5,13 @@ linkTitle: Data types
 description: Data types
 summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
-  stable:
+  latest:
     identifier: api-ysql-datatypes
     parent: api-ysql
     weight: 4200
 aliases:
-  - /stable/api/ysql/datatypes/
+  - /latest/api/ysql/datatypes/
 isTocNested: true
 showAsideToc: true
 ---

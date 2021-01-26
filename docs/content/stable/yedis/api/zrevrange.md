@@ -2,14 +2,13 @@
 title: ZREVRANGE
 linkTitle: ZREVRANGE
 description: ZREVRANGE
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2540
 aliases:
-  - /stable/api/redis/zrevrange
-  - /stable/api/yedis/zrevrange
+  - /latest/api/redis/zrevrange
+  - /latest/api/yedis/zrevrange
 isTocNested: true
 showAsideToc: true
 ---

@@ -2,14 +2,13 @@
 title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2552
 aliases:
-  - /stable/api/redis/subscribe
-  - /stable/api/yedis/subscribe
+  - /latest/api/redis/subscribe
+  - /latest/api/yedis/subscribe
 isTocNested: true
 showAsideToc: true
 ---

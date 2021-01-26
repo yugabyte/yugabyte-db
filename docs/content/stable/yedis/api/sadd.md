@@ -2,14 +2,13 @@
 title: SADD
 linkTitle: SADD
 description: SADD
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2250
 aliases:
-  - /stable/api/redis/sadd
-  - /stable/api/yedis/sadd
+  - /latest/api/redis/sadd
+  - /latest/api/yedis/sadd
 isTocNested: true
 showAsideToc: true
 ---

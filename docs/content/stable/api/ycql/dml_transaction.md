@@ -3,14 +3,13 @@ title: TRANSACTION statement [YCQL]
 headerTitle: TRANSACTION
 linkTitle: TRANSACTION
 description: Use the TRANSACTION statement block to make changes to multiple rows in one or more tables in a distributed ACID transaction.
-block_indexing: true
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /stable/api/cassandra/dml_transaction
-  - /stable/api/ycql/dml_transaction
+  - /latest/api/cassandra/dml_transaction
+  - /latest/api/ycql/dml_transaction
 isTocNested: true
 showAsideToc: true
 ---

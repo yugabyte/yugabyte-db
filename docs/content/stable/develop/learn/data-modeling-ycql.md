@@ -5,11 +5,10 @@ linkTitle: 2. Data modeling
 description: Learn data modeling in YCQL and how to identify the patterns used to access data and the types of queries to be performed.
 aliases:
   - /develop/learn/data-modeling/
-  - /stable/explore/transactional/secondary-indexes/
-  - /stable/develop/learn/data-modeling/
-block_indexing: true
+  - /latest/explore/transactional/secondary-indexes/
+  - /latest/develop/learn/data-modeling/
 menu:
-  stable:
+  latest:
     identifier: data-modeling-1-ycql
     parent: learn
     weight: 562
@@ -20,14 +19,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/data-modeling-ysql" class="nav-link">
+    <a href="/latest/develop/learn/data-modeling-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/data-modeling-ycql" class="nav-link active">
+    <a href="/latest/develop/learn/data-modeling-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

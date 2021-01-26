@@ -4,11 +4,10 @@ headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YSQL on YugabyteDB.
 aliases:
-  - /stable/explore/transactional/acid-transactions/
-  - /stable/develop/learn/acid-transactions/
-block_indexing: true
+  - /latest/explore/transactional/acid-transactions/
+  - /latest/develop/learn/acid-transactions/
 menu:
-  stable:
+  latest:
     identifier: acid-transactions-2-ysql
     parent: learn
     weight: 566
@@ -19,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/acid-transactions-ysql" class="nav-link active">
+    <a href="/latest/develop/learn/acid-transactions-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/acid-transactions-ycql" class="nav-link">
+    <a href="/latest/develop/learn/acid-transactions-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
