@@ -165,4 +165,9 @@ public class CertificateInfo extends Model {
     }
     return true;
   }
+
+  // Returns if there is an in use reference to the object.
+  public boolean getInUse(UUID customerUUID) {
+    return Universe.existsCertificate(this.uuid, customerUUID);
+  }
 }
