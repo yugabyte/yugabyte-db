@@ -3,8 +3,10 @@ title: Restore data for YCQL
 headerTitle: Restore data
 linkTitle: Restore data
 description: Restore data in YugabyteDB for YCQL
+aliases:
+  - /manage/backup-restore/backing-up-data
 menu:
-  v2.4:
+  latest:
     identifier: restore-data-ycql
     parent: backup-restore
     weight: 703

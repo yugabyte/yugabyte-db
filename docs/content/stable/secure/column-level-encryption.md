@@ -7,7 +7,7 @@ description: Using column-level encryption in a YugabyteDB cluster.
 headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
 menu:
-  v2.4:
+  latest:
     identifier: column-level-encryption
     parent: secure
     weight: 745

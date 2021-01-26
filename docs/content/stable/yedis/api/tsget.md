@@ -3,9 +3,12 @@ title: TSGET
 linkTitle: TSGET
 description: TSGET
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2420
+aliases:
+  - /latest/api/redis/tsget
+  - /latest/api/yedis/tsget
 isTocNested: true
 showAsideToc: true
 ---

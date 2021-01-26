@@ -7,7 +7,7 @@ headcontent: Features, enhancements, and resolved issues in the latest and stabl
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
-  v2.4:
+  latest:
     identifier: whats-new
     weight: 2588 
 ---

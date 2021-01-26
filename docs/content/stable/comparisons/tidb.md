@@ -3,8 +3,10 @@ title: Compare TiDB with YugabyteDB
 headerTitle: TiDB
 linkTitle: TiDB
 description: Compare TiDB with YugabyteDB.
+aliases:
+  - /comparisons/tidb/
 menu:
-  v2.4:
+  latest:
     parent: comparisons
     weight: 1076
 ---

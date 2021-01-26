@@ -3,9 +3,11 @@ title: Create YugabyteDB universe deployments
 headerTitle: Create YugabyteDB universe deployments
 linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
+aliases:
+  - /latest/yugabyte-platform/deploy/
 image: /images/section_icons/index/deploy.png
 menu:
-  v2.4:
+  latest:
     identifier: create-deployments
     parent: yugabyte-platform
     weight: 643

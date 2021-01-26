@@ -3,8 +3,12 @@ title: Persistence in YugabyteDB
 headerTitle: Persistence
 linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
+aliases:
+  - /latest/architecture/docdb/persistence/
+  - /latest/architecture/concepts/persistence/
+  - /latest/architecture/concepts/docdb/persistence/
 menu:
-  v2.4:
+  latest:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146

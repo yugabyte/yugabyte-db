@@ -6,10 +6,12 @@ description: Spring Data YugabyteDB
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
-  v2.4:
+  latest:
     identifier: spring-data-yugabytedb
     parent: drivers
     weight: 2943
+aliases:
+  - /latest/reference/connectors/spring-data-yugabytedb
 isTocNested: true
 showAsideToc: true
 ---

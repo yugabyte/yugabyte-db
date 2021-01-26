@@ -4,9 +4,11 @@ headerTitle: ROLLBACK
 linkTitle: ROLLBACK
 description: Use the ROLLBACK statement to roll back the current transactions.
 menu:
-  v2.4:
+  latest:
     identifier: txn_rollback
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/txn_rollback/
 isTocNested: true
 showAsideToc: true
 ---

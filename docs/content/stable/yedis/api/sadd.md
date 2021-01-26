@@ -3,9 +3,12 @@ title: SADD
 linkTitle: SADD
 description: SADD
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2250
+aliases:
+  - /latest/api/redis/sadd
+  - /latest/api/yedis/sadd
 isTocNested: true
 showAsideToc: true
 ---

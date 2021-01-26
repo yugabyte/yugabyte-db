@@ -3,8 +3,11 @@ title: Upgrade a deployment
 headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
+aliases:
+  - /deploy/manual-deployment/upgrade-deployment
+  - /latest/manage/upgrade-deployment
 menu:
-  v2.4:
+  latest:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706

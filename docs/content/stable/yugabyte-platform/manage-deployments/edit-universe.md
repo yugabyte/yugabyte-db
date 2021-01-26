@@ -3,8 +3,10 @@ title: Use Yugabyte Platform to edit a universe
 headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.
+aliases:
+  - /latest/manage/enterprise-edition/edit-universe/
 menu:
-  v2.4:
+  latest:
     identifier: edit-universe
     parent: manage-deployments
     weight: 53

@@ -3,9 +3,12 @@ title: ZRANGE
 linkTitle: ZRANGE
 description: ZRANGE
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2385
+aliases:
+  - /latest/api/redis/zrange
+  - /latest/api/yedis/zrange
 isTocNested: true
 showAsideToc: true
 ---

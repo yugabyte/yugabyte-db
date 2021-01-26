@@ -4,7 +4,7 @@ headerTitle: Connect clients to Kubernetes clusters
 linkTitle: Connect clients
 description: Connect remote clients to YugabyteDB clusters deployed within Kubernetes.
 menu:
-  v2.4:
+  latest:
     identifier: clients-kubernetes
     parent: deploy-kubernetes
     weight: 626

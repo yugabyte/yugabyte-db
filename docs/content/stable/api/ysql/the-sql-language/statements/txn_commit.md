@@ -4,9 +4,11 @@ headerTitle: COMMIT
 linkTitle: COMMIT
 description: Use the COMMIT statement to commit the current transaction.
 menu:
-  v2.4:
+  latest:
     identifier: txn_commit
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/txn_commit/
 isTocNested: true
 showAsideToc: true
 ---

@@ -6,7 +6,7 @@ headcontent: Download links and release information for earlier releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
-  v2.4:
+  latest:
     identifier: earlier-releases
     weight: 2589
 ---

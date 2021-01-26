@@ -3,8 +3,10 @@ title: Third party software
 headerTitle: Third party software
 linkTitle: Third party software
 description: Learn about the third party software contained in YugabyteDB.
+aliases:
+  - /latest/
 menu:
-  v2.4:
+  latest:
     parent: legal
     identifier: third-party-software
     weight:   30

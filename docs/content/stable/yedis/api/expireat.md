@@ -3,9 +3,12 @@ title: EXPIREAT
 linkTitle: EXPIREAT
 description: EXPIREAT
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2062
+aliases:
+  - /latest/api/redis/expireat
+  - /latest/api/yedis/expireat
 isTocNested: true
 showAsideToc: true
 ---

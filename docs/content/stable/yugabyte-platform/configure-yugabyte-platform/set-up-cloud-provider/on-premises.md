@@ -3,8 +3,10 @@ title: Configure the on-premises cloud provider
 headerTitle: Configure the on-premises cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the on-premises cloud provider.
+aliases:
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  v2.4:
+  latest:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20

@@ -2,8 +2,10 @@
 title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
+aliases:
+  - /develop/ecosystem-integrations/janusgraph/
 menu:
-  v2.4:
+  latest:
     identifier: janusgraph
     parent: ecosystem-integrations
     weight: 573

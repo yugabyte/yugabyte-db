@@ -3,9 +3,12 @@ title: RENAME
 linkTitle: RENAME
 description: RENAME
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2265
+aliases:
+  - /latest/api/redis/rename
+  - /latest/api/yedis/rename
 isTocNested: true
 showAsideToc: true
 ---

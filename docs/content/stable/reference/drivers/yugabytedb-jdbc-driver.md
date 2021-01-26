@@ -6,10 +6,12 @@ description: Add cluster awareness and load balancing to YugabyteDB distributed 
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
-  v2.4:
+  latest:
     identifier: yugabytedb-jdbc-driver
     parent: drivers
     weight: 2941
+aliases:
+  - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---

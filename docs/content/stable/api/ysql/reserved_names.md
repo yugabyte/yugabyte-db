@@ -6,10 +6,12 @@ description: List of YSQL system column and database object names that are reser
 summary: List of reserved names
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.4:
+  latest:
     identifier: api-ysql-reserved-names
     parent: api-ysql
     weight: 4600
+aliases:
+  - /latest/api/ysql/reserved_names
 isTocNested: true
 showAsideToc: true
 ---

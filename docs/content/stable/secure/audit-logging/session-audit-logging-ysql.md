@@ -6,7 +6,7 @@ description: Session-Level Audit Logging in YSQL.
 headcontent: Session-Level Audit Logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  v2.4:
+  latest:
     name: Session-Level Audit Logging
     identifier: session-audit-logging-1-ysql
     parent: audit-logging

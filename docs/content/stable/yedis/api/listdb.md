@@ -3,9 +3,12 @@ title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2036
+aliases:
+  - /latest/api/redis/listdb
+  - /latest/api/yedis/listdb
 isTocNested: true
 showAsideToc: true
 ---

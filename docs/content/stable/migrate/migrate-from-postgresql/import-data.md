@@ -5,7 +5,7 @@ headerTitle: Import PostgreSQL data
 linkTitle: Import PostgreSQL data
 description: Steps for importing PostgreSQL data into YugabyteDB.
 menu:
-  v2.4:
+  latest:
     identifier: migrate-postgresql-import-data
     parent: migrate-from-postgresql
     weight: 770

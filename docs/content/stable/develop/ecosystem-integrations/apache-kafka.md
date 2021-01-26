@@ -2,8 +2,10 @@
 title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
+aliases:
+  - /develop/ecosystem-integrations/apache-kafka/
 menu:
-  v2.4:
+  latest:
     identifier: apache-kafka
     parent: ecosystem-integrations
     weight: 571

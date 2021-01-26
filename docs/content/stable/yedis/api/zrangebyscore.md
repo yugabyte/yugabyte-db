@@ -3,9 +3,12 @@ title: ZRANGEBYSCORE
 linkTitle: ZRANGEBYSCORE
 description: ZRANGEBYSCORE
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2520
+aliases:
+  - /latest/api/redis/zrangebyscore
+  - /latest/api/yedis/zrangebyscore
 isTocNested: true
 showAsideToc: true
 ---

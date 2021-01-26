@@ -8,7 +8,7 @@ headcontent: Contribute code and docs to improve YugabyteDB.
 type: page
 section: YUGABYTEDB CORE
 menu:
-  v2.4:
+  latest:
     identifier: contribute
     weight: 2800
 ---

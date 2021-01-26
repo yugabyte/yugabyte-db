@@ -3,8 +3,10 @@ title: Disk failure
 linkTitle: Disk failure
 headerTitle: Recover failing disk
 description: Learn how to recover failing disk
+aliases:
+  - /troubleshoot/nodes/disk-failure/
 menu:
-  v2.4:
+  latest:
     parent: troubleshoot-nodes
     weight: 849
 isTocNested: true

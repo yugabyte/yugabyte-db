@@ -3,9 +3,12 @@ title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2551
+aliases:
+  - /latest/api/redis/publish
+  - /latest/api/yedis/publish
 isTocNested: true
 showAsideToc: true
 ---

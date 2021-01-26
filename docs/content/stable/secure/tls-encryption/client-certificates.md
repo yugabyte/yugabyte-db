@@ -4,7 +4,7 @@ headerTitle: Create client certificates
 linkTitle: Create client certificates
 description: Generate client certificates to connect to and interact with YugabyteDB databases.
 menu:
-  v2.4:
+  latest:
     identifier: client-certificates
     parent: tls-encryption
     weight: 10

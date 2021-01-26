@@ -4,7 +4,7 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build and run a Java-based sample word-count application using Apache Spark and YugabyteDB.
 menu:
-  v2.4:
+  latest:
     identifier: apache-spark-2-java
     parent: ecosystem-integrations
     weight: 572

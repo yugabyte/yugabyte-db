@@ -5,7 +5,7 @@ linkTitle: Extensions
 description: Install and use extensions with PostgreSQL-compatible YSQL.
 summary: Reference for YSQL extensions
 menu:
-  v2.4:
+  latest:
     identifier: api-ysql-extensions
     parent: api-ysql
     weight: 4400

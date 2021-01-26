@@ -4,7 +4,7 @@ linkTitle: array_remove()
 headerTitle: array_remove()
 description: array_remove()
 menu:
-  v2.4:
+  latest:
     identifier: array-remove
     parent: array-functions-operators
 isTocNested: true

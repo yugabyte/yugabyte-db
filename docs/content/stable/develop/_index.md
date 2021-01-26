@@ -5,9 +5,11 @@ linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
 headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
+aliases:
+  - /develop/
 section: YUGABYTEDB CORE
 menu:
-  v2.4:
+  latest:
     identifier: develop
     weight: 600
 

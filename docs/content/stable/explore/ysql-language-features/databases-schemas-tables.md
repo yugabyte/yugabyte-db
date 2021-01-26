@@ -5,7 +5,7 @@ description: Schemas and Tables in YSQL
 headcontent: Schemas and Tables
 image: /images/section_icons/secure/create-roles.png
 menu:
-  v2.4:
+  latest:
     identifier: explore-ysql-language-features-databases-schemas-tables
     parent: explore-ysql-language-features
     weight: 100

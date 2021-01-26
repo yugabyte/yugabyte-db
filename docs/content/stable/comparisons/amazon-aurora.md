@@ -3,8 +3,10 @@ title: Compare Amazon Aurora with YugabyteDB
 headerTitle: Amazon Aurora
 linkTitle: Amazon Aurora
 description: Compare Amazon Aurora with YugabyteDB.
+aliases:
+  - /comparisons/amazon-aurora/
 menu:
-  v2.4:
+  latest:
     parent: comparisons
     weight: 1073
 isTocNested: false

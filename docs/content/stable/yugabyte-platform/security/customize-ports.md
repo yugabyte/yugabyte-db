@@ -4,7 +4,7 @@ headerTitle: Customize ports
 linkTitle: Customize ports
 description: Customize ports
 menu:
-  v2.4:
+  latest:
     parent: security
     identifier: customize-ports
     weight: 15

@@ -7,7 +7,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 headcontent: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connectors, tools, and sample data.
 section: REFERENCE
 menu:
-  v2.4:
+  latest:
     identifier: reference
     weight: 900
 ---

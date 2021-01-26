@@ -5,7 +5,7 @@ linkTitle: Releases overview
 description: An overview of the latest and current stable releases, and upcoming releases.
 section: RELEASES
 menu:
-  v2.4:
+  latest:
     identifier: releases-overview
     weight: 2585
 isTocNested: true

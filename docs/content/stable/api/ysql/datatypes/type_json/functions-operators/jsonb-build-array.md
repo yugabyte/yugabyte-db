@@ -4,7 +4,7 @@ headerTitle: jsonb_build_array() and json_build_array()
 linkTitle: jsonb_build_array()
 description: Build a JSON array from a variadic list of array values of arbitrary SQL data type.
 menu:
-  v2.4:
+  latest:
     identifier: jsonb_build_array-each
     parent: json-functions-operators
     weight: 110

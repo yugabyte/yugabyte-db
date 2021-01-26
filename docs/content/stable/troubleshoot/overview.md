@@ -3,8 +3,10 @@ title: Troubleshooting
 linkTitle: Troubleshooting
 headerTitle: Troubleshooting overview
 description: Troubleshooting overview
+aliases:
+  - /troubleshoot/overview/
 menu:
-  v2.4:
+  latest:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702

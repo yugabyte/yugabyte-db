@@ -3,9 +3,12 @@ title: GET
 linkTitle: GET
 description: GET
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2070
+aliases:
+  - /latest/api/redis/get
+  - /latest/api/yedis/get
 isTocNested: true
 showAsideToc: true
 ---

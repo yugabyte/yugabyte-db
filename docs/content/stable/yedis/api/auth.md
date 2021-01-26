@@ -3,9 +3,12 @@ title: AUTH
 linkTitle: AUTH
 description: AUTH
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2020
+aliases:
+  - /latest/api/redis/auth
+  - /latest/api/yedis/auth
 isTocNested: true
 showAsideToc: true
 ---

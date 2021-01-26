@@ -2,8 +2,10 @@
 title: Presto
 linkTitle: Presto
 description: Presto
+aliases:
+  - /develop/ecosystem-integrations/presto/
 menu:
-  v2.4:
+  latest:
     identifier: presto
     parent: ecosystem-integrations
     weight: 575

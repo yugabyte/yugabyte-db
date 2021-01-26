@@ -5,8 +5,10 @@ description: Free tier
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /latest/deploy/yugabyte-cloud/free-tier/
 menu:
-  v2.4:
+  latest:
     identifier: free-tier
     parent: yugabyte-cloud
     weight: 640

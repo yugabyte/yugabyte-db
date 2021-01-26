@@ -3,8 +3,12 @@ title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
 linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL
+aliases:
+  - /develop/client-drivers/csharp/
+  - /latest/develop/client-drivers/csharp/
+  - /latest/quick-start/build-apps/csharp/
 menu:
-  v2.4:
+  latest:
     identifier: build-apps-csharp-1-ysql
     parent: build-apps
     weight: 554

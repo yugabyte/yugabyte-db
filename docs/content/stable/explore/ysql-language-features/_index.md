@@ -6,7 +6,7 @@ description: PostgreSQL features in YSQL.
 headcontent: PostgreSQL features in YSQL.
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.4:
+  latest:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200

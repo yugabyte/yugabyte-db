@@ -4,7 +4,7 @@ linkTitle: Array of rows
 headerTitle: The literal for an array of "row" type values
 description: The literal for an array of "row" type values
 menu:
-  v2.4:
+  latest:
     identifier: array-of-rows
     parent: array-literals
     weight: 40

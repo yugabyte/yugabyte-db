@@ -5,7 +5,7 @@ linkTitle: CDC to Kafka
 description: Learn how to use change data capture (CDC) API to send data changes to Apache Kafka.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  v2.4:
+  latest:
     parent: cdc
     identifier: cdc-to-kafka
     weight: 692

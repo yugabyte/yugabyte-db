@@ -3,8 +3,11 @@ title: ysqlsh - YSQL shell for YugabyteDB
 headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
+aliases:
+  - /develop/tools/ysqlsh/
+  - /latest/develop/tools/ysqlsh/
 menu:
-  v2.4:
+  latest:
     identifier: ysqlsh
     parent: admin
     weight: 2459

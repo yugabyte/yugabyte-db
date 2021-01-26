@@ -3,9 +3,12 @@ title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2552
+aliases:
+  - /latest/api/redis/subscribe
+  - /latest/api/yedis/subscribe
 isTocNested: true
 showAsideToc: true
 ---

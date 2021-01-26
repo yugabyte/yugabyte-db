@@ -3,8 +3,10 @@ title: Compare PostgreSQL with YugabyteDB
 headerTitle: PostgreSQL
 linkTitle: PostgreSQL
 description: Compare PostgreSQL with YugabyteDB.
+aliases:
+  - /comparisons/postgresql/
 menu:
-  v2.4:
+  latest:
     parent: comparisons
     weight: 1128
 isTocNested: false

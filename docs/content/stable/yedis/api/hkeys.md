@@ -3,9 +3,12 @@ title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2140
+aliases:
+  - /latest/api/redis/hkeys
+  - /latest/api/yedis/hkeys
 isTocNested: true
 showAsideToc: true
 ---

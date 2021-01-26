@@ -4,9 +4,11 @@ headerTitle: ALTER POLICY
 linkTitle: ALTER POLICY
 description: Use the ALTER POLICY statement to change the definition of a row level security policy.
 menu:
-  v2.4:
+  latest:
     identifier: dcl_alter_policy
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/dcl_alter_policy/
 isTocNested: true
 showAsideToc: true
 ---

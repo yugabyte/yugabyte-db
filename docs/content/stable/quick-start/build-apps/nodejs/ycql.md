@@ -4,7 +4,7 @@ headerTitle: Build a Node.js application
 linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
 menu:
-  v2.4:
+  latest:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-3

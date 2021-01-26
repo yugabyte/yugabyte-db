@@ -2,8 +2,10 @@
 title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
+aliases:
+  - /develop/ecosystem-integrations/kairosdb/
 menu:
-  v2.4:
+  latest:
     identifier: kairosdb
     parent: ecosystem-integrations
     weight: 574

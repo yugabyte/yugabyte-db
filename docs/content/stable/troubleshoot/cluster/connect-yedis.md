@@ -2,8 +2,11 @@
 title: YEDIS connection Issues
 linkTitle: YEDIS connection Issues
 description: Cannot connect to YEDIS API
+aliases:
+  - /troubleshoot/cluster/connect-redis/
+  - /latest/troubleshoot/cluster/connect-yedis/
 menu:
-  v2.4:
+  latest:
     parent: troubleshoot-cluster
     weight: 824
 isTocNested: true

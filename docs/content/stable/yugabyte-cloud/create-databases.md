@@ -5,8 +5,10 @@ description: Create databases
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /latest/deploy/yugabyte-cloud/create-databases/
 menu:
-  v2.4:
+  latest:
     identifier: create-databases
     parent: yugabyte-cloud
     weight: 643

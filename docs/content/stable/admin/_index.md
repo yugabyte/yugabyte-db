@@ -8,7 +8,7 @@ headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
 menu:
-  v2.4:
+  latest:
     identifier: admin
     weight: 1400
 ---

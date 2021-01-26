@@ -2,8 +2,11 @@
 title: YCQL connection issues
 linkTitle: YCQL connection issues
 description: Cannot connect to YCQL API
+aliases:
+  - /troubleshoot/cluster/connect-cassandra/
+  - /latest/troubleshoot/cluster/connect-ycql/
 menu:
-  v2.4:
+  latest:
     parent: troubleshoot-cluster
     weight: 822
 isTocNested: true

@@ -5,8 +5,12 @@ linkTitle: Manual deployment
 description: Deploy a YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration.
 headcontent: Instructions for manually deploying YugabyteDB.
 image: /images/section_icons/deploy/manual-deployment.png
+aliases:
+  - /deploy/multi-node-cluster/
+  - /latest/deploy/multi-node-cluster/
+  - /deploy/manual-deployment/
 menu:
-  v2.4:
+  latest:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 610

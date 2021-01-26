@@ -3,9 +3,12 @@ title: SCARD
 linkTitle: SCARD
 description: SCARD
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2260
+aliases:
+  - /latest/api/redis/scard
+  - /latest/api/yedis/scard
 isTocNested: true
 showAsideToc: true
 ---

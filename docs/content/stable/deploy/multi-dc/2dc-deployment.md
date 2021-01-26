@@ -4,10 +4,12 @@ headerTitle: Two data center (2DC)
 linkTitle: Two data center (2DC)
 description: Set up a 2DC deployment using either unidirectional (master-follower) or bidirectional (multi-master) replication between the data centers.
 menu:
-  v2.4:
+  latest:
     parent: multi-dc
     identifier: 2dc-deployment
     weight: 633
+aliases:
+  - /latest/deploy/replicate-2dc/
 type: page
 isTocNested: true
 showAsideToc: true

@@ -5,7 +5,7 @@ description: Data Types in YSQL
 headcontent: Data Types
 image: /images/section_icons/secure/create-roles.png
 menu:
-  v2.4:
+  latest:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150

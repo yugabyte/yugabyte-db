@@ -3,8 +3,10 @@ title: Install Yugabyte Platform
 headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
+aliases:
+  - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  v2.4:
+  latest:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77

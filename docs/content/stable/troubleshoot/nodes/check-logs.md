@@ -3,8 +3,10 @@ title: Inspect logs
 linkTitle: Inspect logs
 headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
+aliases:
+  - /troubleshoot/nodes/check-logs/
 menu:
-  v2.4:
+  latest:
     parent: troubleshoot-nodes
     weight: 844
 isTocNested: true

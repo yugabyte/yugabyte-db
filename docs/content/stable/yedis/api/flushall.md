@@ -3,9 +3,12 @@ title: FLUSHALL
 linkTitle: FLUSHALL
 description: FLUSHALL
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2064
+aliases:
+  - /latest/api/redis/flushall
+  - /latest/api/yedis/flushall
 isTocNested: true
 showAsideToc: true
 ---

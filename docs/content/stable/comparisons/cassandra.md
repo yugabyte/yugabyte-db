@@ -3,8 +3,10 @@ title: Compare Apache Cassandra with YugabyteDB
 headerTitle: Apache Cassandra
 linkTitle: Apache Cassandra
 description: Compare Apache Cassandra with YugabyteDB.
+aliases:
+  - /comparisons/cassandra/
 menu:
-  v2.4:
+  latest:
     parent: comparisons
     weight: 1120
 isTocNested: false

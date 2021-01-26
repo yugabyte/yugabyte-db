@@ -6,7 +6,7 @@ description: Transactions in YugabyteDB.
 headcontent: Transactions in YugabyteDB.
 image: /images/section_icons/explore/transactional.png
 menu:
-  v2.4:
+  latest:
     identifier: explore-transactions
     parent: explore
     weight: 230

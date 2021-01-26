@@ -3,9 +3,12 @@ title: KEYS
 linkTitle: KEYS
 description: KEYS
 menu:
-  v2.4:
+  latest:
     parent: api-yedis
     weight: 2217
+aliases:
+  - /latest/api/redis/keys
+  - /latest/api/yedis/keys
 isTocNested: true
 showAsideToc: true
 ---
