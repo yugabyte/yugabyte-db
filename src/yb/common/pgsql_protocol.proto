@@ -209,6 +209,12 @@ message PgsqlWriteRequestPB {
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
+
+  // For DELETE requests, do they need to be persisted in regular rocksdb?
+  //
+  // This is currently only used for DELETEs to the index when the index is getting created with
+  // index backfill enabled.
+  optional bool is_delete_persist_needed = 20 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
