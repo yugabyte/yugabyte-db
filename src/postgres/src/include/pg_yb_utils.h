@@ -178,14 +178,6 @@ void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
- * Same as HandleYBStatus but also ask the given resource owner to forget
- * the given YugaByte statement.
- */
-extern void HandleYBStatusWithOwner(YBCStatus status,
-									YBCPgStatement ybc_stmt,
-									ResourceOwner owner);
-
-/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
