@@ -403,6 +403,8 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
 
+  CHECKED_STATUS DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed);
+
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   CHECKED_STATUS NewTruncateColocated(const PgObjectId& table_id,
