@@ -620,6 +620,7 @@ void BackupTxnTest::TestDeleteTable(bool restart_masters) {
 
   if (restart_masters) {
     ASSERT_OK(StartAllMasters(cluster_.get()));
+    ASSERT_OK(WaitUntilMasterHasLeader(cluster_.get(), 5s));
   }
 
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 5s * kTimeMultiplier));

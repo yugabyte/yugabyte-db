@@ -43,6 +43,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -699,6 +700,18 @@ Status WaitUntilTabletHasLeader(
     });
     return tablet_peers.size() == 1;
   }, deadline, "Waiting for election in tablet " + tablet_id);
+}
+
+CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitFor([cluster] {
+    for (int i = 0; i != cluster->num_masters(); ++i) {
+      auto* sys_catalog = cluster->mini_master(i)->master()->catalog_manager()->sys_catalog();
+      if (sys_catalog->tablet_peer()->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        return true;
+      }
+    }
+    return false;
+  }, timeout, "Waiting for master leader");
 }
 
 Status WaitForLeaderOfSingleTablet(
