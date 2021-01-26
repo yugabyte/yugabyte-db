@@ -95,7 +95,7 @@ const initialState = {
   maxNumNodes: -1,
   assignPublicIP: true,
   hasInstanceTypeChanged: false,
-  useTimeSync: false,
+  useTimeSync: true,
   enableYSQL: true,
   enableIPV6: false,
   enableYEDIS: false,

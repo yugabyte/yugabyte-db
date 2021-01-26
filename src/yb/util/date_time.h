@@ -53,6 +53,9 @@ class DateTime {
   static const InputFormat CqlInputFormat;
   static const OutputFormat CqlOutputFormat;
 
+  // Human readable format.
+  static const OutputFormat HumanReadableOutputFormat;
+
   //----------------------------------------------------------------------------------------------
   static Result<Timestamp> TimestampFromString(const std::string& str,
                                                const InputFormat& input_format = CqlInputFormat);

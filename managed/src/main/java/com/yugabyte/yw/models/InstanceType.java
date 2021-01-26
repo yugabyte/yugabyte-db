@@ -176,8 +176,12 @@ public class InstanceType extends Model {
       .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
       .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
-      instanceType.instanceTypeDetails =
-        Json.fromJson(Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
+      JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
+      if (parsedJson == null || parsedJson.isNull()) {
+        instanceType.instanceTypeDetails = new InstanceTypeDetails();
+      } else {
+        instanceType.instanceTypeDetails = Json.fromJson(parsedJson, InstanceTypeDetails.class);
+      }
       if (instanceType.instanceTypeDetails.volumeDetailsList.isEmpty()) {
         instanceType.instanceTypeDetails.setVolumeDetailsList(
           config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),

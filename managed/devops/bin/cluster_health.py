@@ -430,7 +430,7 @@ def seconds_to_human_readable_time(seconds):
 
 
 def local_time():
-    return datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(tz.gettz('America/Los_Angeles'))
+    return datetime.utcnow().replace(tzinfo=tz.tzutc())
 
 
 ###################################################################################################
