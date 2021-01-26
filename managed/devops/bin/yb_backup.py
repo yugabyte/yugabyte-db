@@ -570,10 +570,12 @@ class YBBackup:
             num_retry = num_retry - 1
 
             try:
-                if env is None:
-                    env = os.environ.copy()
-                subprocess_result = str(subprocess.check_output(args, stderr=subprocess.STDOUT,
-                                                                env=env, **kwargs).decode('utf-8'))
+                proc_env = os.environ.copy()
+                proc_env.update(env if env is not None else {})
+
+                subprocess_result = str(subprocess.check_output(
+                                         args, stderr=subprocess.STDOUT,
+                                         env=proc_env, **kwargs).decode('utf-8'))
 
                 if self.args.verbose:
                     logging.info(
@@ -871,7 +873,7 @@ class YBBackup:
 
         return self.ysql_ip
 
-    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args):
+    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args, env_vars={}):
         """
         Runs the utility from the configured location.
         :param cmd_line_args: command-line arguments to the tool
@@ -883,13 +885,15 @@ class YBBackup:
             if not os.path.exists(local_tool):
                 raise BackupException("Tool binary not found at {}".format(local_tool))
 
-            return self.run_program([local_tool] + std_args + cmd_line_args, num_retry=10)
+            return self.run_program([local_tool] + std_args + cmd_line_args,
+                                    env=env_vars, num_retry=10)
         else:
             # Using remote tool binary on leader master server.
             return self.run_ssh_cmd(
                 [remote_tool] + std_args + cmd_line_args,
                 self.get_leader_master_ip(),
-                num_ssh_retry=10)
+                num_ssh_retry=10,
+                env_vars=env_vars)
 
     def run_yb_admin(self, cmd_line_args):
         """
@@ -920,9 +924,16 @@ class YBBackup:
         :return: the standard output of ysql_dump
         """
 
+        certs_env = {}
+        if self.args.certs_dir:
+            certs_env = {
+                            'FLAGS_certs_dir': self.args.certs_dir,
+                            'FLAGS_use_node_to_node_encryption': 'true'
+                        }
+
         return self.run_tool(self.args.local_ysql_dump_binary, self.args.remote_ysql_dump_binary,
                              self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
-                             cmd_line_args)
+                             cmd_line_args, env_vars=certs_env)
 
     def run_ysql_shell(self, cmd_line_args):
         """
@@ -1114,7 +1125,7 @@ class YBBackup:
                 logging.info("Uploading {} to server {} done: {}".format(
                     self.cloud_cfg_file_path, server_ip, output))
 
-    def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3):
+    def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3, env_vars={}):
         """
         Runs the given command on the given remote server over SSH.
         :param cmd: either a string, or a list of arguments. In the latter case, each argument
@@ -1136,6 +1147,11 @@ class YBBackup:
 
         num_retries = CLOUD_CMD_MAX_RETRIES if self.is_cloud() else num_ssh_retry
 
+        if env_vars:
+            # Add env vars to the front of the cmd shell-style like "FOO=bar ls -l"
+            bash_env_args = " ".join(["{}={}".format(env_name, pipes.quote(env_val)) for
+                                     (env_name, env_val) in env_vars.items()])
+            cmd = "{} {}".format(bash_env_args, cmd)
         if self.is_k8s():
             k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
             return self.run_program([
@@ -1167,7 +1183,7 @@ class YBBackup:
                 'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
                 num_retry=num_retries)
         else:
-            return self.run_program(['bash', '-c', cmd])
+            return self.run_program(['bash', '-c', pipes.quote(cmd)])
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -1755,13 +1771,15 @@ class YBBackup:
                     atexit.register(self.delete_created_snapshot, snapshot_id)
 
             if is_ysql:
-                logging.info("Creating ysql dump for DB '{}' to {}".format(db_name, sql_dump_path))
+                logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
+                             db_name, sql_dump_path))
                 self.run_ysql_dump(['--include-yb-metadata', '--serializable-deferrable',
                                     '--create', '--schema-only',
                                     '--dbname=' + db_name, '--file=' + sql_dump_path])
 
                 final_version = self.get_ysql_catalog_version()
-                logging.info('Catalog versions: {} - {}'.format(start_version, final_version))
+                logging.info('[app] YSQL catalog versions: {} - {}'.format(
+                             start_version, final_version))
                 if final_version == start_version:
                     break  # Ok. No table schema changes during meta data creating.
                 else:
@@ -1770,7 +1788,8 @@ class YBBackup:
                     self.args.table = stored_tables
 
                     start_version = final_version
-                    logging.info('Retry creating metafiles ({} retries left)'.format(num_retry))
+                    logging.info('[app] Retry creating metafiles ({} retries left)'.format(
+                                 num_retry))
             else:
                 break  # Ok. No need to retry for YCQL.
 
@@ -1778,7 +1797,7 @@ class YBBackup:
             raise BackupException("Couldn't create metafiles due to catalog changes")
 
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        logging.info('Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
+        logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
         self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
         self.upload_metadata_and_checksum(metadata_path,
                                           os.path.join(snapshot_filepath, METADATA_FILE_NAME))
@@ -1803,16 +1822,16 @@ class YBBackup:
                     "Back up for YSQL is only supported at the database level, "
                     "and not at the table level.")
 
-            logging.info('Backing up tables: {} to {}'.format(self.table_names_str(),
-                                                              self.args.backup_location))
+            logging.info('[app] Backing up tables: {} to {}'.format(
+                         self.table_names_str(), self.args.backup_location))
         else:
             if len(self.args.keyspace) != 1:
                 raise BackupException(
                     "Only one keyspace supported. Found {} --keyspace keys.".
                     format(len(self.args.keyspace)))
 
-            logging.info('Backing up keyspace: {} to {}'.format(self.args.keyspace[0],
-                                                                self.args.backup_location))
+            logging.info('[app] Backing up keyspace: {} to {}'.format(
+                         self.args.keyspace[0], self.args.backup_location))
 
         if self.args.no_auto_name:
             snapshot_filepath = self.args.backup_location
@@ -1836,7 +1855,7 @@ class YBBackup:
         tablet_leaders = self.find_tablet_leaders()
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
-            'Backed up tables %s to %s successfully!' %
+            '[app] Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
@@ -1928,7 +1947,8 @@ class YBBackup:
                 old_db_name = self.run_ssh_cmd(cmd, self.get_leader_master_ip()).strip()
 
             new_db_name = keyspace_name(self.args.keyspace[0])
-            logging.info("Renaming YSQL DB from '{}' into '{}'".format(old_db_name, new_db_name))
+            logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
+                         old_db_name, new_db_name))
             cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
 
             if self.args.local_yb_admin_binary:
