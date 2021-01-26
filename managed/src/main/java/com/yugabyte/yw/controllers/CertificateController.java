@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
@@ -131,27 +132,17 @@ public class CertificateController extends AuthenticatedController {
 
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    HashSet<String> inUseUUIDs = new HashSet<String>();
-    for (Universe universe : Universe.getAll()) {
-      Universe universe_obj = Universe.get(universe.universeUUID);
-      if (universe_obj.getUniverseDetails().rootCA != null) {
-        UUID cert = universe_obj.getUniverseDetails().rootCA;
-        inUseUUIDs.add(cert.toString());
-      }
-    }
-    JsonNode certificates = Json.toJson(certs);
-    for (JsonNode cert : certificates) {
-      JsonNode cert_uuid = cert.get("uuid");
-      if (inUseUUIDs.contains(cert_uuid.asText())) {
-        ((ObjectNode) cert).put("inUse", true);
-      } else {
-        ((ObjectNode) cert).put("inUse", false);
-      }
-    }
+    ArrayNode certInfo = Json.newArray();
+    certs.forEach((cert) -> {
+      ObjectNode certJson = (ObjectNode) Json.toJson(cert);
+      certJson.put("inUse", cert.getInUse(customerUUID));
+      certInfo.add(certJson);
+    });
+
     if (certs == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    return ApiResponse.success(certificates);
+    return ApiResponse.success(certInfo);
   }
 
   public Result get(UUID customerUUID, String label) {
@@ -163,28 +154,23 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
-  public Result delete(UUID reqCertUUID) {
+  public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo cert = CertificateInfo.get(reqCertUUID);
     if (cert == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
     }
-    for (Universe universe : Universe.getAll()) {
-      Universe universe_obj = Universe.get(universe.universeUUID);
-      if (universe_obj.getUniverseDetails().rootCA != null) {
-        UUID certificate_uuid = universe_obj.getUniverseDetails().rootCA;
-        if (certificate_uuid.equals(cert.uuid)) {
-          return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
-        }
+    if (!cert.getInUse(customerUUID)) {
+      if (cert.delete()) {
+        ObjectNode responseJson = Json.newObject();
+        responseJson.put("Successfully deleted the certificate", true);
+        Audit.createAuditEntry(ctx(), request());
+        LOG.info("Successfully deleted the certificate:" + reqCertUUID);
+        return ApiResponse.success(responseJson);
+      } else {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }
-    }
-    if (cert.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("Successfully deleted the certificate", true);
-      Audit.createAuditEntry(ctx(), request());
-      LOG.info("Successfully deleted the certificate:" + reqCertUUID);
-      return ApiResponse.success(responseJson);
     } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Certificate");
+      return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
     }
   }
 

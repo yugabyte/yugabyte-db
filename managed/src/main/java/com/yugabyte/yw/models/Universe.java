@@ -96,9 +96,6 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
-  public static List<Universe> getAll() {
-    return find.query().findList();
-  }
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
@@ -825,5 +822,16 @@ public class Universe extends Model {
       public void run(Universe universe) {}
     };
     Universe.saveDetails(universeUUID, updater);
+  }
+
+  public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
+    Set<Universe> universeList = Customer.get(customerUUID).getUniverses();
+    for (Universe universe : universeList) {
+      UUID certificate_uuid = universe.getUniverseDetails().rootCA;
+      if (universe.getUniverseDetails().rootCA != null && certificate_uuid.equals(certUUID)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
