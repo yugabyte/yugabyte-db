@@ -4,11 +4,12 @@ headerTitle: Persistence
 linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
 aliases:
-  - /latest/architecture/docdb/persistence/
-  - /latest/architecture/concepts/persistence/
-  - /latest/architecture/concepts/docdb/persistence/
+  - /stable/architecture/docdb/persistence/
+  - /stable/architecture/concepts/persistence/
+  - /stable/architecture/concepts/docdb/persistence/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146

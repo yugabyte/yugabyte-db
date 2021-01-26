@@ -5,8 +5,9 @@ linkTitle: Apache HBase
 description: Compare Apache HBase with YugabyteDB.
 aliases:
   - /comparisons/hbase/
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: comparisons
     weight: 1130
 isTocNested: false

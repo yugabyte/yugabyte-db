@@ -3,8 +3,9 @@ title: Code example conventions
 linkTitle: Code example conventions
 summary: Code example conventions
 description: Code example conventions for JSON functions and operators.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: code-example-conventions
     parent: api-ysql-datatypes-json
     weight: 30

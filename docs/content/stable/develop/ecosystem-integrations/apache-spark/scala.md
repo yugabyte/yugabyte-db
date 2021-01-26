@@ -5,9 +5,10 @@ linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
   - /develop/ecosystem-integrations/apache-spark/
-  - /latest/develop/ecosystem-integrations/apache-spark/
+  - /stable/develop/ecosystem-integrations/apache-spark/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: apache-spark-1-scala
     parent: ecosystem-integrations
     weight: 572

@@ -1,17 +1,17 @@
 ---
-title: Migrate PostgreSQL data and applications
-headerTitle: Migrate from PostgreSQL
-linkTitle: Migrate from PostgreSQL
-description: Steps for migrating PostgreSQL data and applications to YugabyteDB.
+title: Migrating From PostgreSQL
+linkTitle: Migrating From PostgreSQL
+description: Migrating from PostgreSQL to YugabyteDB
 image: /images/section_icons/develop/learn.png
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: migrate-from-postgresql
     parent: migrate
     weight: 730
 ---
 
-The steps below cover how to manually migrate PostgreSQL data and applications to YugabyteDB. The sections below assume that you have read [Migration process overview](../migration-process-overview). 
+The steps below outline how to migrate from PostgreSQL to YugabyteDB manually. The sections below assume familiarity with the high level migration process to YugabyteDB. 
 
 {{< note title="Note" >}}
 
@@ -28,7 +28,7 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Migrate a DDL schema</div>
+        <div class="title">Schema Migration</div>
       </div>
       <div class="body">
         Migrate your DDL schema from PostgreSQL to YugabyteDB.
@@ -42,10 +42,10 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Migrate a PostgreSQL application</div>
+        <div class="title">Application Migration</div>
       </div>
       <div class="body">
-        Migrate a PostgreSQL application to YugabyteDB.
+        Migrate an application written for PostgreSQL to YugabyteDB.
       </div>
     </a>
   </div>
@@ -56,10 +56,10 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Export PostgreSQL data</div>
+        <div class="title">Export Data</div>
       </div>
       <div class="body">
-        Export data from PostgreSQL for importing into YugabyteDB.
+        Export data from PostgreSQL.
       </div>
     </a>
   </div>
@@ -70,7 +70,7 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Prepare a cluster</div>
+        <div class="title">Prepare Cluster</div>
       </div>
       <div class="body">
         Prepare your YugabyteDB cluster for data import.
@@ -84,10 +84,10 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Import PostgreSQL data</div>
+        <div class="title">Import Data</div>
       </div>
       <div class="body">
-        Import PostgreSQL data into a YugabyteDB cluster.
+        Import data into the YugabyteDB cluster.
       </div>
     </a>
   </div>
@@ -98,10 +98,10 @@ There are a number of tools that can be used to automate the entire migration fr
         <div class="icon">
           <i class="icon-database-alt2"></i>
         </div>
-        <div class="title">Verify the migration</div>
+        <div class="title">Verify Migration</div>
       </div>
       <div class="body">
-        Verify the migration to YugabyteDB was successful.
+        Verify the result of the migration to YugabyteDB.
       </div>
     </a>
   </div>

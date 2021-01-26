@@ -4,8 +4,9 @@ linkTitle: JanusGraph
 description: JanusGraph
 aliases:
   - /develop/ecosystem-integrations/janusgraph/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: janusgraph
     parent: ecosystem-integrations
     weight: 573

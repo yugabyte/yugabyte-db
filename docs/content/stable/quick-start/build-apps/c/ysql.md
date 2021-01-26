@@ -5,10 +5,11 @@ linkTitle: C
 description: Build a sample C application with libpq.
 aliases:
   - /develop/client-drivers/c/
-  - /latest/develop/client-drivers/c/
-  - /latest/quick-start/build-apps/c/
+  - /stable/develop/client-drivers/c/
+  - /stable/quick-start/build-apps/c/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
@@ -19,7 +20,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/c/ysql" class="nav-link active">
+    <a href="/stable/quick-start/build-apps/c/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

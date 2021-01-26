@@ -3,8 +3,9 @@ title: Deploy on Microsoft Azure using Terraform
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Use Terraform to deploy YugabyteDB on Microsoft Azure.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: deploy-in-azure-3-terraform
     parent: public-clouds
     weight: 650
@@ -14,19 +15,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/public-clouds/azure/azure-arm" class="nav-link">
+    <a href="/stable/deploy/public-clouds/azure/azure-arm" class="nav-link">
       <i class="icon-shell"></i>
       Azure ARM template
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/public-clouds/azure/aks" class="nav-link">
+    <a href="/stable/deploy/public-clouds/azure/aks" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/public-clouds/azure/terraform" class="nav-link active">
+    <a href="/stable/deploy/public-clouds/azure/terraform" class="nav-link active">
       <i class="icon-shell"></i>
       Terraform
     </a>

@@ -5,9 +5,10 @@ linkTitle: API compatibility FAQ
 description: Answers to common questions about YugabyteDB API compatibility.
 aliases:
   - /faq/cassandra/
-  - /latest/faq/cassandra/
+  - /stable/faq/cassandra/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: faq-api-compatibility
     parent: faq
     weight: 2730

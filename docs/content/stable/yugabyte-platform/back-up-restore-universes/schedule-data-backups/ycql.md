@@ -4,7 +4,7 @@ headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
 description: Use Yugabyte Platform to create scheduled backups of universe YCQL data.
 menu:
-  latest:
+  stable:
     identifier: schedule-data-backups-2-ycql
     parent: back-up-restore-universes
     weight: 40
@@ -30,9 +30,11 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables. To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
+Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables.
 
-To schedule a backup of your universe YCQL data:
+## Schedule a backup
+
+To schedule a backup, follow these steps:
 
 1. In the Yugabyte Platform console, click **Universes** in the navigation bar.
 2. Click the name of the universe you want to schedule backups for.

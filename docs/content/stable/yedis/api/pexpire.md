@@ -2,13 +2,14 @@
 title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2233
 aliases:
-  - /latest/api/redis/pexpire
-  - /latest/api/yedis/pexpire
+  - /stable/api/redis/pexpire
+  - /stable/api/yedis/pexpire
 isTocNested: true
 showAsideToc: true
 ---

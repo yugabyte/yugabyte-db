@@ -2,13 +2,14 @@
 title: MONITOR
 linkTitle: MONITOR
 description: MONITOR
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2218
 aliases:
-  - /latest/api/redis/monitor
-  - /latest/api/yedis/monitor
+  - /stable/api/redis/monitor
+  - /stable/api/yedis/monitor
 isTocNested: true
 showAsideToc: true
 ---

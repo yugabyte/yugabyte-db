@@ -1,13 +1,13 @@
 ---
 title: Troubleshoot universe issues
 headerTitle: Troubleshoot universe issues
-linkTitle: Universe issues
+linkTitle: Universe
 description: Troubleshoot universe issues
 aliases:
   - /troubleshoot/enterprise-edition/universes/
-  - /latest/troubleshoot/enterprise-edition/universes/
+  - /stable/troubleshoot/enterprise-edition/universes/
 menu:
-  latest:
+  stable:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

@@ -5,13 +5,14 @@ title: Date and time functions [YCQL]
 headerTitle: Date and time functions
 linkTitle: Date and time 
 description: Use date and time functions to work on date and time data types.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1560
 aliases:
-  - /latest/api/cassandra/function_datetime
-  - /latest/api/ycql/function_datetime
+  - /stable/api/cassandra/function_datetime
+  - /stable/api/ycql/function_datetime
 isTocNested: false
 showAsideToc: true
 ---

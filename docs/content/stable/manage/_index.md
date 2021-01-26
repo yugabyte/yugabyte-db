@@ -6,10 +6,11 @@ description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
-  - /latest/manage/
+  - /stable/manage/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: manage
     weight: 900
 ---

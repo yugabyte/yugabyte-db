@@ -8,8 +8,9 @@ headcontent:
 aliases:
   - /faq/
 section: FAQ
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: faq
     weight: 2730
 ---

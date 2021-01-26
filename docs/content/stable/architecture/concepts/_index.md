@@ -7,8 +7,9 @@ image: /images/section_icons/architecture/concepts.png
 headcontent: Learn about the YugabyteDB query, transaction, sharding, replication, and persistence layers.
 aliases:
   - /architecture/concepts/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: key-concepts
     parent: architecture
     weight: 1106

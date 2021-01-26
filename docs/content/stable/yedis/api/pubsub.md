@@ -2,13 +2,14 @@
 title: PUBSUB
 linkTitle: PUBSUB
 description: PUBSUB
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2550
 aliases:
-  - /latest/api/redis/pubsub
-  - /latest/api/yedis/pubsub
+  - /stable/api/redis/pubsub
+  - /stable/api/yedis/pubsub
 isTocNested: true
 showAsideToc: true
 ---

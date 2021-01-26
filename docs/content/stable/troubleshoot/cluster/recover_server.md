@@ -4,9 +4,10 @@ linkTitle: Recover tserver/master
 description: Recover tserver/master
 aliases:
   - /troubleshoot/cluster/recover-server/
-  - /latest/troubleshoot/cluster/recover-server/
+  - /stable/troubleshoot/cluster/recover-server/
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: troubleshoot-cluster
     weight: 828
 isTocNested: true

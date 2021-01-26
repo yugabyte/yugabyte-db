@@ -4,8 +4,9 @@ linkTitle: Presto
 description: Presto
 aliases:
   - /develop/ecosystem-integrations/presto/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: presto
     parent: ecosystem-integrations
     weight: 575

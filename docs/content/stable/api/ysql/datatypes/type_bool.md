@@ -3,12 +3,13 @@ title: BOOLEAN data types
 headerTitle: BOOLEAN data types
 linkTitle: Boolean
 description: Use the BOOLEAN data type to represent three different states - TRUE, FALSE, or NULL.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: api-ysql-datatypes-bool
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_bool
+  - /stable/api/ysql/datatypes/type_bool
 isTocNested: true
 showAsideToc: true
 ---

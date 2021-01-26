@@ -3,8 +3,9 @@ title: Looping through arrays in PL/pgSQL
 linkTitle: FOREACH loop (PL/pgSQL)
 headerTitle: Looping through arrays in PL/pgSQL
 description: Looping through arrays in PL/pgSQL
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: looping-through-arrays
     parent: api-ysql-datatypes-array
     weight: 30
@@ -392,6 +393,7 @@ Recall that the iterator for `SLICE 0` is a scalar and that the iterators for ot
 -- First overload
 create function array_slices(arr in anyarray)
   returns table(ret anyelement)
+  immutable
   language plpgsql
 as $body$
 declare
@@ -415,6 +417,7 @@ And:
 -- Second overload
 create function array_slices(arr in anyarray, slice_operand in int)
   returns table(ret anyarray)
+  immutable
   language plpgsql
 as $body$
 declare
@@ -582,6 +585,7 @@ Here is a function to generate a four-dimensional array. Notice that the actual 
 ```plpgsql
 create function four_d_array(lengths in int[])
   returns text[]
+  immutable
   language plpgsql
 as $body$
 declare

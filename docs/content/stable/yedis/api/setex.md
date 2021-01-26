@@ -2,13 +2,14 @@
 title: SETEX
 linkTitle: SETEX
 description: SETEX
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2271
 aliases:
-  - /latest/api/redis/setex
-  - /latest/api/yedis/setex
+  - /stable/api/redis/setex
+  - /stable/api/yedis/setex
 isTocNested: true
 showAsideToc: true
 ---

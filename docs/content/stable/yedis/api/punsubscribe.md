@@ -2,13 +2,14 @@
 title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2555
 aliases:
-  - /latest/api/redis/punsubscribe
-  - /latest/api/yedis/punsubscribe
+  - /stable/api/redis/punsubscribe
+  - /stable/api/yedis/punsubscribe
 isTocNested: true
 showAsideToc: true
 ---

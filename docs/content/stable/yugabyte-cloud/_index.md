@@ -4,12 +4,13 @@ linkTitle: Yugabyte Cloud
 description: Yugabyte Cloud
 headcontent: Fully-managed YugabyteDB-as-a-Service running on public clouds.
 image: /images/section_icons/deploy/public-clouds.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 aliases:
-  - /latest/deploy/yugabyte-cloud/
+  - /stable/deploy/yugabyte-cloud/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: yugabyte-cloud
     weight: 639
 ---
@@ -89,7 +90,7 @@ not suitable for production workloads, the Free Tier includes enough resources t
               <div class="title">Connect to clusters</div>
           </div>
           <div class="body">
-              Connect to clusters using cloud shells, remote clients, and third party clients.
+              Connect to clusters using YugabyteDB CLIs and third party clients.
           </div>
       </a>
   </div>

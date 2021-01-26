@@ -2,13 +2,14 @@
 title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2553
 aliases:
-  - /latest/api/redis/unsubscribe
-  - /latest/api/yedis/unsubscribe
+  - /stable/api/redis/unsubscribe
+  - /stable/api/yedis/unsubscribe
 isTocNested: true
 showAsideToc: true
 ---

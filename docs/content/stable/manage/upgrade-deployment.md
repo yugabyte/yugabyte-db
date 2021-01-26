@@ -5,9 +5,10 @@ linkTitle: Upgrade a deployment
 description: Upgrade a deployment
 aliases:
   - /deploy/manual-deployment/upgrade-deployment
-  - /latest/manage/upgrade-deployment
+  - /stable/manage/upgrade-deployment
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706
@@ -36,13 +37,6 @@ For CentOS, this would be something like:
 3. cd /home/yugabyte/softwareyb-$VER/
 4. ./bin/post_install.sh
 ```
-
-
-{{< note title="Note" >}}
-
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../api/ysql/extensions). 
-
-{{< /note >}}
 
 ## Upgrade YB-Masters
 

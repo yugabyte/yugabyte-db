@@ -2,13 +2,14 @@
 title: HLEN
 linkTitle: HLEN
 description: HLEN
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2150
 aliases:
-  - /latest/api/redis/hlen
-  - /latest/api/yedis/hlen
+  - /stable/api/redis/hlen
+  - /stable/api/yedis/hlen
 isTocNested: true
 showAsideToc: true
 ---

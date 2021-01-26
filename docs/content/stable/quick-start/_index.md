@@ -9,8 +9,9 @@ type: page
 aliases:
   - /quick-start/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: quick-start
     weight: 100
 ---

@@ -5,10 +5,11 @@ linkTitle: PHP
 description: Build a PHP application that uses YSQL to perform basic database operations.
 aliases:
   - /develop/client-drivers/php/
-  - /latest/develop/client-drivers/php/
-  - /latest/quick-start/build-apps/php/
+  - /stable/develop/client-drivers/php/
+  - /stable/quick-start/build-apps/php/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555
@@ -19,7 +20,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/php/ysql" class="nav-link active">
+    <a href="/stable/quick-start/build-apps/php/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

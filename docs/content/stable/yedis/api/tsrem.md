@@ -2,13 +2,14 @@
 title: TSREM
 linkTitle: TSREM
 description: TSREM
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2450
 aliases:
-  - /latest/api/redis/tsrem
-  - /latest/api/yedis/tsrem
+  - /stable/api/redis/tsrem
+  - /stable/api/yedis/tsrem
 isTocNested: true
 showAsideToc: true
 ---

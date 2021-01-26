@@ -4,9 +4,9 @@ headerTitle: Add a node
 linkTitle: Add a node
 description: Use Yugabyte Platform to add a node.
 aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
+  - /stable/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  stable:
     identifier: add-nodes
     parent: manage-deployments
     weight: 40

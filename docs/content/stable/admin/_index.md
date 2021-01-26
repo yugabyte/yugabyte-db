@@ -7,8 +7,9 @@ image: /images/section_icons/index/admin.png
 headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: admin
     weight: 1400
 ---
@@ -18,7 +19,6 @@ menu:
 Information about configuring the [YB-Master](../reference/configuration/yb-master) and [YB-TServer](../reference/configuration/yb-tserver) services is in the [Configuration](../reference/configuration/) section.
 
 {{< /note >}}
-
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -116,6 +116,5 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
       </div>
     </a>
   </div>
-
 
 </div>

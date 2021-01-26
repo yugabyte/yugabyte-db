@@ -2,13 +2,14 @@
 title: ECHO
 linkTitle: ECHO
 description: ECHO
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2050
 aliases:
-  - /latest/api/redis/echo
-  - /latest/api/yedis/del
+  - /stable/api/redis/echo
+  - /stable/api/yedis/del
 isTocNested: true
 showAsideToc: true
 ---

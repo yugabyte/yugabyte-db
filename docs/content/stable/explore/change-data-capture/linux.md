@@ -3,11 +3,12 @@ title: Explore change data capture (CDC) on Linux
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Use a local YugabyteDB cluster (on Linux) to stream data changes to stdout using the CDC API.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag 
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag 
 aliases:
-  - /latest/explore/change-data-capture-linux/
+  - /stable/explore/change-data-capture-linux/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: change-data-capture-2-linux
     parent: explore
     weight: 249
@@ -18,14 +19,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/change-data-capture/macos" class="nav-link">
+    <a href="/stable/explore/change-data-capture/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/change-data-capture/linux" class="nav-link active">
+    <a href="/stable/explore/change-data-capture/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

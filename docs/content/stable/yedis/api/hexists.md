@@ -2,13 +2,14 @@
 title: HEXISTS
 linkTitle: HEXISTS
 description: HEXISTS
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2110
 aliases:
-  - /latest/api/redis/hexists
-  - /latest/api/yedis/hexists
+  - /stable/api/redis/hexists
+  - /stable/api/yedis/hexists
 isTocNested: true
 showAsideToc: true
 ---

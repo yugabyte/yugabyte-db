@@ -3,9 +3,10 @@ title: Best practices
 linkTitle: Best practices
 description: Best practices
 aliases:
-  - /latest/deploy/kubernetes/local-ssd/
+  - /stable/deploy/kubernetes/local-ssd/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: best-practices
     parent: deploy-kubernetes
     weight: 626

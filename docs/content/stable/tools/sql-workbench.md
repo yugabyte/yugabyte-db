@@ -3,8 +3,9 @@ title: Use SQL Workbench/J with YugabyteDB YSQL
 headerTitle: SQL Workbench/J
 linkTitle: SQL Workbench/J
 description: Query distributed SQL databases using SQL Workbench/J.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: sql-workbench
     parent: tools
     weight: 2740

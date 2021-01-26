@@ -5,9 +5,10 @@ linkTitle: YCSB
 description: Benchmark YCQL performance with YCSB using the new YCQL binding.
 headcontent: Benchmark YCQL performance using YCSB.
 aliases:
-  - /latest/benchmark/ycsb
+  - /stable/benchmark/ycsb
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: ycsb-3-ycql
     parent: benchmark
     weight: 5

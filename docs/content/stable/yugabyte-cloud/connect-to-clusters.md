@@ -1,13 +1,14 @@
 ---
-title: Connect clients to Yugabyte Cloud clusters
-headerTitle: Connect to Yugabyte Cloud clusters
+title: Connect clients to YugabyteDB clusters
+headerTitle: Connect to clusters
 linkTitle: Connect to clusters
-description: Connect to clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Connect to clusters in Yugabyte Cloud using locally installed YugabyteDB clients.
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - /latest/deploy/yugabyte-cloud/connect-to-clusters/
+  - /stable/deploy/yugabyte-cloud/connect-to-clusters/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: connect-to-clusters
     parent: yugabyte-cloud
     weight: 645
@@ -15,38 +16,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Connect to your YugabyteDB clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.
+You can connect to YugabyteDB clusters in Yugabyte Cloud with YugabyteDB clients and third party clients.
 
-- [YSQL shell (`ysqlsh`)](#ysql-shell-ysqlsh)
-  - [Use the YSQL cloud shell](#use-the-ysql-cloud-shell)
-  - [Connect using a remote YSQL shell](#connect-using-a-remote-ysql-shell)
-- [YCQL shell (`ycqlsh`)](#ycql-shell-ycqlsh)
-  - [Use the YCQL cloud shell](#use-the-ycql-cloud-shell)
-  - [Connect using a remote YCQL shell](#connect-using-a-remote-ycql-shell)
+You can use the following YugabyteDB clients (locally installed) to connect to your remote clusters in Yugabyte Cloud:
 
-## YSQL shell (`ysqlsh`)
+- [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/)
+- [YCQL shell (`ycqlsh`)](../../admin/ycqlsh/)
 
-### Use the YSQL cloud shell
+{{< note title="Note" >}}
 
-To access the YSQL cloud shell, follow these steps:
+To use the YugabyteDB CLIs to connect to your remote Yugabyte Cloud clusters, you must have a local installation of
+YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](../../quick-start/install/).
 
-1. Go to your cluster by clicking **Clusters > Go to cluster**.
-2. Click **Connect** (above the dashboard). The **Connection Info** window appears.
-3. Select **YSQL Shell** and then click **Run in Cloud Shell**. The YSQL shell prompt appears in a separate page and is ready to use.
+{{< /note >}}
 
-```
-ysqlsh (11.2-YB-2.2.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-Related information:
-
-- [ysqlsh](../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YSQL API](../../api/ysql) — Reference for supported YSQL statement, data types, functions, and operators.
-
-### Connect using a remote YSQL shell
+## Connect using the YSQL shell (ysqlsh)
 
 Follow these steps to connect to your remote cluster using the [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/):
 
@@ -78,29 +62,7 @@ Follow these steps to connect to your remote cluster using the [YSQL shell (`ysq
 
 The local [YSQL shell (`ysqlsh`)](../../admin/ysqlsh/) opens connected to the remote cluster.
 
-## YCQL shell (`ycqlsh`)
-
-### Use the YCQL cloud shell
-
-To access the YCQL cloud shell, follow these steps:
-
-1. Go to your cluster by clicking **Clusters > Go to cluster**.
-2. Click **Connect** (above the dashboard). The **Connection Info** window appears.
-3. Select **YCQL Shell** and then click **Run in Cloud Shell**. The YCQL shell prompt appears in a separate page and is ready to use.
-
-```
-Connected to local cluster at acd4d7803e26911ea85700affa0900f1-1535195171.us-west-2.elb.amazonaws.com:12600.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-admin@ycqlsh>
-```
-
-Related information:
-
-- [ycqlsh](../../admin/ycqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YCQL API](../../api/ycql) — Reference for supported YCQL statement, data types, and functions.
-
-### Connect using a remote YCQL shell
+## Connect using the YCQL shell (ycqlsh)
 
 Follow these steps to connect to your remote cluster using the [YCQL shell (`ycqlsh`)](../../admin/ycqlsh/):
 

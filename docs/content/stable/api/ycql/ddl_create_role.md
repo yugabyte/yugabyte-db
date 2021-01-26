@@ -3,13 +3,14 @@ title: CREATE ROLE statement [YCQL]
 headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
 description: Use the `CREATE ROLE` statement to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1235
 aliases:
-  - /latest/api/cassandra/ddl_create_role
-  - /latest/api/ycql/ddl_create_role
+  - /stable/api/cassandra/ddl_create_role
+  - /stable/api/ycql/ddl_create_role
 isTocNested: true
 showAsideToc: true
 ---

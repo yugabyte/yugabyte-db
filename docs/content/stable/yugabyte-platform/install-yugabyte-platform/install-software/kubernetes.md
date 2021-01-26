@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform software - Kubernetes
 linkTitle: Install software 
 description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
-  latest:
+  stable:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 77
@@ -15,21 +15,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
+    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link active">
+    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
+    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>
@@ -46,10 +46,15 @@ Before you install Yugabyte Platform on a Kubernetes cluster, make sure you:
 
 ### Create a yugabyte-helm service account
 
-1. Run the following `kubectl` command to apply the YAML file.
+1. Run the `wget` command to get a copy of the `yugabyte-rbac.yaml` YAML file.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+
+2. Run the following `kubectl` command to apply the YAML file.
+
+```sh
+$ kubectl apply -f yugabyte-rbac.yaml
 ```
 
 The following output should appear:
@@ -77,9 +82,9 @@ To create a `kubeconfig` file for a yugabyte-helm service account:
 
 The following output should appear:
 
-```
-Generated the kubeconfig file: /tmp/yugabyte-helm.conf
-```
+    ```
+    Generated the kubeconfig file: /tmp/yugabyte-helm.conf
+    ```
 
 3. Upload the generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform provider configuration.
 
@@ -125,13 +130,13 @@ Generated the kubeconfig file: /tmp/yugabyte-helm.conf
 
     ```
     NAME               	CHART VERSION	APP VERSION	DESRIPTION
-    yugabytedb/yugabyte	2.3.3        	2.3.3.0	YugabyteDB is the high-performance distributed ..
+    yugabytedb/yugabyte	2.2.3        	2.2.3.0	YugabyteDB is the high-performance distributed ..
     ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
 ```sh
-helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait
+helm install yw-test yugabytedb/yugaware --version 2.2.3 -n yb-platform --wait
 ```
 
 A message is output that the deployment succeeded.

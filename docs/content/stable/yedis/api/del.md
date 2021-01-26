@@ -2,13 +2,14 @@
 title: DEL
 linkTitle: DEL
 description: DEL
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2040
 aliases:
-  - /latest/api/redis/del
-  - /latest/api/yedis/del
+  - /stable/api/redis/del
+  - /stable/api/yedis/del
 isTocNested: true
 showAsideToc: true
 ---

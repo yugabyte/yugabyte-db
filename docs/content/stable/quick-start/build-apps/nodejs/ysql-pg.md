@@ -5,11 +5,12 @@ linkTitle: Node.js
 description: Build a Node.js application with the pg driver that uses YSQL.
 aliases:
   - /develop/client-drivers/nodejs/
-  - /latest/develop/client-drivers/nodejs/
-  - /latest/develop/build-apps/nodejs/  
-  - /latest/quick-start/build-apps/nodejs/
+  - /stable/develop/client-drivers/nodejs/
+  - /stable/develop/build-apps/nodejs/  
+  - /stable/quick-start/build-apps/nodejs/
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-1

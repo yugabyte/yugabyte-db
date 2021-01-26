@@ -2,13 +2,14 @@
 title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2510
 aliases:
-  - /latest/api/redis/zcard
-  - /latest/api/yedis/zcard
+  - /stable/api/redis/zcard
+  - /stable/api/yedis/zcard
 isTocNested: true
 showAsideToc: true
 ---

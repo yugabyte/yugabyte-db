@@ -2,13 +2,14 @@
 title: FLUSHALL
 linkTitle: FLUSHALL
 description: FLUSHALL
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2064
 aliases:
-  - /latest/api/redis/flushall
-  - /latest/api/yedis/flushall
+  - /stable/api/redis/flushall
+  - /stable/api/yedis/flushall
 isTocNested: true
 showAsideToc: true
 ---

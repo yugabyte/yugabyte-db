@@ -5,8 +5,9 @@ linkTitle: Amazon DynamoDB
 description: Compare Amazon DynamoDB with YugabyteDB.
 aliases:
   - /comparisons/amazon-dynamodb/
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: comparisons
     weight: 1105
 isTocNested: false

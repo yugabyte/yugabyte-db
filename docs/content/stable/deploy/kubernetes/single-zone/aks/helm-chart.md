@@ -3,16 +3,17 @@ title: Deploy on Azure Kubernetes Service (AKS) using Helm Chart
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
 aliases:
-  - /latest/deploy/kubernetes/aks/
-  - /latest/deploy/kubernetes/aks/helm-chart/
-  - /latest/deploy/kubernetes/single-zone/aks/
+  - /stable/deploy/kubernetes/aks/
+  - /stable/deploy/kubernetes/aks/helm-chart/
+  - /stable/deploy/kubernetes/single-zone/aks/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -21,13 +22,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
+    <a href="/stable/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
+    <a href="/stable/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
@@ -202,7 +203,7 @@ You can also view the details of the cluster in the Kubernetes Dashboard by runn
 First, run the following `kubectl` command:
 
 ```sh
-$ kubectl create clusterrolebinding yb-kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
+$ kubectl create clusterrolebinding kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard --user=clusterUser
 ```
 
 And then run the following Azure CLI command:

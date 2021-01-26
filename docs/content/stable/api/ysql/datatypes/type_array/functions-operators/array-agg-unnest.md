@@ -3,8 +3,9 @@ title: array_agg(), unnest(), and generate_subscripts()
 linkTitle: array_agg(), unnest(), generate_subscripts()
 headerTitle: array_agg(), unnest(), and generate_subscripts()
 description: array_agg(), unnest(), and generate_subscripts()
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: array-agg-unnest
     parent: array-functions-operators
 isTocNested: true
@@ -395,7 +396,7 @@ values
 Next, create a view that encodes the fully projected, unrestricted _inner join_ of the original data, and inspect the result set that it represents:
 
 ```plpgsql
-create or replace view original_data as
+create view original_data as
 select
   master_pk,
   m.master_name,
@@ -474,6 +475,7 @@ Here's a helper function to show the primitive values that the _"details&#95;t[]
 ```plpgsql
 create function pretty_details(arr in details_t[])
   returns text
+  immutable
   language plpgsql
 as $body$
 declare
@@ -523,7 +525,7 @@ It produces this result:
 Next, create a view that uses `unnest()` to re-create the effect of the fully projected, unrestricted _inner join_ of the original data, and inspect the result set that it represents:
 
 ```plpgsql
-create or replace view new_data as
+create view new_data as
 with v as (
   select
     master_pk,

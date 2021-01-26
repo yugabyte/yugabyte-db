@@ -3,8 +3,9 @@ title: Build a Python application that uses YCQL
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a Python application with the Yugabyte Python Driver for YCQL.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Python
     identifier: python-3

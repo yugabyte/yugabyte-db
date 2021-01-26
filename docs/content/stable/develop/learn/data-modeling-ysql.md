@@ -3,8 +3,9 @@ title: YSQL data modeling in YugabyteDB
 headerTitle: Data modeling
 linkTitle: 2. Data modeling
 description: Learn data modeling in YSQL and how to identify the patterns used to access data and the types of queries to be performed.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: data-modeling-2-ysql
     parent: learn
     weight: 562
@@ -15,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ysql" class="nav-link active">
+    <a href="/stable/develop/learn/data-modeling-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ycql" class="nav-link">
+    <a href="/stable/develop/learn/data-modeling-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

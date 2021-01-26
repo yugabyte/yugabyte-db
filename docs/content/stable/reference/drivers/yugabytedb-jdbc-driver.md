@@ -3,26 +3,27 @@ title: YugabyteDB JDBC Driver (with cluster awareness and load balancing)
 headerTitle: YugabyteDB JDBC Driver
 linkTitle: YugabyteDB JDBC Driver
 description: Add cluster awareness and load balancing to YugabyteDB distributed SQL databases 
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: yugabytedb-jdbc-driver
     parent: drivers
     weight: 2941
 aliases:
-  - /latest/reference/connectors/yugabytedb-jdbc-driver
+  - /stable/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Overview
 
-The YugabyteDB JDBC Driver is based on the open source [PostgreSQL JDBC Driver (PgJDBC)](https://github.com/pgjdbc/pgjdbc) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC Driver extends PgJDBC to add support for distributed SQL databases created in YugabyteDB universes, including cluster awareness and load balancing. Like PgJDBC, the YugabyteDB JDBC Driver is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The YugabyteDB JDBC Driver is based on the open source [PostgreSQL JDBC Driver (PgJDBC)](https://github.com/pgjdbc/pgjdbc) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC to add support for distributed SQL databases created in YugabyteDB universes, including cluster awareness and load balancing.
 
 ### Cluster awareness
 
-The YugabyteDB JBDC Driver supports distributed SQL databases on a YugabyteDB universe, or cluster, and adds cluster awareness. When you specify any one node in your YugabyteDB cluster as the initial *contact point*  (`YBClusterAwareDataSource`), the driver discovers the rest of the nodes in the universe and automatically responds to nodes being started, stopped, added, or removed.
+The YugabyteDB JBDC driver supports distributed SQL databases on a YugabyteDB universe, or cluster, and adds cluster awareness. When you specify any one node in your YugabyteDB cluster as the initial *contact point*  (`YBClusterAwareDataSource`), the driver discovers the rest of the nodes in the universe and automatically responds to nodes being started, stopped, added, or removed.
 
 ### Connection pooling
 
@@ -40,7 +41,7 @@ For details on functionality incorporated from the PostgreSQL JDBC driver, see [
 
 ## Download
 
-Add the following lines to your Apache Maven project to access and download the YugabyteDB JDBC Driver.
+Add the following lines to your Apache Maven project to access and download the YugabyteDB JDBC driver.
 
 ```
 <dependency>
@@ -93,4 +94,3 @@ Add the following lines to your Apache Maven project to access and download the 
         <version>42.2.7-yb-3-SNAPSHOT</version>
     </dependency>
     ```
-

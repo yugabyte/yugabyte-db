@@ -3,8 +3,9 @@ title: Create a local YugabyteDB cluster on Linux
 headerTitle: 2. Create a local YugabyteDB cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Linux in less than five minutes.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-2-linux
@@ -17,28 +18,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link ">
+    <a href="/stable/quick-start/create-local-cluster/macos" class="nav-link ">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link active">
+    <a href="/stable/quick-start/create-local-cluster/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link">
+    <a href="/stable/quick-start/create-local-cluster/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link">
+    <a href="/stable/quick-start/create-local-cluster/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

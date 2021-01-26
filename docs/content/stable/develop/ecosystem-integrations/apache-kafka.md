@@ -4,8 +4,9 @@ linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
   - /develop/ecosystem-integrations/apache-kafka/
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: apache-kafka
     parent: ecosystem-integrations
     weight: 571

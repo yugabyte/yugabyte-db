@@ -8,15 +8,15 @@ image: /images/section_icons/index/develop.png
 aliases:
   - /develop/
 section: YUGABYTEDB CORE
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: develop
     weight: 600
 
 ---
 
 <div class="row">
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
@@ -93,7 +93,6 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
-
   </div>
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">

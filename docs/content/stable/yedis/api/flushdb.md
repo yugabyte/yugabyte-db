@@ -2,13 +2,14 @@
 title: FLUSHDB
 linkTitle: FLUSHDB
 description: FLUSHDB
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2065
 aliases:
-  - /latest/api/redis/flushdb
-  - /latest/api/yedis/flushdb
+  - /stable/api/redis/flushdb
+  - /stable/api/yedis/flushdb
 isTocNested: true
 showAsideToc: true
 ---

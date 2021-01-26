@@ -3,13 +3,14 @@ title: DROP INDEX statement [YCQL]
 headerTitle: DROP INDEX
 linkTitle: DROP INDEX
 description: Use the DROP INDEX statement to remove an index and all of its data from the database.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1255
 aliases:
-  - /latest/api/cassandra/ddl_drop_index
-  - /latest/api/ycql/ddl_drop_index
+  - /stable/api/cassandra/ddl_drop_index
+  - /stable/api/ycql/ddl_drop_index
 isTocNested: true
 showAsideToc: true
 ---

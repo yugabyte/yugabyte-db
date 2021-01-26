@@ -3,13 +3,14 @@ title: Built-in function call [YCQL]
 headerTitle: Built-in function call
 linkTitle: Function call
 description: Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1350
 aliases:
-  - /latest/api/cassandra/expr_fcall
-  - /latest/api/ycql/expr_fcall
+  - /stable/api/cassandra/expr_fcall
+  - /stable/api/ycql/expr_fcall
 isTocNested: true
 showAsideToc: true
 ---
@@ -133,7 +134,6 @@ and so on, till the last segment/range of `512` in the partition space:
 .. where partition_hash(h1, h2) >= 65024;
 ```
 
-Here is a full implementation of a parallel table scan using `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc).
 
 ## WriteTime function
 

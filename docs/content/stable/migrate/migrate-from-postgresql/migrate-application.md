@@ -1,10 +1,11 @@
 ---
-title: Migrate a PostgreSQL application
-headerTitle: Migrate a PostgreSQL application
-linkTitle: Migrate a PostgreSQL application
+title: App Migration
+headerTitle: App Migration
+linkTitle: App Migration
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: migrate-postgresql-app
     parent: migrate-from-postgresql
     weight: 740
@@ -12,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section outlines the recommended changes for porting an existing PostgreSQL application to YugabyteDB.
+This section outlines the recommended changes to port existing applications written against PostgreSQL.
 
 ## Retry transactions on conflicts
 

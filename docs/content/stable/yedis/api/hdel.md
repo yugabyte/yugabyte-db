@@ -2,13 +2,14 @@
 title: HDEL
 linkTitle: HDEL
 description: HDEL
+block_indexing: true
 menu:
-  latest:
+  stable:
     parent: api-yedis
     weight: 2100
 aliases:
-  - /latest/api/redis/hdel
-  - /latest/api/yedis/hdel
+  - /stable/api/redis/hdel
+  - /stable/api/yedis/hdel
 isTocNested: true
 showAsideToc: true
 ---

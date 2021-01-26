@@ -5,13 +5,14 @@ linkTitle: Keywords
 description: YSQL API keywords.
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
-  latest:
+  stable:
     identifier: api-ysql-keywords
     parent: api-ysql
     weight: 4500
 aliases:
-  - /latest/api/ysql/keywords
+  - /stable/api/ysql/keywords
 isTocNested: true
 showAsideToc: true
 ---
