@@ -6886,7 +6886,7 @@ Status CatalogManager::EnableBgTasks() {
   // Add bg thread to rebuild the system partitions thread.
   refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
+      [this]() { RebuildYQLSystemPartitions(); }));
   return Status::OK();
 }
 
@@ -8772,8 +8772,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   }
   refresh_yql_partitions_task_.Schedule([this](const Status& status) {
     WARN_NOT_OK(
-        background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)),
+        background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
   }, wait_time);
 }
