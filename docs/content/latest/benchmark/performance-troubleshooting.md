@@ -7,9 +7,9 @@ image: /images/section_icons/architecture/concepts.png
 headcontent: Performance Troubleshooting
 menu:
   latest:
-    identifier: large-datasets-2-ysql
+    identifier: performance-troubleshooting
     parent: benchmark
-    weight: 7
+    weight: 22
 showAsideToc: true
 isTocNested: true
 ---
@@ -17,6 +17,8 @@ isTocNested: true
 Use this page for general guidance and steps you can take when troubleshooting the performance of your Yugabyte cluster.
 
 ## Location of various files on a YB cluster
+
+Note that these locations refer to the default for clusters intalled via Yugabyte Platform.
 
 ### YB Software/Binaries on the cluster
 
@@ -47,7 +49,7 @@ drwxr-xr-x. 2 yugabyte yugabyte   25 Jan 15 20:18 conf
 You can find config files for the master and tserver at `/home/yugabyte/{master|tserver}/conf/server.conf`.
 
 ### Transaction Logs a.k.a WAL (write-ahead logs)
-You can find WAL files at `/mnt/d*/yb-data/{master|tserver}/wals`.
+Assuming Yugabyte was run with `--fs_data_dirs=/mnt/d0,/mnt/d1`, you can find WAL files at `/mnt/d*/yb-data/{master|tserver}/wals`.
 
 To pretty print the contents of the WAL files, use the `log-dump` utility:
 
@@ -81,16 +83,11 @@ These go to e.g. `/home/yugabyte/tserver/tserver.{err|out}.
 
 ## Setting gflags dynamically
 
-The `yb-ts-cli` utility allows changing gflags dynamically. _Note: For this step you must identify the server using its RPC port (not the HTTP port).
+A cautionary note -- setting string flags dynamically is not a good idea, as it is not thread safe. That being said, the `yb-ts-cli` utility allows changing gflags dynamically. _Note: For this step you must identify the server using its RPC port (not the HTTP port).
 
 For example, to increase the verbose logging level to 2:
 
     $ ./yb-ts-cli --server_address=localhost:9100 set_flag v 2
-
-Or, to turn tracing on for all RPCs:
-
-    $ ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
-
 
 ## Slow Response Logs
 
@@ -108,9 +105,25 @@ W0325 06:47:13.033341 116514816 inbound_call.cc:208] Trace:
 0325 06:47:13.032168 (+    62us) inbound_call.cc:125] Queueing success response
 ```
 
+## Viewing real-time logs
+
+You can view logs of Yugabyte processes at a particular node (e.g. 127.0.0.1) at various ports:
+
+| Description | Address
+-------------|-----------|
+Master Metrics | 127.0.0.1:7000
+TServer Metrics | 127.0.0.1:9000
+Yedis Metrics | 127.0.0.1:11000
+YCQL Metrics | 127.0.0.1:12000
+YSQL Metrics | 127.0.0.1:13000
+Per-Tablet, JSON Metrics | 127.0.0.1/metrics
+Per-Table, Prometheus Metrics | 127.0.0.1/prometheus-metrics
+
 ## Turning RPC tracing on
 
 To turn tracing on for all RPCs, not just the slow ones, use the `rpc_dump_all_traces` gflag.
+
+    $ ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
 
 ## Print contents of a proto file
 
@@ -128,23 +141,23 @@ export DYLD_FALLBACK_LIBRARY_PATH=~/code/yugabyte/build/latest/rocksdb-build
 ## yb-ts-cli 
 You can run various tablet related commands with yb-ts-cli by pointing at the master:
 ```
-./yb-ts-cli list_tablets --server_address=localhost:8101
-./yb-ts-cli dump_tablet --server_address=localhost:8101 e1bc59288ee849ab850ae0a40bd88649
+./yb-ts-cli list_tablets --server_address=localhost:9000
+./yb-ts-cli dump_tablet --server_address=localhost:9000 e1bc59288ee849ab850ae0a40bd88649
 ```
 
 ## yb-admin
-You can run various commands with `yb-admin`:
+You can run various commands with `yb-admin`. Just specify the full set of master `{ip:ports}` with `-master_addresses`:
 ```
 # Get all tables
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_tables
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tables
 # Get all tablets for a specific table
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_tablets yb_load_test 
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test 
 # List the tablet servers for each tablet
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_tablet_servers $(./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_tablets yb_load_test)
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablet_servers $(./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test)
 # List all tablet servers
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_all_tablet_servers
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_tablet_servers
 # List all masters
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 list_all_masters
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_masters
 # Output master state to console
-./yb-admin -master_addresses localhost:7101,localhost:7103,localhost:7102 dump_masters_state
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 dump_masters_state
 ```
