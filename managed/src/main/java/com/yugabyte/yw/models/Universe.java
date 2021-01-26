@@ -832,8 +832,8 @@ public class Universe extends Model {
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     Set<Universe> universeList = Customer.get(customerUUID).getUniverses();
     for (Universe universe : universeList) {
-      UUID certificate_uuid = universe.getUniverseDetails().rootCA;
-      if (universe.getUniverseDetails().rootCA != null && certificate_uuid.equals(certUUID)) {
+      UUID certificateUUID = universe.getUniverseDetails().rootCA;
+      if (universe.getUniverseDetails().rootCA != null && certificateUUID.equals(certUUID)) {
         return true;
       }
     }

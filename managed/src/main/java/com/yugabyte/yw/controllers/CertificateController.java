@@ -131,18 +131,18 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result list(UUID customerUUID) {
-    List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    ArrayNode certInfo = Json.newArray();
-    certs.forEach((cert) -> {
-      ObjectNode certJson = (ObjectNode) Json.toJson(cert);
-      certJson.put("inUse", cert.getInUse(customerUUID));
-      certInfo.add(certJson);
+    List<CertificateInfo> certificates = CertificateInfo.getAll(customerUUID);
+    ArrayNode certList = Json.newArray();
+    certificates.forEach((certificate) -> {
+      ObjectNode certJson = (ObjectNode) Json.toJson(certificate);
+      certJson.put("inUse", certificate.getInUse(customerUUID));
+      certList.add(certJson);
     });
 
-    if (certs == null) {
+    if (certificates == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    return ApiResponse.success(certInfo);
+    return ApiResponse.success(certList);
   }
 
   public Result get(UUID customerUUID, String label) {
@@ -155,12 +155,12 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
-    CertificateInfo cert = CertificateInfo.get(reqCertUUID);
-    if (cert == null) {
+    CertificateInfo certificate = CertificateInfo.get(reqCertUUID);
+    if (certificate == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
     }
-    if (!cert.getInUse(customerUUID)) {
-      if (cert.delete()) {
+    if (!certificate.getInUse(customerUUID)) {
+      if (certificate.delete()) {
         ObjectNode responseJson = Json.newObject();
         responseJson.put("Successfully deleted the certificate", true);
         Audit.createAuditEntry(ctx(), request());
