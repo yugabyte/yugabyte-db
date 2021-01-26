@@ -4,7 +4,7 @@ headerTitle: Audit logging for the YCQL API
 linkTitle: Audit logging
 description: Use audit logging in YugabyteDB for the YCQL API.
 menu:
-  stable:
+  v2.2:
     identifier: audit-logging-2-ycql
     parent: secure
     weight: 750

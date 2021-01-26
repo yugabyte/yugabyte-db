@@ -8,7 +8,7 @@ image: /images/section_icons/index/deploy.png
 section: YUGABYTEDB CORE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: deploy
     weight: 634
 ---

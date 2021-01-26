@@ -5,7 +5,7 @@ linkTitle: USE
 description: Use the USE statement to specify a default keyspace for the current client session.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1290
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: yugabyted
 description: Use yugabyted to run single-node YugabyteDB clusters.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: yugabyted
     parent: configuration
     weight: 2451

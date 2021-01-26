@@ -5,7 +5,7 @@ headerTitle: The literal for an array of "row" type values
 description: The literal for an array of "row" type values
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-of-rows
     parent: array-literals
     weight: 40

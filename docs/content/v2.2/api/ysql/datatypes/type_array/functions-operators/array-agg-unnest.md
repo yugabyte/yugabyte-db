@@ -5,7 +5,7 @@ headerTitle: array_agg(), unnest(), and generate_subscripts()
 description: array_agg(), unnest(), and generate_subscripts()
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-agg-unnest
     parent: array-functions-operators
 isTocNested: true

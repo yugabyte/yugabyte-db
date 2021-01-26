@@ -5,7 +5,7 @@ linkTitle: Upgrade a deployment
 description: Upgrade a deployment
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706

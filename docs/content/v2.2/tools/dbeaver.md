@@ -5,7 +5,7 @@ linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: dbeaver
     parent: tools
     weight: 2710

@@ -5,7 +5,7 @@ linkTitle: Operators
 description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1360
 isTocNested: true

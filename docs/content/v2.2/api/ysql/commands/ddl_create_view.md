@@ -5,7 +5,7 @@ linkTitle: CREATE VIEW
 description: Use the CREATE VIEW statement to create a new view in a database. 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-view
     parent: api-ysql-commands
 isTocNested: true

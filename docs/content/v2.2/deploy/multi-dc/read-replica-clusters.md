@@ -5,7 +5,7 @@ linkTitle: Read replica clusters
 description: Deploy read replica clusters to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: multi-dc
     identifier: read-replica-clusters
     weight: 634

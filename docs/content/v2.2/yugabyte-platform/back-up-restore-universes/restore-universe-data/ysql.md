@@ -6,7 +6,7 @@ description: Use Yugabyte Platform to restore data in YSQL tables.
 - /stable/yugabyte-platform/back-up-restore-databases/
 - /stable/yugabyte-platform/back-up-restore-universes/restore-universe-data/
 menu:
-  stable:
+  v2.2:
     parent: back-up-restore-universes
     identifier: restore-universe-data-1-ysql
     weight: 30

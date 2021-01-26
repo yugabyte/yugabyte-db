@@ -5,7 +5,7 @@ headerTitle: Array concatenation functions and operators
 description: Array concatenation functions and operators
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-concatenation
     parent: array-functions-operators
     weight: 40

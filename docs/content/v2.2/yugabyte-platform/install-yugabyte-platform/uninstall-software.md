@@ -4,7 +4,7 @@ headerTitle: Uninstall the Yugabyte Platform software
 linkTitle: Uninstall software
 description: Uninstall the Yugabyte Platform software.
 menu:
-  stable:
+  v2.2:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80

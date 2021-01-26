@@ -5,7 +5,7 @@ linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1300
 isTocNested: true

@@ -7,7 +7,7 @@ headcontent: Enable server-to-server encryption (using TLS) for intranode commun
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: server-to-server
     parent: tls-encryption
     weight: 20

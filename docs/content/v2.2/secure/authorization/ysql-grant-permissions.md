@@ -5,7 +5,7 @@ linkTitle: Grant privileges
 description: Grant YSQL privileges in YugabyteDB
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     name: Grant privileges
     identifier: ysql-grant-permissions
     parent: authorization
@@ -17,13 +17,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="/v2.2/secure/authorization/ysql-grant-permissions" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/secure/authorization/ycql-grant-permissions" class="nav-link">
+    <a href="/v2.2/secure/authorization/ycql-grant-permissions" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

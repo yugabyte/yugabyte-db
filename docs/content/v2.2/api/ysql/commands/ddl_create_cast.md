@@ -5,7 +5,7 @@ linkTitle: CREATE CAST
 description: Use the CREATE CAST statement to create a new cast.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-cast
     parent: api-ysql-commands
 isTocNested: true

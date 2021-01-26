@@ -5,7 +5,7 @@ linkTitle: Apache Spark
 description: Build and run a Java-based sample word-count application using Apache Spark and YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: apache-spark-2-java
     parent: ecosystem-integrations
     weight: 572

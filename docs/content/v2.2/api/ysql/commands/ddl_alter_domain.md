@@ -5,7 +5,7 @@ linkTitle: ALTER DOMAIN
 description: Use the ALTER DOMAIN statement to change the definition of an existing domain.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-alter-domain
     parent: api-ysql-commands
 isTocNested: true

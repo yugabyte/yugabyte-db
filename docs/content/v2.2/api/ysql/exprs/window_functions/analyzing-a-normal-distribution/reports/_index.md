@@ -6,7 +6,7 @@ description: Part of the code kit for the "Analyzing a normal distribution" sect
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: normal-distribution-analysis-reports
     parent: analyzing-a-normal-distribution
     weight: 200

@@ -5,7 +5,7 @@ linkTitle: PREPARE
 description: Use the PREPARE statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-prepare
     parent: api-ysql-commands
 isTocNested: true

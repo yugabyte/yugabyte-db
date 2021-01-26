@@ -5,7 +5,7 @@ linkTitle: yb-ctl
 description: Use the yb-ctl command line tool to administer local YugabyteDB clusters used for development and learning.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: yb-ctl
     parent: admin
     weight: 2410

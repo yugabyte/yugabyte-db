@@ -4,7 +4,7 @@ linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2554
 isTocNested: true

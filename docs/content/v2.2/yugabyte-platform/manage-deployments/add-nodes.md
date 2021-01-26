@@ -4,7 +4,7 @@ headerTitle: Add a node
 linkTitle: Add a node
 description: Use Yugabyte Platform to add a node.
 menu:
-  stable:
+  v2.2:
     identifier: add-nodes
     parent: manage-deployments
     weight: 40

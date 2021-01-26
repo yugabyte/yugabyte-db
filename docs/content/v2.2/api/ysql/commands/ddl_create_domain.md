@@ -5,7 +5,7 @@ linkTitle: CREATE DOMAIN
 description: Use the CREATE DOMAIN statement to create a user-defined data type with optional constraints.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-domain
     parent: api-ysql-commands
 isTocNested: true

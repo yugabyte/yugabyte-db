@@ -5,7 +5,7 @@ linkTitle: 4. Start YB-TServers
 description: Steps to start YB-TServers when deploying for a single region or data center in a multi-zone/multi-rack configuration.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: deploy-manual-deployment-start-tservers
     parent: deploy-manual-deployment
     weight: 614

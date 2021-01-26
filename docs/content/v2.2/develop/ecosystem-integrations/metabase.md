@@ -4,7 +4,7 @@ linkTitle: Metabase
 description: Metabase
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: metabase
     parent: ecosystem-integrations
     weight: 576

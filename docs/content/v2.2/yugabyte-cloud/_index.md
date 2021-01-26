@@ -8,7 +8,7 @@ beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: yugabyte-cloud
     weight: 639
 ---

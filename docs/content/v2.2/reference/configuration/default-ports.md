@@ -6,7 +6,7 @@ description: Default ports for YugabyteDB including client APIs, RPC communicati
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: default-ports
     parent: configuration
     weight: 2740

@@ -5,7 +5,7 @@ headerTitle: Recover failing disk
 description: Learn how to recover failing disk
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: troubleshoot-nodes
     weight: 849
 isTocNested: true

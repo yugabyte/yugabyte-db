@@ -5,7 +5,7 @@ headerTitle: array_remove()
 description: array_remove()
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-remove
     parent: array-functions-operators
 isTocNested: true

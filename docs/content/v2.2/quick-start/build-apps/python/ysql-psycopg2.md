@@ -5,7 +5,7 @@ linkTitle: Python
 description: Build a sample Python application with psycopg2 that use YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: build-apps
     name: Python
     identifier: python-1

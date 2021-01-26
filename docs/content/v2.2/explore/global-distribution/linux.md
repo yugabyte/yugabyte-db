@@ -5,7 +5,7 @@ linkTitle: Global distribution
 description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: global-distribution-2-linux
     parent: explore
     weight: 220
@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/global-distribution/macos" class="nav-link">
+    <a href="/v2.2/explore/global-distribution/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/global-distribution/linux" class="nav-link active">
+    <a href="/v2.2/explore/global-distribution/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

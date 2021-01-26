@@ -5,7 +5,7 @@ linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-set
     parent: api-ysql-commands
 isTocNested: true

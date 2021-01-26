@@ -5,7 +5,7 @@ headerTitle: The array slice operator
 description: The array slice operator
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-slice-operator
     parent: array-functions-operators
     weight: 30

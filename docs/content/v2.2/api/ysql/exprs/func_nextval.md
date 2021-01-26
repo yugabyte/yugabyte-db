@@ -5,7 +5,7 @@ linkTitle: nextval()
 description: Returns the next value from the sequence cache for the current session. 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-exprs-nextval
     parent: api-ysql-exprs
 isTocNested: true

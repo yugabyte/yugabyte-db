@@ -5,7 +5,7 @@ linkTitle: Scala
 description: Build a Scala application with the Yugabyte Java Driver for YCQL and sbt dependency.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: build-apps
     name: Scala
     identifier: scala-1
@@ -17,7 +17,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/stable/quick-start/build-apps/scala/ycql" class="nav-link active">
+    <a href="/v2.2/quick-start/build-apps/scala/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

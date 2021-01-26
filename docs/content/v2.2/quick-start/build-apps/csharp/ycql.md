@@ -5,7 +5,7 @@ linkTitle: C#
 description: Build a C# application that uses YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: build-apps-csharp-2-ycql
     parent: build-apps
     weight: 554

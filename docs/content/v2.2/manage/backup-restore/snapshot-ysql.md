@@ -6,7 +6,7 @@ description: Snapshot and restore data in YugabyteDB for YSQL.
 image: /images/section_icons/manage/enterprise.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: snapshots-1-ysql
     parent: backup-restore
     weight: 705
@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/manage/backup-restore/snapshot-ysql" class="nav-link active">
+    <a href="/v2.2/manage/backup-restore/snapshot-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/manage/backup-restore/snapshots-ycql" class="nav-link">
+    <a href="/v2.2/manage/backup-restore/snapshots-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

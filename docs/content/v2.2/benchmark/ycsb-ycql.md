@@ -6,7 +6,7 @@ description: Benchmark YCQL performance with YCSB using the new YCQL binding.
 headcontent: Benchmark YCQL performance using YCSB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: ycsb-3-ycql
     parent: benchmark
     weight: 5

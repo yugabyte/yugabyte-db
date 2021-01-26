@@ -5,7 +5,7 @@ linkTitle: ROLLBACK
 description: Use the ROLLBACK statement to roll back the current transactions.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-txn-rollback
     parent: api-ysql-commands
 isTocNested: true

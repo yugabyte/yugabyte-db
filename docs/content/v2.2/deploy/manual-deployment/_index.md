@@ -7,7 +7,7 @@ headcontent: Instructions for manually deploying YugabyteDB.
 image: /images/section_icons/deploy/manual-deployment.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 610

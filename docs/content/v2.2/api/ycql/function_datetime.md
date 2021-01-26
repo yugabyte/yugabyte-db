@@ -7,7 +7,7 @@ linkTitle: Date and time
 description: Use date and time functions to work on date and time data types.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1560
 isTocNested: false

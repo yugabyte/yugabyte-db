@@ -5,7 +5,7 @@ linkTitle: "->, ->>, #>, #>> (JSON subvalues)"
 description: Read a JSON value at a specified path.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: subvalue-operators
     parent: json-functions-operators
     weight: 12

@@ -5,7 +5,7 @@ linkTitle: CREATE AGGREGATE
 description: Use the CREATE AGGREGATE statement to create a new aggregate function.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-aggregate
     parent: api-ysql-commands
 isTocNested: true

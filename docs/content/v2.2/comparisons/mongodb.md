@@ -5,7 +5,7 @@ linkTitle: MongoDB
 description: Compare MongoDB with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: comparisons
     weight: 1090
 isTocNested: false

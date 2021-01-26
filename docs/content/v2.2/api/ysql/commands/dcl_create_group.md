@@ -5,7 +5,7 @@ linkTitle: CREATE GROUP
 description: Use the CREATE GROUP statement to create a group role. CREATE GROUP is an alias for CREATE ROLE and is used to create a group role.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-group
     parent: api-ysql-commands
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: Schema Migration
 description: How to migrate PostgreSQL schema to YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-schema
     parent: migrate-from-postgresql
     weight: 730

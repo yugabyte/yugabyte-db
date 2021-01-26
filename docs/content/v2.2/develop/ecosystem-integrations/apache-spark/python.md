@@ -5,7 +5,7 @@ linkTitle: Apache Spark
 description: Build a Python application using Apache Spark and YugabyteDB
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: apache-spark-3-python
     parent: ecosystem-integrations
     weight: 572

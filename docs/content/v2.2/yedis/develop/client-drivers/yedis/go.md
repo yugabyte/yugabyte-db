@@ -5,7 +5,7 @@ linkTitle: Go
 description: Use Go to build a YugabyteDB application that interacts with YEDIS
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: client-drivers-yedis-go
     parent: develop-yedis
 isTocNested: true

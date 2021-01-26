@@ -7,7 +7,7 @@ headcontent: Here are some easy ways to deploy YugabyteDB in the various public 
 image: /images/section_icons/deploy/public-clouds.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: public-clouds
     parent: deploy
     weight: 630

@@ -4,7 +4,7 @@ linkTitle: DELETEDB
 description: DELETEDB
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2034
 isTocNested: true

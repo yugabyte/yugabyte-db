@@ -5,7 +5,7 @@ headerTitle: cr_do_cume_dist.sql
 description: cr_do_cume_dist.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: cr-do-cume-dist
     parent: analyzing-a-normal-distribution
     weight: 130

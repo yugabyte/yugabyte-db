@@ -7,7 +7,7 @@ headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: client-authentication
     parent: authentication
     weight: 730

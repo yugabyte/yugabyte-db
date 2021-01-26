@@ -6,7 +6,7 @@ linkTitle: Import Data
 description: How to import data into YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-import-data
     parent: migrate-from-postgresql
     weight: 770

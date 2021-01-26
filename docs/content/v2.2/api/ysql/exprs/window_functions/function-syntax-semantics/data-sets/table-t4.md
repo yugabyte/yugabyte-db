@@ -5,7 +5,7 @@ headerTitle: Create and populate table t4
 description: Creates and populate table t4 with a psuedo-randomly generated approximate normal distrubution that allows the comparison of YSQL's percent_rank(), cume_dist(), and ntile() window functions.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: table-t4
     parent: data-sets
     weight: 50

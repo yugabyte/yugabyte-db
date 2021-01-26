@@ -5,7 +5,7 @@ linkTitle: DEALLOCATE
 description: Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-deallocate
     parent: api-ysql-commands
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: ALTER GROUP
 description: Use the `ALTER GROUP` statement to alter attributes for a group (role).
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-alter-group
     parent: api-ysql-commands
 isTocNested: true

@@ -8,7 +8,7 @@ headcontent:
 section: FAQ
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: faq
     weight: 2730
 ---

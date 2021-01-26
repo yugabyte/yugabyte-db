@@ -5,7 +5,7 @@ linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105

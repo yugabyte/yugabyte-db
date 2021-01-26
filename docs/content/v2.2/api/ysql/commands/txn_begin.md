@@ -5,7 +5,7 @@ linkTitle: BEGIN
 description: Use the `BEGIN` statement to start a new transaction with the default (or given) isolation level.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-txn-begin
     parent: api-ysql-commands
 isTocNested: true

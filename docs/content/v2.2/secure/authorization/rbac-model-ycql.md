@@ -7,7 +7,7 @@ headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: rbac-model-ycql
     parent: authorization
     weight: 716
@@ -18,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/secure/authorization/rbac-model" class="nav-link">
+    <a href="/v2.2/secure/authorization/rbac-model" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/secure/authorization/rbac-model-ycql" class="nav-link active">
+    <a href="/v2.2/secure/authorization/rbac-model-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

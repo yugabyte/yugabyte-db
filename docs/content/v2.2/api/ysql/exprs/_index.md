@@ -6,7 +6,7 @@ description: YSQL supports all PostgreSQL-compatible built-in functions and oper
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-exprs
     parent: api-ysql
     weight: 4300

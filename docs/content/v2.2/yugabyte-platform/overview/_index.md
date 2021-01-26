@@ -6,7 +6,7 @@ description: Overview of the Yugabyte Platform and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of the Yugabyte Platform and architecture.
 menu:
-  stable:
+  v2.2:
     identifier: overview-yp
     parent: yugabyte-platform
     weight: 640

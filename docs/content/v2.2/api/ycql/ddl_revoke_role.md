@@ -5,7 +5,7 @@ linkTitle: REVOKE ROLE
 description: Use the `REVOKE ROLE` statement to revoke a role (which represents a group of permissions and the SUPERUSER status) from another role.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1284
 isTocNested: true

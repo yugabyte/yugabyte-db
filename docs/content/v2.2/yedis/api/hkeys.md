@@ -4,7 +4,7 @@ linkTitle: HKEYS
 description: HKEYS
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2140
 isTocNested: true

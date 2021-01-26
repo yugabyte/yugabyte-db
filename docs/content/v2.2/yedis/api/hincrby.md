@@ -4,7 +4,7 @@ linkTitle: HINCRBY
 description: HINCRBY
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2135
 isTocNested: true

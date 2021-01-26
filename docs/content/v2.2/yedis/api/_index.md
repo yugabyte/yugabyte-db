@@ -7,7 +7,7 @@ image: /images/section_icons/api/yedis.png
 headcontent: 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-yedis
     parent: yedis
     weight: 4000

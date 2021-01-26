@@ -5,7 +5,7 @@ linkTitle: SHOW
 description: Use the SHOW statement to display the value of a run-time parameter.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-show
     parent: api-ysql-commands
 isTocNested: true

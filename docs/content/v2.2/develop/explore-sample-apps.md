@@ -7,7 +7,7 @@ headcontent:
 image: /images/section_icons/index/develop.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: explore-sample-apps
     parent: develop
     weight: 581

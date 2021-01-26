@@ -6,7 +6,7 @@ description: Use the PgExercises sample database on YugabyteDB to learn SQL or t
 image: /images/sample-data/pgexercises/pgsql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: pgexercises
     parent: sample-data
     weight: 2753

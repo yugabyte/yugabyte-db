@@ -6,7 +6,7 @@ description: This section covers the syntax and semantics for all supported wind
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: window-functions
     parent: api-ysql-exprs
 isTocNested: true

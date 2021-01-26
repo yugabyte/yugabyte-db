@@ -5,7 +5,7 @@ linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster with a Kubernetes native customer resource.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-2

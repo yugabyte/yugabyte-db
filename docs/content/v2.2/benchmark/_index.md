@@ -8,7 +8,7 @@ headcontent:
 section: YUGABYTEDB CORE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: benchmark
     weight: 685
 

@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import/export data to/from YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: manage-bulk-import-export
     parent: manage
     weight: 703

@@ -5,7 +5,7 @@ headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: dp-results
     parent: normal-distribution-analysis-reports
     weight: 20

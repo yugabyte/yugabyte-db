@@ -5,7 +5,7 @@ headerTitle: Check YugabyteDB servers
 description: How to check if your YugabyteDB servers are running
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: troubleshoot-nodes
     weight: 842
 isTocNested: true

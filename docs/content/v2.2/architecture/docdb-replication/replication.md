@@ -5,7 +5,7 @@ linkTitle: Replication
 description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions and clouds.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: architecture-docdb-replication-default
     parent: architecture-docdb-replication
     weight: 1144

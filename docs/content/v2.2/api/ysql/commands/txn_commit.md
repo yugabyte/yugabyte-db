@@ -5,7 +5,7 @@ linkTitle: COMMIT
 description: Use the COMMIT statement to commit the current transaction.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-txn-commit
     parent: api-ysql-commands
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: Prepare Cluster
 description: Prepare the cluster for importing data.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-prepare-cluster
     parent: migrate-from-postgresql
     weight: 760

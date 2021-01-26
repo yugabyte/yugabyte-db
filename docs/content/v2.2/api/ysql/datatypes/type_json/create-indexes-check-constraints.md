@@ -5,7 +5,7 @@ linkTitle: Indexes and check constraints
 description: Create indexes and check constraints on "json" and "jsonb" columns.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: create-indexes-check-constraints
     parent: api-ysql-datatypes-json
     weight: 40

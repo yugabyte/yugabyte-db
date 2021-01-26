@@ -5,7 +5,7 @@ linkTitle: RESET
 description: Use the RESET statement to restore the value of a run-time parameter to the default value.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-reset
     parent: api-ysql-commands
 isTocNested: true

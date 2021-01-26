@@ -5,7 +5,7 @@ linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: faq-general
     parent: faq
     weight: 2710

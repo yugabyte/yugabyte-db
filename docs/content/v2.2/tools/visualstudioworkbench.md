@@ -5,7 +5,7 @@ linkTitle: Visual Studio Code
 description: Configure Visual Studio Code to work with YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: visualstudioworkbench
     parent: tools
     weight: 2760

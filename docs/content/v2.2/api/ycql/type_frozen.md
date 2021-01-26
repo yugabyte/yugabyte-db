@@ -5,7 +5,7 @@ linkTitle: FROZEN
 description: Use the FROZEN data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1401
 isTocNested: true

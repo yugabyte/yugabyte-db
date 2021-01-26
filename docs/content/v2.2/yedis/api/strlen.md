@@ -4,7 +4,7 @@ linkTitle: STRLEN
 description: STRLEN
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2320
 isTocNested: true

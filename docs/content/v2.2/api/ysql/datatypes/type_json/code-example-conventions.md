@@ -5,7 +5,7 @@ summary: Code example conventions
 description: Code example conventions for JSON functions and operators.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: code-example-conventions
     parent: api-ysql-datatypes-json
     weight: 30

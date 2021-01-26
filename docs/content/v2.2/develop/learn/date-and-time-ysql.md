@@ -5,7 +5,7 @@ linkTitle: 7. Date and time
 description: Learn how to work with date and time in YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: learn
     name: 7. Date and time
     identifier: date-and-time-1-ysql
@@ -18,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/date-and-time-ysql" class="nav-link active">
+    <a href="/v2.2/develop/learn/date-and-time-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/date-and-time-ycql" class="nav-link">
+    <a href="/v2.2/develop/learn/date-and-time-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

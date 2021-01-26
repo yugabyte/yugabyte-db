@@ -7,7 +7,7 @@ beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: yugabytedb-jdbc-driver
     parent: drivers
     weight: 2941

@@ -5,7 +5,7 @@ linkTitle: UUID
 description: Represents Universally Unique Identifiers (UUIDs).
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-datatypes-uuid
     parent: api-ysql-datatypes
 isTocNested: true

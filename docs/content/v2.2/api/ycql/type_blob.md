@@ -5,7 +5,7 @@ linkTitle: BLOB
 description: Use the BLOB data type to represent arbitrary binary data of variable length.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1370
 isTocNested: true

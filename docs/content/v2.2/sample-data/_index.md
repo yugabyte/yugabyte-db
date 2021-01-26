@@ -6,7 +6,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
    identifier: sample-data
    weight: 2950
 ---

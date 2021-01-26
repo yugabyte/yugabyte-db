@@ -7,7 +7,7 @@ headcontent: Identify that your YCQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     name: Authentication
     identifier: ycql-authentication
     parent: authentication
@@ -19,19 +19,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/secure/authentication/ysql-authentication" class="nav-link">
+    <a href="/v2.2/secure/authentication/ysql-authentication" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/secure/authentication/ycql-authentication" class="nav-link active">
+    <a href="/v2.2/secure/authentication/ycql-authentication" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/stable/secure/authentication/yedis-authentication" class="nav-link">
+    <a href="/v2.2/secure/authentication/yedis-authentication" class="nav-link">
       <i class="icon-redis" aria-hidden="true"></i>
       YEDIS
     </a>

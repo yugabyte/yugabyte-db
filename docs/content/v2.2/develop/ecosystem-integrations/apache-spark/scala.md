@@ -5,7 +5,7 @@ linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: apache-spark-1-scala
     parent: ecosystem-integrations
     weight: 572

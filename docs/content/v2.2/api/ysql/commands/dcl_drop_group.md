@@ -4,7 +4,7 @@ linkTitle: DROP GROUP
 description: Use the DROP GROUP statement to drop a role. DROP GROUP is an alias for DROP ROLE and is used to drop a role.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-drop-group
     parent: api-ysql-commands
 isTocNested: true

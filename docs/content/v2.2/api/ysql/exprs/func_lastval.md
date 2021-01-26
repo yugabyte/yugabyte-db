@@ -5,7 +5,7 @@ linkTitle: lastval()
 description: Returns the value returned from the last call to nextval(), for any sequence, in the current session.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-exprs-lastval
     parent: api-ysql-exprs
 isTocNested: true

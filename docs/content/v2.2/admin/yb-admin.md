@@ -5,7 +5,7 @@ linkTitle: yb-admin
 description: Use the yb-admin command line tool for advanced administration of YugabyteDB clusters.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: yb-admin
     parent: admin
     weight: 2465

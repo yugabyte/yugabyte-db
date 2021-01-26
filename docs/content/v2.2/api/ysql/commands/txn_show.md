@@ -6,7 +6,7 @@ description: Use the SHOW TRANSACTION statement to show the current transaction 
 summary: SHOW TRANSACTION
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-txn-show
     parent: api-ysql-commands
 isTocNested: true

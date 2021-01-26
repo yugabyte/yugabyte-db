@@ -7,7 +7,7 @@ image: /images/section_icons/deploy/enterprise.png
 headcontent: Benchmark adjusting capacity to meet demand
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: scalability
     parent: benchmark
     weight: 20

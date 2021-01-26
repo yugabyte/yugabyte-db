@@ -4,7 +4,7 @@ linkTitle: Best practices
 description: Best practices
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: best-practices
     parent: deploy-kubernetes
     weight: 626

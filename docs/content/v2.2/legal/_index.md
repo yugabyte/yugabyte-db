@@ -9,7 +9,7 @@ type: page
 section: MISC
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: legal
     weight: 3000
 ---

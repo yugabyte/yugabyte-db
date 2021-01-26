@@ -4,7 +4,7 @@ linkTitle: Redis in-memory store
 description: Compare Redis in-memory store with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: comparisons
     weight: 1129
 isTocNested: false

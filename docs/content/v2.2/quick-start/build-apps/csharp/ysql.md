@@ -5,7 +5,7 @@ linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: build-apps-csharp-1-ysql
     parent: build-apps
     weight: 554

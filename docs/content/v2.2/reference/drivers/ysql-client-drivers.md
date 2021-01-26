@@ -5,7 +5,7 @@ linkTitle: Client drivers for YSQL API
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940

@@ -5,7 +5,7 @@ linkTitle: Client drivers for YCQL
 description: Lists the client drivers that you can use to build and access YCQL applications. 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: ycql-client-libraries
     parent: drivers
     weight: 2942

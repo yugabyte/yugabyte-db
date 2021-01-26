@@ -6,7 +6,7 @@ description: Use a local YugabyteDB cluster (on macOS) to stream data changes to
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: change-data-capture-1-macos
     parent: explore
     weight: 249
@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/change-data-capture/macos" class="nav-link active">
+    <a href="/v2.2/explore/change-data-capture/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/change-data-capture/linux" class="nav-link">
+    <a href="/v2.2/explore/change-data-capture/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

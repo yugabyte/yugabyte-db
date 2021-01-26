@@ -4,7 +4,7 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  stable:
+  v2.2:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28

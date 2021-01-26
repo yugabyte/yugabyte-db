@@ -6,7 +6,7 @@ summary: Execute multiple DML in 1 request
 description: Use batch to update multiple rows in 1 request.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 19991
 isTocNested: true

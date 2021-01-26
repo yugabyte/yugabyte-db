@@ -5,7 +5,7 @@ linkTitle: jsonb_set() and jsonb_insert()
 description: Change an existing JSON value using jsonb_set() and insert a new value using jsonb_insert().
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: jsonb-set-jsonb-insert
     parent: json-functions-operators
     weight: 210

@@ -7,7 +7,7 @@ headcontent: Generate server certificates and prepare YugabyteDB nodes for serve
 image: /images/section_icons/secure/prepare-nodes.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10

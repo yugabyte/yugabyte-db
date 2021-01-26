@@ -5,7 +5,7 @@ linkTitle: Chinook
 description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: chinook
     parent: sample-data
     weight: 2751

@@ -5,7 +5,7 @@ linkTitle: Verify Migration
 description: Verify migration to YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-verify
     parent: migrate-from-postgresql
     weight: 780

@@ -5,7 +5,7 @@ headerTitle: jsonb_array_elements() and json_array_elements()
 description: Transform JSON values of a JSON array into a SQL table of jsonb values using jsonb_array_elements() and  json_array_elements().
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: jsonb-array-elements
     parent: json-functions-operators
     weight: 60

@@ -5,7 +5,7 @@ linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about the Yugabyte Platform and YugaWare.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: faq-yugabyte-platform
     parent: faq
     weight: 2750

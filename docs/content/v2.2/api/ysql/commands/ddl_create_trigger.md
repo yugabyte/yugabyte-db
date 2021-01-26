@@ -5,7 +5,7 @@ linkTitle: CREATE TRIGGER
 description: Use the CREATE TRIGGER statement to define a new trigger.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-trigger
     parent: api-ysql-commands
 isTocNested: true

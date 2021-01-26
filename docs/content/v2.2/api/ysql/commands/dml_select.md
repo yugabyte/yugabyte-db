@@ -5,7 +5,7 @@ linkTitle: SELECT
 description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-select
     parent: api-ysql-commands
 isTocNested: true

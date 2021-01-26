@@ -5,7 +5,7 @@ linkTitle: 9. TTL for data expiration
 description: Learn how to use TTL for data expiration in YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: ttl-data-expiration-ysql
     parent: learn
     weight: 581
@@ -16,14 +16,14 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/ttl-data-expiration-ysql" class="nav-link active">
+    <a href="/v2.2/develop/learn/ttl-data-expiration-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/ttl-data-expiration-ycql" class="nav-link">
+    <a href="/v2.2/develop/learn/ttl-data-expiration-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

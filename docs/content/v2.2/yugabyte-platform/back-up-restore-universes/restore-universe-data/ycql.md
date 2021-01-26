@@ -4,7 +4,7 @@ headerTitle: Restore universe YCQL data
 linkTitle: Restore universe data
 description: Use Yugabyte Platform to restore data in YCQL tables.
 menu:
-  stable:
+  v2.2:
     parent: back-up-restore-universes
     identifier: restore-universe-data-2-ycql
     weight: 30

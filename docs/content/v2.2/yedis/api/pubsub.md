@@ -4,7 +4,7 @@ linkTitle: PUBSUB
 description: PUBSUB
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2550
 isTocNested: true

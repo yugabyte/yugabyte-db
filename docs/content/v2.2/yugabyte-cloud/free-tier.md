@@ -7,7 +7,7 @@ image: /images/section_icons/deploy/enterprise.png
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: free-tier
     parent: yugabyte-cloud
     weight: 640

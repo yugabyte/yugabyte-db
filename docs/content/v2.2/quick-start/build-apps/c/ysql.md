@@ -5,7 +5,7 @@ linkTitle: C
 description: Build a sample C application with libpq.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
@@ -16,7 +16,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/c/ysql" class="nav-link active">
+    <a href="/v2.2/quick-start/build-apps/c/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

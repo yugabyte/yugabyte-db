@@ -5,7 +5,7 @@ linkTitle: SET SESSION AUTHORIZATION
 description: Use the SET SESSION AUTHORIZATION statement to set the current user and session user of the current session to be the specified user.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-set-session-authorization
     parent: api-ysql-commands
 isTocNested: true

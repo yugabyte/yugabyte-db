@@ -5,7 +5,7 @@ linkTitle: Observability
 description: Learn about observability and monitoring with Prometheus using a local three-node YugabyteDB cluster on Kubernetes.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: observability-4-kubernetes
     parent: explore
     weight: 240
@@ -16,28 +16,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/observability/macos" class="nav-link">
+    <a href="/v2.2/explore/observability/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/observability/linux" class="nav-link">
+    <a href="/v2.2/explore/observability/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/observability/docker" class="nav-link">
+    <a href="/v2.2/explore/observability/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 <!--
   <li >
-    <a href="/stable/explore/observability-kubernetes" class="nav-link active">
+    <a href="/v2.2/explore/observability-kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

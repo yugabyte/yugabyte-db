@@ -5,7 +5,7 @@ linkTitle: CREATE DATABASE
 description: Use the CREATE DATABASE statement to create a database that functions as a grouping mechanism for database objects, such as tables.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-db
     parent: api-ysql-commands
 isTocNested: true

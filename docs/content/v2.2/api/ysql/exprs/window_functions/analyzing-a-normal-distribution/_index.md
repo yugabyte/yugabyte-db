@@ -6,7 +6,7 @@ description: Compare and contrast the window functions percent_rank(), cume_dist
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40

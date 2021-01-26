@@ -5,7 +5,7 @@ headerTitle: ANY and ALL — test if an element is in an array
 description: The ANY and ALL operators compare an element with each of the elements in an array.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: any-all
     parent: array-functions-operators
     weight: 10

@@ -7,7 +7,7 @@ image: /images/section_icons/index/api.png
 headcontent: 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110

@@ -5,7 +5,7 @@ linkTitle: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-copy
     parent: api-ysql-commands
 isTocNested: true

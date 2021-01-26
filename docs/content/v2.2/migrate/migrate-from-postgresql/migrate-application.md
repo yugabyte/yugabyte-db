@@ -5,7 +5,7 @@ linkTitle: App Migration
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-app
     parent: migrate-from-postgresql
     weight: 740

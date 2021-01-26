@@ -7,7 +7,7 @@ headcontent: Features, enhancements, and resolved issues in the current stable r
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
-  stable:
+  v2.2:
     parent: whats-new
     identifier: stable-releases
     weight: 2586 

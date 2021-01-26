@@ -5,7 +5,7 @@ linkTitle: Migration Process
 description: Overview of the migration process.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migration-overview
     parent: migrate
     weight: 720

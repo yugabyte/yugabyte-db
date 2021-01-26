@@ -6,7 +6,7 @@ description: Administer Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer Yugabyte Platform.
 menu:
-  stable:
+  v2.2:
     identifier: administer-yp
     parent: yugabyte-platform
     weight: 649

@@ -8,7 +8,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: cdc
     parent: deploy
     weight: 632

@@ -6,7 +6,7 @@ description: This section describes and presents the code to create, selection o
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: data-sets
     parent: window-function-syntax-semantics
     weight: 50

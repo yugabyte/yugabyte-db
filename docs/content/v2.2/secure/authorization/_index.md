@@ -7,7 +7,7 @@ headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: authorization
     parent: secure
     weight: 740

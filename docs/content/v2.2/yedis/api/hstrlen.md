@@ -4,7 +4,7 @@ linkTitle: HSTRLEN
 description: HSTRLEN
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2190
 isTocNested: true

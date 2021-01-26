@@ -5,7 +5,7 @@ linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: colocated-tables-1-macos
     parent: explore
     weight: 245
@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/colocated-tables/macos" class="nav-link active">
+    <a href="/v2.2/explore/colocated-tables/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/colocated-tables/linux" class="nav-link">
+    <a href="/v2.2/explore/colocated-tables/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

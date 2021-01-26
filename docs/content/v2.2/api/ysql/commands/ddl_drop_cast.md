@@ -5,7 +5,7 @@ linkTitle: DROP CAST
 description: Use the DROP CAST statement to remove a cast.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-drop-cast
     parent: api-ysql-commands
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: Amazon Aurora
 description: Compare Amazon Aurora with YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: comparisons
     weight: 1073
 isTocNested: false

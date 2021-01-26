@@ -5,7 +5,7 @@ linkTitle: C#
 description: Use C# to build a YugabyteDB application that interacts with YEDIS
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: client-drivers-yedis-csharp
     parent: develop-yedis
 isTocNested: true

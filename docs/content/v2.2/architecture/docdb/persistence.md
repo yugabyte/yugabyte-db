@@ -5,7 +5,7 @@ linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146

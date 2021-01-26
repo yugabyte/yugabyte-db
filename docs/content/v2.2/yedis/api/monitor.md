@@ -4,7 +4,7 @@ linkTitle: MONITOR
 description: MONITOR
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2218
 isTocNested: true

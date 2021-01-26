@@ -5,7 +5,7 @@ linkTitle: CREATE INDEX
 description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-index
     parent: api-ysql-commands
 isTocNested: true

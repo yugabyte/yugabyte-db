@@ -7,7 +7,7 @@ headcontent: Generate client certificates to connect to YugabyteDB clusters.
 image: /images/section_icons/secure/prepare-nodes.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: client-certificates
     parent: tls-encryption
     weight: 10

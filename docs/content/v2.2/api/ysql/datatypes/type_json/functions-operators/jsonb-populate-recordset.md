@@ -5,7 +5,7 @@ linkTitle: jsonb_populate_recordset()
 description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: jsonb-populate-recordset
     parent: json-functions-operators
     weight: 190

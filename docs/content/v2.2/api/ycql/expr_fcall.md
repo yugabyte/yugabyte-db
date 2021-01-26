@@ -5,7 +5,7 @@ linkTitle: Function call
 description: Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1350
 isTocNested: true

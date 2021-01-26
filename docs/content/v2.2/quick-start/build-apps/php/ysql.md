@@ -5,7 +5,7 @@ linkTitle: PHP
 description: Build a PHP application that uses YSQL to perform basic database operations.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555
@@ -16,7 +16,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/php/ysql" class="nav-link active">
+    <a href="/v2.2/quick-start/build-apps/php/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

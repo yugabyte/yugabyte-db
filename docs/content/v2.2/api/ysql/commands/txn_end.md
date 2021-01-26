@@ -5,7 +5,7 @@ linkTitle: END
 description: Use the `END` statement to commit the current transaction.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-txn-end
     parent: api-ysql-commands
 isTocNested: true

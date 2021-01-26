@@ -5,7 +5,7 @@ linkTitle: DATE, TIME, and TIMESTAMP
 description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify dates and time.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1450
 isTocNested: true

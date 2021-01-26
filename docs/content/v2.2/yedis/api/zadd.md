@@ -4,7 +4,7 @@ linkTitle: ZADD
 description: ZADD
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2500
 isTocNested: true

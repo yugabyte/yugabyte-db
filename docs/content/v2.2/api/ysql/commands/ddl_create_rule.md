@@ -5,7 +5,7 @@ linkTitle: CREATE RULE
 description: Use the CREATE RULE statement to create a new rule.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-rule
     parent: api-ysql-commands
 isTocNested: true

@@ -6,7 +6,7 @@ description: Install and use extensions with PostgreSQL-compatible YSQL.
 summary: Reference for YSQL extensions
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-extensions
     parent: api-ysql
     weight: 4400

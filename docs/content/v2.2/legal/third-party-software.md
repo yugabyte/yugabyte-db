@@ -5,7 +5,7 @@ linkTitle: Third party software
 description: Learn about the third party software contained in YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: legal
     identifier: third-party-software
     weight:   30

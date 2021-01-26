@@ -5,7 +5,7 @@ linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Kubernetes in less than five minutes.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-4-kubernetes
@@ -18,28 +18,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/install/macos" class="nav-link">
+    <a href="/v2.2/quick-start/install/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/linux" class="nav-link">
+    <a href="/v2.2/quick-start/install/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/docker" class="nav-link">
+    <a href="/v2.2/quick-start/install/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/kubernetes" class="nav-link active">
+    <a href="/v2.2/quick-start/install/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

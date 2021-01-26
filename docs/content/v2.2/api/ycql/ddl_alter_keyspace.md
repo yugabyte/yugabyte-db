@@ -5,7 +5,7 @@ linkTitle: ALTER KEYSPACE
 description: Use the ALTER KEYSPACE statement to change the properties of an existing keyspace.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1200
 isTocNested: true

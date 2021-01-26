@@ -8,7 +8,7 @@ image: /images/section_icons/index/explore.png
 section: YUGABYTEDB CORE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: explore
     weight: 540
 ---

@@ -7,7 +7,7 @@ image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: resilience
     parent: benchmark
     weight: 21

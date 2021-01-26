@@ -6,7 +6,7 @@ description: Connect to clusters in Yugabyte Cloud using locally installed Yugab
 beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: connect-to-clusters
     parent: yugabyte-cloud
     weight: 645

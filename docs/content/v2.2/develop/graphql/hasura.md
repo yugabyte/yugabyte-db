@@ -4,7 +4,7 @@ linkTitle: Hasura
 description: Hasura GraphQL engine
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: hasura
     parent: graphql
     weight: 582

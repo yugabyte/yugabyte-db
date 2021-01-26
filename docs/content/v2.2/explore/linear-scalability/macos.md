@@ -5,7 +5,7 @@ linkTitle: Linear scalability
 description: Learn how to scale a local three-node YugabyteDB cluster (on macOS) while a workload is running.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: linear-scalability-1-macos
     parent: explore
     weight: 210
@@ -16,28 +16,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/linear-scalability/macos" class="nav-link active">
+    <a href="/v2.2/explore/linear-scalability/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/linear-scalability/linux" class="nav-link">
+    <a href="/v2.2/explore/linear-scalability/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/linear-scalability/docker" class="nav-link">
+    <a href="/v2.2/explore/linear-scalability/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/linear-scalability-kubernetes" class="nav-link">
+    <a href="/v2.2/explore/linear-scalability-kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

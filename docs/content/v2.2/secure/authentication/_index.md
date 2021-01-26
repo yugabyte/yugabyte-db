@@ -7,7 +7,7 @@ headcontent: Verify that users and clients are who they say they are.
 image: /images/section_icons/secure/authorization.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: authentication
     parent: secure
     weight: 720

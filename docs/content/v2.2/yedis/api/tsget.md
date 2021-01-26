@@ -4,7 +4,7 @@ linkTitle: TSGET
 description: TSGET
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2420
 isTocNested: true

@@ -5,7 +5,7 @@ linkTitle: DROP ROLE
 description: Use the DROP ROLE statement to delete an existing role.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1265
 isTocNested: true

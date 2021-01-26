@@ -5,7 +5,7 @@ linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove a user-defined type from the database.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-drop-type
     parent: api-ysql-commands
 isTocNested: true

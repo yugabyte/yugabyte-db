@@ -7,7 +7,7 @@ image: /images/section_icons/architecture/concepts.png
 headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: docdb
     parent: architecture
     weight: 1140

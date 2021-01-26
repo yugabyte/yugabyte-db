@@ -4,7 +4,7 @@ linkTitle: HLEN
 description: HLEN
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2150
 isTocNested: true

@@ -5,7 +5,7 @@ headerTitle: array_replace() and setting an array value explicitly
 description: array_replace() and setting an array value explicitly
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: array-replace-a-value
     parent: array-functions-operators
 isTocNested: true

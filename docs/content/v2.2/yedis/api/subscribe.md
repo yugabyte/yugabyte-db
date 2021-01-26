@@ -4,7 +4,7 @@ linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2552
 isTocNested: true

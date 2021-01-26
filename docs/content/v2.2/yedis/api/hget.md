@@ -4,7 +4,7 @@ linkTitle: HGET
 description: HGET
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2120
 isTocNested: true

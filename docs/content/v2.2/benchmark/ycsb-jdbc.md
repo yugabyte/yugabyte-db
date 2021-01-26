@@ -5,7 +5,7 @@ linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: ycsb-1-ysql
     parent: benchmark
     weight: 5

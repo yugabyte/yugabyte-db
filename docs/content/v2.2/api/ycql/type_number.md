@@ -5,7 +5,7 @@ linkTitle: Non-integer
 description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers. 
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-cassandra
     weight: 1430
 isTocNested: true

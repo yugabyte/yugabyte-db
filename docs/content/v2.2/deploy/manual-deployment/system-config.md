@@ -5,7 +5,7 @@ linkTitle: 1. System configuration
 description: Configure NTP and ulimits on your YugabyteDB cluster
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: deploy-manual-deployment-system-config
     parent: deploy-manual-deployment
     weight: 611

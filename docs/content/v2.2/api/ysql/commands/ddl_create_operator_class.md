@@ -5,7 +5,7 @@ linkTitle: CREATE OPERATOR CLASS
 description: Use the CREATE OPERATOR CLASS statement to create a new operator class.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-create-operator-class
     parent: api-ysql-commands
 isTocNested: true

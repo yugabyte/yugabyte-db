@@ -5,7 +5,7 @@ linkTitle: Export Data
 description: How to export data from PostgreSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: migrate-postgresql-export
     parent: migrate-from-postgresql
     weight: 750

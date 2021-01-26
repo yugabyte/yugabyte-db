@@ -5,7 +5,7 @@ headerTitle: Output from running histogram() on t4.dp_score
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10

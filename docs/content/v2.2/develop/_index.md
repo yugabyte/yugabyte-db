@@ -8,7 +8,7 @@ image: /images/section_icons/index/develop.png
 section: YUGABYTEDB CORE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: develop
     weight: 600
 

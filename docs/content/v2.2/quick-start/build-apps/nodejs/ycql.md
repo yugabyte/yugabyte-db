@@ -5,7 +5,7 @@ linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-3

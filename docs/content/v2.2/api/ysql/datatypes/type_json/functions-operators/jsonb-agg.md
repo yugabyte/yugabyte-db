@@ -5,7 +5,7 @@ linkTitle: jsonb_agg()
 description: Aggregate a SETOF values into a JSON array.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: jsonb-agg
     parent: json-functions-operators
     weight: 57

@@ -5,7 +5,7 @@ linkTitle: C++
 description: Build a C++ application that uses the YSQL API.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: build-apps-cpp-1-ysql
     parent: build-apps
     weight: 556
@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/cpp/ysql" class="nav-link active">
+    <a href="/v2.2/quick-start/build-apps/cpp/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li>
-    <a href="/stable/quick-start/build-apps/cpp/ycql" class="nav-link">
+    <a href="/v2.2/quick-start/build-apps/cpp/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

@@ -7,7 +7,7 @@ summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-keywords
     parent: api-ysql
     weight: 4500

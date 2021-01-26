@@ -5,7 +5,7 @@ linkTitle: DROP FUNCTION
 description: Remove a function from a database.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-drop-function
     parent: api-ysql-commands
 isTocNested: true

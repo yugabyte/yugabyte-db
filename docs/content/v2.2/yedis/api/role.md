@@ -4,7 +4,7 @@ linkTitle: ROLE
 description: ROLE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2240
 isTocNested: true

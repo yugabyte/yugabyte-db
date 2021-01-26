@@ -7,7 +7,7 @@ headcontent: Benchmark YugabyteDB using TPC-C
 image: /images/section_icons/quick_start/explore_ysql.png
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4

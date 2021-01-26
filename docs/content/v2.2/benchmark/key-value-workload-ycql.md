@@ -7,7 +7,7 @@ image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6

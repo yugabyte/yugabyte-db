@@ -7,7 +7,7 @@ image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: backup-restore
     parent: manage
     weight: 702

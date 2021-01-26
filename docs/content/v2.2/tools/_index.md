@@ -9,7 +9,7 @@ type: page
 section: REFERENCE
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: tools
     weight: 2900
 ---

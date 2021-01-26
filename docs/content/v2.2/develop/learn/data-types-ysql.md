@@ -5,7 +5,7 @@ linkTitle: 3. Data types
 description: Learn about the data types in YSQL.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: data-types-2-ysql
     parent: learn
     weight: 565
@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/data-types" class="nav-link active">
+    <a href="/v2.2/develop/learn/data-types" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/data-types-ycql" class="nav-link">
+    <a href="/v2.2/develop/learn/data-types-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

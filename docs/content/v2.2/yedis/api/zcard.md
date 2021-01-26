@@ -4,7 +4,7 @@ linkTitle: ZCARD
 description: ZCARD
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     parent: api-yedis
     weight: 2510
 isTocNested: true

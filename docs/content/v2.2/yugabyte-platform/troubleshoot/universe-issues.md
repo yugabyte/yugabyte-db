@@ -4,7 +4,7 @@ headerTitle: Troubleshoot universe issues
 linkTitle: Universe
 description: Troubleshoot universe issues
 menu:
-  stable:
+  v2.2:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

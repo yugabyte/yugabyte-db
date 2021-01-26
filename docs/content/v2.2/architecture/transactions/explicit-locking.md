@@ -5,7 +5,7 @@ linkTitle: Explicit locking
 description: Learn about support for explicit locks in YugabyteDB.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: architecture-transactions-explicit-locking
     parent: architecture-acid-transactions
     weight: 1153

@@ -8,7 +8,7 @@ image: /images/section_icons/api/ycql.png
 headcontent:
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-cassandra
     parent: api
     weight: 3000

@@ -5,7 +5,7 @@ linkTitle: DO
 description: Use the DO statement to execute an anonymous code block or, in other words, a transient anonymous function in a procedural language.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-do
     parent: api-ysql-commands
 isTocNested: true

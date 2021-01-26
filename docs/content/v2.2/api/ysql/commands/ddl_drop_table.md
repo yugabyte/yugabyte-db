@@ -5,7 +5,7 @@ linkTitle: DROP TABLE
 description: Use the DROP TABLE statement to remove one or more tables (with all of their data) from the database.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: api-ysql-commands-drop-table
     parent: api-ysql-commands
 isTocNested: true

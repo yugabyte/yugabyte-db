@@ -5,7 +5,7 @@ linkTitle: Two data center (2DC)
 description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on macOS.
 block_indexing: true
 menu:
-  stable:
+  v2.2:
     identifier: two-data-centers-1-macos
     parent: explore
     weight: 250
@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/two-data-centers/macos" class="nav-link active">
+    <a href="/v2.2/explore/two-data-centers/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/two-data-centers/linux" class="nav-link">
+    <a href="/v2.2/explore/two-data-centers/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
