@@ -15,6 +15,7 @@ const graphPanelTypes = {
       'yedis_ops',
       'container',
       'server',
+      'sql',
       'cql',
       'redis',
       'tserver',

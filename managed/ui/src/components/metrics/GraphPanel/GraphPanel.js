@@ -139,6 +139,14 @@ const panelTypes = {
     ]
   },
 
+  sql: {
+    title: 'YSQL Advanced',
+    metrics: [
+      'ysql_server_advanced_rpc_per_second',
+      'ysql_sql_advanced_latency'
+    ]
+  },
+
   cql: {
     title: 'YCQL Advanced',
     metrics: [
