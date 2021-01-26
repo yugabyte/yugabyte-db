@@ -1087,6 +1087,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << state
             << EscapeForHtmlToString(l->data().pb.state_msg())
             << "</td></tr>\n";
+
+    auto replication_info = CHECK_RESULT(
+      master_->catalog_manager()->ResolveReplicationInfo(l->data().pb.replication_info()));
+    *output << "  <tr><td>Replication Info:</td><td>"
+            << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
+            << "  </td></tr>\n";
     *output << "</table>\n";
 
     Status s = SchemaFromPB(l->data().pb.schema(), &schema);
