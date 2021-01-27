@@ -709,12 +709,31 @@ class YBBackup:
             '--restore_keys_destination', required=False,
             help="Location to download universe encryption keys backup file to"
         )
+        parser.add_argument(
+            '--nfs_storage_path', required=False, help="NFS storage mount path")
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
         if self.args.verbose:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
+
+        if self.args.storage_type == 'nfs':
+            logging.info('Checking whether NFS backup storage path mounted on TServers or not')
+            pool = ThreadPool(self.args.parallelism)
+            tablets_by_leader_ip = []
+
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        tablets_by_leader_ip.append(ip)
+            tserver_ips = list(tablets_by_leader_ip)
+            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
@@ -1610,6 +1629,20 @@ class YBBackup:
         else:
             self.run_program(del_cmd)
 
+    def find_nfs_storage(self, tserver_ip):
+        """
+        Finds the NFS storage path mounted on the given tserver.
+        if we don't find storage path mounted on given tserver IP we
+        raise exception
+        :param tserver_ip: tablet server ip
+        """
+        try:
+            self.run_ssh_cmd(['find', self.args.nfs_storage_path], tserver_ip)
+        except Exception as ex:
+            raise BackupException(
+                ('Did not find nfs backup storage path: %s mounted on tablet server %s'
+                % (self.args.nfs_storage_path, tserver_ip)))
+
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
         Upload metadata file and checksum file to the target backup location.
@@ -1761,7 +1794,6 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
-
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
 
