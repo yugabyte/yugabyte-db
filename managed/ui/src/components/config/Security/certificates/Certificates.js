@@ -87,8 +87,7 @@ class DownloadCertificateForm extends Component {
 class Certificates extends Component {
   state = {
     showSubmitting: false,
-    selectedCert: {},
-    certificateArray: []
+    selectedCert: {}
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
