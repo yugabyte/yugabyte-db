@@ -3,8 +3,6 @@ title: Restore universe YSQL data
 headerTitle: Restore universe YSQL data
 linkTitle: Restore universe data
 description: Use Yugabyte Platform to restore data in YSQL tables.
-- /stable/yugabyte-platform/back-up-restore-databases/
-- /stable/yugabyte-platform/back-up-restore-universes/restore-universe-data/
 menu:
   v2.2:
     parent: back-up-restore-universes
