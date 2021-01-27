@@ -125,7 +125,11 @@ Per-Table, Prometheus Metrics | /prometheus-metrics
 
 ## Turning RPC tracing on
 
-To turn tracing on for all RPCs, not just the slow ones, use the `rpc_dump_all_traces` gflag.
+To turn on tracing, you should set the `enable_tracing` flag:
+
+    $ ./yb-ts-cli --server_address=localhost:9100 set_flag enable_tracing 1
+
+To turn tracing on for all RPCs, not just the slow ones, including the `enable_tracing` flag, you may also set the `rpc_dump_all_traces` gflag:
 
     $ ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
 
