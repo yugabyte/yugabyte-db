@@ -317,15 +317,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (node.cloudInfo.private_ip == null) {
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.", node.nodeName));
         // Free up the node so that the client can use the instance to create another universe.
-        Universe universe = Universe.get(taskParams().universeUUID);
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
-        if (cluster.userIntent.providerType.equals(com.yugabyte.yw.commissioner.Common.CloudType.onprem)) {
+        if (node.cloudInfo.cloud.equals(com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
           try {
             NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
             providerNode.clearNodeDetails();
           } catch (Exception ex) {
-            LOG.warn("On-prem node {} in universe {} doesn't have a linked instance. ", node.nodeName, universe.name);
+            LOG.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
           }
         }
         continue;
