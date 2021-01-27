@@ -35,6 +35,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -99,6 +100,9 @@ DEFINE_bool(use_docdb_aware_bloom_filter, true,
 DEFINE_int32(max_nexts_to_avoid_seek, 2,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
+TAG_FLAG(trace_docdb_calls, advanced);
+TAG_FLAG(trace_docdb_calls, runtime);
+
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
