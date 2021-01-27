@@ -22,11 +22,13 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 
 DEFINE_int32(retryable_request_timeout_secs, 120,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
+TAG_FLAG(retryable_request_timeout_secs, runtime);
 
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
