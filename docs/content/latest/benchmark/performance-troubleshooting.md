@@ -105,19 +105,23 @@ W0325 06:47:13.033341 116514816 inbound_call.cc:208] Trace:
 0325 06:47:13.032168 (+    62us) inbound_call.cc:125] Queueing success response
 ```
 
-## Viewing real-time logs
+## Viewing real-time metrics
 
-You can view logs of Yugabyte processes at a particular node (e.g. 127.0.0.1) at various ports:
+You can view metrics of various Yugabyte processes at a particular node (e.g. 127.0.0.1) at these ports:
 
-| Description | Address
+| Process | Address
 -------------|-----------|
-Master Metrics | 127.0.0.1:7000
-TServer Metrics | 127.0.0.1:9000
-Yedis Metrics | 127.0.0.1:11000
-YCQL Metrics | 127.0.0.1:12000
-YSQL Metrics | 127.0.0.1:13000
-Per-Tablet, JSON Metrics | 127.0.0.1/metrics
-Per-Table, Prometheus Metrics | 127.0.0.1/prometheus-metrics
+Master | 127.0.0.1:7000
+TServer | 127.0.0.1:9000
+Yedis | 127.0.0.1:11000
+YCQL | 127.0.0.1:12000
+YSQL | 127.0.0.1:13000
+
+For each process, you can see the following types of metrics:
+| Description | Endpoint
+-------------|-----------|
+Per-Tablet, JSON Metrics | /metrics
+Per-Table, Prometheus Metrics | /prometheus-metrics
 
 ## Turning RPC tracing on
 
