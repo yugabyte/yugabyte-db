@@ -1104,7 +1104,7 @@ export default class ClusterFields extends Component {
       });
 
     const kmsConfigList = [
-      <option value="0" key={`kms-option-0`}>
+      <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
       ...cloud.authConfig.data.map((config, index) => {
