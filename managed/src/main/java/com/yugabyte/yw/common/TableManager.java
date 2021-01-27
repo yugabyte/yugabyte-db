@@ -234,6 +234,10 @@ public class TableManager extends DevopsBase {
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
     commandArgs.add(customerConfig.name.toLowerCase());
+    if(customerConfig.name.toLowerCase().equals("nfs")) {
+      commandArgs.add("--nfs_storage_path");
+      commandArgs.add(customerConfig.getData().get("BACKUP_LOCATION").asText());
+    }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
