@@ -1,0 +1,47 @@
+# Copyright (c) Yugabyte, Inc.
+#
+# To analyze (without uploading to Fossa) -- for local debugging:
+# fossa analyze --debug --output
+#
+# To analyze and upload dependencies:
+# fossa analyze --debug
+
+version: 2
+cli:
+  server: https://app.fossa.com
+  fetcher: custom
+  project: git@github.com:yugabyte/yugabyte-db.git
+analyze:
+  modules:
+  - name: Yugabyte RPC Client
+    type: mvn
+    target: pom.xml
+    path: java
+    options:
+      strategy: maven-tree
+      cmd: |
+        set -euo pipefail -x
+        cd java
+        mvn --batch-mode dependency:tree
+  - name: Yugabyte Platform
+    type: mvn
+    target: pom.xml
+    path: managed
+    options:
+      strategy: maven-tree
+      cmd: |
+        set -euo pipefail -x
+        cd managed
+        mvn --batch-mode dependency:tree -f "$(
+          USE_MAVEN_LOCAL=true sbt -Dsbt.log.noformat=true make-pom | perl -n -e '/^\[info\] Wrote (.*[.]pom)$/ && print $1'
+        )"
+  - name: ui
+    type: npm
+    target: managed/ui
+    path: managed/ui
+  - name: opscli
+    type: pip
+    target: managed/devops
+    path: managed/devops
+    options:
+      requirements: managed/devops/python_requirements_frozen.txt
