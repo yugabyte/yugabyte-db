@@ -281,8 +281,7 @@ To follow the tablet splitting work-in-progress, see [GitHub #1004](https://gith
 
 The following are known limitations that are planned to be resolved in the upcoming releases:
 
-* Presplit tablets remain in the system forever and are not deleted from the disk.
 * During tablet splitting, client applications may get an error from the driver and need to retry the request.
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
-* Because splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
+* Since splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
 * Colocated tables cannot be split.
