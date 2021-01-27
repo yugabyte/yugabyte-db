@@ -1500,6 +1500,7 @@ static int compare_two_floats_orderability(float8 lhs, float8 rhs)
  */
 static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
 {
+    /* if the values are of the same type */
     if (a->type == b->type)
     {
         switch (a->type)
@@ -1532,8 +1533,12 @@ static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
                                    a->type)));
         }
     }
-    ereport(ERROR, (errmsg("agtype input scalars must be of same type")));
-    return -1;
+    /* otherwise, the values are of differing type */
+    else
+        ereport(ERROR, (errmsg("agtype input scalars must be of same type")));
+
+    /* execution will never reach this point due to the ereport call */
+    return false;
 }
 
 /*
