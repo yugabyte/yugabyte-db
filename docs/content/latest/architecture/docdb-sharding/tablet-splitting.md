@@ -277,6 +277,8 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
+To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+
 Here are known limitations that are planned to be resolved in the next releases:
 
 * During tablet splitting, client applications can get an error from the driver and need to retry the request.
