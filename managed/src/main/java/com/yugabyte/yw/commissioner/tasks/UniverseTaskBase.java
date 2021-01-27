@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -314,11 +315,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it and skip the node.
       if (node.cloudInfo.private_ip == null) {
-        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
-                               node.nodeName));
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.", node.nodeName));
         // Free up the node so that the client can use the instance to create another universe.
-        NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
-        providerNode.clearNodeDetails();
+        Universe universe = Universe.get(taskParams().universeUUID);
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+        if (cluster.userIntent.providerType.equals(com.yugabyte.yw.commissioner.Common.CloudType.onprem)) {
+          try {
+            NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
+            providerNode.clearNodeDetails();
+          } catch (Exception ex) {
+            LOG.warn("On-prem node {} in universe {} doesn't have a linked instance. ", node.nodeName, universe.name);
+          }
+        }
         continue;
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
