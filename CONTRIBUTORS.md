@@ -134,3 +134,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [gaurav061](https://github.com/gaurav061)
 * [sudheer](https://github.com/psudheer21)
 * [fitcs01](https://github.com/fitcs01)
+* [mrajcevic01](https://github.com/mrajcevic01)
