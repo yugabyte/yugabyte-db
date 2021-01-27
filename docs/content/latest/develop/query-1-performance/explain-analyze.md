@@ -17,9 +17,9 @@ showAsideToc: true
 
 This section describes how to optimize queries using YSQL's `EXPLAIN` and `EXPLAIN ANALYZE` statements.
 
-## The EXPLAIN Statement and Its Options
+## The EXPLAIN Statement
 
-For each query that YSQL receives, it creates an execution plan which you can access using the `EXPLAIN` statement. The plan not only estimates the initial cost before the first row is returned, but also provides an estimate of the total execution cost for the whole result set.
+For each query that YSQL receives, it creates an execution plan which you can access using the `EXPLAIN` statement. This statement returns two numbers: the so-called startup cost that represents the estimated query cost before the first row is returned, and the total cost to run the query to completion.
 
 You can use the `EXPLAIN` statement in conjunction with `SELECT`, `DELETE`, `INSERT`, `REPLACE`, and `UPDATE` statements. The `EXPLAIN` statement has the following syntax:
 
@@ -31,7 +31,7 @@ The *option* and its values are described in the following table. The most impor
 
 | Option  | Value                           | Description                                                  |
 | ------- | ------------------------------- | ------------------------------------------------------------ |
-| ANALYZE | boolean                         | Executes the *sql_statement* before receiving any run-time statistics.<br/>Since EXPLAIN ANALYZE discards the actual output, to perform analysis of any data-modifying statement (such as INSERT, UPDATE, and DELETE) without affecting the data, you must wrap EXPLAIN ANALYZE in a transaction using the following syntax:<br/>BEGIN;<br/>EXPLAIN ANALYZE *sql_statement*;<br/>ROLLBACK; |
+| ANALYZE | boolean                         | Executes the *sql_statement* before returning any run-time statistics.<br/>The output of the *sql_statement* is discarded.<br/>To perform analysis of any data-modifying statement (such as INSERT, UPDATE, and DELETE) without affecting the data, you must wrap EXPLAIN ANALYZE in a transaction using the following syntax:<br/>BEGIN;<br/>EXPLAIN ANALYZE *sql_statement*;<br/>ROLLBACK; |
 | VERBOSE | boolean                         | Displays detailed information about the query plan. <br/>The default value is FALSE. |
 | COSTS   | boolean                         | Provides the estimated initial and total costs of each plan node. In addition, estimates the number of rows and the width of each row in the query plan.<br/>The default value is TRUE. |
 | BUFFERS | boolean                         | Provides information about the most input-output intensive parts of the query. <br/>The default value is FALSE. <br/>You can only use this option when ANALYZE is set to TRUE. |
@@ -94,3 +94,35 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees WHERE k1 = 2 and floor(k2 + 1
 ROLLBACK;
 ```
 
+In addition to the cost estimates from the query planner, `EXPLAIN ANALYZE` displays the server output produced during the statement execution, as shown in the following example:
+
+```sql
+yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
+                                 QUERY PLAN
+-------------------------------------------------------------------------
+ Hash Left Join (cost=112.50..390.00 rows=5000 width=8) (actual time=3.939..6.195 rows=100 loops=1)
+   Hash Cond: (a.a = b.a)
+   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4) (actual time=0.568..2.798 rows=100 loops=1)
+   ->  Hash  (cost=100.00..100.00 rows=1000 width=4) (actual time=3.363..3.363 rows=100 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 12kB
+         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4) (actual time=0.458..3.339 rows=100 loops=1)
+ Planning Time: 0.939 ms
+ Execution Time: 7.089 ms
+(8 rows)
+```
+
+The server output from the preceding example includes the number of rescans (loops) each node performed, the number of milliseconds passed before the first row was returned, total time before the last tuple was returned by each execution node, and the number of tuples returned by each execution node.
+
+`EXPLAIN`, on the other hand,  does not provide this additional information, as shown in the following examples:
+
+```sql
+yugabyte=# EXPLAIN SELECT * FROM employees a LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Hash Left Join (cost=112.50..390.00 rows=5000 width=8)
+   Hash Cond: (a.a = b.a)
+   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4)
+   ->  Hash (cost=100.00..100.00 rows=1000 width=4)
+         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4)
+(5 rows)
+```
