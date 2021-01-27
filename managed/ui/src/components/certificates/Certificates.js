@@ -124,51 +124,13 @@ class Certificates extends Component {
    * 
    * @param certificateUUID Unique id of certificate.
    */
-  deleteRootCertificate = (certificateUUID) => {
+  deleteCertificate = (certificateUUID) => {
     api.deleteCertificate(certificateUUID).then(
-      () => {
-        this.getCertificateArray()
-      }
+      () => this.props.fetchCustomerCertificates()
     ).catch(
-      err => {
-        console.log("Error", err)
-      }
+      err => console.error(`Failed to delete certificate ${certificateUUID}`, err)
     )
   };
-
-  /**
-   * Lifecycle method to fetch iniial data required by compoenent
-   * i.e certificates attached to current user.
-   */
-  componentDidMount() {
-    this.getCertificateArray();
-  }
-
-  /**
-   * Fetch certificates attched to current user.
-   */
-  getCertificateArray = () => {
-    api.getCertificates().then(
-      response => {
-        const certificateArray  = response
-        ? response.map((cert) => {
-          return {
-            type: cert.certType,
-            uuid: cert.uuid,
-            name: cert.label,
-            expiryDate: cert.expiryDate,
-            certificate: cert.certificate,
-            creationTime: cert.startDate,
-            privateKey: cert.privateKey,
-            customCertInfo: cert.customCertInfo,
-            inUse: cert.inUse
-          };
-        })
-        : [];
-      this.setState({ certificateArray: certificateArray})
-      }
-    );
-  }
 
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
@@ -210,11 +172,11 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => { 
-            !deleteDisabled && this.deleteRootCertificate(payload?.uuid)
+            this.deleteCertificate(payload?.uuid)
           }}
           disabled={deleteDisabled}
         >
-          <i className="fa fa-trash"></i> Delete Root CA Cert
+          <i className="fa fa-trash"></i> Delete Cert
         </MenuItem>
       </DropdownButton>
     );
@@ -222,12 +184,28 @@ class Certificates extends Component {
 
   render() {
     const {
-      customer: { currentCustomer },
+      customer: { currentCustomer, userCertificates },
       modal: { showModal, visibleModal },
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting, certificateArray } = this.state;
+    const { showSubmitting } = this.state;
+
+    const certificateArray = getPromiseState(userCertificates).isSuccess()
+    ? userCertificates.data.map((cert) => {
+      return {
+        type: cert.certType,
+        uuid: cert.uuid,
+        name: cert.label,
+        expiryDate: cert.expiryDate,
+        certificate: cert.certificate,
+        creationTime: cert.startDate,
+        privateKey: cert.privateKey,
+        customCertInfo: cert.customCertInfo,
+        inUse: cert.inUse
+      };
+    })
+    : [];
 
     return (
       <div id="page-wrapper">
