@@ -44,11 +44,11 @@ Some tables start off small, with only a few shards. If these tables grow very l
 
 DocDB allows data resharding by splitting tablets using the following three mechanisms:
 
-* **[Presplitting tablets](#presplitting-tablets-beta):** All tables created in DocDB can be split into the desired number of tablets at creation time.
+* **[Presplitting tablets](#presplitting-tablets):** All tables created in DocDB can be split into the desired number of tablets at creation time.
 
 * **[Manual tablet splitting](#manual-tablet-splitting):** The tablets in a running cluster can be split manually at runtime by the user.
 
-* **[Automatic tablet splitting](#automatic-tablet-splitting-beta):** The tablets in a running cluster are automatically split according to some policy by the database.
+* **[Automatic tablet splitting](#automatic-tablet-splitting):** The tablets in a running cluster are automatically split according to some policy by the database.
 
 The following sections give details on how to split tablets using these three approaches.
 
@@ -130,13 +130,7 @@ For YSQL API details, see:
 
 * [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-partitioned tables.
 
-## Manual tablet splitting [BETA]
-
-{{< note title="Note" >}}
-
-Manual tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
+## Manual tablet splitting
 
 Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. This is shown in the example below.
 
@@ -215,13 +209,7 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 
 {{</note >}}
 
-## Automatic tablet splitting [BETA]
-
-{{< note title="Note" >}}
-
-Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
+## Automatic tablet splitting
 
 Automatic tablet splitting enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
 
@@ -289,12 +277,10 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-Manual and automatic tablet splitting are in beta. To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 Here are known limitations that are planned to be resolved in the next releases:
 
-* Presplit tablets remain in the system forever and are not deleted from the disk.
-* There is no upper bound on the number of tablets for the table when automatic tablet splitting is enabled.
 * During tablet splitting, client applications can get an error from the driver and need to retry the request.
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
 * Because splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
