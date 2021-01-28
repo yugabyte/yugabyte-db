@@ -30,10 +30,10 @@ menu:
       <a class="section-link icon-offset" href="stable-releases/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.2 current stable release series</div>
+              <div class="title">What's new in the v2.4 current stable release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the recommended stable release series v2.2 (Updated August 19, 2020).
+              Features, enhancements, and fixes in the recommended stable release series v2.4 (Updated January 22, 2021).
           </div>
       </a>
   </div>
