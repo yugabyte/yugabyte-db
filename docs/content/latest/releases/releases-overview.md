@@ -42,7 +42,7 @@ does not exist.
 - **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected
 Software and the timeline for discontinuing Support Services.
 
-For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-policy/).
+For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-policy/).
 
 ### Release support timelines
 
@@ -50,7 +50,7 @@ For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-pol
 | :------------- | :------- | :------------------------- | :---------------- |
 | [v2.5](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png) | Nov 12, 2020 | --- | --- |
 | [v2.4](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
-| [v2.3](../whats-new/latest-releases) | Sep 08, 2020 | Sep 08, 2021 | Mar 07, 2022 |
+| [v2.3](../whats-new/latest-releases) | Sep 08, 2020 | --- | --- |
 | [v2.2](../whats-new/stable-releases) | Jul 15, 2020 | Jul 15, 2021 | Jan 15, 2022 |
 | [v2.1](../earlier-releases/v2.1.0) | Feb 25, 2020 | Feb 25, 2021 | Aug 08, 2021 |
 | [v2.0](../earlier-releases/v2.0.0) | Sep 17, 2019 | Sep 17, 2020 | Mar 03, 2021 |
