@@ -498,11 +498,13 @@ message TransactionMetadataPB {
 message ReadHybridTimePB {
   optional fixed64 read_ht = 1;
 
-  optional fixed64 local_limit_ht = 2;
+  optional fixed64 DEPRECATED_max_of_read_time_and_local_limit_ht = 2;
 
   optional fixed64 global_limit_ht = 3;
 
   optional fixed64 in_txn_limit_ht = 4;
+
+  optional fixed64 local_limit_ht = 5;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl

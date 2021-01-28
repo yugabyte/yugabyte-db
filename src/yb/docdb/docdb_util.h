@@ -119,6 +119,7 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS AddExternalIntents(
       const TransactionId& txn_id,
       const std::vector<ExternalIntent>& intents,
+      const Uuid& involved_tablet,
       HybridTime hybrid_time);
 
   CHECKED_STATUS InsertSubDocument(
@@ -143,8 +144,8 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
-      const std::vector<int>& indexes,
-      const std::vector<SubDocument>& values,
+      const int target_cql_index,
+      const SubDocument& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,

@@ -30,7 +30,8 @@ const panelTypes = {
       'network_packets',
       'network_bytes',
       'network_errors',
-      'system_load_over_time'
+      'system_load_over_time',
+      'node_clock_skew'
     ]
   },
   tserver: {
@@ -135,6 +136,14 @@ const panelTypes = {
       'redis_rpcs_per_sec_local',
       'redis_ops_latency_local',
       'redis_yb_rpc_connections'
+    ]
+  },
+
+  sql: {
+    title: 'YSQL Advanced',
+    metrics: [
+      'ysql_server_advanced_rpc_per_second',
+      'ysql_sql_advanced_latency'
     ]
   },
 

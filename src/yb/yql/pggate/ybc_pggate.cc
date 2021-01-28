@@ -357,8 +357,8 @@ YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
 }
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type, bool is_not_null) {
-  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type, is_not_null));
+                                   const YBCPgTypeEntity *attr_type) {
+  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type));
 }
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
@@ -684,6 +684,10 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDelete(handle));
 }
 
+YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is_persist_needed) {
+  return ToYBCStatus(pgapi->DeleteStmtSetIsPersistNeeded(handle, is_persist_needed));
+}
+
 // Colocated TRUNCATE Operations -------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
                                     const YBCPgOid table_oid,
@@ -891,6 +895,10 @@ const bool YBCGetDisableTransparentCacheRefreshRetry() {
 
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
+}
+
+YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
+  return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
 }
 
 int32_t YBCGetMaxReadRestartAttempts() {

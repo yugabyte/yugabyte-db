@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
 
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.typesafe.config.Config;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.Common;
 import org.yb.client.YBClient;
@@ -42,6 +44,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
+
+  protected Config config;
 
   // The task params.
   @Override
@@ -182,6 +186,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     super.initialize(params);
     // Create the threadpool for the subtasks to use.
     createThreadpool();
+    this.config = Play.current().injector().instanceOf(Config.class);
   }
 
   @Override
@@ -222,10 +227,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void unlockUniverseForUpdate() {
+    unlockUniverseForUpdate(null);
+  }
+
+  public void unlockUniverseForUpdate(String error) {
     if (!universeLocked) {
       LOG.warn("Unlock universe called when it was not locked.");
       return;
     }
+    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -239,6 +249,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = false;
+        universeDetails.errorString = err;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -280,11 +291,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Create a task to mark the updated cert on a universe.
+   */
+  public SubTaskGroup createUnivSetCertTask(UUID certUUID) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    UnivSetCertificate.Params params = new UnivSetCertificate.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.certUUID = certUUID;
+    UnivSetCertificate task = new UnivSetCertificate();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a task to create default alert definitions on a universe.
+   */
+  public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    CreateAlertDefinitions task = new CreateAlertDefinitions();
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to destroy nodes and adds it to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be removed
+   * @param nodes         : a collection of nodes that need to be removed
    * @param isForceDelete if this is true, ignore ansible errors
-   * @param deleteNode if true, the node info is deleted from the universe db.
+   * @param deleteNode    if true, the node info is deleted from the universe db.
    */
   public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes,
                                                boolean isForceDelete,
@@ -519,29 +557,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
+    return createWaitForServersTasks(
+      nodes,
+      type,
+      config.getDuration("yb.wait_for_server_timeout") /* default timeout */
+    );
+  }
+
   /**
    * Create a task list to ping all servers until they are up.
    *
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type  : Master or tserver type server running on these nodes.
-   * @param timeoutMillis : time to wait for each rpc call to the server, in millisec.
+   * @param timeout : time to wait for each rpc call to the server.
    */
-  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
-    return createWaitForServersTasks(nodes, type, -1 /* default timeout */);
-  }
-
-  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes,
-                                                ServerType type,
-                                                long timeoutMillis) {
+  public SubTaskGroup createWaitForServersTasks(
+    Collection<NodeDetails> nodes,
+    ServerType type,
+    Duration timeout
+  ) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
       params.nodeName = node.nodeName;
       params.serverType = type;
-      if (timeoutMillis > 0) {
-        params.serverWaitTimeoutMs = timeoutMillis;
-      }
+      params.serverWaitTimeoutMs = timeout.toMillis();
       WaitForServer task = new WaitForServer();
       task.initialize(params);
       subTaskGroup.addTask(task);
@@ -1056,6 +1098,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       exists = false;
     }
     return exists;
+  }
+
+  // Perform preflight checks on the given node.
+  public String performPreflightCheck(NodeDetails node, NodeTaskParams taskParams) {
+    // Create the process to fetch information about the node from the cloud provider.
+    NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
+    LOG.info("Running preflight checks for node {}.", taskParams.nodeName);
+    ShellResponse response = nodeManager.nodeCommand(
+        NodeManager.NodeCommandType.Precheck, taskParams);
+    if (response.code == 0) {
+      JsonNode responseJson = Json.parse(response.message);
+      for (JsonNode nodeContent: responseJson) {
+        if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
+          String errString = "Failed preflight checks for node "
+            + taskParams.nodeName + ":\n" + response.message;
+          LOG.error(errString);
+          return response.message;
+        }
+      }
+    }
+    return null;
   }
 
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {

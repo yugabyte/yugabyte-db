@@ -24,16 +24,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CallHomeManager;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -65,10 +61,13 @@ public class CustomerController extends AuthenticatedController {
   MetricQueryHelper metricQueryHelper;
 
   @Inject
-  ReleaseManager releaseManager;
-
-  @Inject
   CloudQueryHelper cloudQueryHelper;
+
+  public Result list() {
+    ArrayNode responseJson = Json.newArray();
+    Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
+    return ok(responseJson);
+  }
 
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);

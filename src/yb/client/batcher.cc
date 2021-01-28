@@ -92,7 +92,7 @@ namespace internal {
 // TODO: instead of using a string error message, make Batcher return a status other than IOError.
 // (https://github.com/YugaByte/yugabyte-db/issues/702)
 const std::string Batcher::kErrorReachingOutToTServersMsg(
-    "Errors occured while reaching out to the tablet servers");
+    "Errors occurred while reaching out to the tablet servers");
 
 // About lock ordering in this file:
 // ------------------------------
@@ -201,7 +201,8 @@ void Batcher::CheckForFinishedFlush() {
 
     if (state_ != BatcherState::kResolvingTablets &&
         state_ != BatcherState::kTransactionReady) {
-      LOG_WITH_PREFIX(DFATAL) << "Batcher finished in a wrong state: " << state_;
+      LOG_WITH_PREFIX(DFATAL) << "Batcher finished in a wrong state: " << AsString(state_) << "\n"
+                              << GetStackTrace();
       return;
     }
 
@@ -278,6 +279,12 @@ void Batcher::FlushAsync(StatusFunctor callback) {
 }
 
 Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
+  if (state() != BatcherState::kGatheringOps) {
+    const auto error =
+        STATUS_FORMAT(InternalError, "Adding op to batcher in a wrong state: $0", state_);
+    LOG(DFATAL) << error << "\n" << GetStackTrace();
+    return error;
+  }
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
@@ -489,6 +496,12 @@ void Batcher::FlushBuffersIfReady() {
     }
 
     if (state_ != BatcherState::kResolvingTablets) {
+      return;
+    }
+
+    if (ops_queue_.empty()) {
+      // Nothing to prepare.
+      state_ = BatcherState::kTransactionReady;
       return;
     }
 
@@ -748,6 +761,11 @@ double Batcher::RejectionScore(int attempt_num) {
 std::string Batcher::LogPrefix() const {
   const void* self = this;
   return Format("Batcher ($0): ", self);
+}
+
+BatcherState Batcher::state() const {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  return state_;
 }
 
 }  // namespace internal

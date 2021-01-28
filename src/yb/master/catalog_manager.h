@@ -457,6 +457,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(lock_);
 
   // Get Table info given namespace id and table name.
+  // Does not work for YSQL tables because of possible ambiguity.
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
       YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
@@ -735,6 +736,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       bool add_indexes,
       bool include_parent_colocated_table = false);
 
+  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
+  // replication info.
+  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -925,7 +930,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
       const consensus::ConsensusStatePB& consensus_state,
-      const tablet::RaftGroupStatePB& replica_state);
+      const ReportedTabletPB& report);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -934,12 +939,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO: See if we can remove this logic, as it seems confusing.
   void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                         const consensus::ConsensusStatePB* consensus_state,
-                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const ReportedTabletPB& report,
                                         const scoped_refptr<TabletInfo>& tablet_to_update);
 
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
-                                             const tablet::RaftGroupStatePB& replica_state,
+                                             const ReportedTabletPB& report,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -1053,7 +1058,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1115,10 +1120,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
-  // replication info.
-  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
-
   // Returns whether 'replication_info' has any relevant fields set.
   bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
 
@@ -1155,7 +1156,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
-      const TabletInfo& source_tablet_info, const PartitionPB& partition);
+      TabletInfo* source_tablet_info, const PartitionPB& partition,
+      TableInfo::lock_type* table_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
@@ -1214,6 +1216,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Table map: [namespace-id, table-name] -> TableInfo
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
+  // Note that this map isn't used for YSQL tables.
   TableInfoByNameMap table_names_map_ GUARDED_BY(lock_);
 
   // Tablet maps: tablet-id -> TabletInfo
@@ -1381,7 +1384,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
-  static constexpr int kDefaultYQLPartitionsRefreshBgTaskSleepSecs = 10;
+  rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

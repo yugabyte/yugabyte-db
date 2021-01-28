@@ -1888,6 +1888,7 @@ public class PlacementInfoUtil {
       }
 
       if (!zones.isEmpty()) {
+        // TODO: sort zones by instance type
         azByRegionMap.put(userIntent.regionList.get(idx), zones);
       }
     }
@@ -1898,29 +1899,29 @@ public class PlacementInfoUtil {
       .reduce(0, Integer::sum);
 
 
-    List<AvailabilityZone> totalAzsInRegions = new ArrayList<>();
+    List<AvailabilityZone> allAzsInRegions = new ArrayList<>();
     while (azsAdded < totalNumAzsInRegions) {
       for (UUID regionUUID : azByRegionMap.keySet()) {
         List<AvailabilityZone> regionAzs = azByRegionMap.get(regionUUID);
         if (regionAzs.size() > 0) {
-          totalAzsInRegions.add(regionAzs.get(0));
+          allAzsInRegions.add(regionAzs.get(0));
           regionAzs.remove(0);
           azsAdded += 1;
         }
       }
     }
 
-    if (totalAzsInRegions.isEmpty()) {
+    if (allAzsInRegions.isEmpty()) {
       throw new RuntimeException("No AZ found across regions: " + userIntent.regionList);
     }
 
     LOG.info("numRegions={}, numAzsInRegions={}, zonesIntended={}", userIntent.regionList.size(),
-      totalAzsInRegions.size(), num_zones);
+      allAzsInRegions.size(), num_zones);
 
     // Case (1) Set min_num_replicas = RF
     if (num_zones == 1) {
       addPlacementZone(
-        totalAzsInRegions.get(0).uuid,
+        allAzsInRegions.get(0).uuid,
         placementInfo,
         userIntent.replicationFactor,
         userIntent.numNodes
@@ -1928,10 +1929,10 @@ public class PlacementInfoUtil {
     // Case (2) Set min_num_replicas ~= RF/num_zones
     } else if (num_zones <= userIntent.replicationFactor) {
       for (int i = 0; i < num_zones; i++) {
-        if (totalAzsInRegions.size() < num_zones) {
-          addPlacementZone(totalAzsInRegions.get(i % totalAzsInRegions.size()).uuid, placementInfo);
+        if (allAzsInRegions.size() < num_zones) {
+          addPlacementZone(allAzsInRegions.get(i % allAzsInRegions.size()).uuid, placementInfo);
         } else {
-          addPlacementZone(totalAzsInRegions.get(i).uuid, placementInfo);
+          addPlacementZone(allAzsInRegions.get(i).uuid, placementInfo);
         }
       }
     } else {

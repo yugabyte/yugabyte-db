@@ -40,6 +40,7 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus.pb.h"
@@ -60,6 +61,7 @@
 #include "yb/server/webui_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/string_case.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
@@ -213,25 +215,38 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   }
 }
 
-inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
+inline void MasterPathHandlers::TServerTable(std::stringstream* output,
+                                             TServersViewType viewType) {
   *output << "<table class='table table-striped'>\n";
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
-          << "      <th>Status & Uptime</th>\n"
-          << "      <th>User Tablet-Peers / Leaders</th>\n"
-          << "      <th>RAM Used</th>\n"
-          << "      <th>Num SST Files</th>\n"
-          << "      <th>Total SST Files Size</th>\n"
-          << "      <th>Uncompressed SST </br>Files Size</th>\n"
-          << "      <th>Read ops/sec</th>\n"
-          << "      <th>Write ops/sec</th>\n"
-          << "      <th>Cloud</th>\n"
+          << "      <th>Status & Uptime</th>\n";
+
+  if (viewType == TServersViewType::kTServersClocksView) {
+    *output << "      <th>Physical Time (UTC)</th>\n"
+            << "      <th>Hybrid Time (UTC)</th>\n";
+  } else {
+    DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
+    *output << "      <th>User Tablet-Peers / Leaders</th>\n"
+            << "      <th>RAM Used</th>\n"
+            << "      <th>Num SST Files</th>\n"
+            << "      <th>Total SST Files Size</th>\n"
+            << "      <th>Uncompressed SST </br>Files Size</th>\n"
+            << "      <th>Read ops/sec</th>\n"
+            << "      <th>Write ops/sec</th>\n";
+  }
+
+  *output << "      <th>Cloud</th>\n"
           << "      <th>Region</th>\n"
-          << "      <th>Zone</th>\n"
-          << "      <th>System Tablet-Peers / Leaders</th>\n"
-          << "      <th>Active Tablet-Peers</th>\n"
-          << "    </tr>\n";
+          << "      <th>Zone</th>\n";
+
+  if (viewType == TServersViewType::kTServersDefaultView) {
+    *output << "      <th>System Tablet-Peers / Leaders</th>\n"
+            << "      <th>Active Tablet-Peers</th>\n";
+  }
+
+  *output << "    </tr>\n";
 }
 
 namespace {
@@ -311,7 +326,8 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
                                         std::stringstream* output,
-                                        const int hide_dead_node_threshold_mins) {
+                                        const int hide_dead_node_threshold_mins,
+                                        TServersViewType viewType) {
   // Copy vector to avoid changes to the reference descs passed
   std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
 
@@ -339,22 +355,44 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
 
       auto tserver = tablet_map->find(desc->permanent_uuid());
       bool no_tablets = tserver == tablet_map->end();
-      *output << "    <td>" << (no_tablets ? 0
-              : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
-              << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
-      *output << "    <td>" << HumanizeBytes(desc->total_memory_usage()) << "</td>";
-      *output << "    <td>" << desc->num_sst_files() << "</td>";
-      *output << "    <td>" << HumanizeBytes(desc->total_sst_file_size()) << "</td>";
-      *output << "    <td>" << HumanizeBytes(desc->uncompressed_sst_file_size()) << "</td>";
-      *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
-      *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
+
+      if (viewType == TServersViewType::kTServersClocksView) {
+        // Render physical time.
+        const Timestamp p_ts(desc->physical_time());
+        *output << "    <td>" << p_ts.ToHumanReadableTime() << "</td>";
+
+        // Render the physical and logical components of the hybrid time.
+        const HybridTime ht = desc->hybrid_time();
+        const Timestamp h_ts(ht.GetPhysicalValueMicros());
+        *output << "    <td>" << h_ts.ToHumanReadableTime();
+        if (ht.GetLogicalValue()) {
+          *output << " / Logical: " << ht.GetLogicalValue();
+        }
+        *output << "</td>";
+      } else {
+        DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
+        *output << "    <td>" << (no_tablets ? 0
+                : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
+                << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
+        *output << "    <td>" << HumanizeBytes(desc->total_memory_usage()) << "</td>";
+        *output << "    <td>" << desc->num_sst_files() << "</td>";
+        *output << "    <td>" << HumanizeBytes(desc->total_sst_file_size()) << "</td>";
+        *output << "    <td>" << HumanizeBytes(desc->uncompressed_sst_file_size()) << "</td>";
+        *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
+        *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
+      }
+
       *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
-      *output << "    <td>" << (no_tablets ? 0
-              : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
-              << " / " << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
-      *output << "    <td>" << (no_tablets ? 0 : desc->num_live_replicas()) << "</td>";
+
+      if (viewType == TServersViewType::kTServersDefaultView) {
+        *output << "    <td>" << (no_tablets ? 0
+                : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
+                << " / " << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
+        *output << "    <td>" << (no_tablets ? 0 : desc->num_live_replicas()) << "</td>";
+      }
+
       *output << "  </tr>\n";
     }
   }
@@ -479,7 +517,8 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
 }
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
-                                             Webserver::WebResponse* resp) {
+                                             Webserver::WebResponse* resp,
+                                             TServersViewType viewType) {
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -521,15 +560,16 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
             << live_id << "</h3>\n";
   }
 
-  TServerTable(output);
-  TServerDisplay(live_id, &descs, &tablet_map, output, hide_dead_node_threshold_override);
+  TServerTable(output, viewType);
+  TServerDisplay(live_id, &descs, &tablet_map, output, hide_dead_node_threshold_override,
+                 viewType);
 
   for (const auto& read_replica_uuid : read_replica_uuids) {
     *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
-    TServerTable(output);
-    TServerDisplay(
-        read_replica_uuid, &descs, &tablet_map, output, hide_dead_node_threshold_override);
+    TServerTable(output, viewType);
+    TServerDisplay(read_replica_uuid, &descs, &tablet_map, output,
+                   hide_dead_node_threshold_override, viewType);
   }
 
   ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
@@ -750,10 +790,9 @@ void MasterPathHandlers::HandleHealthCheck(
       table->GetAllTablets(&tablets);
 
       for (const auto& tablet : tablets) {
-        TabletInfo::ReplicaMap replication_locations;
-        tablet->GetReplicaLocations(&replication_locations);
+        auto replication_locations = tablet->GetReplicaLocations();
 
-        if (replication_locations.size() < replication_factor) {
+        if (replication_locations->size() < replication_factor) {
           // These tablets don't have the required replication locations needed.
           jw.String(tablet->tablet_id());
           continue;
@@ -764,7 +803,7 @@ void MasterPathHandlers::HandleHealthCheck(
           continue;
         }
         int recent_replica_count = 0;
-        for (const auto& iter : replication_locations) {
+        for (const auto& iter : *replication_locations) {
           if (std::find_if(dead_nodes.begin(),
                            dead_nodes.end(),
                            [iter, death_interval_msecs] (const auto& ts) {
@@ -1048,6 +1087,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << state
             << EscapeForHtmlToString(l->data().pb.state_msg())
             << "</td></tr>\n";
+
+    auto replication_info = CHECK_RESULT(
+      master_->catalog_manager()->ResolveReplicationInfo(l->data().pb.replication_info()));
+    *output << "  <tr><td>Replication Info:</td><td>"
+            << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
+            << "  </td></tr>\n";
     *output << "</table>\n";
 
     Status s = SchemaFromPB(l->data().pb.schema(), &schema);
@@ -1067,10 +1112,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>State</th>"
       "<th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    TabletInfo::ReplicaMap locations;
-    tablet->GetReplicaLocations(&locations);
+    auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
-    AppendValuesFromMap(locations, &sorted_locations);
+    AppendValuesFromMap(*locations, &sorted_locations);
     std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
 
     auto l = tablet->LockForRead();
@@ -1176,11 +1220,10 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
   auto nonsystem_tablets = GetNonSystemTablets();
 
   for (TabletInfoPtr t : nonsystem_tablets) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     auto has_leader = std::any_of(
-      rm.begin(), rm.end(),
+      rm->begin(), rm->end(),
       [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
 
     if (!has_leader) {
@@ -1203,11 +1246,10 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets
                         "Unable to find replication factor");
 
   for (TabletInfoPtr t : nonsystem_tablets) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     // Find out the tablets which have been replicated less than the replication factor
-    if(rm.size() < cluster_rf) {
+    if(rm->size() < cluster_rf) {
       underreplicated_tablets.push_back(t);
     }
   }
@@ -1248,8 +1290,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
           << "<th>Tablet Replication Count</th></tr>\n";
 
   for (TabletInfoPtr t : *underreplicated_ts) {
-    TabletInfo::ReplicaMap rm;
-    t.get()->GetReplicaLocations(&rm);
+    auto rm = t.get()->GetReplicaLocations();
 
     *output << Substitute(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
@@ -1258,7 +1299,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
         EscapeForHtmlToString(t->table()->name()),
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t.get()->tablet_id()),
-        EscapeForHtmlToString(std::to_string(rm.size())));
+        EscapeForHtmlToString(std::to_string(rm->size())));
   }
 
   *output << "</table>\n";
@@ -1787,11 +1828,18 @@ Status MasterPathHandlers::Register(Webserver* server) {
     "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
     is_on_nav_bar, "fa fa-home");
   Webserver::PathHandlerCallback cb =
-      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
+      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
+                TServersViewType::kTServersDefaultView);
   server->RegisterPathHandler(
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
+  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
+                 TServersViewType::kTServersClocksView);
+  server->RegisterPathHandler(
+      "/tablet-server-clocks", "Tablet Server Clocks",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false /* is_on_nav_bar */);
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
       this, _1, _2, false /* only_user_tables */);
   server->RegisterPathHandler(
@@ -1919,10 +1967,9 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
-      TabletInfo::ReplicaMap replication_locations;
-      tablet->GetReplicaLocations(&replication_locations);
+      auto replication_locations = tablet->GetReplicaLocations();
 
-      for (const auto& replica : replication_locations) {
+      for (const auto& replica : *replication_locations) {
         if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
                           || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {

@@ -2,6 +2,8 @@ import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 
+import scala.util.Try
+
 name := """yugaware"""
 
 lazy val root = (project in file("."))
@@ -17,6 +19,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
+  "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.4.1208",
@@ -29,6 +32,7 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.11.907",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
@@ -43,27 +47,52 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "1.4.193" % Test,
+  "com.h2database" % "h2" % "1.4.200" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
-  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test
+  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
+  "com.icegreen" % "greenmail" % "1.6.1" % Test,
+  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test
 )
-// Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
-lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
-resolvers += {
-  if (mavenLocal != null && mavenLocal.equals("true")) {
-    val localMavenRepo = System.getenv("YB_MVN_LOCAL_REPO")
-    if (localMavenRepo != null) {
-      "Local Maven Repository" at "file://" + localMavenRepo
+// Clear default resolvers.
+appResolvers := None
+bootResolvers := None
+otherResolvers := Seq()
+
+// Whether to use local maven repo to retrieve artifacts (used for yb-client).
+lazy val mavenLocal = Try(System.getenv("USE_MAVEN_LOCAL").toBoolean).getOrElse(false)
+lazy val ybClientResolver = {
+  if (mavenLocal) {
+    lazy val localMavenRepo = System.getenv("YB_MVN_LOCAL_REPO")
+    if (localMavenRepo == null || localMavenRepo.isEmpty) {
+      Seq(Resolver.mavenLocal)
     } else {
-      Resolver.mavenLocal
+      Seq("Local Maven Repository" at "file://" + localMavenRepo)
     }
   } else {
-    "Yugabyte Nexus Snapshots" at System.getenv("YB_NEXUS_SNAPSHOT_URL")
+    Seq("Yugabyte Maven Snapshots" at System.getenv("YB_MVN_SNAPSHOT_URL"))
   }
 }
 
-lazy val groupId = "org.yb"
-libraryDependencies += groupId % "yb-client" % "0.8.2-SNAPSHOT"
+// Custom remote maven repository to retrieve library dependencies from.
+lazy val mavenRemoteUrl = System.getenv("YB_MVN_CACHE_URL")
+lazy val ywDependencyResolver = {
+  if (mavenRemoteUrl == null || mavenRemoteUrl.isEmpty) {
+    Seq()
+  } else {
+    Seq("*" at mavenRemoteUrl)
+  }
+}
+
+// SBT will try to resolve dependencies in order of definition in externalResolvers.
+externalResolvers := {
+  if (ywDependencyResolver.isEmpty) {
+    ybClientResolver ++ externalResolvers.value
+  } else {
+    ybClientResolver ++ ywDependencyResolver
+  }
+}
+
+libraryDependencies += "org.yb" % "yb-client" % "0.8.2-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
@@ -79,14 +108,8 @@ publishArtifact in (Compile, packageDoc) := false
 topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
-lazy val autoReload = Option(System.getenv("AUTO_RELOAD")).getOrElse("true")
-playMonitoredFiles := {
-  if (autoReload != null && autoReload.equals("false")) {
-    Seq()
-  } else {
-    playMonitoredFiles.value
-  }
-}
+lazy val autoReload = Try(System.getenv("AUTO_RELOAD").toBoolean).getOrElse(true)
+playMonitoredFiles := { if (autoReload) playMonitoredFiles.value else Seq() }
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 

@@ -63,7 +63,7 @@ menu:
     <a class="section-link icon-offset" href="column-level-security">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Column-Level Security (RLS)</div>
+        <div class="title">Column-Level Security</div>
       </div>
       <div class="body">
           Restricting column-level permissions in YugabyteDB.

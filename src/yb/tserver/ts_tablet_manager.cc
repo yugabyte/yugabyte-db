@@ -171,6 +171,9 @@ DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_per_table_greater_tha
                  "If greater than zero, this process will crash if for any table we exceed the "
                  "specified number of remote bootstrap sessions");
 
+DEFINE_test_flag(bool, crash_before_apply_tablet_split_op, false,
+                 "Crash inside TSTabletManager::ApplyTabletSplit before doing anything");
+
 DEFINE_test_flag(bool, force_single_tablet_failure, false,
                  "Force exactly one tablet to a failed state.");
 
@@ -179,9 +182,6 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
-
-DEFINE_test_flag(bool, pause_before_post_split_compation, false,
-                 "Pause before triggering post split compaction.");
 
 namespace {
 
@@ -222,7 +222,6 @@ DEFINE_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
-
 
 DEFINE_int32(post_split_trigger_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for post_split_trigger_compaction_pool_. This "
@@ -934,7 +933,12 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) {
+Status TSTabletManager::ApplyTabletSplit(
+    tablet::SplitOperationState* op_state, log::Log* raft_log) {
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
+    LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
+  }
+
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -956,8 +960,12 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
 
-  auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
-  RETURN_NOT_OK(tablet_peer->raft_consensus()->FlushLogIndex());
+  if (raft_log == nullptr) {
+    auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
+    raft_log = tablet_peer->raft_consensus()->log().get();
+  }
+
+  RETURN_NOT_OK(raft_log->FlushIndex());
 
   auto& meta = *CHECK_NOTNULL(tablet->metadata());
 
@@ -1014,7 +1022,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
-    RETURN_NOT_OK(tablet_peer->raft_consensus()->CopyLogTo(dest_wal_dir));
+    RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir));
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
@@ -1534,17 +1542,17 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  if (tablet->MightHaveNonRelevantData()) {
-    WARN_NOT_OK(
-      post_split_trigger_compaction_pool_->SubmitFunc(
-          std::bind(&TSTabletManager::CompactPostSplitTablet, this, tablet)),
+  WARN_NOT_OK(
+      tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+        return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+      }),
       "Failed to submit compaction for post-split tablet.");
+  if (tablet->StillHasParentDataAfterSplit()) {
+    std::lock_guard<RWMutex> lock(mutex_);
+    tablets_being_compacted_after_split_.insert(tablet->tablet_id());
+    VLOG(2) << TabletLogPrefix(tablet->tablet_id())
+            << " marking as being compacted after split";
   }
-}
-
-void TSTabletManager::CompactPostSplitTablet(tablet::TabletPtr tablet) {
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
-  WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
 }
 
 void TSTabletManager::StartShutdown() {
@@ -1740,7 +1748,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   SharedLock<RWMutex> shared_lock(mutex_);
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
-    for (const auto peer : *tablet_peers) {
+    for (const auto& peer : *tablet_peers) {
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);
@@ -1882,7 +1890,7 @@ void TSTabletManager::MarkDirtyUnlocked(const TabletId& tablet_id,
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
   VLOG(2) << TabletLogPrefix(tablet_id)
-          << "Marking dirty. Reason: " << context->ToString()
+          << "Marking dirty. Reason: " << AsString(context)
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
   server_->heartbeater()->TriggerASAP();
@@ -1907,6 +1915,11 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   }
   reported_tablet->set_schema_version(tablet_peer->tablet_metadata()->schema_version());
 
+  if (tablet_peer->tablet() != nullptr) {
+      reported_tablet->set_processing_parent_data(
+                  tablet_peer->tablet()->StillHasParentDataAfterSplit());
+  }
+
   // We cannot get consensus state information unless the TabletPeer is running.
   shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
   if (consensus) {
@@ -1929,6 +1942,27 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
     report->set_sequence_number(cur_report_seq);
+
+    TabletIdSet::iterator i = tablets_being_compacted_after_split_.begin();
+    while (i != tablets_being_compacted_after_split_.end()) {
+      TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, *i);
+      if (tablet_peer) {
+          const auto& tablet = (*tablet_peer)->tablet();
+          const std::string& tablet_id = tablet->tablet_id();
+          if (!tablet->StillHasParentDataAfterSplit()) {
+            i = tablets_being_compacted_after_split_.erase(i);
+            VLOG(1) << "Tablet " << tablet_id << " compacted after split and marked for report";
+            InsertOrUpdate(&dirty_tablets_, tablet_id, TabletReportState{cur_report_seq});
+          } else {
+            ++i;
+          }
+      } else {
+          VLOG(1) << "Tablet " << *i << " should being compacted after split "
+                                        "but was not found";
+          i = tablets_being_compacted_after_split_.erase(i);
+      }
+    }
+
     if (include_bootstrap) {
       for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
         VLOG(1) << "Tablet " << tablet_id << " being remote bootstrapped and marked for report";

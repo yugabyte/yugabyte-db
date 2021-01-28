@@ -43,6 +43,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    String errorString = null;
 
     try {
       checkUniverseVersion();
@@ -59,26 +60,31 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Set all the node names.
       setNodeNames(UniverseOpType.EDIT, universe);
 
-      // Select master nodes, if needed.
-      selectMasters();
+      // Run preflight checks on onprem nodes to be added.
+      if (reserveAndCheckOnpremNodesToBeAdded()) {
+        // Select master nodes, if needed.
+        selectMasters();
 
-      // Update the user intent.
-      writeUserIntentToUniverse();
+        // Update the user intent.
+        writeUserIntentToUniverse(false, false);
 
-      for (Cluster cluster : taskParams().clusters) {
-        addDefaultGFlags(cluster.userIntent);
-        editCluster(universe, cluster);
+        for (Cluster cluster : taskParams().clusters) {
+          addDefaultGFlags(cluster.userIntent);
+          editCluster(universe, cluster);
+        }
+
+        // Update the DNS entry for this universe, based in primary provider info.
+        UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
+                primaryIntent.provider, primaryIntent.universeName)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      } else {
+        errorString = "Preflight checks failed.";
       }
-
-      // Update the DNS entry for this universe, based in primary provider info.
-      UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
-              primaryIntent.provider, primaryIntent.universeName)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       subTaskGroupQueue.run();
@@ -88,7 +94,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      unlockUniverseForUpdate(errorString);
     }
     LOG.info("Finished {} task.", getName());
   }
@@ -121,9 +127,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     if (!nodesToProvision.isEmpty()) {
-      createPrecheckTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(nodesToProvision)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);

@@ -185,6 +185,8 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   ts_desc->UpdateHeartbeatTime();
   ts_desc->set_num_live_replicas(req->num_live_tablets());
   ts_desc->set_leader_count(req->leader_count());
+  ts_desc->set_physical_time(req->ts_physical_time());
+  ts_desc->set_hybrid_time(HybridTime::FromPB(req->ts_hybrid_time()));
 
   // Adjust the table report limit per heartbeat so this can be dynamically changed.
   if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {

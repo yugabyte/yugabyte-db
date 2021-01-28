@@ -181,7 +181,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       std::shared_ptr<tablet::TabletPeer>* tablet_peer,
       const bool colocated = false);
 
-  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state) override;
+  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state, log::Log* raft_log) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -491,8 +491,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  void CompactPostSplitTablet(tablet::TabletPtr tablet);
-
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -503,8 +501,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   typedef std::unordered_map<TabletId, std::shared_ptr<tablet::TabletPeer>> TabletMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, and
-  // tablets_being_remote_bootstrapped_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_,
+  // tablets_being_compacted_after_split_ and tablets_being_remote_bootstrapped_.
   mutable RWMutex mutex_;
 
   // Map from tablet ID to tablet
@@ -528,6 +526,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::set<TabletId> TabletIdSet;
 
   TabletIdSet tablets_being_remote_bootstrapped_ GUARDED_BY(mutex_);
+
+  TabletIdSet tablets_being_compacted_after_split_ GUARDED_BY(mutex_);
 
   // Used to keep track of the number of concurrent remote bootstrap sessions per table.
   std::unordered_map<TableId, TabletIdSet> tablets_being_remote_bootstrapped_per_table_;

@@ -7,14 +7,10 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,59 +21,40 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
-
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.mockito.runners.MockitoJUnitRunner;
-
 import play.libs.Json;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 import java.util.function.Predicate;
-import java.util.Set;
-import java.util.HashSet;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.*;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.fail;
-import org.mockito.ArgumentCaptor;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -105,14 +82,14 @@ public class NodeManagerTest extends FakeDBApplication {
   private final String instanceTypeCode = "fake_instance_type";
 
   private class TestData {
-    public Common.CloudType cloudType;
-    public PublicCloudConstants.StorageType storageType;
-    public Provider provider;
-    public Region region;
-    public AvailabilityZone zone;
-    public NodeInstance node;
+    public final Common.CloudType cloudType;
+    public final PublicCloudConstants.StorageType storageType;
+    public final Provider provider;
+    public final Region region;
+    public final AvailabilityZone zone;
+    public final NodeInstance node;
     public String privateKey = "/path/to/private.key";
-    public List<String> baseCommand = new ArrayList<>();
+    public final List<String> baseCommand = new ArrayList<>();
 
     public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
       cloudType = cloud;
@@ -209,7 +186,8 @@ public class NodeManagerTest extends FakeDBApplication {
     return accessKey;
   }
 
-  private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params){
+  private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params)
+  throws IOException, NoSuchAlgorithmException {
     Calendar cal = Calendar.getInstance();
     Date today = cal.getTime();
     cal.add(Calendar.YEAR, 1); // to get previous year add -1
@@ -222,11 +200,12 @@ public class NodeManagerTest extends FakeDBApplication {
     customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
     if (t.privateKey == null) {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID, params.nodePrefix,
-                                    today, nextYear, "/path/to/cert.crt", customCertInfo);
+                                    today, nextYear, TestHelper.TMP_PATH + "/ca.crt",
+                                    customCertInfo);
     } else {
       cert = CertificateInfo.create(rootCAuuid, t.provider.customerUUID,
                                     params.nodePrefix, today, nextYear, t.privateKey,
-                                    "/path/to/cert.crt",
+                                    TestHelper.TMP_PATH + "/ca.crt",
                                     CertificateInfo.Type.SelfSigned);
     }
 
@@ -247,6 +226,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    new File(TestHelper.TMP_PATH).mkdirs();
+    createTempFile("ca.crt", "test-cert");
   }
 
   private List<String> nodeCommand(
@@ -1106,7 +1087,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableNodeToNodeTLSNodeCommand() {
+  public void testEnableNodeToNodeTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       params.nodeName = t.node.getNodeName();
@@ -1124,7 +1106,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
 
   @Test
-  public void testCustomCertNodeCommand() {
+  public void testCustomCertNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     for (TestData t : testData) {
@@ -1146,7 +1129,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableClientToNodeTLSNodeCommand() {
+  public void testEnableClientToNodeTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -1164,7 +1148,8 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableAllTLSNodeCommand() {
+  public void testEnableAllTLSNodeCommand()
+  throws IOException, NoSuchAlgorithmException {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,

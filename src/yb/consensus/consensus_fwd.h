@@ -19,6 +19,13 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+namespace log {
+
+class Log;
+
+} // namespace log
+
 namespace consensus {
 
 class Consensus;
@@ -76,6 +83,7 @@ YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 YB_STRONGLY_TYPED_BOOL(PreElection);
 
 } // namespace consensus
+
 } // namespace yb
 
 #endif // YB_CONSENSUS_CONSENSUS_FWD_H

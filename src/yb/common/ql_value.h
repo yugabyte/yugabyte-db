@@ -239,6 +239,9 @@ class QLValue {
   virtual void set_jsonb_value(std::string&& val) {
     pb_.set_jsonb_value(std::move(val));
   }
+  void set_jsonb_value(const std::string& val) {
+    pb_.set_jsonb_value(val);
+  }
   virtual void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
@@ -284,15 +287,8 @@ class QLValue {
     set_inetaddress_value(val, &pb_);
   }
 
-  virtual void set_jsonb_value(const std::string& val) {
-    pb_.set_jsonb_value(val);
-  }
-  virtual void set_jsonb_value(const std::string&& val) {
-    pb_.set_jsonb_value(std::move(val));
-  }
-
   static void set_uuid_value(const Uuid& val, QLValuePB* out) {
-    CHECK_OK(val.ToBytes(out->mutable_uuid_value()));
+    val.ToBytes(out->mutable_uuid_value());
   }
 
   void set_uuid_value(const Uuid& val) {
@@ -301,9 +297,7 @@ class QLValue {
 
   virtual void set_timeuuid_value(const Uuid& val) {
     CHECK_OK(val.IsTimeUuid());
-    std::string bytes;
-    CHECK_OK(val.ToBytes(&bytes));
-    pb_.set_timeuuid_value(std::move(bytes));
+    val.ToBytes(pb_.mutable_timeuuid_value());
   }
   virtual void set_varint_value(const util::VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());

@@ -1138,8 +1138,17 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         auto table_lock = table->LockForRead();
         RETURN_NOT_OK(table->GetSchema(&persisted_schema));
       }
+
+      // Ignore 'nullable' attribute - due to difference in implementation
+      // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
+      struct CompareColumnsExceptNullable {
+        bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
+          return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
+              ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
+        }
+      } comparator;
       // Schema::Equals() compares only column names & types. It does not compare the column ids.
-      if (!persisted_schema.Equals(schema)
+      if (!persisted_schema.Equals(schema, comparator)
           || persisted_schema.column_ids().size() != column_ids.size()) {
         return STATUS(InternalError,
                       Format("Invalid created table schema={$0}, expected={$1}",
@@ -2919,14 +2928,14 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
   // Assumes that caller has locked universe.
   Status s = sys_catalog_->DeleteItem(universe.get(), leader_ready_term());
   if (!s.ok()) {
-    LOG(ERROR) << "An error occured while updating sys-catalog: " << s
+    LOG(ERROR) << "An error occurred while updating sys-catalog: " << s
                << ": universe_id: " << universe->id();
     return;
   }
   // Remove it from the map.
   std::lock_guard<LockType> catalog_lock(lock_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
-    LOG(ERROR) << "An error occured while removing replication info from map: " << s
+    LOG(ERROR) << "An error occurred while removing replication info from map: " << s
                << ": universe_id: " << universe->id();
   }
 }

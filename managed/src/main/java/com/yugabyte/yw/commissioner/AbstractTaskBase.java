@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -11,28 +9,27 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.TargetType;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DataConverters;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-import play.Configuration;
-import play.api.Play;
 import play.libs.Json;
 
 public abstract class AbstractTaskBase implements ITask {
@@ -45,6 +42,9 @@ public abstract class AbstractTaskBase implements ITask {
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
   private static final long THREAD_ALIVE_TIME = 60L;
+
+  @VisibleForTesting
+  static final String ALERT_ERROR_CODE = "TASK_FAILURE";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -166,45 +166,14 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public void sendNotification() {
-    try {
-      Configuration appConfig = Play.current().injector().instanceOf(Configuration.class);
-      HealthManager healthManager = Play.current().injector().instanceOf(HealthManager.class);
-      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-      Customer customer = Customer.get(task.getCustomerUUID());
-      ObjectNode notificationData = Json.newObject()
-        .put("alert_name", "Backup failure")
-        .put("task_type", task.getType().name())
-        .put("target_type", task.getTarget().name())
-        .put("target_name", task.getNotificationTargetName())
-        .put("task_info", taskInfo);
-      String customerTag = String.format("[%s][%s]", customer.name, customer.code);
-      List<String> destinations = new ArrayList<>();
-      String ybEmail = appConfig.getString("yb.health.default_email", null);
-      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-      CustomerRegisterFormData.AlertingData alertingData =
-        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
-        destinations.add(ybEmail);
-      }
+    CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
+    Customer customer = Customer.get(task.getCustomerUUID());
+    String content = String.format("%s %s failed for %s.\n\nTask Info: %s", task.getType().name(),
+        task.getTarget().name(), task.getNotificationTargetName(), taskInfo);
 
-      if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
-        destinations.add(alertingData.alertingEmail);
-      }
-
-      CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
-      CustomerRegisterFormData.SmtpData smtpData = null;
-      if (smtpConfig != null) {
-        smtpData =  Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
-      }
-
-      healthManager.runCommand(
-        customerTag,
-        destinations.size() == 0 ? null : String.join(",", destinations),
-        smtpData,
-        notificationData
-      );
-    } catch (Exception e) {
-      LOG.error("Error alerting task failure", e);
-    }
+    Alert.TargetType alertType = DataConverters.taskTargetToAlertTargetType(task.getTarget());
+    Alert.create(customer.uuid,
+        alertType == TargetType.TaskType ? task.getTaskUUID() : task.getTargetUUID(), alertType,
+        ALERT_ERROR_CODE, "Error", content, true, null);
   }
 }

@@ -50,9 +50,6 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   @Mock
   play.Configuration mockAppConfig;
 
-  @Mock
-  ApiHelper mockApiHelper;
-
   MetricConfig validMetric;
 
   @Before

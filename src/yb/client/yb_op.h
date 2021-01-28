@@ -534,6 +534,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   const ReadHybridTime& read_time() const { return read_time_; }
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
+  void SetIsForBackfill(const bool value) { read_request_->set_is_for_backfill(value); }
 
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
