@@ -356,9 +356,10 @@ Status PgWrapper::Start() {
   // TODO: we should probably load the metrics library in a different way once we let
   // users change the shared_preload_libraries conf parameter.
   if (FLAGS_pg_stat_statements_enabled) {
-    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit");
+    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit,"
+      "pg_hint_plan");
   } else {
-    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit");
+    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit,pg_hint_plan");
   }
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
