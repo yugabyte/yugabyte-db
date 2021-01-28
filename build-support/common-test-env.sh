@@ -349,6 +349,12 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
       test=${test_list_item#  }  # Remove two leading spaces
       test=${test%%#*}  # Remove everything after a "#" comment
       test=${test%  }  # Remove two trailing spaces
+      if [[ $test == *YB_DISABLE_TEST_IN_* ]]; then
+        fatal "YB_DISABLE_TEST_IN_... is not allowed in C++ test names. This could happen when" \
+              "trying to use YB_DISABLE_TEST_IN_TSAN or YB_DISABLE_TEST_IN_SANITIZERS in a" \
+              "parameterized test with TEST_P. For parameterized tests, please use" \
+              "YB_SKIP_TEST_IN_TSAN() as the first line of the test instead. Test name: $test."
+      fi
       if [[ -n ${total_num_tests:-} ]]; then
         (( total_num_tests+=1 ))
       fi
