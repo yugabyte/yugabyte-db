@@ -320,8 +320,8 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
 
-DEFINE_bool(enable_register_ts_from_raft, false, "Whether to register a tserver from the consensus "
-                                                 "information of a reported tablet.");
+DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver from the consensus "
+                                                "information of a reported tablet.");
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
@@ -6886,7 +6886,7 @@ Status CatalogManager::EnableBgTasks() {
   // Add bg thread to rebuild the system partitions thread.
   refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
+      [this]() { RebuildYQLSystemPartitions(); }));
   return Status::OK();
 }
 
@@ -8772,8 +8772,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   }
   refresh_yql_partitions_task_.Schedule([this](const Status& status) {
     WARN_NOT_OK(
-        background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)),
+        background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
   }, wait_time);
 }

@@ -44,11 +44,11 @@ Some tables start off small, with only a few shards. If these tables grow very l
 
 DocDB allows data resharding by splitting tablets using the following three mechanisms:
 
-* **[Presplitting tablets](#presplitting-tablets-beta):** All tables created in DocDB can be split into the desired number of tablets at creation time.
+* **[Presplitting tablets](#presplitting-tablets):** All tables created in DocDB can be split into the desired number of tablets at creation time.
 
 * **[Manual tablet splitting](#manual-tablet-splitting):** The tablets in a running cluster can be split manually at runtime by the user.
 
-* **[Automatic tablet splitting](#automatic-tablet-splitting-beta):** The tablets in a running cluster are automatically split according to some policy by the database.
+* **[Automatic tablet splitting](#automatic-tablet-splitting):** The tablets in a running cluster are automatically split according to some policy by the database.
 
 The following sections give details on how to split tablets using these three approaches.
 

@@ -45,12 +45,15 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/size_literals.h"
 
 DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
+TAG_FLAG(enable_tracing, advanced);
+TAG_FLAG(enable_tracing, runtime);
 
 namespace yb {
 
