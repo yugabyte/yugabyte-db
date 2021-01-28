@@ -24,7 +24,7 @@ Assuming we have a cluster where:
 
 These are the steps to follow in such scenario:
 
-- on the `NODE_GOOD` TS, create an archive of the wals (raft data) and rocksdb (regular rocksdb) directories
+- on the `NODE_GOOD` TS, create an archive of the wals (raft data) and rocksdb (regular rocksdb) directories for `TABLET1`
 
 - copy these archives over to `NODE_BAD1`, on the same drive that `TABLET1` currently has its raft and rocksdb data
 
