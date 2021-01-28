@@ -24,13 +24,13 @@ Assuming we have a cluster where:
 
 These are the steps to follow in such scenario:
 
-- on the `NODE_GOOD` TS, create an archive of the wals (raft data) and rocksdb (regular rocksdb) directories for `TABLET1`
+- on the `NODE_GOOD` TS, create an archive of the wals (raft data), rocksdb (regular rocksdb) directories, intents (transactions data) and snapshots directories for `TABLET1`
 
 - copy these archives over to `NODE_BAD1`, on the same drive that `TABLET1` currently has its raft and rocksdb data
 
 - stop the bad TS, say `NODE_BAD1`, as we will be changing file system data underneath
 
-- remove the old wals and rocksdb data for `TABLET1` from `NODE_BAD1`
+- remove the old wals, rocksdb, intents, snapshots data for `TABLET1` from `NODE_BAD1`
 
 - unpack the data we copied over from `NODE_GOOD` into the corresponding (now empty) directories on `NODE_BAD1`
 
@@ -66,6 +66,16 @@ For the raft wals:
 For the rocksdb regular DB: 
 ```bash
 /mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39
+```
+
+For the intents files: 
+```bash
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.intents
+```
+
+For the snapshot files: 
+```bash
+/mnt/d0/yb-data/tserver/data/rocksdb/table-2fa481734909462385e005ba23664537/tablet-c08596d5820a4683a96893e092088c39.snapshots
 ```
 
 {{< /note >}}
