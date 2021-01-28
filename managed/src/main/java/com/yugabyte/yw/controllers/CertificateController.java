@@ -38,7 +38,7 @@ public class CertificateController extends AuthenticatedController {
 
   public Result upload(UUID customerUUID) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-      .bindFromRequest();
+                                                  .bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -61,17 +61,17 @@ public class CertificateController extends AuthenticatedController {
       if (customCertInfo == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
       } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
-        customCertInfo.rootCertPath == null) {
+                 customCertInfo.rootCertPath == null) {
         return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
       }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
     try {
       UUID certUUID = CertificateHelper.uploadRootCA(
-        label, customerUUID, appConfig.getString("yb.storage.path"),
-        certContent, keyContent, certStart, certExpiry, certType,
-        customCertInfo
-      );
+                        label, customerUUID, appConfig.getString("yb.storage.path"),
+                        certContent, keyContent, certStart, certExpiry, certType,
+                        customCertInfo
+                      );
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
@@ -82,7 +82,7 @@ public class CertificateController extends AuthenticatedController {
 
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
-      .bindFromRequest();
+                                                 .bindFromRequest();
     if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -96,7 +96,7 @@ public class CertificateController extends AuthenticatedController {
 
     try {
       JsonNode result = CertificateHelper.createClientCertificate(
-        rootCA, null, formData.get().username, certStart, certExpiry);
+          rootCA, null, formData.get().username, certStart, certExpiry);
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return ApiResponse.success(result);
     } catch (Exception e) {
@@ -131,18 +131,11 @@ public class CertificateController extends AuthenticatedController {
   }
 
   public Result list(UUID customerUUID) {
-    List<CertificateInfo> certificates = CertificateInfo.getAll(customerUUID);
-    ArrayNode certList = Json.newArray();
-    certificates.forEach((certificate) -> {
-      ObjectNode certJson = (ObjectNode) Json.toJson(certificate);
-      certJson.put("inUse", certificate.getInUse(customerUUID));
-      certList.add(certJson);
-    });
-
-    if (certificates == null) {
+    List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
+    if (certs == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    return ApiResponse.success(certList);
+    return ApiResponse.success(certs);
   }
 
   public Result get(UUID customerUUID, String label) {
@@ -159,7 +152,7 @@ public class CertificateController extends AuthenticatedController {
     if (certificate == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
     }
-    if (!certificate.getInUse(customerUUID)) {
+    if (!certificate.getInUse()) {
       if (certificate.delete()) {
         ObjectNode responseJson = Json.newObject();
         responseJson.put("Successfully deleted the certificate", true);
