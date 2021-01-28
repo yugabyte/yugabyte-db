@@ -5,7 +5,7 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.common;
@@ -28,6 +28,7 @@ import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -41,15 +42,20 @@ import java.util.stream.StreamSupport;
 public class PlatformReplicationManager extends DevopsBase {
   static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
   static final String BACKUP_DIR = "platformBackups";
+  public static final String REPLICATION_DIR = "platformReplication";
+  static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
+
+  // Config keys:
   static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
   static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
   static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
   static final String DB_HOST_CONFIG_KEY = "db.default.host";
   static final String DB_PORT_CONFIG_KEY = "db.default.port";
-  static final String BACKUP_FREQUENCY_KEY = "yb.platform_backup_frequency";
-  static final String BACKUP_SCHEDULE_ENABLED_KEY = "yb.platform_backup_schedule_enabled";
-  static final String STORAGE_PATH_KEY = "yb.storage.path";
-  static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
+  static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
+  static final String REPLICATION_SCHEDULE_ENABLED_KEY = "yb.ha.replication_schedule_enabled";
+  public static final String STORAGE_PATH_KEY = "yb.storage.path";
+  public static final String RETAIN_DATA_FROM_INVALID_SRC_KEY =
+    "yb.ha.retain_data_from_invalid_src";
 
   private final AtomicReference<Cancellable> schedule;
 
@@ -123,13 +129,13 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   private Duration getBackupFrequency() {
-    return this.runtimeConfigFactory.globalRuntimeConf().getDuration(BACKUP_FREQUENCY_KEY);
+    return this.runtimeConfigFactory.globalRuntimeConf().getDuration(REPLICATION_FREQUENCY_KEY);
   }
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
     this.stop();
     this.runtimeConfigFactory.globalRuntimeConf().setValue(
-      BACKUP_FREQUENCY_KEY,
+      REPLICATION_FREQUENCY_KEY,
       String.format("%d ms", duration.toMillis())
     );
     this.setBackupScheduleEnabled(true);
@@ -143,12 +149,13 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   private boolean isBackupScheduleEnabled() {
-    return this.runtimeConfigFactory.globalRuntimeConf().getBoolean(BACKUP_SCHEDULE_ENABLED_KEY);
+    return this.runtimeConfigFactory.globalRuntimeConf()
+      .getBoolean(REPLICATION_SCHEDULE_ENABLED_KEY);
   }
 
   public void setBackupScheduleEnabled(boolean enabled) {
     this.runtimeConfigFactory.globalRuntimeConf().setValue(
-      BACKUP_SCHEDULE_ENABLED_KEY,
+      REPLICATION_SCHEDULE_ENABLED_KEY,
       Boolean.toString(enabled)
     );
   }
@@ -171,9 +178,9 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   // TODO: (Daniel/Shashank) - https://github.com/yugabyte/yugabyte-db/issues/6961.
-  public List<File> listBackups() throws Exception {
+  public List<File> listBackups(String leader) throws Exception {
     List<File> result = new ArrayList<>();
-    Path backupDir = this.getBackupDir();
+    Path backupDir = this.getReplicationDirFor(leader);
 
     if (!backupDir.toFile().exists() || !backupDir.toFile().isDirectory()) {
       LOG.debug(String.format("%s directory does not exist", backupDir.toFile().getName()));
@@ -181,8 +188,12 @@ public class PlatformReplicationManager extends DevopsBase {
       return result;
     }
 
+    return listFiles(backupDir, "backup_*.tgz");
+  }
+
+  private static List<File> listFiles(Path backupDir, String pattern) throws IOException {
     return StreamSupport.stream(
-      Files.newDirectoryStream(backupDir, "backup_*.tgz").spliterator(), false)
+      Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
       .map(Path::toFile)
       .collect(Collectors.toList());
   }
@@ -198,7 +209,7 @@ public class PlatformReplicationManager extends DevopsBase {
    * Assumption is that any platform instance existing locally but not provided in the payload has
    * been deleted on the leader, and thus should be deleted here too.
    *
-   * @param config the local HA Config model
+   * @param config    the local HA Config model
    * @param instances the JSON payload received from the leader instance
    */
   public void importPlatformInstances(HighAvailabilityConfig config, ArrayNode instances) {
@@ -296,9 +307,8 @@ public class PlatformReplicationManager extends DevopsBase {
   private void syncPlatformInstances(HighAvailabilityConfig config) {
     String clusterKey = config.getClusterKey();
     config.getRemoteInstances()
-      .forEach(remoteInstance -> {
-        this.exportPlatformInstances(config, clusterKey, remoteInstance.getAddress());
-      });
+      .forEach(remoteInstance ->
+        exportPlatformInstances(config, clusterKey, remoteInstance.getAddress()));
   }
 
   // TODO: (Shashank) - Implement https://github.com/yugabyte/yugabyte-db/issues/6503.
@@ -318,6 +328,22 @@ public class PlatformReplicationManager extends DevopsBase {
     // Update local last backup time if creating + sending the backups succeeded.
     config.getLocal().updateLastBackup();
     this.syncPlatformInstances(config);
+  }
+
+  public boolean saveReplicationData(String fileName, File uploadedFile, String leader,
+                                     String sender) {
+    Path replicationDir = getReplicationDirFor(leader);
+    Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
+    if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
+      if (uploadedFile.renameTo(saveAsFile.toFile())) {
+        LOG.debug("Store platform backup received from leader {} via {} as {}.",
+          leader, sender, saveAsFile);
+        return true;
+      }
+    }
+    LOG.error("Could not store platform backup received from leader {} via {} as {}", leader,
+      sender, saveAsFile);
+    return false;
   }
 
   private abstract class PlatformBackupParams {
@@ -436,6 +462,7 @@ public class PlatformReplicationManager extends DevopsBase {
 
   /**
    * Create a backup of the Yugabyte Platform
+   *
    * @return the output/results of running the script
    */
   public boolean createBackup() {
@@ -452,6 +479,7 @@ public class PlatformReplicationManager extends DevopsBase {
 
   /**
    * Restore a backup of the Yugabyte Platform
+   *
    * @param input is the path to the backup to be restored
    * @return the output/results of running the script
    */
@@ -462,7 +490,11 @@ public class PlatformReplicationManager extends DevopsBase {
     if (response.code != 0) {
       LOG.error("Restore failed: " + response.message);
     }
-
     return response.code == 0;
+  }
+
+  private Path getReplicationDirFor(String leader) {
+    String storagePath = runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY);
+    return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 }
