@@ -21,7 +21,7 @@ menu:
               <div class="title">What's new in the v2.5 latest release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the v2.5 latest release series (Updated November 12, 2020).
+              Features, enhancements, and fixes in the v2.5 latest release series.
           </div>
       </a>
   </div>
@@ -33,7 +33,7 @@ menu:
               <div class="title">What's new in the v2.4 current stable release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the recommended stable release series v2.4 (Updated January 22, 2021).
+              Features, enhancements, and fixes in the recommended stable release series v2.4.
           </div>
       </a>
   </div>
