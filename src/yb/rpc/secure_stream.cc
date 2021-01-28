@@ -37,6 +37,8 @@ using namespace std::literals;
 
 DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
 DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
+DEFINE_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
+DEFINE_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
 DEFINE_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
@@ -334,6 +336,8 @@ Status SecureContext::UseCertificate(const Slice& data) {
 
 namespace {
 
+YB_DEFINE_ENUM(LocalSide, (kClient)(kServer));
+
 class SecureStream : public Stream, public StreamContext {
  public:
   SecureStream(const SecureContext& context, std::unique_ptr<Stream> lower_stream,
@@ -394,6 +398,9 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS Established(SecureState state);
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
   bool Verify(bool preverified, X509_STORE_CTX* store_context);
+  bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
+  bool MatchUid(X509* cert, GENERAL_NAMES* gens);
+  bool MatchUidEntry(const Slice& value, const char* name);
   CHECKED_STATUS SendEncrypted(OutboundDataPtr data);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   CHECKED_STATUS ReadDecrypted();
@@ -407,7 +414,7 @@ class SecureStream : public Stream, public StreamContext {
   StreamContext* context_;
   size_t decrypted_bytes_to_skip_ = 0;
   SecureState state_ = SecureState::kInitial;
-  bool need_connect_ = false;
+  LocalSide local_side_ = LocalSide::kServer;
   bool connected_ = false;
   std::vector<OutboundDataPtr> pending_data_;
   std::vector<std::string> certificate_entries_;
@@ -420,7 +427,7 @@ class SecureStream : public Stream, public StreamContext {
 
 Status SecureStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context) {
   context_ = context;
-  need_connect_ = connect;
+  local_side_ = connect ? LocalSide::kClient : LocalSide::kServer;
   return lower_stream_->Start(connect, loop, this);
 }
 
@@ -529,7 +536,8 @@ const Endpoint& SecureStream::Local() {
 }
 
 std::string SecureStream::ToString() {
-  return Format("SECURE[$0] $1 $2", need_connect_ ? "C" : "S", state_, lower_stream_->ToString());
+  return Format("SECURE[$0] $1 $2", local_side_ == LocalSide::kClient ? "C" : "S", state_,
+                lower_stream_->ToString());
 }
 
 void SecureStream::UpdateLastActivity() {
@@ -680,7 +688,7 @@ Status SecureStream::ReadDecrypted() {
 }
 
 void SecureStream::Connected() {
-  if (need_connect_) {
+  if (local_side_ == LocalSide::kClient) {
     auto status = Init();
     if (status.ok()) {
       status = Handshake();
@@ -699,7 +707,8 @@ Status SecureStream::Handshake() {
 
     auto pending_before = BIO_ctrl_pending(bio_.get());
     ERR_clear_error();
-    int result = need_connect_ ? SSL_connect(ssl_.get()) : SSL_accept(ssl_.get());
+    int result = local_side_ == LocalSide::kClient
+        ? SSL_connect(ssl_.get()) : SSL_accept(ssl_.get());
     int ssl_error = SSL_get_error(ssl_.get(), result);
     int sys_error = static_cast<int>(ERR_get_error());
     auto pending_after = BIO_ctrl_pending(bio_.get());
@@ -707,12 +716,12 @@ Status SecureStream::Handshake() {
     if (ssl_error == SSL_ERROR_SSL || ssl_error == SSL_ERROR_SYSCALL) {
       std::string message =
           ssl_error == SSL_ERROR_SSL ? SSLErrorMessage(sys_error) : ErrnoToString(sys_error);
-      std::string certificate_entries;
+      std::string message_suffix;
       if (FLAGS_dump_certificate_entries) {
-        certificate_entries = Format(", certificate entries: $0", certificate_entries_);
+        message_suffix = Format(", certificate entries: $0", certificate_entries_);
       }
       return STATUS_FORMAT(NetworkError, "Handshake failed: $0, address: $1, hostname: $2$3",
-                           message, Remote().address(), remote_hostname_, certificate_entries);
+                           message, Remote().address(), remote_hostname_, message_suffix);
     }
 
     if (ssl_error == SSL_ERROR_WANT_WRITE || pending_after > pending_before) {
@@ -746,7 +755,7 @@ Status SecureStream::Init() {
     SSL_set_mode(ssl_.get(), SSL_MODE_RELEASE_BUFFERS);
     SSL_set_app_data(ssl_.get(), this);
 
-    if (!need_connect_ || secure_context_.use_client_certificate()) {
+    if (local_side_ == LocalSide::kServer || secure_context_.use_client_certificate()) {
       auto res = SSL_use_PrivateKey(ssl_.get(), secure_context_.private_key());
       if (res != 1) {
         return SSL_STATUS(InvalidArgument, "Failed to use private key: $0");
@@ -834,30 +843,36 @@ bool MatchPattern(Slice pattern, Slice host) {
   return p == p_end && h == h_end;
 }
 
+Slice GetEntryByNid(X509* cert, int nid) {
+  X509_NAME* name = X509_get_subject_name(cert);
+  int last_i = -1;
+  for (int i = -1; (i = X509_NAME_get_index_by_NID(name, nid, i)) >= 0; ) {
+    last_i = i;
+  }
+  if (last_i == -1) {
+    return Slice();
+  }
+  auto* name_entry = X509_NAME_get_entry(name, last_i);
+  if (!name_entry) {
+    LOG(DFATAL) << "No name entry in certificate at index: " << last_i;
+    return Slice();
+  }
+  auto* common_name = X509_NAME_ENTRY_get_data(name_entry);
+
+  if (common_name && common_name->data && common_name->length) {
+    return Slice(common_name->data, common_name->length);
+  }
+
+  return Slice();
+}
+
+Slice GetCommonName(X509* cert) {
+  return GetEntryByNid(cert, NID_commonName);
+}
+
 } // namespace
 
-// Verify according to RFC 2818.
-bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
-  // Don't bother looking at certificates that have failed pre-verification.
-  if (!preverified) {
-    VLOG_WITH_PREFIX(4) << "Unverified certificate";
-    return false;
-  }
-
-  // We're only interested in checking the certificate at the end of the chain.
-  int depth = X509_STORE_CTX_get_error_depth(store_context);
-  if (depth > 0) {
-    VLOG_WITH_PREFIX(4) << "Intermediate certificate";
-    return true;
-  }
-
-  X509* cert = X509_STORE_CTX_get_current_cert(store_context);
-
-  auto gens = static_cast<GENERAL_NAMES*>(X509_get_ext_d2i(cert, NID_subject_alt_name, 0, 0));
-  auto se = ScopeExit([gens] {
-    GENERAL_NAMES_free(gens);
-  });
-
+bool SecureStream::MatchEndpoint(X509* cert, GENERAL_NAMES* gens) {
   auto address = Remote().address();
 
   for (int i = 0; i < sk_GENERAL_NAME_num(gens); ++i) {
@@ -906,28 +921,130 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
 
   // No match in the alternate names, so try the common names. We should only
   // use the "most specific" common name, which is the last one in the list.
-  X509_NAME* name = X509_get_subject_name(cert);
-  int i = -1;
-  ASN1_STRING* common_name = 0;
-  while ((i = X509_NAME_get_index_by_NID(name, NID_commonName, i)) >= 0) {
-    X509_NAME_ENTRY* name_entry = X509_NAME_get_entry(name, i);
-    common_name = X509_NAME_ENTRY_get_data(name_entry);
-  }
-  if (common_name && common_name->data && common_name->length) {
-    Slice common_name_slice(common_name->data, common_name->length);
-    VLOG_WITH_PREFIX(4) << "Common name: " << common_name_slice.ToBuffer() << " vs "
+  Slice common_name = GetCommonName(cert);
+  if (!common_name.empty()) {
+    VLOG_WITH_PREFIX(4) << "Common name: " << common_name.ToBuffer() << " vs "
                         << Remote().address() << "/" << remote_hostname_;
-    if (FLAGS_dump_certificate_entries) {
-      certificate_entries_.push_back(Format("CN:$0", common_name_slice.ToBuffer()));
-    }
-    if (common_name_slice == Remote().address().to_string() ||
-        MatchPattern(common_name_slice, remote_hostname_)) {
+    if (common_name == Remote().address().to_string() ||
+        MatchPattern(common_name, remote_hostname_)) {
       return true;
     }
   }
 
   VLOG_WITH_PREFIX(4) << "Nothing suitable for " << Remote().address() << "/" << remote_hostname_;
+
   return false;
+}
+
+bool SecureStream::MatchUidEntry(const Slice& value, const char* name) {
+  if (value == secure_context_.required_uid()) {
+    VLOG_WITH_PREFIX(4) << "Accepted " << name << ": " << value.ToBuffer();
+    return true;
+  } else if (!value.empty()) {
+    VLOG_WITH_PREFIX(4) << "Rejected " << name << ": " << value.ToBuffer() << ", while "
+                        << secure_context_.required_uid() << " required";
+  }
+  return false;
+}
+
+bool IsStringType(int type) {
+  switch (type) {
+    case V_ASN1_UTF8STRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_IA5STRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_UNIVERSALSTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_BMPSTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_VISIBLESTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_PRINTABLESTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_TELETEXSTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_GENERALSTRING: FALLTHROUGH_INTENDED;
+    case V_ASN1_NUMERICSTRING:
+      return true;
+  }
+  return false;
+}
+
+bool SecureStream::MatchUid(X509* cert, GENERAL_NAMES* gens) {
+  if (MatchUidEntry(GetCommonName(cert), "common name")) {
+    return true;
+  }
+
+  auto uid = GetEntryByNid(cert, NID_userId);
+  if (!uid.empty()) {
+    if (FLAGS_dump_certificate_entries) {
+      certificate_entries_.push_back(Format("UID:$0", uid.ToBuffer()));
+    }
+    if (MatchUidEntry(uid, "uid")) {
+      return true;
+    }
+  }
+
+  for (int i = 0; i < sk_GENERAL_NAME_num(gens); ++i) {
+    GENERAL_NAME* gen = sk_GENERAL_NAME_value(gens, i);
+    if (gen->type == GEN_OTHERNAME) {
+      auto value = gen->d.otherName->value;
+      if (IsStringType(value->type)) {
+        Slice other_name(value->value.asn1_string->data, value->value.asn1_string->length);
+        if (!other_name.empty()) {
+          if (FLAGS_dump_certificate_entries) {
+            certificate_entries_.push_back(Format("ON:$0", other_name.ToBuffer()));
+          }
+          if (MatchUidEntry(other_name, "other name")) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  VLOG_WITH_PREFIX(4) << "Not found entry for UID " << secure_context_.required_uid();
+
+  return false;
+}
+
+// Verify according to RFC 2818.
+bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
+  // Don't bother looking at certificates that have failed pre-verification.
+  if (!preverified) {
+    VLOG_WITH_PREFIX(4) << "Unverified certificate";
+    return false;
+  }
+
+  // We're only interested in checking the certificate at the end of the chain.
+  int depth = X509_STORE_CTX_get_error_depth(store_context);
+  if (depth > 0) {
+    VLOG_WITH_PREFIX(4) << "Intermediate certificate";
+    return true;
+  }
+
+  X509* cert = X509_STORE_CTX_get_current_cert(store_context);
+  auto gens = static_cast<GENERAL_NAMES*>(X509_get_ext_d2i(
+      cert, NID_subject_alt_name, nullptr, nullptr));
+  auto se = ScopeExit([gens] {
+    GENERAL_NAMES_free(gens);
+  });
+
+  if (FLAGS_dump_certificate_entries) {
+    certificate_entries_.push_back(Format("CN:$0", GetCommonName(cert).ToBuffer()));
+  }
+
+  if (!secure_context_.required_uid().empty()) {
+    if (!MatchUid(cert, gens)) {
+      return false;
+    }
+  } else {
+    VLOG_WITH_PREFIX(4) << "Skip UID verification";
+  }
+
+  bool verify_endpoint = local_side_ == LocalSide::kClient ? FLAGS_verify_server_endpoint
+                                                           : FLAGS_verify_client_endpoint;
+  if (verify_endpoint) {
+    if (!MatchEndpoint(cert, gens)) {
+      return false;
+    }
+  } else {
+    VLOG_WITH_PREFIX(4) << "Skip endpoint verification";
+  }
+
+  return true;
 }
 
 } // namespace
@@ -939,12 +1056,12 @@ const Protocol* SecureStreamProtocol() {
 
 StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
-    SecureContext* context) {
+    const SecureContext* context) {
   class SecureStreamFactory : public StreamFactory {
    public:
     SecureStreamFactory(
         StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
-        SecureContext* context)
+        const SecureContext* context)
         : lower_layer_factory_(std::move(lower_layer_factory)), buffer_tracker_(buffer_tracker),
           context_(context) {
     }
@@ -963,7 +1080,7 @@ StreamFactoryPtr SecureStreamFactory(
 
     StreamFactoryPtr lower_layer_factory_;
     MemTrackerPtr buffer_tracker_;
-    SecureContext* context_;
+    const SecureContext* context_;
   };
 
   return std::make_shared<SecureStreamFactory>(

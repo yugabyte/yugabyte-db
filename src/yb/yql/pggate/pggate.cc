@@ -46,6 +46,7 @@
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb {
 namespace pggate {
@@ -79,7 +80,9 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
   if (FLAGS_use_node_to_node_encryption) {
-    secure_context = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir));
+    secure_context = VERIFY_RESULT(server::CreateSecureContext(
+        FLAGS_certs_dir,
+        server::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
   }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
