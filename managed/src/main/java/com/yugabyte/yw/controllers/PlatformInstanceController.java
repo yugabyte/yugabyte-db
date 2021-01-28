@@ -171,7 +171,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   // TODO: (Daniel) - This needs to validate that another instance is not still
   //  reachable + is a leader, etc (#6505)
-  public Result promoteInstance(UUID configUUID, UUID instanceUUID) {
+  public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr) {
     try {
       HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
       if (config == null) {
@@ -202,8 +202,12 @@ public class PlatformInstanceController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
+      if (curLeaderAddr == null) {
+        curLeaderAddr = config.getLeader().getAddress();
+      }
+
       // Make sure the backup file provided exists.
-      Optional<File> backup = replicationManager.listBackups()
+      Optional<File> backup = replicationManager.listBackups(curLeaderAddr)
         .stream()
         .filter(f -> f.getName().equals(formData.get().backup_file))
         .findFirst();

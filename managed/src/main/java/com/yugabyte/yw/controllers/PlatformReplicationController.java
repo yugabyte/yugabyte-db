@@ -5,7 +5,8 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0
+ * .txt
  */
 
 package com.yugabyte.yw.controllers;
@@ -97,13 +98,21 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
-  public Result listBackups() {
+  public Result listBackups(UUID configUUID, String leaderAddr) {
     try {
-      List<String> backups = replicationManager.listBackups()
-        .stream()
-        .map(File::getName)
-        .sorted(Collections.reverseOrder())
-        .collect(Collectors.toList());
+      if (leaderAddr == null) {
+        HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
+        if (config == null) {
+          return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+        }
+        leaderAddr = config.getLeader().getAddress();
+      }
+      List<String> backups =
+        replicationManager.listBackups(leaderAddr)
+          .stream()
+          .map(File::getName)
+          .sorted(Collections.reverseOrder())
+          .collect(Collectors.toList());
       return ApiResponse.success(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);
