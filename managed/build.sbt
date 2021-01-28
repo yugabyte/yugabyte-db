@@ -79,7 +79,7 @@ lazy val ywDependencyResolver = {
   if (mavenRemoteUrl == null || mavenRemoteUrl.isEmpty) {
     Seq()
   } else {
-    Seq("*" at mavenRemoteUrl)
+    Seq("Yugabyte Maven Cache" at mavenRemoteUrl)
   }
 }
 
