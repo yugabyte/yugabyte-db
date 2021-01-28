@@ -1,6 +1,5 @@
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ValueNode;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
@@ -11,9 +10,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -22,7 +19,6 @@ import play.data.FormFactory;
 import play.libs.Json;
 
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
