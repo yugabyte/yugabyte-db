@@ -3,17 +3,12 @@ title: Use Helm Chart to deploy on Google Kubernetes Engine (GKE)
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE).
-block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
-aliases:
-  - /stable/deploy/kubernetes/gke/
-  - /stable/deploy/kubernetes/gke/helm-chart/
-  - /stable/deploy/kubernetes/single-zone/gke/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -21,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>

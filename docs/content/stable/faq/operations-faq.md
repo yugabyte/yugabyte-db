@@ -3,7 +3,6 @@ title: FAQs about operating YugabyteDB clusters
 headerTitle: Operations FAQ
 linkTitle: Operations FAQ
 description: Answers to common questions about operating YugabyteDB clusters
-block_indexing: true
 menu:
   stable:
     identifier: faq-operations

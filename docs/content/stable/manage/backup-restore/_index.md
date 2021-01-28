@@ -5,9 +5,6 @@ linkTitle: Back up and restore
 description: Back up and restore YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
-aliases:
-  - /manage/backup-restore/
-block_indexing: true
 menu:
   stable:
     identifier: backup-restore
@@ -48,10 +45,10 @@ This section goes into details of backing up data and restoring it from Yugabyte
     <a class="section-link icon-offset" href="snapshot-ysql">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Snapshot and restore data</div>
+        <div class="title">Distributed snapshot and restore data</div>
       </div>
       <div class="body">
-        This section describes how to use snapshots for backup and restore.
+        This section describes how to back up and restore data using distributed snapshots.
       </div>
     </a>
   </div>

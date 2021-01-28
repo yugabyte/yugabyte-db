@@ -6,7 +6,6 @@ description: YugabyteDB API reference for PostgreSQL-compatible YSQL and Cassand
 image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
 section: REFERENCE
-block_indexing: true
 menu:
   stable:
     identifier: api

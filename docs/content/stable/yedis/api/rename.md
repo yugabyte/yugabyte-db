@@ -2,14 +2,10 @@
 title: RENAME
 linkTitle: RENAME
 description: RENAME
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2265
-aliases:
-  - /stable/api/redis/rename
-  - /stable/api/yedis/rename
 isTocNested: true
 showAsideToc: true
 ---

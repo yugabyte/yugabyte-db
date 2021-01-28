@@ -9,7 +9,7 @@ menu:
     identifier: versioning
     weight: 2586
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
 Starting with v2.2.0, Yugabyte follows a new release versioning convention for stable and development releases. The following sections cover the new release versioning convention and includes descriptions of stable and latest releases.

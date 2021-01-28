@@ -3,7 +3,6 @@ title: Northwind sample database
 headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: northwind
@@ -38,7 +37,7 @@ Follow the steps here to download and install the Northwind sample database.
 
 ### Before you begin
 
-To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
+To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ### 1. Download the SQL scripts
 
