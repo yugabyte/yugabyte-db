@@ -3,7 +3,6 @@ title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
@@ -17,25 +16,25 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6) [BETA]
     </a>

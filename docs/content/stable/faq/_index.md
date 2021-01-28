@@ -5,10 +5,7 @@ linkTitle: FAQs
 description: FAQs
 image: /images/section_icons/index/faq.png
 headcontent:
-aliases:
-  - /faq/
 section: FAQ
-block_indexing: true
 menu:
   stable:
     identifier: faq

@@ -3,7 +3,6 @@ title: jsonb_strip_nulls() and json_strip_nulls()
 headerTitle: jsonb_strip_nulls and json_strip_nulls
 linkTitle: jsonb_strip_nulls()
 description: Find all key-value pairs in the hierarchy of the supplied JSON compound value and return a JSON value where each null pair has been removed.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-strip-nulls

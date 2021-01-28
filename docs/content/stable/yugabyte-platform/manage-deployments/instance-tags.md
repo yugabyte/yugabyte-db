@@ -3,8 +3,6 @@ title: Create and edit instance tags
 headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
-aliases:
-  - /stable/manage/enterprise-edition/instance-tags/
 menu:
   stable:
     identifier: instance-tags
@@ -14,9 +12,8 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. On Amazon Web Services (AWS), they are referred to as
-[instance tags](https://docs.aws.amazon.com/AWSEC2/stable/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the
-Yugabyte Platform console.
+The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AWS), they are referred to as
+[instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the Yugabyte Platform console.
 
 {{< note title="Note" >}}
 
@@ -44,8 +41,7 @@ User can provide these key-value pairs in any order.
 ### Check Cloud Provider instances*
 
 Browse to the cloud provider's instances page. In this example, since you are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
-in the correct availability zone and search for instances that have `test-tags` in their name. You should see something as follows in the
-**Tags** tab of those instances.
+in the correct availability zone and search for instances that have `test-tags` in their name. You should see something as follows in the **Tags** tab of those instances.
 
 ![Instances with tags](/images/ee/inst-tags-aws-1.png)
 

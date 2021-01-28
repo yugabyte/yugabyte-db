@@ -3,7 +3,6 @@ title: compare-dp-results
 linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
-block_indexing: true
 menu:
   stable:
     identifier: compare-dp-results

@@ -4,7 +4,6 @@ headerTitle: Install and use extensions
 linkTitle: Extensions
 description: Install and use extensions with PostgreSQL-compatible YSQL.
 summary: Reference for YSQL extensions
-block_indexing: true
 menu:
   stable:
     identifier: api-ysql-extensions
@@ -18,7 +17,7 @@ This page documents how to install and use PostgreSQL extensions that are tested
 
 ## Pre-bundled extensions
 
-These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
+These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
 
 ### fuzzystrmatch
 
@@ -203,7 +202,7 @@ For more information see [`tablefunc`](https://www.postgresql.org/docs/11/tablef
 
 ## Extensions requiring installation
 
-Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../commands/ddl_create_extension) statement.
+Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
 
 {{< note title="Note" >}}
 
@@ -266,7 +265,7 @@ If you encounter any issues when installing or using a particular extension, fil
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
-For instance, on macOS, you can:
+#### macOS
 
 - download and install [Postgres.app](https://postgresapp.com/)
 - install with Homebrew:
@@ -275,13 +274,52 @@ For instance, on macOS, you can:
     $ brew install postgres && brew install postgis
     ```
 
-Now follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
+#### Ubuntu
+Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubuntu/). Then you can install:
+
+```shell script
+sudo apt-get install postgresql-11 postgresql-11-postgis-3
+```
+
+#### CentOS
+You can get the YUM repository from [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then you 
+can use `yum` or `dnf` to install:
+```sh
+sudo yum install postgresql11-server postgis31_11
+```
+{{< note title="Note" >}}
+If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment 
+with multiple PostgreSQL versions installed:
+```sh
+$ pg_config --version
+PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
+$ /usr/lib/postgresql/11/bin/pg_config --version
+PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
+```
+So you need to make sure you're using the correct `pg_config`. In this case, `/usr/lib/postgresql/11/bin/pg_config`. 
+
+On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
+{{< /note >}}
+
+
+Now, follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create
 the extension.
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" && 
   cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension && 
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension &&
+  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
+```
+
+On Linux systems, PostGIS libraries have dependencies that must also be installed. Use the
+extensions option to the post-install tool, available on 2.3.2 (or later) releases.
+
+```sh
+  # On Linux systems:
+  ./bin/post_install.sh -e
+```
+
+```sh
   ./bin/ysqlsh -c "CREATE EXTENSION postgis";
 ```
 
@@ -366,7 +404,7 @@ YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](
 
 ### postgresql-hll (PostgreSQL extension for HyperLogLog)
 
-The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll`, which is a HyperLogLog data structure.
+The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces the data type `hll`, which is a HyperLogLog data structure.
 HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
 
 The first step is to install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.

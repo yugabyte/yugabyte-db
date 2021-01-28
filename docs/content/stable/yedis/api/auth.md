@@ -2,14 +2,10 @@
 title: AUTH
 linkTitle: AUTH
 description: AUTH
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2020
-aliases:
-  - /stable/api/redis/auth
-  - /stable/api/yedis/auth
 isTocNested: true
 showAsideToc: true
 ---

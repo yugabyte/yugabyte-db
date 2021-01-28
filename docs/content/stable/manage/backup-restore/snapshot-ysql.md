@@ -4,9 +4,6 @@ headerTitle: Snapshot and restore data
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data in YugabyteDB for YSQL.
 image: /images/section_icons/manage/enterprise.png
-aliases:
-  - manage/backup-restore/manage-snapshots
-block_indexing: true
 menu:
   stable:
     identifier: snapshots-1-ysql
@@ -19,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/manage/backup-restore/snapshot-ysql" class="nav-link active">
+    <a href="/latest/manage/backup-restore/snapshot-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/manage/backup-restore/snapshots-ycql" class="nav-link">
+    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -129,6 +126,31 @@ This needs to be done for all tablets of all tables in the database.
 cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots snapshot/
 ```
 
+The file path structure is:
+
+```
+<yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
+```
+
+- `<yb_data_dir>` is the directory where YugabyteDB data is stored. (default=`~/yugabyte-data`)
+- `<node_number>` is used when multiple nodes are running on the same server (for testing, QA, and development). The default value is `1`.
+- `<disk_number>` when running YugabyteDB on multiple disks with the `--fs_data_dirs` flag. The default value is `1`.
+- `<table_id>` is the UUID of the table. You can get it from the `http://<yb-master-ip>:7000/tables` url in the Admin
+ UI.
+- `<tablet_id>` in each table there is a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
+- `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
+
+In practice, for each server, you will use the `--fs_data_dirs` flag, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
+
+
+{{< note title="Tip" >}}
+
+To get a snapshot of a multi-node cluster, you need to go into each node and copy
+the folders of ONLY the leader tablets on that node. Because each tablet-replica has a copy of the same data, you do not need to keep a copy for each replica.
+
+{{< /note >}}
+
+
 Your snapshot of the YSQL database is complete.
 
 -----
@@ -186,6 +208,11 @@ cp -r snapshot/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/0d4b4935-2c95-4
 ```sh
 cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
 ```
+{{< note title="Note" >}}
+
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+
+{{< /note >}}
 
 4. Restore the snapshot.
 
@@ -226,7 +253,7 @@ aa7c413b-9d6b-420a-b994-6626980240ca 	RESTORED
 ```
 
 ```
-ysqlsh (11.2-YB-2.2.3.0-b0)
+ysqlsh (11.2-YB-2.2.1.0-b0)
 Type "help" for help.
 ```
 

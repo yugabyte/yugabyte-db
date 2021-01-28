@@ -7,7 +7,6 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: page
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: contribute

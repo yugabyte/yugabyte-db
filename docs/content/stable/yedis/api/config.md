@@ -2,14 +2,10 @@
 title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2030
-aliases:
-  - /stable/api/redis/config
-  - /stable/api/yedis/config
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,7 +3,6 @@ title: jsonb_build_object() and json_build_object()
 headerTitle: jsonb_build_object() and json_build_object()
 linkTitle: jsonb_build_object() 
 description: Build a JSON object from a variadic list that specifies keys with values of arbitrary SQL data type.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-build-object
@@ -68,7 +67,6 @@ The following `ysqlsh` script shows a feasible general workaround for this use c
 
 ```plpgsql
 create function f(variadic_array_elements in text) returns jsonb
-  immutable
   language plpgsql
 as $body$
 declare

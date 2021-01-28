@@ -3,7 +3,6 @@ title: Connect remote clients to Kubernetes clusters
 headerTitle: Connect clients to Kubernetes clusters
 linkTitle: Connect clients
 description: Connect remote clients to YugabyteDB clusters deployed within Kubernetes.
-block_indexing: true
 menu:
   stable:
     identifier: clients-kubernetes
@@ -113,7 +112,7 @@ Status:
 
 ## Connecting TLS Secured YugabyteDB cluster deployed by Helm Charts
 
-To start a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the steps at [Google Kubernetes Service (GKE) - Helm Chart](https://docs.yugabyte.com/stable/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command-line.
+To start a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the steps at [Google Kubernetes Service (GKE) - Helm Chart](/latest/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command-line.
 
 For example, `helm install yugabyte --namespace yb-demo --name yb-demo --set=tls.enabled=true`.
 

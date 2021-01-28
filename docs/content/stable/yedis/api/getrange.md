@@ -2,14 +2,10 @@
 title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2080
-aliases:
-  - /stable/api/redis/getrange
-  - /stable/api/yedis/getrange
 isTocNested: true
 showAsideToc: true
 ---

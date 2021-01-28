@@ -3,14 +3,11 @@ title: Best practices for YCQL applications
 headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
-block_indexing: true
 menu:
   stable:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
-aliases:
-  - /stable/develop/best-practices/
 isTocNested: 4
 showAsideToc: true
 ---
@@ -100,6 +97,11 @@ Collections are designed for storing small sets of values that are not expected 
 While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
 In particular, some list operations (insert at an index and remove elements) require a read-before-write. 
 
+### Use `partition_hash` for large table scans
+
+`partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to breakdown
+ full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../api/ycql/expr_fcall#partition_hash) 
+ along with a working Python script.
 
 ## Miscellaneous
 

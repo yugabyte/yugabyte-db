@@ -2,14 +2,10 @@
 title: HGETALL
 linkTitle: HGETALL
 description: HGETALL
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2130
-aliases:
-  - /stable/api/redis/hgetall
-  - /stable/api/yedis/hgetall
 isTocNested: true
 showAsideToc: true
 ---

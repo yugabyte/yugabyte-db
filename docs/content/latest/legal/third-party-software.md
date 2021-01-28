@@ -20,7 +20,7 @@ Yugabyte proudly participates in the open source community and appreciates all o
 
 - PostgreSQL stateless language layer for implementing YSQL.
 - PostgreSQL scanner and parser modules (`.y` and `.l` files) were used as a starting point for implementing the YCQL scanner and parser in C++.
-- The DocDB document store uses a customized and enhanced version of [RocksDB](https://github.com/facebook/rocksdb). Some of the customizations and enhancements are described in [DocDB store](https://docs.yugabyte.com/latest/architecture/docdb/).
+- The DocDB document store uses a customized and enhanced version of [RocksDB](https://github.com/facebook/rocksdb). Some of the customizations and enhancements are described in [DocDB store](/latest/architecture/docdb/).
 - The Apache Kudu Raft implementation and server framework were used as a starting point. Since then, Yugabyte has implemented several enhancements, such as leader leases and pre-voting state during learner mode for correctness, improvements to the network stack, auto balancing of tablets on failures, zone/DC aware data placement, leader-balancing, ability to do full cluster moves in a online manner, and more.
 - Google libraries (`glog`, `gflags`, `protocol buffers`, `snappy`, `gperftools`, `gtest`, `gmock`).
 

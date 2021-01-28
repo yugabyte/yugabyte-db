@@ -2,10 +2,6 @@
 title: Recover failed tserver/master
 linkTitle: Recover tserver/master
 description: Recover tserver/master
-aliases:
-  - /troubleshoot/cluster/recover-server/
-  - /stable/troubleshoot/cluster/recover-server/
-block_indexing: true
 menu:
   stable:
     parent: troubleshoot-cluster

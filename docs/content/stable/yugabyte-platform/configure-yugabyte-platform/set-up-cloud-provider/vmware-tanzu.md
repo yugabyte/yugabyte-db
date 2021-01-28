@@ -1,61 +1,58 @@
 ---
-title: Configure the VMware Tanzu cloud provider
-headerTitle: Configure the VMware Tanzu cloud provider
+title: Configure the VMware Tanzu provider
+headerTitle: Configure the VMware Tanzu provider
 linkTitle: Configure the cloud provider
-description: Configure the VMware Tanzu cloud rovider.
-aliases:
-  - /deploy/pivotal-cloud-foundry/
-  - /stable/deploy/pivotal-cloud-foundry/
+description: Configure the VMware Tanzu provider.
 menu:
   stable:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: false
+isTocNested: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
-      <i class="fas fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
-  <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+      <i class="fas fa-building"></i>
+      On-premises
     </a>
   </li>
 
@@ -108,9 +105,10 @@ This section lists various override options that you can specify when creating a
 
 ### Overriding cloud provider
 
-Based on what cloud providers you have setup in your Yugabyte Platform, you can create Yugabyte service instances by providing the overrides as below.
+Based on what cloud providers you have setup in your Yugabyte Platform, you can create Yugabyte service instances by providing
+the overrides as below.
 
-To provision in AWS or GCP clouds, your overrides would include the appropriate `provider_type` and `region_codes` as a array.
+To provision in AWS/GCP cloud, your overrides would include the appropriate `provider_type` and `region_codes` as a array
 
 ```sh
 {
@@ -132,7 +130,8 @@ To provision in Kubernetes, your overrides would include the appropriate `provid
 
 ### Overriding number of nodes
 
-To override the number of nodes, include the `num_nodes` with desired value, include this parameter with along with other parameters for the cloud provider.
+To override the number of nodes, just include the `num_nodes` with desired value, include this parameter with along with
+other parameters for the cloud provider.
 
 ```sh
 {

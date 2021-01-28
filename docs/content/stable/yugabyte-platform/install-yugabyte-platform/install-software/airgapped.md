@@ -15,21 +15,21 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/stable/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
       <i class="fas fa-unlink"></i>
       Airgapped
     </a>

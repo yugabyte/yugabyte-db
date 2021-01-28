@@ -3,56 +3,54 @@ title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Kubernetes cloud provider
-aliases:
-  - /stable/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
   stable:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: false
+isTocNested: false
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -81,18 +79,18 @@ Once you go to the appropriate tab, you should see a configuration form like thi
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
-Select the Kubernetes provider type from **Type**. In the case of Pivotal Container Service, this would default to that option.
+Select the Kubernetes provider type from **Type**. In the case of Pivotal Container Service, this would be default to that option.
 
 ## Configure the cloud provider
 
-Take note of the following for configuring your Kubernetes cloud provider:
+Take note of the following for configuring your Kubernetes provider:
 
 - Give a meaningful name for your configuration.
 
 - **Service Account** provide the name of the service account which has necessary access to manage the cluster, refer to [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 - **Kube Config** there are two ways to specify the kube config for an availability zone.
-  - Specify at **provider level** in the provider form as shown above. If specified, this config file will be used for all availability zones in all regions.
+  - Specify at **provider level** in the provider form as shown above. If specified, this configuration file will be used for all availability zones in all regions.
   - Specify at **zone level** inside of the region form as described below, this is especially needed for **multi-az** or **multi-region** deployments.
 
 - **Image Registry** specifies where to pull YugabyteDB image from leave this to default, unless you are hosting the registry on your end.

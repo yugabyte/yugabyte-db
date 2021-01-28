@@ -3,7 +3,6 @@ title: Histogram of the values in t4.dp_score
 linkTitle: Histogram report
 headerTitle: Output from running histogram() on t4.dp_score
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
-block_indexing: true
 menu:
   stable:
     identifier: histogram-report

@@ -3,7 +3,6 @@ title: Chinook sample database
 headerTitle: Chinook sample database
 linkTitle: Chinook
 description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: chinook
@@ -35,7 +34,7 @@ For details, here's the entity relationship diagram of the Chinook data model.
 
 ## Before you begin
 
-To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
+To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 Install the Chinook sample database
 

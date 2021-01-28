@@ -2,9 +2,6 @@
 title: Best practices
 linkTitle: Best practices
 description: Best practices
-aliases:
-  - /stable/deploy/kubernetes/local-ssd/
-block_indexing: true
 menu:
   stable:
     identifier: best-practices

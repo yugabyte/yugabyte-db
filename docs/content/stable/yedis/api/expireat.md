@@ -2,14 +2,10 @@
 title: EXPIREAT
 linkTitle: EXPIREAT
 description: EXPIREAT
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2062
-aliases:
-  - /stable/api/redis/expireat
-  - /stable/api/yedis/expireat
 isTocNested: true
 showAsideToc: true
 ---

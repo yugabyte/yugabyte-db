@@ -3,14 +3,10 @@ title: REVOKE PERMISSION statement [YCQL]
 headerTitle: REVOKE PERMISSION
 linkTitle: REVOKE PERMISSION
 description: Use the REVOKE PERMISSION statement to revoke a permission (or all the granted permissions) from a role.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1283
-aliases:
-  - /stable/api/cassandra/ddl_revoke_permission
-  - /stable/api/ycql/ddl_revoke_permission
 isTocNested: true
 showAsideToc: true
 ---

@@ -30,7 +30,9 @@ showAsideToc: true
 
 </ul>
 
-To immediately back up your YugabyteDB universe YSQL data, follow these steps.
+Use Yugabyte Platform to back up your YugabyteDB universe YSQL data. To schedule backups for a later time, or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
+
+To immediately back up your YugabyteDB universe YSQL data:
 
 1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
 2. Click **Create Backup** to open the **Create Backup** dialog.
@@ -43,4 +45,11 @@ To immediately back up your YugabyteDB universe YSQL data, follow these steps.
     - **Namespace**: Select the namespace from the drop-down list of available namespaces.
     - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
 
-Click **OK**. The backup begins immediately.
+Click **OK**. The requested backup begins immediately.
+
+{{< note title="Note" >}}
+
+If the universe has encrypted at rest enabled, data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted.
+A universe key metadata file, containing key references, is also backed up.
+
+{{< /note >}}

@@ -3,7 +3,6 @@ title: Build a Ruby application that uses ActiveRecord and YSQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Rails ActiveRecord and the YSQL API
-block_indexing: true
 menu:
   stable:
     parent: build-apps

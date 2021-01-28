@@ -3,9 +3,6 @@ title: Compare FoundationDB with YugabyteDB
 headerTitle: FoundationDB
 linkTitle: FoundationDB
 description: Compare FoundationDB with YugabyteDB.
-aliases:
-  - /comparisons/foundationdb/
-block_indexing: true
 menu:
   stable:
     parent: comparisons

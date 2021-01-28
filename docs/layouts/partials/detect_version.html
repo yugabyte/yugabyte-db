@@ -8,7 +8,7 @@
     {{ if eq $index "latest" }}
       {{ $context.Scratch.Set "currentVersionTitle" "v2.5 (latest)" }}
     {{ else if eq $index "stable" }}
-      {{ $context.Scratch.Set "currentVersionTitle" "v2.2 (stable)" }}
+      {{ $context.Scratch.Set "currentVersionTitle" "v2.4 (stable)" }}
     {{ else }}
       {{ $context.Scratch.Set "currentVersionTitle" $index }}
     {{ end }}

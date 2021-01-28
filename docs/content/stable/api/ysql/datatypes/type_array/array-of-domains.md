@@ -3,7 +3,6 @@ title: Using an array of DOMAIN values
 linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
-block_indexing: true
 menu:
   stable:
     identifier: array-of-domains
@@ -376,7 +375,6 @@ Typecasting cannot come to the rescue here. But this function produces the requi
 \set VERBOSITY default
 create or replace function array_agg_v()
   returns arrays_t
-  immutable
   language plpgsql
 as $body$
 <<b>>declare

@@ -2,14 +2,10 @@
 title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2233
-aliases:
-  - /stable/api/redis/pexpire
-  - /stable/api/yedis/pexpire
 isTocNested: true
 showAsideToc: true
 ---

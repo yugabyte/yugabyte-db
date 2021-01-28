@@ -2,14 +2,10 @@
 title: PTTL
 linkTitle: PTTL
 description: PTTL
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2235
-aliases:
-  - /stable/api/redis/pttl
-  - /stable/api/yedis/pttl
 isTocNested: true
 showAsideToc: true
 ---

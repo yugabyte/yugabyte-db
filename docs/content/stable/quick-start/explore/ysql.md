@@ -4,17 +4,6 @@ headerTitle: 3. Explore Yugabyte SQL
 linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
-aliases:
-  - /stable/quick-start/explore-ysql/
-  - /stable/quick-start/explore/
-  - /quick-start/test-postgresql/
-  - /stable/quick-start/test-postgresql/
-  - /stable/quick-start/test-ysql/
-  - /stable/explore/postgresql/joins/
-  - /stable/explore/postgresql/aggregations/
-  - /stable/explore/postgresql/expressions/
-  - /stable/explore/postgresql/views/
-block_indexing: true
 menu:
   stable:
     parent: quick-start
@@ -29,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/explore/ysql" class="nav-link active">
+    <a href="/latest/quick-start/explore/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/stable/quick-start/explore/ycql" class="nav-link">
+    <a href="/latest/quick-start/explore/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

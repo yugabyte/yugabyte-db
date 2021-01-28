@@ -3,12 +3,6 @@ title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
-aliases:
-  - /develop/client-drivers/go/
-  - /stable/develop/client-drivers/go/
-  - /stable/develop/build-apps/go/
-  - /stable/quick-start/build-apps/go/
-block_indexing: true
 menu:
   stable:
     parent: build-apps
@@ -22,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-pq" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/go/ysql-pq" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-gorm" class="nav-link">
+    <a href="/latest/quick-start/build-apps/go/ysql-gorm" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/go/ycql" class="nav-link">
+    <a href="/latest/quick-start/build-apps/go/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

@@ -3,7 +3,6 @@ title: jsonb_array_length() and json_array_length()
 linkTitle: jsonb_array_length()
 headerTitle: jsonb_array_length() and json_array_length()
 description: Return the count of values in an array using jsonb_array_length() and json_array_length().
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-array-length
@@ -46,4 +45,4 @@ This example uses the [`jsonb_typeof()`](../jsonb-typeof) function.
 
 Reading the values themselves would need to use a `case` statement that tests the emergent JSON data type and that selects the leg whose assignment target has the right SQL data type. This is straightforward only for primitive JSON values. If a compound JSON value is encountered, then it must be decomposed, recursively, until the ultimate JSON primitive value leaves are reached.
 
-This complexity reflects the underlying impedance mismatch between JSON's type system and SQL's type system. Introspecting a JSON value when you have no _a priori_ understanding of its structure is tricky.
+This complexity reflects the underlying impedance mismatch between the JSON type system and the SQL type system. Introspecting a JSON value when you have no _a priori_ understanding of its structure is tricky.

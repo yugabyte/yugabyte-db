@@ -3,14 +3,10 @@ title: CREATE TABLE statement [YCQL]
 headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1240
-aliases:
-  - /stable/api/cassandra/ddl_create_table
-  - /stable/api/ycql/ddl_create_table
 isTocNested: true
 showAsideToc: true
 ---
@@ -107,6 +103,7 @@ Where
 - Use the `AND` operator to use multiple table properties.
 - The other YCQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
 - The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+- `COMPACT STORAGE` is only for syntax compatibility with Cassandra. It doesn't affect the underlying storage.
 
 ## Examples
 

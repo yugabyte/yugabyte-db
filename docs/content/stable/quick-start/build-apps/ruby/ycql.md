@@ -3,7 +3,6 @@ title: Build a Ruby application that uses YCQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a sample Ruby application with the Yugabyte Ruby Driver for YCQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps

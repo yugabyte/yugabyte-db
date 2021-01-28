@@ -3,9 +3,6 @@ title: Edit configuration flags
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to edit configuration flags.
-aliases:
-  - /stable/manage/enterprise-edition/edit-flags/
-  - /stable/manage/enterprise-edition/edit-config-flags/
 menu:
   stable:
     identifier: edit-config-flags

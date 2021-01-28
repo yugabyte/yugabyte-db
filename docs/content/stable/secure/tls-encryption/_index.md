@@ -5,14 +5,11 @@ linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png
-aliases:
-  - /secure/tls-encryption/
-block_indexing: true
 menu:
   stable:
     identifier: tls-encryption
     parent: secure
-    weight: 721
+    weight: 725
 ---
 
 YugabyteDB can be configured to protect data in transit with:

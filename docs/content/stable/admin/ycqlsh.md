@@ -3,11 +3,6 @@ title: ycqlsh - YCQL shell for YugabyteDB
 headerTitle: ycqlsh
 linkTitle: ycqlsh
 description: Use the YCQL shell (ycqlsh) to interact with YugabyteDB.
-aliases:
-  - /develop/tools/cqlsh/
-  - /stable/develop/tools/cqlsh/
-  - /stable/admin/cqlsh/
-block_indexing: true
 menu:
   stable:
     identifier: ycqlsh

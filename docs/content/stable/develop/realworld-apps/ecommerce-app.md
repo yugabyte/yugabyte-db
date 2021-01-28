@@ -3,9 +3,6 @@ title: E-commerce sample application
 headerTitle: E-Commerce app
 linkTitle: E-Commerce app
 description: Run an e-commerce sample application built on YugabyteDB.
-aliases:
-  - /develop/realworld-apps/ecommerce-app/
-block_indexing: true
 menu:
   stable:
     identifier: ecommerce-app

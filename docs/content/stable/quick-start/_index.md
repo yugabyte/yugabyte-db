@@ -6,10 +6,7 @@ description: Get started using YugabyteDB in less than five minutes on macOS, Li
 image: /images/section_icons/index/quick_start.png
 headcontent: The easiest way to test YugabyteDB's APIs and core features is to create a local cluster on a single host.
 type: page
-aliases:
-  - /quick-start/
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: quick-start

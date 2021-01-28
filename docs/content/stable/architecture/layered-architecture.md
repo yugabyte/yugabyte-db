@@ -3,9 +3,6 @@ title: Layered architecture for queries and storage
 headerTitle: Layered architecture
 linkTitle: Layered architecture
 description: Learn about the layered architecture of YugabyteDB in the query layer and the storage layer.
-aliases:
-  - /stable/architecture/layered-architecture/
-block_indexing: true
 menu:
   stable:
     identifier: architecture-layered-architecture

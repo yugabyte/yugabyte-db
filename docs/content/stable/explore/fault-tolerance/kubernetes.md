@@ -3,9 +3,6 @@ title: Explore fault tolerance on Kubernetes
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Kubernetes (Minikube).
-aliases:
-  - /stable/explore/fault-tolerance-kubernetes/
-block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-4-kubernetes
@@ -18,28 +15,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/fault-tolerance/macos" class="nav-link">
+    <a href="/latest/explore/fault-tolerance/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/linux" class="nav-link">
+    <a href="/latest/explore/fault-tolerance/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/docker" class="nav-link">
+    <a href="/latest/explore/fault-tolerance/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/kubernetes" class="nav-link active">
+    <a href="/latest/explore/fault-tolerance/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -90,7 +87,7 @@ Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb
 Connect to `ycqlsh` on node `1`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh yb-tserver-0
+$ kubectl -n yb-demo exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
 ```
@@ -151,7 +148,7 @@ ycqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node `3`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-2 /home/yugabyte/bin/ycqlsh yb-tserver-2
+$ kubectl -n yb-demo exec -it yb-tserver-2 -- ycqlsh yb-tserver-2
 ```
 
 ```sql
@@ -198,7 +195,7 @@ yb-tserver-2   1/1       Terminating   0          33m
 Now connect to node `2`.
 
 ```sh
-$ kubectl -n yb-demo exec -it yb-tserver-1 /home/yugabyte/bin/ycqlsh yb-tserver-1
+$ kubectl -n yb-demo exec -it yb-tserver-1 -- ycqlsh yb-tserver-1
 ```
 
 Let us insert some data to ensure that the loss of a node hasn't impacted the ability of the universe to take writes.

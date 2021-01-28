@@ -4,13 +4,6 @@ headerTitle: Quick start
 linkTitle: Quick start
 description: Follow the steps to quickly get started using YEDIS (Redis-compatible) in YugabyteDB.
 image: /images/section_icons/quick_start/explore_yedis.png
-aliases:
-  - /quick-start/test-redis/
-  - /stable/quick-start/test-redis/
-  - /stable/quick-start/test-yedis/
-  - /stable/yedis/quick-start/test-redis/
-  - /stable/api/yedis/quick-start/
-block_indexing: true
 menu:
   stable:
     parent: yedis

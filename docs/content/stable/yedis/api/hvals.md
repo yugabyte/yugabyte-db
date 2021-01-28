@@ -2,14 +2,10 @@
 title: HVALS
 linkTitle: HVALS
 description: HVALS
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2200
-aliases:
-  - /stable/api/redis/hvals
-  - /stable/api/yedis/hvals
 isTocNested: true
 showAsideToc: true
 ---

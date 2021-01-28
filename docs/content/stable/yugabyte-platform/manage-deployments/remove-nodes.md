@@ -3,8 +3,6 @@ title: Use Yugabyte Platform to remove a node
 headerTitle: Remove a node
 linkTitle: Remove a node
 description: Use Yugabyte Platform to remove an unresponsive node.
-aliases:
-  - /stable/manage/enterprise-edition/create-universe-multi-region
 menu:
   stable:
     identifier: remove-nodes
@@ -26,7 +24,7 @@ So, for the `yb-14-node-actions-n3` node, you can use the **Actions** drop-down 
 
 Note that there is no `MASTER/TSERVER` shown for that node. If that node was the `Master Leader`, then a Raft election will move it to another node quickly. Similar leader elections happen for tablets for which this node was the the leader tablet server.
 
-## Release a node instance
+### Release a node instance
 
 Because you know that the instance is dead, you can go ahead and release the IP address using the **Actions** drop-down list to select the **Release Instance** option at the end of the Removed node. It will show up as a `Decommissioned` node.
 

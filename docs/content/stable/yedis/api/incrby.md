@@ -2,14 +2,10 @@
 title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2215
-aliases:
-  - /stable/api/redis/incrby
-  - /stable/api/yedis/incrby
 isTocNested: true
 showAsideToc: true
 ---

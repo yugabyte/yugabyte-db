@@ -65,9 +65,9 @@ Making colocation the default for all databases is [work in progress](https://gi
 
 ## Pre-split large tables
 
-For larger tables and indexes that are hash-sharded, specify the number of initial tablet splits desired as a part of the DDL statement of the table. This can be very beneficial to distribute the data of the table across multiple nodes right from the get go. An example of specifying the number of tablets at table creation time is shown [here](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables).
+For larger tables and indexes that are hash-sharded, specify the number of initial tablet splits desired as a part of the DDL statement of the table. This can be very beneficial to distribute the data of the table across multiple nodes right from the get go. An example of specifying the number of tablets at table creation time is shown [here](/latest/architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables).
 
-For larger tables and indexes that are range-sharded and the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. This is especially beneficial for range sharded tables/indexes. Pre-split an index using the syntax shown [here](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/#range-sharded-tables).
+For larger tables and indexes that are range-sharded and the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. This is especially beneficial for range sharded tables/indexes. Pre-split an index using the syntax shown [here](/latest/architecture/docdb-sharding/tablet-splitting/#range-sharded-tables).
 
 ## Remove collation on columns
 

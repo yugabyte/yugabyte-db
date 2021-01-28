@@ -3,7 +3,6 @@ title: yb-ts-cli - command line tool for advanced yb-tserver operations
 headerTitle: yb-ts-cli
 linkTitle: yb-ts-cli
 description: Use the yb-ts-cli command line utility to perform advanced YB-TServer operations.
-block_indexing: true
 menu:
   stable:
     identifier: yb-ts-cli
@@ -45,6 +44,19 @@ If all tablets are running, returns "All tablets are running".
 
 ```sh
 $ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
+```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### is_server_ready
+
+Prints the number of tablets that have not yet bootstrapped.
+If all tablets have bootstrapped, returns "Tablet server is ready".
+
+**Syntax**
+
+```sh
+$ yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.

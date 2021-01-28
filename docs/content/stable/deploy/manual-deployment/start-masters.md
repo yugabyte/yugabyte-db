@@ -3,9 +3,6 @@ title: Start YB-Master nodes of YugabyteDB cluster
 headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: Start YB-Master servers of your YugabyteDB cluster
-aliases:
-  - /deploy/manual-deployment/start-masters
-block_indexing: true
 menu:
   stable:
     identifier: deploy-manual-deployment-start-masters

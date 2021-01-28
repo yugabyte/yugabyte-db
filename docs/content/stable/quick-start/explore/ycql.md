@@ -4,12 +4,6 @@ headerTitle: 3. Explore Yugabyte Cloud QL
 linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
-aliases:
-  - /quick-start/test-cassandra/
-  - /stable/quick-start/test-cassandra/
-  - /stable/quick-start/test-ycql/
-  - /stable/api/ycql/quick-start/
-block_indexing: true
 menu:
   stable:
     parent: quick-start
@@ -24,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/explore/ysql" class="nav-link">
+    <a href="/latest/quick-start/explore/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/stable/quick-start/explore/ycql" class="nav-link active">
+    <a href="/latest/quick-start/explore/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
