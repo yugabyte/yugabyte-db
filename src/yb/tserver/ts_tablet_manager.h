@@ -582,6 +582,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<GarbageCollector> log_cache_gc_;
 
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+  std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
 

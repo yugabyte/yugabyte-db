@@ -1122,7 +1122,15 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // - first mark as closing
   // - then wait for num_tablets_being_remote_bootstrapped_ == 0
   ++num_tablets_being_remote_bootstrapped_;
-  auto decrement_num_rbs_se = ScopeExit([this](){
+  auto private_addr = req.source_private_addr()[0].host();
+  auto decrement_num_rbs_se = ScopeExit([this, &private_addr](){
+    {
+      std::lock_guard<RWMutex> lock(mutex_);
+      auto iter = bootstrap_source_addresses_.find(private_addr);
+      if (iter != bootstrap_source_addresses_.end()) {
+        bootstrap_source_addresses_.erase(iter);
+      }
+    }
     --num_tablets_being_remote_bootstrapped_;
   });
 
@@ -1143,6 +1151,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
     std::lock_guard<RWMutex> lock(mutex_);
+    bootstrap_source_addresses_.emplace(private_addr);
     if (ClosingUnlocked()) {
       auto result = STATUS_FORMAT(
           IllegalState, "StartRemoteBootstrap in wrong state: $0",
@@ -1596,9 +1605,19 @@ void TSTabletManager::StartShutdown() {
   while (int remaining_rbs = num_tablets_being_remote_bootstrapped_ > 0) {
     if (waited >= next_report_time) {
       if (waited >= kMaxWait) {
+        std::string addr = "";
+        for (auto iter = bootstrap_source_addresses_.begin();
+             iter != bootstrap_source_addresses_.end();
+             iter++) {
+          if (iter == bootstrap_source_addresses_.begin()) {
+            addr += *iter;
+          } else {
+            addr += "," + *iter;
+          }
+        }
         LOG_WITH_PREFIX(DFATAL)
             << "Waited for " << waited << "ms. Still had "
-            << remaining_rbs << " pending remote bootstraps";
+            << remaining_rbs << " pending remote bootstraps: " + addr;
       } else {
         LOG_WITH_PREFIX(WARNING)
             << "Still waiting for " << remaining_rbs
