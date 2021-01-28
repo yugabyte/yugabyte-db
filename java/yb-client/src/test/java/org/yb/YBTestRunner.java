@@ -24,6 +24,7 @@ import org.yb.util.ConfForTesting;
 
 import java.util.Collections;
 import java.util.List;
+import java.lang.reflect.Modifier;
 
 public class YBTestRunner extends BlockJUnit4ClassRunner {
 
@@ -35,13 +36,28 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   public YBTestRunner(Class<?> klass) throws InitializationError {
     super(klass);
+    final String specifiedClassName = klass.getName();
+    assert !Modifier.isAbstract(klass.getModifiers()) :
+           "YBTestRunner constructor invoked for an abstract class " + specifiedClassName;
+
     if (!shouldRunTests()) {
       return;
     }
     if (ConfForTesting.onlyCollectingTests()) {
       for (FrameworkMethod method : super.getChildren()) {
-        TestUtils.reportCollectedTest(
-            method.getDeclaringClass().getName(), method.getMethod().getName());
+        Class declaringClass = method.getDeclaringClass();
+        final String declaringClassName = declaringClass.getName();
+        final String methodName = method.getMethod().getName();
+        if (!declaringClassName.equals(klass.getName())) {
+          LOG.info(
+              "For test method " + methodName + ": " +
+              "declaring class is " + declaringClassName + " (" +
+              (Modifier.isAbstract(declaringClass.getModifiers()) ? "" : "not ") +
+              "abstract), specified class: " + specifiedClassName +
+              ". This is possible with inheritance. Using class: " + specifiedClassName
+          );
+        }
+        TestUtils.reportCollectedTest(specifiedClassName, methodName);
       }
     }
   }

@@ -41,6 +41,7 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace util {
@@ -328,5 +329,13 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 #else
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
+
+// TODO: use GTEST_SKIP() here when we upgrade gtest.
+#define YB_SKIP_TEST_IN_TSAN() do { \
+    if (::yb::IsTsan()) { \
+      LOG(INFO) << "This test is skipped in TSAN"; \
+      return; \
+    } \
+  } while (false)
 
 #endif  // YB_UTIL_TEST_MACROS_H
