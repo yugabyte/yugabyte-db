@@ -29,7 +29,7 @@ Follow the steps here to download and install the SportsDB sample database.
 
 ### Before you begin
 
-To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
+To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/v2.2/quick-start/).
 
 ### 1. Download the SportsDB scripts
 
