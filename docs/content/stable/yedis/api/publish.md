@@ -2,14 +2,10 @@
 title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2551
-aliases:
-  - /stable/api/redis/publish
-  - /stable/api/yedis/publish
 isTocNested: true
 showAsideToc: true
 ---

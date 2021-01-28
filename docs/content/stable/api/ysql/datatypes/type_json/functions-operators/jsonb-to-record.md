@@ -3,7 +3,6 @@ title: jsonb_to_record() and json_to_record()
 headerTitle: jsonb_to_record() and json_to_record()
 linkTitle: jsonb_to_record()
 description: Convert a JSON object into the equivalent SQL record. Offers no practical advantage over the jsonb_populate_record() variant.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-to-record

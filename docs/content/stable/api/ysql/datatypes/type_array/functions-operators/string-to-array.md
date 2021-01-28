@@ -3,7 +3,6 @@ title: string_to_array()
 linkTitle: string_to_array()
 headerTitle: string_to_array()
 description: string_to_array()
-block_indexing: true
 menu:
   stable:
     identifier: string-to-array
