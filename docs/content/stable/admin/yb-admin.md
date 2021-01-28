@@ -3,7 +3,6 @@ title: yb-admin - command line tool for advanced YugabyteDB administration
 headerTitle: yb-admin
 linkTitle: yb-admin
 description: Use the yb-admin command line tool for advanced administration of YugabyteDB clusters.
-block_indexing: true
 menu:
   stable:
     identifier: yb-admin
@@ -417,7 +416,7 @@ yb-admin -master_addresses <master-addresses> create_database_snapshot <database
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *database*: The name of the database or keyspace.
+- *database*: The name of the YSQL database.
 
 When this command runs, a `snapshot_id` is generated and printed.
 
@@ -425,6 +424,29 @@ When this command runs, a `snapshot_id` is generated and printed.
 
 ```sh
 $ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_database_snapshot
+```
+
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+
+#### create_keyspace_snapshot
+
+Creates a snapshot of the specified YCQL database.
+
+**Syntax**
+
+```sh
+yb-admin -master_addresses <master-addresses> create_keyspace_snapshot <keyspace_name>
+```
+
+- *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+- *keyspace*: The name of the YCQL keyspace.
+
+When this command runs, a `snapshot_id` is generated and printed.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 create_keyspace_snapshot
 ```
 
 To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
@@ -442,6 +464,7 @@ yb-admin -master_addresses <master-addresses> list_snapshots [ show_details ] [ 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
 - `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
+- `show_deleted`: (Optional) Show snapshots that are deleted, but still retained in memory.
 
 Possible `state` values for creating and restoring snapshots:
 

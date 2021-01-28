@@ -3,14 +3,10 @@ title: UPDATE statement [YCQL]
 headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1320
-aliases:
-  - /stable/api/cassandra/dml_update
-  - /stable/api/ycql/dml_update
 isTocNested: true
 showAsideToc: true
 ---

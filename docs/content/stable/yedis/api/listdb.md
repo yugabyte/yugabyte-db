@@ -2,14 +2,10 @@
 title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2036
-aliases:
-  - /stable/api/redis/listdb
-  - /stable/api/yedis/listdb
 isTocNested: true
 showAsideToc: true
 ---

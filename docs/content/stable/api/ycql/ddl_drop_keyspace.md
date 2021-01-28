@@ -3,14 +3,10 @@ title: DROP KEYSPACE statement [YCQL]
 headerTitle: DROP KEYSPACE
 linkTitle: DROP KEYSPACE
 description: Use the DROP KEYSPACE statement to remove a keyspace from the system.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1260
-aliases:
-  - /stable/api/cassandra/ddl_drop_keyspace
-  - /stable/api/ycql/ddl_drop_keyspace
 isTocNested: true
 showAsideToc: true
 ---

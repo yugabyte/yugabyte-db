@@ -3,14 +3,10 @@ title: JSONB data type [YCQL]
 headerTitle: JSONB
 linkTitle: JSONB
 description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1470
-aliases:
-  - /stable/api/cassandra/type_jsonb
-  - /stable/api/ycql/type_jsonb
 isTocNested: true
 showAsideToc: true
 ---
@@ -42,6 +38,17 @@ type_specification ::= { JSONB }
   compared to `TEXT/VARCHAR` data type as long it represents valid json.
 - Values of text data types with correct format are convertible to `JSONB`.
 - `JSONB` value format supports text literals which are valid json.
+
+{{< note title="Note" >}}
+
+Internally, numbers that appear in a JSONB string (used without quotes. e.g `{'a': 3.14}` ) are stored as floating point values. 
+Due to the inherent imprecision in storing floating-point numbers, one should avoid comparing them for equality. 
+Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`). 
+[#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996)
+
+
+{{< /note >}}
+
 
 ## Operators and functions
 

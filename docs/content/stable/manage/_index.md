@@ -5,10 +5,7 @@ linkTitle: Manage
 description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
-aliases:
-  - /stable/manage/
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: manage

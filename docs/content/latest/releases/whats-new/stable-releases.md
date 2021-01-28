@@ -43,7 +43,7 @@ showAsideToc: false
 
 ##### Core Database
 
-- General availability of [Automatic Tablet splitting](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/), which enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached ([#1004](https://github.com/yugabyte/yugabyte-db/issues/1004))
+- General availability of [Automatic Tablet splitting](/latest/architecture/docdb-sharding/tablet-splitting/), which enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached ([#1004](https://github.com/yugabyte/yugabyte-db/issues/1004))
 - Introducing support for audit logging in YCQL and YSQL API ([#1331](https://github.com/yugabyte/yugabyte-db/issues/1331),[ #5887](https://github.com/yugabyte/yugabyte-db/issues/5887), [#6199](https://github.com/yugabyte/yugabyte-db/issues/6199))
 - Ability to log slow running queries in YSQL ([#4817](https://github.com/YugaByte/yugabyte-db/issues/4817))
 - Introducing support for LDAP integration in YSQL API ([#6088](https://github.com/yugabyte/yugabyte-db/issues/6088))

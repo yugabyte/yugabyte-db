@@ -3,9 +3,6 @@ title: Compare MongoDB with YugabyteDB
 headerTitle: MongoDB
 linkTitle: MongoDB
 description: Compare MongoDB with YugabyteDB.
-aliases:
-  - /comparisons/mongodb/
-block_indexing: true
 menu:
   stable:
     parent: comparisons
