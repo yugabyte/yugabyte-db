@@ -284,4 +284,3 @@ The following are known limitations that are planned to be resolved in the upcom
 * During tablet splitting, client applications may get an error from the driver and need to retry the request.
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
 * Since splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
-* Colocated tables cannot be split.
