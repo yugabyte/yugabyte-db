@@ -19,17 +19,13 @@ import javax.persistence.SequenceGenerator;
 
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 
-import org.joda.time.DateTime;
-import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.ebean.annotation.DbJson;
 import io.ebean.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
 
 import play.data.validation.Constraints;
@@ -179,5 +175,10 @@ public class Customer extends Model {
       deepMerge(features, input);
     }
     save();
+  }
+
+  @JsonIgnore
+  public String getTag() {
+    return String.format("[%s][%s]", name, code);
   }
 }

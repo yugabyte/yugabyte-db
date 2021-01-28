@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
@@ -186,6 +187,16 @@ public class ModelFactory {
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
     return CustomerConfig.createCallHomeConfig(customer.uuid, level);
+  }
+
+  public static CustomerConfig createAlertConfig(Customer customer, String alertingEmail,
+      boolean sendAlertsToYb, boolean reportOnlyErrors) {
+    AlertingData data = new AlertingData();
+    data.sendAlertsToYb = sendAlertsToYb;
+    data.alertingEmail = alertingEmail;
+    data.reportOnlyErrors = reportOnlyErrors;
+
+    return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
   /*
