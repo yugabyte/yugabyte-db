@@ -41,6 +41,12 @@ If you do not know the order of columns, you have an option of listing them with
 INSERT INTO employees (employee_no, name, department) VALUES (1, 'John Smith', 'Marketing');  
 ```
 
+You can always view your changes by executing the following command:
+
+```shell
+yugabyte=# \d employees
+```
+
 ### Default Values
 
 In some cases you might not know values for all the columns when you insert a row. You have an option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstartrated in the following example:
@@ -79,6 +85,8 @@ VALUES (1, 'John Smith', 'Sales')
 ON CONFLICT (department) 
 DO NOTHING;
 ```
+
+In the preceding example, since no actions are required during merge of John Smith's department, upsert does not cause any changes to the `department` column. 
 
 ## Loading Data from a File
 
@@ -119,51 +127,6 @@ To reconstruct the database from a plain-text SQL file to the state the database
 
 ```
 ysqlsh \i mydb
-```
-
-## Configuring Automatic Timestamps
-
-You can use automatic timestamps to keep track of when data in a table was added or updated. 
-
-The date of the data creation is typically added via a  `created_at` column with a default value of `NOW()`, as shown in the following example: 
-
-```sql
-CREATE TABLE employees (
-    employee_no integer NOT NULL,
-    name text,
-    department text,
-  	created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-
-To track updates, you need to use triggers that let you define functions executed when an update is performed. The following example shows how to create a function in PL/pgSQL that returns an object called `NEW` containing data being modified:
-
-```sql
-CREATE OR REPLACE FUNCTION trigger_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-The following examples create a table and connect it with a trigger that executes the `trigger_timestamp` function every time a row is updated in the table:
-
-```sql
-CREATE TABLE employees (
-    employee_no integer NOT NULL,
-    name text,
-    department text,
-  	updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-)
-```
-
-```sql
-CREATE TRIGGER set_timestamp
-BEFORE UPDATE ON employees
-FOR EACH ROW
-EXECUTE PROCEDURE trigger_timestamp();
 ```
 
 ## Defining NOT NULL Constraint
@@ -217,6 +180,51 @@ ALTER CONSTRAINT employee_no
 ```
 
 Note that the `NOT NULL` constraint cannot be used with the `SET CONSTRAINTS` statement.
+
+## Configuring Automatic Timestamps
+
+You can use automatic timestamps to keep track of when data in a table was added or updated. 
+
+The date of the data creation is typically added via a  `created_at` column with a default value of `NOW()`, as shown in the following example: 
+
+```sql
+CREATE TABLE employees (
+    employee_no integer NOT NULL,
+    name text,
+    department text,
+  	created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+To track updates, you need to use triggers that let you define functions executed when an update is performed. The following example shows how to create a function in PL/pgSQL that returns an object called `NEW` containing data being modified:
+
+```sql
+CREATE OR REPLACE FUNCTION trigger_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+The following examples create a table and connect it with a trigger that executes the `trigger_timestamp` function every time a row is updated in the table:
+
+```sql
+CREATE TABLE employees (
+    employee_no integer NOT NULL,
+    name text,
+    department text,
+  	updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+)
+```
+
+```sql
+CREATE TRIGGER set_timestamp
+BEFORE UPDATE ON employees
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_timestamp();
+```
 
 ## Obtaining Modified Data
 
