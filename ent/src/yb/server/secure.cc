@@ -28,6 +28,9 @@ DEFINE_bool(node_to_node_encryption_use_client_certificates, false,
             "Should client certificates be sent and verified for encrypted node to node "
             "communication.");
 
+DEFINE_string(node_to_node_encryption_required_uid, "",
+              "Allow only certificates with specified uid. Empty to allow any.");
+
 DEFINE_string(certs_dir, "",
               "Directory that contains certificate authority, private key and certificates for "
               "this server. By default 'certs' subdir in data folder is used.");
@@ -45,6 +48,10 @@ DEFINE_string(cert_node_filename, "",
               "'node.{cert_node_filename}.{key|crt}'. "
               "If this flag is not set, then --server_broadcast_addresses will be "
               "used if it is set, and if not, --rpc_bind_addresses will be used.");
+
+DEFINE_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
+
+DEFINE_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
 
 namespace yb {
 namespace server {
@@ -83,8 +90,8 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, rpc::MessengerBuilder* builder) {
-  auto use = type == SecureContextType::kServerToServer ? FLAGS_use_node_to_node_encryption
-                                                        : FLAGS_use_client_to_server_encryption;
+  auto use = type == SecureContextType::kInternal ? FLAGS_use_node_to_node_encryption
+                                                  : FLAGS_use_client_to_server_encryption;
   if (!use) {
     return std::unique_ptr<rpc::SecureContext>();
   }
@@ -92,7 +99,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   std::string dir;
   if (!cert_dir.empty()) {
     dir = cert_dir;
-  } else if (type == SecureContextType::kClientToServer) {
+  } else if (type == SecureContextType::kExternal) {
     dir = FLAGS_certs_for_client_dir;
   }
   if (dir.empty()) {
@@ -102,38 +109,50 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     dir = DefaultCertsDir(root_dir);
   }
 
-  auto context = VERIFY_RESULT(CreateSecureContext(dir, name));
-  if (type == SecureContextType::kServerToServer &&
-      FLAGS_node_to_node_encryption_use_client_certificates) {
-    context->set_require_client_certificate(true);
-    context->set_use_client_certificate(true);
+  UseClientCerts use_client_certs = UseClientCerts::kFalse;
+  std::string required_uid;
+  if (type == SecureContextType::kInternal) {
+    use_client_certs = UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates);
+    required_uid = FLAGS_node_to_node_encryption_required_uid;
   }
+  auto context = VERIFY_RESULT(CreateSecureContext(dir, use_client_certs, name, required_uid));
   ApplySecureContext(context.get(), builder);
   return context;
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
-    const std::string& certs_dir, const std::string& name) {
+    const std::string& certs_dir, UseClientCerts use_client_certs, const std::string& node_name,
+    const std::string& required_uid) {
 
-  LOG(INFO) << "Certs directory: " << certs_dir << ", name: " << name;
+  LOG(INFO) << "Certs directory: " << certs_dir << ", node name: " << node_name;
 
   auto result = std::make_unique<rpc::SecureContext>();
   faststring data;
   RETURN_NOT_OK(result->AddCertificateAuthorityFile(JoinPathSegments(certs_dir, "ca.crt")));
 
-  if (!name.empty()) {
+  if (!node_name.empty()) {
     RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(certs_dir, Format("node.$0.key", name)), &data));
+        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_key_file_pattern, node_name)),
+        &data));
     RETURN_NOT_OK(result->UsePrivateKey(data));
 
     RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(certs_dir, Format("node.$0.crt", name)), &data));
+        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_cert_file_pattern, node_name)),
+        &data));
     RETURN_NOT_OK(result->UseCertificate(data));
   }
+
+  if (use_client_certs) {
+    result->set_require_client_certificate(true);
+    result->set_use_client_certificate(true);
+  }
+
+  result->set_required_uid(required_uid);
+
   return result;
 }
 
-void ApplySecureContext(rpc::SecureContext* context, rpc::MessengerBuilder* builder) {
+void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder) {
   auto parent_mem_tracker = builder->last_used_parent_mem_tracker();
   auto buffer_tracker = MemTracker::FindOrCreateTracker(
       -1, "Encrypted Read Buffer", parent_mem_tracker);

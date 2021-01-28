@@ -86,6 +86,14 @@ class SecureContext {
     return use_client_certificate_;
   }
 
+  void set_required_uid(const std::string& value) {
+    required_uid_ = value;
+  }
+
+  const std::string& required_uid() const {
+    return required_uid_;
+  }
+
  private:
   CHECKED_STATUS AddCertificateAuthority(X509* cert);
 
@@ -94,12 +102,13 @@ class SecureContext {
   detail::X509Ptr certificate_;
   bool require_client_certificate_ = false;
   bool use_client_certificate_ = false;
+  std::string required_uid_;
 };
 
 const Protocol* SecureStreamProtocol();
 StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
-    SecureContext* context);
+    const SecureContext* context);
 
 } // namespace rpc
 } // namespace yb

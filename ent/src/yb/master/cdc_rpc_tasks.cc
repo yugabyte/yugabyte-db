@@ -40,7 +40,7 @@ Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
       dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, universe_id);
     }
     cdc_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        dir, "", "", server::SecureContextType::kServerToServer, &messenger_builder));
+        dir, "", "", server::SecureContextType::kInternal, &messenger_builder));
     cdc_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 
