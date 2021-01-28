@@ -72,6 +72,7 @@
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -370,7 +371,9 @@ INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
                         ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
                                           TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
 
-TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SetupUniverseReplication)) {
+
+TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
+  YB_SKIP_TEST_IN_TSAN();
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -406,7 +409,8 @@ TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SetupUniverseReplication)) {
   Destroy();
 }
 
-TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SimpleReplication)) {
+TEST_P(TwoDCYsqlTest, SimpleReplication) {
+  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -486,7 +490,8 @@ TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SimpleReplication)) {
   Destroy();
 }
 
-TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SetupUniverseReplicationWithProducerBootstrapId)) {
+TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
+  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
@@ -645,7 +650,8 @@ TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(SetupUniverseReplicationWithProduc
   Destroy();
 }
 
-TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(ColocatedDatabaseReplication)) {
+TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
+  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerColocatedTable = 1;
   constexpr int kNTabletsPerTable = 3;
   std::vector<uint32_t> tables_vector = {kNTabletsPerColocatedTable, kNTabletsPerColocatedTable};
@@ -792,7 +798,8 @@ TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(ColocatedDatabaseReplication)) {
   Destroy();
 }
 
-TEST_P(TwoDCYsqlTest, YB_DISABLE_TEST_IN_TSAN(ColocatedDatabaseDifferentTableOids)) {
+TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentTableOids) {
+  YB_SKIP_TEST_IN_TSAN();
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
