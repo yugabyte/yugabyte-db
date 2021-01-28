@@ -1,0 +1,3 @@
+# Global excludes across all subdirectories
+*.o
+*.so
