@@ -169,7 +169,7 @@ public class CertificateController extends AuthenticatedController {
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-      .bindFromRequest();
+        .bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
