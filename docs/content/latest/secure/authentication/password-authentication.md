@@ -173,7 +173,7 @@ Because all existing passwords must be changed, you can manage the migration of 
 ## Resetting user password
 
 There are cases where we have lost the password of a user and want to reset it. The `pg_hba.conf` file can be modified 
-to allow administrator access without a password by changing the `--ysql_hba_conf` configuration flag. This is done by setting
+to allow administrator access without a password by changing the `--ysql_hba_conf_csv` configuration flag in yb-tserver. This is done by setting
 the flag as below and restarting the yb-tserver:
 
 ```
