@@ -54,6 +54,10 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       tmp_dir_ = JoinPathSegments(
         tmp_dir_, string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
     }
+    // Create the directory if it doesn't exist.
+    if (!Env::Default()->DirExists(tmp_dir_)) {
+      EXPECT_OK(Env::Default()->CreateDir(tmp_dir_));
+    }
 
     return JoinPathSegments(tmp_dir_, subdir);
   }
@@ -69,6 +73,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
             << " --ysql_host=" << pg_hp.host()
             << " --ysql_port=" << pg_hp.port()
             << " --storage_type nfs"
+            << " --nfs_storage_path " << tmp_dir_
             << " --no_ssh"
             << " --no_auto_name";
 #if defined(__APPLE__)
