@@ -2,7 +2,6 @@
 title: Prisma
 linkTitle: Prisma
 description: Prisma
-block_indexing: true
 menu:
   stable:
     identifier: prisma
@@ -26,7 +25,7 @@ If YugabyteDB is installed, run the following `yb-ctl create` command to start a
 ./bin/yb-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
 ```
 
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/stable/quick-start/). After installing YugabyteDB, make sure to follow the step mentioned above.
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/latest/quick-start/). After installing YugabyteDB, make sure to follow the step mentioned above.
 
 ### Prisma
 

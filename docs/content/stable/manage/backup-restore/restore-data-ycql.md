@@ -3,9 +3,6 @@ title: Restore data for YCQL
 headerTitle: Restore data
 linkTitle: Restore data
 description: Restore data in YugabyteDB for YCQL
-aliases:
-  - /manage/backup-restore/backing-up-data
-block_indexing: true
 menu:
   stable:
     identifier: restore-data-ycql
@@ -17,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/manage/backup-restore/restore-data" class="nav-link active">
+    <a href="/latest/manage/backup-restore/restore-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/manage/backup-restore/restore-data-ycql" class="nav-link active">
+    <a href="/latest/manage/backup-restore/restore-data-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

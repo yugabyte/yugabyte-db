@@ -1,11 +1,10 @@
 ---
-title: Create YCQL roles in YugabyteDB
-headerTitle: Create roles
-linkTitle: Create roles
-description: Create YCQL roles in YugabyteDB
-headcontent: Creating roles
+title: Manage Users and Roles in YCQL
+headerTitle: Manage Users and Roles
+linkTitle: Manage Users and Roles
+description: Manage Users and Roles in YCQL
+headcontent: Manage Users and Roles
 image: /images/section_icons/secure/create-roles.png
-block_indexing: true
 menu:
   stable:
     identifier: create-roles-ycql
@@ -18,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/secure/authorization/create-roles" class="nav-link">
+    <a href="/latest/secure/authorization/create-roles" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/secure/authorization/create-roles-ycql" class="nav-link active">
+    <a href="/latest/secure/authorization/create-roles-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

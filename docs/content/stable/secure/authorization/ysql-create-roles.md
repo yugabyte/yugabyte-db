@@ -1,6 +1,6 @@
 ## 1. Create roles
 
-Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ysql/commands/dcl_create_role/) statement.
+Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement.
 
 As an example, let us create a role `engineering` for an engineering team in an organization.
 
@@ -26,7 +26,7 @@ As an example, you can grant the `engineering` role you created above to the use
 yugabyte=# GRANT engineering TO john;
 ```
 
-Read more about [granting roles](../../../api/ysql/commands/dcl_grant/).
+Read more about [granting roles](../../../api/ysql/the-sql-language/statements/dcl_grant/).
 
 ## 3. Create a hierarchy of roles, if needed
 
@@ -76,7 +76,7 @@ In the table above, note the following:
 
 ## 5. Revoke roles
 
-Roles can be revoked using the [REVOKE](../../../api/ysql/commands/dcl_revoke/) statement.
+Roles can be revoked using the [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/) statement.
 
 In the above example, you can revoke the `engineering` role from the user `john` as follows:
 
@@ -103,7 +103,7 @@ yugabyte     | t           | t        | {}
 
 ## 6. Drop roles
 
-Roles can be dropped with the [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/) statement.
+Roles can be dropped with the [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statement.
 
 In the above example, you can drop the `developer` role with the following statement:
 

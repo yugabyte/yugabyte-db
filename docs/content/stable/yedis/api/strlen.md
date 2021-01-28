@@ -2,14 +2,10 @@
 title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2320
-aliases:
-  - /stable/api/redis/strlen
-  - /stable/api/yedis/strlen
 isTocNested: true
 showAsideToc: true
 ---
