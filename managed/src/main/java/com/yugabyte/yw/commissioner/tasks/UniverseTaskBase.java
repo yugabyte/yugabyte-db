@@ -313,11 +313,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to delete the node. Log it and skip the node.
-      if (node.cloudInfo.private_ip == null) {
-        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.", node.nodeName));
-        // Free up the node so that the client can use the instance to create another universe.
-        if (node.cloudInfo.cloud.equals(com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
+      // a clean state to delete the node. Log it, free up the onprem node
+      // so that the client can use the node instance to create another universe.
+      if (node.cloudInfo.private_ip == null){
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
+                               node.nodeName));
+        if (node.cloudInfo.cloud.equals(
+            com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
           try {
             NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
             providerNode.clearNodeDetails();
