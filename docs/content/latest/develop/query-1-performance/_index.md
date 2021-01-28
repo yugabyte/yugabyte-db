@@ -19,7 +19,7 @@ menu:
 
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="learn/">
+    <a class="section-link icon-offset" href="explain-analyze/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">1 article</div>
@@ -31,7 +31,7 @@ menu:
     </a>
   </div>
   
-  
+
 </div>
 
 
