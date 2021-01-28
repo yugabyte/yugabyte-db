@@ -163,6 +163,13 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           masterAdded = true;
         }
 
+        // Set gflags for the tserver.
+        createGFlagsOverrideTasks(node, ServerType.TSERVER);
+
+        // Add the tserver process start task.
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
         // Mark the node as tserver in the YW DB.
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
