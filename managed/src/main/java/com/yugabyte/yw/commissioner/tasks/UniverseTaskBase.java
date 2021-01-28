@@ -55,17 +55,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess) {
-    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false);
+    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false, false);
   }
 
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess,
-                                                    boolean isForceUpdate) {
+                                                    boolean isForceUpdate,
+                                                    boolean isResume) {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         verifyUniverseVersion(expectedUniverseVersion, universe);
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        if (universeDetails.universePaused && !isResume) {
+          String msg = "UserUniverse " + taskParams().universeUUID + " is currently paused";
+          LOG.error(msg);
+          throw new RuntimeException(msg);
+        }
         // If this universe is already being edited, fail the request.
         if (!isForceUpdate && universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
@@ -202,14 +208,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *                                version. -1 implies always lock the universe.
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        false,
+        false
+    );
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResume) {
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true, 
+        false, 
+        isResume
+    );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
   public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
     LOG.info("Force lock universe {} at version {}.", taskParams().universeUUID,
              expectedUniverseVersion);
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true, true);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        true,
+        false
+    );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
@@ -1250,7 +1276,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     return !(task.getTarget().equals(CustomerTask.TargetType.Universe) &&
       (task.getType().equals(CustomerTask.TaskType.Create) ||
-        task.getType().equals(CustomerTask.TaskType.Delete)));
+        task.getType().equals(CustomerTask.TaskType.Delete) ||
+        task.getType().equals(CustomerTask.TaskType.Pause) ||
+        task.getType().equals(CustomerTask.TaskType.Resume)));
   }
 
   private synchronized static int getClusterConfigVersion(UUID universeUUID) {

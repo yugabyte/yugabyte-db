@@ -17,7 +17,10 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class PauseUniverse extends UniverseTaskBase {
@@ -28,7 +31,7 @@ public class PauseUniverse extends UniverseTaskBase {
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -37,30 +40,41 @@ public class PauseUniverse extends UniverseTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
+      Universe universe = null;
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = null;
-      // unlockUniverseForUpdate();
-      // universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       universe = Universe.get(params().universeUUID);
+
+      Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+      Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+      
+      for (NodeDetails node : tserverNodes) {
+        createTServerTaskForNode(node, "stop").setSubTaskGroupType(
+            SubTaskGroupType.StoppingNodeProcesses);
+      }
+      createStopMasterTasks(masterNodes).setSubTaskGroupType(
+          SubTaskGroupType.StoppingNodeProcesses);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
-        createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+        createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(
+            SubTaskGroupType.PauseUniverse);
       }
 
       // Run all the tasks.
       subTaskGroupQueue.run();
-
+      unlockUniverseForUpdate();
     } catch (Throwable t) {
-      // try {
-      // unlockUniverseForUpdate();
-      // } catch (Throwable t1) {
-      // Ignore the error
-      // }
-      // If for any reason pause universe fails we would just unlock the universe for
-      // update
+      try {
+        // If for any reason pause universe fails we would just unlock the universe for
+        // update
+        unlockUniverseForUpdate();
+      } catch (Throwable t1) {
+        // Ignore the error
+      }
+
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }

@@ -377,15 +377,19 @@ class AwsCloud(AbstractCloud):
         update_disk(args, instance["id"])
 
     def stop_instance(self, args):
-        ec2 = boto3.client('ec2',  args["region"])
+        ec2 = boto3.resource('ec2',  args["region"])
         try:
-            response = ec2.stop_instances(InstanceIds=[args["id"]], DryRun=False)
+            instance = ec2.Instance(id=args["id"])
+            instance.stop()
+            instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
 
     def start_instance(self, args):
-        ec2 = boto3.client('ec2',  args["region"])
+        ec2 = boto3.resource('ec2',  args["region"])
         try:
-            response = ec2.start_instances(InstanceIds=[args["id"]], DryRun=False)
+            instance = ec2.Instance(id=args["id"])
+            instance.start()
+            instance.wait_until_running()
         except ClientError as e:
             logging.error(e)

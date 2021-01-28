@@ -14,11 +14,14 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class ResumeUniverse extends UniverseTaskBase {
@@ -37,32 +40,46 @@ public class ResumeUniverse extends UniverseTaskBase {
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
+ 
+      Universe universe = null;
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = null;
-      universe = Universe.get(params().universeUUID);
+      universe = lockUniverseForUpdate(-1 , true/* expectedUniverseVersion */);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to resume the existing nodes.
-        createResumeServerTasks(
-          universe.getNodes()
-        ).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+        createResumeServerTasks(universe.getNodes()).setSubTaskGroupType(
+            SubTaskGroupType.ResumeUniverse);
       }
+
+      Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+      Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+
+      for (NodeDetails node : tserverNodes) {
+        createTServerTaskForNode(node, "start").setSubTaskGroupType(
+            SubTaskGroupType.StartingMasterProcess);
+      }
+      createStartMasterTasks(masterNodes).setSubTaskGroupType(
+          SubTaskGroupType.StartingMasterProcess);
+
+      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForServersTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       subTaskGroupQueue.run();
+      unlockUniverseForUpdate();
     } catch (Throwable t) {
-      // If for any reason resume universe fails we would just unlock the universe for update
-      // try {
-      //   unlockUniverseForUpdate();
-      // } catch (Throwable t1) {
+      try {
+        // If for any reason resume universe fails we would just unlock the universe for update
+        unlockUniverseForUpdate();
+      } catch (Throwable t1) {
         // Ignore the error
-      // }
+      }
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }
-    // unlockUniverseForUpdate();
     LOG.info("Finished {} task.", getName());
   }
 }
