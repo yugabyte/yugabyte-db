@@ -28,7 +28,7 @@ To blacklist the failed YB-TServer, run the following command:
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
 ```
 
-For details, see [change_blacklist](../../admin/yb-admin.md#change-blacklist) command in the yb-admin reference page.
+For details, see [change_blacklist](../../../admin/yb-admin#change-blacklist) command in the yb-admin reference page.
 
 ## Wait for the rebalance to complete
 

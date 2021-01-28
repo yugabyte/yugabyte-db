@@ -48,6 +48,8 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 
+#include "yb/rpc/scheduler.h"
+
 #include "yb/util/opid.h"
 #include "yb/util/random.h"
 #include "yb/util/result.h"
@@ -95,7 +97,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   class ConsensusFaultHooks;
 
   // Creates RaftConsensus.
-  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
+  // split_op_info is the parameters of split tablet Raft operation requesting split of this
+  // tablet or unset.
   static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -112,10 +115,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id);
+    const SplitOpInfo& split_op_info);
 
   // Creates RaftConsensus.
-  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
+  // split_op_info is the parameters of split tablet Raft operation requesting split of this
+  // tablet or unset.
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -132,7 +136,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     RetryableRequests* retryable_requests,
-    const yb::OpId& split_op_id);
+    const SplitOpInfo& split_op_info);
 
   virtual ~RaftConsensus();
 
@@ -219,10 +223,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId GetSplitOpId() override;
 
-  // Resets split operation ID, to be used only from SplitOperation::DoAbort.
-  CHECKED_STATUS ResetSplitOpId();
+  std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
 
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
+  Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
   // The on-disk size of the consensus metadata.
@@ -237,9 +240,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
-  CHECKED_STATUS FlushLogIndex();
-
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+  const scoped_refptr<log::Log>& log() { return log_; }
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
@@ -626,7 +627,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS StartStepDownUnlocked(const RaftPeerPB& peer, bool graceful);
 
   // Checked whether we should start step down when protege did not synchronize before timeout.
-  void CheckDelayedStepDown(rpc::ScheduledTaskId task_id, const Status& status);
+  void CheckDelayedStepDown(const Status& status);
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
@@ -673,8 +674,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   };
 
   DelayedStepDown delayed_step_down_;
-  int num_scheduled_step_down_checks_ = 0;
-  rpc::ScheduledTaskId last_scheduled_step_down_check_task_id_ = rpc::kInvalidTaskId;
+  rpc::ScheduledTaskTracker step_down_check_tracker_;
 
   // The number of times this node has called and lost a leader election since
   // the last time it saw a stable leader (either itself or another node).

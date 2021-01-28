@@ -22,7 +22,11 @@
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 
-DEFINE_bool(use_node_to_node_encryption, false, "Use node to node encryption");
+DEFINE_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
+
+DEFINE_bool(node_to_node_encryption_use_client_certificates, false,
+            "Should client certificates be sent and verified for encrypted node to node "
+            "communication.");
 
 DEFINE_string(certs_dir, "",
               "Directory that contains certificate authority, private key and certificates for "
@@ -99,6 +103,11 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   }
 
   auto context = VERIFY_RESULT(CreateSecureContext(dir, name));
+  if (type == SecureContextType::kServerToServer &&
+      FLAGS_node_to_node_encryption_use_client_certificates) {
+    context->set_require_client_certificate(true);
+    context->set_use_client_certificate(true);
+  }
   ApplySecureContext(context.get(), builder);
   return context;
 }

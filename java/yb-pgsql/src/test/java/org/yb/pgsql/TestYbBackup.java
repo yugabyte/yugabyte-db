@@ -242,4 +242,84 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");
     }
   }
+
+  @Test
+  public void testYSQLColocatedBackupWithTableOidAlreadySet() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
+    }
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Create a table with a set table_oid.
+      stmt.execute("SET yb_enable_create_with_table_oid = true");
+      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                   "WITH (table_oid = 123456)");
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      // Check that backup and restore works fine.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      // Now try to do a backup/restore of the restored db.
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+    }
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb1");
+      stmt.execute("DROP DATABASE yb2");
+      stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
+  @Test
+  public void testAlteredYSQLTableBackupWithNotNull() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl(id int)");
+
+      stmt.execute("ALTER TABLE test_tbl ADD a int NOT NULL");
+      stmt.execute("ALTER TABLE test_tbl ADD b int NULL");
+
+      stmt.execute("INSERT INTO test_tbl(id, a, b) VALUES (1, 2, 3)");
+      stmt.execute("INSERT INTO test_tbl(id, a) VALUES (2, 4)");
+
+      runInvalidQuery(
+          stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
+          "null value in column \"a\" violates not-null constraint");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+      stmt.execute("INSERT INTO test_tbl (id, a, b) VALUES (9999, 9, 9)");
+
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=1", new Row(1, 2, 3));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=9999", new Row(9999, 9, 9));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=1", new Row(1, 2, 3));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=9999");
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }

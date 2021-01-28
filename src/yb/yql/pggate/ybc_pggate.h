@@ -63,9 +63,12 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 const bool YBCGetDisableTransparentCacheRefreshRetry();
 
-// Sets catalog_version to the local tserver's catalog version stored in shared
-// memory, or an error if the shared memory has not been initialized (e.g. in initdb).
+// Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
+// if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
+// Set auth_key to the local tserver's postgres authentication key stored in shared memory.  Return
+// error if the shared memory has not been initialized (e.g. in initdb).
+YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -191,7 +194,7 @@ YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type, bool is_not_null);
+                                   const YBCPgTypeEntity *attr_type);
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
                                       const char *newname);
@@ -396,6 +399,8 @@ YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
+
+YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is_persist_needed);
 
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,

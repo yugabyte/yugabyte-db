@@ -397,13 +397,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "This ALTER TABLE command is not yet supported"
       );
 
-      // PRIMARY KEY fails.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD a int PRIMARY KEY",
-          "This ALTER TABLE command is not yet supported"
-      );
-
       // GENERATED fails.
       runInvalidQuery(
           statement,
@@ -433,6 +426,18 @@ public class TestPgAlterTable extends BasePgSQLTest {
       statement.execute("ALTER TABLE IF EXISTS test_table RENAME TO new_table");
       statement.execute("SELECT * FROM new_table");
       runInvalidQuery(statement, "SELECT * FROM test_table", "does not exist");
+    }
+  }
+
+  /** Covers issue #6585 */
+  @Test
+  public void testRenameAndRecreate() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE x (id int)");
+      statement.execute("ALTER TABLE x RENAME TO y");
+      statement.execute("DROP TABLE y");
+      statement.execute("CREATE TABLE y (id int)");
+      assertNoRows(statement, "SELECT * FROM y");
     }
   }
 

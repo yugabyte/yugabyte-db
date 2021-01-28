@@ -8,16 +8,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.common.*;
 import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.YamlWrapper;
+
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -47,7 +44,8 @@ public class AppInit {
                  ConfigHelper configHelper, ReleaseManager releaseManager,
                  AWSInitializer awsInitializer, CustomerTaskManager taskManager,
                  YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
-                 TaskGarbageCollector taskGC) throws ReflectiveOperationException {
+                 TaskGarbageCollector taskGC, PlatformReplicationManager replicationManager
+  ) throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -93,10 +91,10 @@ public class AppInit {
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+          for (InstanceType instanceType : InstanceType.findByProvider(provider,
+            application.config())) {
             if (instanceType.instanceTypeDetails != null &&
-                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -132,6 +130,12 @@ public class AppInit {
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
+
+      // Start periodic platform backups
+      replicationManager.start();
+
+      // Add checksums for all certificates that don't have a checksum.
+      CertificateHelper.createChecksums();
 
       Logger.info("AppInit completed");
    }

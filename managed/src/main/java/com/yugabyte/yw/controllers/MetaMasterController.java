@@ -159,7 +159,7 @@ public class MetaMasterController extends Controller {
           return null;
         }
         List<String> ips = Arrays.stream(r.message.split("\\|"))
-            .filter((ip) -> !ip.isEmpty()).collect(Collectors.toList());
+            .filter((ip) -> !ip.trim().isEmpty()).collect(Collectors.toList());
         int rpcPort;
         switch (type) {
           case MASTER:

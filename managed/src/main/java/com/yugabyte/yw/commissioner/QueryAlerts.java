@@ -5,7 +5,7 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.commissioner;
@@ -15,17 +15,23 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.config.ConfigSubstitutor;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
-
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Singleton
 public class QueryAlerts {
@@ -43,17 +49,21 @@ public class QueryAlerts {
 
   private final int YB_QUERY_ALERTS_INTERVAL = 1;
 
+  private final RuntimeConfigFactory configFactory;
+
   @Inject
   public QueryAlerts(
     ExecutionContext executionContext,
     ActorSystem actorSystem,
     AlertManager alertManager,
-    MetricQueryHelper queryHelper
+    MetricQueryHelper queryHelper,
+    RuntimeConfigFactory configFactory
   ) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertManager = alertManager;
+    this.configFactory = configFactory;
     this.initialize();
   }
 
@@ -71,9 +81,13 @@ public class QueryAlerts {
   }
 
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
-      if (!queryHelper.queryDirect(definition.query).isEmpty()) {
+      String query =
+        new ConfigSubstitutor(configFactory.forCustomer(customer)).replace(definition.query);
+      if (!queryHelper.queryDirect(query).isEmpty()) {
         Universe universe = Universe.get(definition.universeUUID);
         Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
         // Create an alert to activate if it doesn't exist already
@@ -112,7 +126,8 @@ public class QueryAlerts {
         // Pick up all alerts that should be resolved internally but are currently active
         Customer.getAll().forEach(c ->
           Alert.listActiveCustomerAlerts(c.uuid).forEach(alert -> {
-            if (!alertsStillActive.contains(alert)) alertsToTransition.add(alert);
+            if (!alertsStillActive.contains(alert))
+              alertsToTransition.add(alert);
           }));
 
         // Trigger alert transitions

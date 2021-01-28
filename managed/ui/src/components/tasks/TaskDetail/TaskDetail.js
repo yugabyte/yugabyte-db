@@ -13,7 +13,7 @@ import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
-import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 
@@ -32,7 +32,9 @@ class TaskDetail extends Component {
   };
 
   retryTaskClicked = (currentTaskUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID);
+    this.props.retryCurrentTask(currentTaskUUID).then(() => {
+      browserHistory.push('/tasks');
+    });
   }
 
   componentDidMount() {
@@ -109,13 +111,16 @@ class TaskDetail extends Component {
             {displayIcon}
             {displayMessage}
           </div>
-          <div
-            className="btn btn-orange text-center pull-right task-detail-button"
-            onClick={() => self.retryTaskClicked(taskUUID)}
-          >
-            <i className="fa fa-refresh"></i>
-            Retry Task
-          </div>
+          {isNonEmptyString(currentTaskData.title)
+           && currentTaskData.title.includes("Created Universe") &&
+            <div
+              className="btn btn-orange text-center pull-right task-detail-button"
+              onClick={() => self.retryTaskClicked(taskUUID)}
+            >
+              <i className="fa fa-refresh"></i>
+              Retry Task
+            </div>
+          }
         </div>
       );
     };
@@ -133,7 +138,7 @@ class TaskDetail extends Component {
         let errorString = <span />;
         if (subTask.errorString !== 'null') {
           let allowRetry = false;
-          if (universe !== null) {
+          if (universe) {
             const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
             allowRetry = primaryCluster.userIntent.providerType === "onprem";
           }

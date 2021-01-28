@@ -79,7 +79,7 @@ export default class NodeDetails extends Component {
 
     const nodesMetrics =
       getPromiseState(universePerNodeMetrics).isSuccess() &&
-      isNonEmptyObject(universePerNodeMetrics.data) &&  
+      isNonEmptyObject(universePerNodeMetrics.data) &&
       Object.assign({}, ...Object.values(universePerNodeMetrics.data));
 
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
@@ -195,6 +195,7 @@ export default class NodeDetails extends Component {
             providerUUID={readOnlyCluster.userIntent.provider}
             clusterType="readonly"
             customer={customer}
+            currentUniverse={currentUniverse}
           />
         )}
       </Fragment>

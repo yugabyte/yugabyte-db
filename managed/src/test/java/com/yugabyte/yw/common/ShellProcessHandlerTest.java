@@ -9,11 +9,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +53,18 @@ public class ShellProcessHandlerTest {
         ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(0, response.code);
         assertThat(response.message, allOf(notNullValue(), containsString(TMP_STORAGE_PATH)));
+        assertEquals(response.message.trim(), response.message);
+    }
+
+    @Test
+    public void testPartialLineOutput() throws IOException {
+        List<String> command = new ArrayList<String>();
+        String partialLineCmd = "echo -n foo  && sleep 30 && echo bar";
+        String fileName = createTestShellScript(partialLineCmd);
+        command.add(fileName);
+        ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
+        assertEquals(0, response.code);
+        assertEquals(response.message.trim(), "foobar");
     }
 
     @Test
@@ -66,7 +81,8 @@ public class ShellProcessHandlerTest {
 
     @Test
     public void testRunWithInvalidCommand() throws IOException {
-        String fileName = createTestShellScript();
+        String testCmd = ">&2 echo error; sleep 2; echo foobar; sleep 2; echo more; exit 255";
+        String fileName = createTestShellScript(testCmd);
         List<String> command = new ArrayList<String>();
         command.add(fileName);
         ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
@@ -74,14 +90,10 @@ public class ShellProcessHandlerTest {
         assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
     }
 
-    private String createTestShellScript() throws IOException {
-        String fileName = TMP_STORAGE_PATH + "/test.sh";
-        FileWriter fw = new FileWriter(fileName);
-        fw.write(">&2 echo error; sleep 2; echo foobar; sleep 2; echo more; exit -1");
-        fw.close();
-        // Set the file as a executable
-        File file = new File(fileName);
-        file.setExecutable(true);
-        return fileName;
+    private String createTestShellScript(String cmd) throws IOException {
+        Path fileName = Files.createTempFile(Paths.get(TMP_STORAGE_PATH), "yw_test", ".sh");
+        Files.write(fileName, ("#/bin/bash\n" + cmd).getBytes());
+        fileName.toFile().setExecutable(true);
+        return fileName.toString();
     }
 }

@@ -153,6 +153,10 @@ struct CBTabletServerMetadata {
 
   // The set of tablet leader ids that this tablet server is currently running.
   std::set<TabletId> leaders;
+
+  // The set of tablet ids that have possible non relevant data. Replica should be compacted
+  // first before moving
+  std::set<TabletId> parent_data_tablets;
 };
 
 struct CBTabletServerLoadCounts {
@@ -318,10 +322,9 @@ class PerTableLoadState {
     const auto& placement = placement_by_table_[tablet->table()->id()];
 
     // Get replicas for this tablet.
-    TabletInfo::ReplicaMap replica_map;
-    GetReplicaLocations(tablet, &replica_map);
+    auto replica_map = GetReplicaLocations(tablet);
     // Set state information for both the tablet and the tablet server replicas.
-    for (const auto& replica : replica_map) {
+    for (const auto& replica : *replica_map) {
       const auto& ts_uuid = replica.first;
       // If we do not have ts_meta information for this particular replica, then we are in the
       // rare case where we just became the master leader and started doing load balancing, but we
@@ -359,6 +362,12 @@ class PerTableLoadState {
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
       }
+      if (replica.second.processing_parent_data) {
+        RETURN_NOT_OK(AddParentDataTablet(tablet_id, ts_uuid));
+        VLOG(1) << "Replica might have non relevant data: " << replica.second.ToString();
+      } else {
+        RETURN_NOT_OK(RemoveParentDataTablet(tablet_id, ts_uuid));
+      }
 
       // If this replica is blacklisted, we want to keep track of these specially, so we can
       // prioritize accordingly.
@@ -376,8 +385,8 @@ class PerTableLoadState {
     // Only set the over-replication section if we need to.
     int placement_num_replicas = placement.num_replicas() > 0 ?
         placement.num_replicas() : FLAGS_replication_factor;
-    tablet_meta.is_over_replicated = placement_num_replicas < replica_map.size();
-    tablet_meta.is_under_replicated = placement_num_replicas > replica_map.size();
+    tablet_meta.is_over_replicated = placement_num_replicas < replica_map->size();
+    tablet_meta.is_under_replicated = placement_num_replicas > replica_map->size();
 
     // If no placement information, we will have already set the over and under replication flags.
     // For under-replication, we cannot use any placement_id, so we just leave the set empty and
@@ -386,7 +395,7 @@ class PerTableLoadState {
     // For over-replication, we just add all the ts_uuids as candidates.
     if (placement.placement_blocks().empty()) {
       if (tablet_meta.is_over_replicated) {
-        for (auto& replica_entry : replica_map) {
+        for (auto& replica_entry : *replica_map) {
           tablet_meta.over_replicated_tablet_servers.insert(std::move(replica_entry.first));
         }
       }
@@ -403,7 +412,7 @@ class PerTableLoadState {
         placement_to_min_replicas[placement_id] = pb.min_num_replicas();
       }
       // Now actually fill the structures with matching TSs.
-      for (auto& replica_entry : replica_map) {
+      for (auto& replica_entry : *replica_map) {
         if (VERIFY_RESULT(HasValidPlacement(replica_entry.first, &placement))) {
           const auto& placement_id = per_ts_meta_[replica_entry.first].descriptor->placement_id();
           placement_to_replicas[placement_id].push_back(std::move(replica_entry.second));
@@ -703,8 +712,8 @@ class PerTableLoadState {
     }
   }
 
-  virtual void GetReplicaLocations(TabletInfo* tablet, TabletInfo::ReplicaMap* replica_locations) {
-    tablet->GetReplicaLocations(replica_locations);
+  virtual std::shared_ptr<const TabletInfo::ReplicaMap> GetReplicaLocations(TabletInfo* tablet) {
+    return tablet->GetReplicaLocations();
   }
 
   Status AddRunningTablet(TabletId tablet_id, TabletServerId ts_uuid) {
@@ -758,6 +767,22 @@ class PerTableLoadState {
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     int num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
     global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
+    return Status::OK();
+  }
+
+  Status AddParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    per_ts_meta_.at(ts_uuid).parent_data_tablets.insert(tablet_id);
+    return Status::OK();
+  }
+
+  Status RemoveParentDataTablet(TabletId tablet_id, TabletServerId ts_uuid) {
+    SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
+           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+    if (per_ts_meta_.at(ts_uuid).parent_data_tablets.erase(tablet_id) != 0) {
+      VLOG(1) << "Updated replica have relevant data, tablet id: " << tablet_id;
+    }
     return Status::OK();
   }
 

@@ -39,6 +39,7 @@
 #include <mutex>
 #include <string>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/gutil/gscoped_ptr.h"
 
 #include "yb/master/master_fwd.h"
@@ -49,6 +50,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/status.h"
 #include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
@@ -177,6 +179,26 @@ class TSDescriptor {
     return leader_count_;
   }
 
+  void set_physical_time(MicrosTime physical_time) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    physical_time_ = physical_time;
+  }
+
+  MicrosTime physical_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return physical_time_;
+  }
+
+  void set_hybrid_time(HybridTime hybrid_time) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    hybrid_time_ = hybrid_time;
+  }
+
+  HybridTime hybrid_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return hybrid_time_;
+  }
+
   void set_total_memory_usage(uint64_t total_memory_usage) {
     std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.total_memory_usage = total_memory_usage;
@@ -276,6 +298,10 @@ class TSDescriptor {
 
   bool IsLive() const;
 
+  bool HasCapability(CapabilityId capability) const {
+    return capabilities_.find(capability) != capabilities_.end();
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
@@ -333,6 +359,10 @@ class TSDescriptor {
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_;
 
+  // The physical and hybrid times on this node at the time of heartbeat
+  MicrosTime physical_time_;
+  HybridTime hybrid_time_;
+
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;
 
@@ -359,7 +389,7 @@ class TSDescriptor {
   std::set<std::string> tablets_pending_delete_;
 
   // Capabilities of this tablet server.
-  google::protobuf::RepeatedField<CapabilityId> capabilities_;
+  std::set<CapabilityId> capabilities_;
 
   // We don't remove TSDescriptor's from the master's in memory map since several classes hold
   // references to this object and those would be invalidated if we remove the descriptor from

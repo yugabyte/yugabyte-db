@@ -28,6 +28,9 @@ import org.mockito.runners.MockitoJUnitRunner;
 
 import org.yb.client.YBClient;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 
 import play.libs.Json;
 
@@ -89,7 +92,18 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
     setDefaultNodeState(NodeState.Removed);
 
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+      new ChangeMasterClusterConfigResponse(1111, "", null);
+
     mockClient = mock(YBClient.class);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
+    } catch (Exception e) {}
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any()))
         .thenReturn(new ShellResponse());
@@ -148,6 +162,16 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testReleaseInstanceSuccess() {
+    Master.SysClusterConfigEntryPB.Builder configBuilder =
+      Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    GetMasterClusterConfigResponse mockConfigResponse =
+      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {}
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
 

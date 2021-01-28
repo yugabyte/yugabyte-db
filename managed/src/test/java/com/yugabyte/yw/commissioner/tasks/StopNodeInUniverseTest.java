@@ -22,6 +22,8 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.YBClient;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.List;
@@ -63,6 +65,13 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
                 ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
         mockClient = mock(YBClient.class);
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+        GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        try {
+          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+        } catch (Exception e) {}
         when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
         dummyShellResponse =  new ShellResponse();
         dummyShellResponse.message = "true";

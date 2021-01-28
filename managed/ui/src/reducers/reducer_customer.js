@@ -222,9 +222,6 @@ export default function (state = INITIAL_STATE, action) {
     case ADD_CUSTOMER_CONFIG:
       return setLoadingState(state, 'addConfig', {});
     case ADD_CUSTOMER_CONFIG_RESPONSE:
-      if (action.payload.status !== 200) {
-        return setFailureState(state, 'addConfig', action.payload.response.data.error);
-      }
       return setPromiseResponse(state, 'addConfig', action);
     case FETCH_CUSTOMER_CONFIGS:
       return setLoadingState(state, 'configs', []);

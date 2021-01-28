@@ -202,6 +202,8 @@ class ClusterAdminClient {
                                      int replication_factor,
                                      const std::string& optional_uuid);
 
+  CHECKED_STATUS ClearPlacementInfo();
+
   CHECKED_STATUS AddReadReplicaPlacementInfo(const std::string& placement_info,
                                              int replication_factor,
                                              const std::string& optional_uuid);

@@ -120,6 +120,14 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 									end_oid));
 }
 
+bool
+YBCIsDatabaseColocated(Oid dboid)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsDatabaseColocated(dboid, &colocated));
+	return colocated;
+}
+
 /* ------------------------------------------------------------------------- */
 /*  Tablegroup Functions. */
 void
@@ -755,6 +763,15 @@ YBCCreateIndex(const char *indexName,
 YBCPgStatement
 YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 {
+	/*
+	 * This does happen in some unsupported cases, e.g.
+	 * ALTER TABLE ADD CONSTRAINT PK USING INDEX - and while that one is
+	 * explicitly caught elsewhere, we keep this as a safeguard.
+	 */
+	if (stmt == NULL)
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("This ALTER TABLE command is not yet supported.")));
+
 	YBCPgStatement handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
 									  relationId,
@@ -793,8 +810,7 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
 
 				HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-														order, col_type,
-														colDef->is_not_null));
+														order, col_type));
 				++col;
 				ReleaseSysCache(typeTuple);
 				needsYBAlter = true;
@@ -822,8 +838,8 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_AddIndexConstraint:
 			{
 				IndexStmt *index = (IndexStmt *) cmd->def;
-				/* Only allow adding indexes when it is a unique non-primary-key constraint */
-				if (!index->unique || index->primary || !index->isconstraint)
+				/* Only allow adding indexes when it is a unique or primary key constraint */
+				if (!(index->unique || index->primary) || !index->isconstraint)
 				{
 					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("This ALTER TABLE command is not yet supported.")));
@@ -887,6 +903,16 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 						if (newTypId == curTypId && newTypMod == curTypMod)
 						{
 							/* Types are the same, no changes will occur. */
+							break;
+						}
+						/* timestamp <-> timestamptz type change is allowed
+							if no rewrite is needed */
+						if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
+							break;
+						}
+						if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
+							!TimestampTimestampTzRequiresRewrite()) {
 							break;
 						}
 						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1037,4 +1063,12 @@ YBCDropIndex(Oid relationId)
 			YBSaveDdlHandle(handle);
 		}
 	}
+}
+
+bool
+YBCIsTableColocated(Oid dboid, Oid relationId)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
+	return colocated;
 }

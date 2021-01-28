@@ -350,7 +350,17 @@ class ControlScript(object):
         tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
             archive.add(logpath)
-        Output.print_and_log("Logs are packaged into {}".format(tarpath))
+
+        if self.configs.temp_data.get("collect_logs_stdout"):
+            Output.log("Logs are packaged into {}".format(tarpath))
+            if tarfile.is_tarfile(tarpath):
+                with open(tarpath, 'rb') as tar_fd:
+                    if sys.version_info[0] == 3:
+                        sys.stdout.buffer.write(tar_fd.read())
+                    else:
+                        sys.stdout.write(tar_fd.read())
+        else:
+            Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -398,13 +408,22 @@ class ControlScript(object):
 
     def start_first_master_tserver(self, master_addresses):
         self.processes.get("master").start()
-        if not self.setup_master():
+
+        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        if was_already_setup:
+            Output.log("Node was a member of some cluster before. "
+                    "Skipping master setup")
+        elif not self.setup_master():
             # TODO(sanketh): Make these all throw exceptions instead of excns + return values
             return "Failed to start master {}".format(SCRIPT_NAME)
 
         self.update_tserver_master_addrs()
         self.processes.get("tserver").start()
-        if not self.wait_tserver():
+        if was_already_setup:
+            Output.log("Node was a member of some cluster before. "
+                    "Skipping tserver setup")
+        elif not self.wait_tserver():
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
@@ -563,6 +582,9 @@ class ControlScript(object):
                     Output.update_animation("Database failed to start",
                         status=Output.ANIMATION_FAIL)
                     Output.log_error_and_exit(ret)
+
+                # Persist the config after successful start
+                self.configs.save_configs()
 
                 Output.update_animation("System checks")
             else:
@@ -847,7 +869,7 @@ class ControlScript(object):
         try:
             return retry_op(self.get_all_masters, timeout)
         except RuntimeError:
-            Output.log_error_and_exit("Failed to query for all masters. Exception: {}".format(
+            Output.log("Failed to query for all masters. Exception: {}".format(
                 traceback.format_exc()))
             return False
 
@@ -876,6 +898,7 @@ class ControlScript(object):
         join_ip = self.configs.saved_data.get("join")
         try:
             if retry_op(self.wait_master, timeout):
+                self.configs.saved_data["cluster_member"] = True
                 return True
             # If wait_master returns False, it means the master is
             # not part of the current set of masters. If we have a
@@ -912,6 +935,7 @@ class ControlScript(object):
 
         try:
             if retry_op(self.wait_master, timeout):
+                self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
         except RuntimeError:
@@ -1016,7 +1040,15 @@ class ControlScript(object):
         else:
             title = Output.make_bold(Output.make_green(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_green("")))
-            status = "Running"
+            # Check if there is a leader yet.
+            # We can use a smaller timeout here instead of the regular 60 secs.
+            # In case of starting up via yugabyted, we have already given enough time to
+            # the leader election
+            # In case of manual start or some other route, we can have a smaller timeout
+            if self.wait_get_all_masters(timeout=10):
+                status = "Running. Leader Master is present"
+            else:
+                status = "Running. No leader master yet"
 
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
@@ -1133,6 +1165,9 @@ class ControlScript(object):
             path = getattr(args, path_args, None)
             if path:
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
+
+        if args.parser == "collect_logs":
+            self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
         if args.parser == "start":
             if args.data_dir is not None:
@@ -1265,6 +1300,14 @@ class ControlScript(object):
             func = getattr(self, parser_name, None)
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
+
+        # Docker: Redirect the logs.tar.gz to stdout
+        for cmd in ("collect_logs",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
+                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                action="store_true", default=False)
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -1440,6 +1483,7 @@ class Configs(object):
             "daemon": True,
             "ui": False,
             "initial_scripts_dir": "",
+            "collect_logs_stdout": False,
         }
         self.config_file = config_file
 

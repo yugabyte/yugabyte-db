@@ -1619,45 +1619,41 @@ public class PlacementInfoUtil {
     }
   }
 
-  // Select the number of AZs for each deployment.
+  // Select the number of masters per AZ (Used in kubernetes).
   public static void selectNumMastersAZ(PlacementInfo pi, int numTotalMasters) {
-    int totalAZs = 0;
-    for (PlacementCloud pc : pi.cloudList) {
+    Queue<PlacementAZ> zones = new LinkedList<>();
+    int numRegionsCompleted = 0;
+    int idx = 0;
+    // We currently only support one cloud per deployment.
+    assert pi.cloudList.size() == 1;
+    PlacementCloud pc = pi.cloudList.get(0);
+    // Create a queue of zones for placing masters.
+    while(numRegionsCompleted != pc.regionList.size() && zones.size() < numTotalMasters) {
       for (PlacementRegion pr : pc.regionList) {
-        totalAZs += pr.azList.size();
-      }
-    }
-
-    for (PlacementCloud pc : pi.cloudList) {
-      int remainingMasters = numTotalMasters;
-      int azsRemaining = totalAZs;
-
-      for (PlacementRegion pr : pc.regionList) {
-        int numAzsInRegion = pr.azList.size();
-        // Distribute masters in each region according to the number of AZs in each region.
-        int mastersInRegion = (int) Math.round(remainingMasters * ((double) numAzsInRegion / azsRemaining));
-        int mastersAdded = 0;
-        int saturated = 0;
-        int count = 0;
-        while (mastersInRegion != mastersAdded && saturated != numAzsInRegion ) {
-          saturated = 0;
-          for (PlacementAZ pa : pr.azList) {
-            // The number of masters in an AZ cannot exceed the number of tservers.
-            if ((count + 1) <= pa.numNodesInAZ) {
-              pa.replicationFactor = count + 1;
-              mastersAdded++;
-            } else {
-              saturated++;
-            }
-            if (mastersInRegion == 0) {
-              break;
-            }
-          }
-          count++;
+        if (idx == pr.azList.size()) {
+          numRegionsCompleted++;
+          continue;
+        } else if (idx > pr.azList.size()) {
+          continue;
         }
-
-        remainingMasters -= mastersAdded;
-        azsRemaining -= numAzsInRegion;
+        // Ensure RF is first set to 0.
+        pr.azList.get(idx).replicationFactor = 0;
+        zones.add(pr.azList.get(idx));
+      }
+      idx++;
+    }
+    // Now place the masters.
+    while (numTotalMasters > 0) {
+      if (zones.isEmpty()) {
+        throw new IllegalStateException("No zones left to place masters. " +
+                                        "Not enough tserver nodes selected");
+      }
+      PlacementAZ az = zones.remove();
+      az.replicationFactor++;
+      numTotalMasters--;
+      // If there are more tservers in the zone, this can take more masters if needed.
+      if (az.replicationFactor < az.numNodesInAZ) {
+        zones.add(az);
       }
     }
   }
@@ -1892,6 +1888,7 @@ public class PlacementInfoUtil {
       }
 
       if (!zones.isEmpty()) {
+        // TODO: sort zones by instance type
         azByRegionMap.put(userIntent.regionList.get(idx), zones);
       }
     }
@@ -1902,29 +1899,29 @@ public class PlacementInfoUtil {
       .reduce(0, Integer::sum);
 
 
-    List<AvailabilityZone> totalAzsInRegions = new ArrayList<>();
+    List<AvailabilityZone> allAzsInRegions = new ArrayList<>();
     while (azsAdded < totalNumAzsInRegions) {
       for (UUID regionUUID : azByRegionMap.keySet()) {
         List<AvailabilityZone> regionAzs = azByRegionMap.get(regionUUID);
         if (regionAzs.size() > 0) {
-          totalAzsInRegions.add(regionAzs.get(0));
+          allAzsInRegions.add(regionAzs.get(0));
           regionAzs.remove(0);
           azsAdded += 1;
         }
       }
     }
 
-    if (totalAzsInRegions.isEmpty()) {
+    if (allAzsInRegions.isEmpty()) {
       throw new RuntimeException("No AZ found across regions: " + userIntent.regionList);
     }
 
     LOG.info("numRegions={}, numAzsInRegions={}, zonesIntended={}", userIntent.regionList.size(),
-      totalAzsInRegions.size(), num_zones);
+      allAzsInRegions.size(), num_zones);
 
     // Case (1) Set min_num_replicas = RF
     if (num_zones == 1) {
       addPlacementZone(
-        totalAzsInRegions.get(0).uuid,
+        allAzsInRegions.get(0).uuid,
         placementInfo,
         userIntent.replicationFactor,
         userIntent.numNodes
@@ -1932,10 +1929,10 @@ public class PlacementInfoUtil {
     // Case (2) Set min_num_replicas ~= RF/num_zones
     } else if (num_zones <= userIntent.replicationFactor) {
       for (int i = 0; i < num_zones; i++) {
-        if (totalAzsInRegions.size() < num_zones) {
-          addPlacementZone(totalAzsInRegions.get(i % totalAzsInRegions.size()).uuid, placementInfo);
+        if (allAzsInRegions.size() < num_zones) {
+          addPlacementZone(allAzsInRegions.get(i % allAzsInRegions.size()).uuid, placementInfo);
         } else {
-          addPlacementZone(totalAzsInRegions.get(i).uuid, placementInfo);
+          addPlacementZone(allAzsInRegions.get(i).uuid, placementInfo);
         }
       }
     } else {

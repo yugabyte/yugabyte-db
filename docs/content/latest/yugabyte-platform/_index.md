@@ -86,13 +86,13 @@ menu:
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="alerts-monitoring/">
+    <a class="section-link icon-offset" href="create-deployments/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Alerts and monitoring</div>
+        <div class="title">Create deployments</div>
       </div>
       <div class="body">
-        Create alerts and monitor dashboards using Yugabyte Platform.
+        Create YugabyteDB universe deployments
       </div>
     </a>
   </div>

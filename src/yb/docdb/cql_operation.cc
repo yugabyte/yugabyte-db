@@ -726,10 +726,9 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           MonoDelta::FromMilliseconds(schema_->table_properties().DefaultTimeToLive()) :
           MonoDelta::kMax;
 
-      // At YQL layer list indexes start at 0, but internally we start at 1.
-      int index = column_value.subscript_args(0).value().int32_value() + 1;
+      int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          *sub_path, {index}, {sub_doc}, data.read_time, data.deadline, request_.query_id(),
+          *sub_path, target_cql_index, sub_doc, data.read_time, data.deadline, request_.query_id(),
           default_ttl, ttl));
       break;
     }
@@ -968,13 +967,18 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         boost::optional<int32_t> hash_code = request_.has_hash_code()
                                              ? boost::make_optional<int32_t>(request_.hash_code())
                                              : boost::none;
-        DocQLScanSpec spec(projection,
+        const auto range_covers_whole_partition_key = !request_.has_where_expr();
+        const auto include_static_columns_in_scan = range_covers_whole_partition_key &&
+                                                    schema_->has_statics();
+        DocQLScanSpec spec(*schema_,
                            hash_code,
                            hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
                            nullptr,
-                           request_.query_id());
+                           request_.query_id(),
+                           true /* is_forward_scan */,
+                           include_static_columns_in_scan);
 
         // Create iterator.
         DocRowwiseIterator iterator(

@@ -62,7 +62,7 @@ class ControlInstanceCommand(AbstractPerCloudCommand):
             }
 
     def add_subcommands(self):
-        for node, commands in self.commands_per_server_type.iteritems():
+        for node, commands in self.commands_per_server_type.items():
             self.add_subcommand(ServerControlInstanceCommand(node, commands))
 
 

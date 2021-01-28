@@ -318,6 +318,17 @@ CHECKED_STATUS StatusFromResponse(const Resp& resp) {
   return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
 }
 
+struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 14;
+
+  static std::string ToMessage(Value value) {
+    return Format("Split child tablet IDs: $0", value);
+  }
+};
+
+typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;
+
 } // namespace yb
 
 #endif  // YB_COMMON_WIRE_PROTOCOL_H

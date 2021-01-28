@@ -209,6 +209,12 @@ message PgsqlWriteRequestPB {
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
+
+  // For DELETE requests, do they need to be persisted in regular rocksdb?
+  //
+  // This is currently only used for DELETEs to the index when the index is getting created with
+  // index backfill enabled.
+  optional bool is_delete_persist_needed = 20 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -370,6 +376,9 @@ message PgsqlReadRequestPB {
   // available in beta version for SPLIT_AT feature. The release version for SPLIT AT does not need
   // to be compatible with the beta version as SPLIT AT feature were not used.
   optional bytes DEPRECATED_max_partition_key = 25;
+
+  // Does this request correspond to scanning the indexed table for backfill?
+  optional bool is_for_backfill = 29 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

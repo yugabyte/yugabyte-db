@@ -1202,8 +1202,8 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-    const std::array<TabletId, 2>& new_tablet_ids, const std::string& split_encoded_key,
-    const std::string& split_partition_key)
+    const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
+    const std::string& split_encoded_key, const std::string& split_partition_key)
     : AsyncTabletLeaderTask(master, callback_pool, tablet) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);

@@ -78,7 +78,7 @@ public class AWSInitializer extends AbstractInitializer {
           ObjectMapper mapper = new ObjectMapper();
           regionJson = mapper.readTree(regionStream);
         } catch (IOException e) {
-          LOG.error("Failed to parse region metadata from region ", region.code);
+          LOG.error("Failed to parse region metadata from region {}", region.code);
           return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
         }
 
@@ -517,7 +517,7 @@ public class AWSInitializer extends AbstractInitializer {
           throw new UnsupportedOperationException(msg);
         } else {
           // TODO: hardcode me not?
-          volumeCount = 2;
+          volumeCount = 0;
           volumeSizeGB = 250;
           volumeType = VolumeType.EBS;
         }

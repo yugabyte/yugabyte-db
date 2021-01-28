@@ -26,6 +26,7 @@ import org.junit.Test;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 
@@ -45,6 +46,13 @@ import org.junit.runner.RunWith;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BaseCQLTest {
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // Generate system.partitions table on query.
+    builder.yqlSystemPartitionsVtableRefreshSecs(0);
+  }
+
   @Test
   public void testSimpleQuery() throws Exception {
     LOG.info("TEST CQL SIMPLE QUERY - Start");

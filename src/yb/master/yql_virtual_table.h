@@ -88,18 +88,18 @@ class YQLVirtualTable : public common::YQLStorageIf {
   }
 
   CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
-                             int64_t batch_arg_index,
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
+                             const docdb::DocKey& start_doc_key,
                              common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
+  CHECKED_STATUS GetIterator(uint64 stmt_id,
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,

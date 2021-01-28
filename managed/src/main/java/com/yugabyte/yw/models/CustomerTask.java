@@ -17,7 +17,6 @@ import javax.persistence.*;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -67,6 +66,9 @@ public class CustomerTask extends Model {
     @EnumValue("Start")
     Start,
 
+    @EnumValue("Restart")
+    Restart,
+
     @EnumValue("Remove")
     Remove,
 
@@ -78,6 +80,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
+
+    @EnumValue("UpdateCert")
+    UpdateCert,
 
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
@@ -109,7 +114,10 @@ public class CustomerTask extends Model {
     DisableEncryptionAtRest,
 
     @EnumValue("StartMaster")
-    StartMaster;
+    StartMaster,
+
+    @EnumValue("CreateAlertDefinitions")
+    CreateAlertDefinitions;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -121,12 +129,16 @@ public class CustomerTask extends Model {
           return completed ? "Deleted " : "Deleting ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case UpdateCert:
+          return completed ? "Updated Cert " : "Updating Cert ";
         case UpgradeGflags:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case BulkImportData:
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
           return completed ? "Restored " : "Restoring ";
+        case Restart:
+          return completed ? "Restarted " : "Restarting ";
         case Backup:
           return completed ? "Backed up " : "Backing up ";
         case SetEncryptionKey:
@@ -140,6 +152,8 @@ public class CustomerTask extends Model {
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
           return completed ? "Started Master process on " : "Starting Master process on ";
+        case CreateAlertDefinitions:
+          return completed ? "Created alert definitions " : "Creating alert definitions ";
         default:
           return null;
       }
@@ -166,11 +180,14 @@ public class CustomerTask extends Model {
     }
   }
 
+  // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
-  @SequenceGenerator(
-    name = "customer_task_id_seq", sequenceName = "customer_task_id_seq", allocationSize = 1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "customer_task_id_seq")
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  public Long getId() {
+    return id;
+  }
 
   @Constraints.Required
   @Column(nullable = false)
