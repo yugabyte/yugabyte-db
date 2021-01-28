@@ -12,8 +12,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
-
 A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this explained in the section [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/). 
 
 The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key. A _"parent ID"_ column (list) references the table's primary key—the _"ID"_ column (list). This is  enforced by a foreign key constraint. (This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling.) The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
@@ -68,6 +66,37 @@ on delete restrict;
 create unique index t_mgr_name on emps((mgr_name is null)) where mgr_name is null;
 ```
 
+Inspect the contents:
+
+```plpgsql
+select name, mgr_name from emps order by 2 nulls first, 1;
+```
+
+This is the result:
+
+```
+  name  | mgr_name 
+--------+----------
+ mary   | 
+
+ joan   | bill
+
+ alfie  | fred
+ dick   | fred
+ doris  | fred
+
+ alice  | john
+ bill   | john
+ edgar  | john
+
+ fred   | mary
+ george | mary
+ john   | mary
+ susan  | mary
+```
+
+The blank lines were added by hand to make the results easier to read.
+
 Stress the constraints with this attempt to insert a second ultimate manager:
 
 ```plpgsql
@@ -113,7 +142,8 @@ This simplest formulation of the query to list the employees with their immediat
 ##### `cr-view-top-down-simple.sql`
 
 ```plpgsql
-create or replace view top_down_simple(depth, mgr_name, name) as
+drop view if exists top_down_simple cascade;
+create view top_down_simple(depth, mgr_name, name) as
 with
   recursive hierarchy_of_emps(depth, mgr_name, name) as (
 
@@ -181,44 +211,47 @@ This produces a so-called "breadth first" order. This is the result:
  depth | mgr_name |  name  
 -------+----------+--------
      1 | -        | mary
+
      2 | mary     | fred
      2 | mary     | george
      2 | mary     | john
      2 | mary     | susan
+
      3 | fred     | alfie
      3 | fred     | dick
+     3 | fred     | doris
+
      3 | john     | alice
      3 | john     | bill
      3 | john     | edgar
+
      4 | bill     | joan
 ```
+
+The blank lines were added by hand to make the results easier to read.
 
 ## List the path top-down from the ultimate manager to each employee in breadth first order
 
 The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section.
 
-##### `cr-view-top-down-path.sql`
+##### `cr-view-top-down-paths.sql`
 
 ```plpgsql
-create or replace view top_down_path(path) as
+drop view if exists top_down_paths cascade;
+create view top_down_paths(path) as
 with
-  recursive hierarchy_of_emps(path, name) as (
-    (
-      select array['n/a'], name
-      from emps
-      where mgr_name is null
-    )
+  recursive paths(path) as (
+    select array[name]
+    from emps
+    where mgr_name is null
 
     union all
 
-    (
-      select h.path||e.mgr_name, e.name
-      from emps as e
-      inner join hierarchy_of_emps as h on e.mgr_name = h.name 
-    )
+    select p.path||e.name
+    from emps as e
+    inner join paths as p on e.mgr_name = p.path[cardinality(path)] 
   )
-select path[2:cardinality(path)]||name as path
-from hierarchy_of_emps;
+select path from paths;
 ```
 
 The cardinality of the path represents the depth. The result set that this view represents can be easily ordered first by the emergent _"depth"_ and then by the employee name:
@@ -227,7 +260,7 @@ The cardinality of the path represents the depth. The result set that this view 
 
 ```plpgsql
 select cardinality(path) as depth, path
-from top_down_path
+from top_down_paths
 order by
   depth,
   path[cardinality(path)];
@@ -247,11 +280,12 @@ This is the result:
      3 | {mary,john,alice}
      3 | {mary,john,bill}
      3 | {mary,fred,dick}
+     3 | {mary,fred,doris}
      3 | {mary,john,edgar}
      4 | {mary,john,bill,joan}
 ```
 
-Notice that the _"top_down_path"_ view has the same information content as the _"top_down_simple"_ view. But it's easier to read because you don't need mentally to construct the path by looking, recursively, for the row that has the "_mgr_name"_ of the row of interest as its _"name"_ until you reach the ultimate manager.
+Notice that the _"top_down_paths"_ view has the same information content as the _"top_down_simple"_ view. But it's easier to read because you don't need mentally to construct the path by looking, recursively, for the row that has the "_mgr_name"_ of the row of interest as its _"name"_ until you reach the ultimate manager.
 
 This `assert` confirms the conclusion:
 
@@ -274,7 +308,7 @@ declare
               else        path[cardinality(path) - 1]
             end,
             path[cardinality(path)]
-          from top_down_path),
+          from top_down_paths),
 
         a1_except_a2(depth, mgr_name, name) as (
           select depth, mgr_name, name from a1
@@ -309,7 +343,7 @@ Do this:
 
 ```plpgsql
 select cardinality(path) as depth, path
-from top_down_path
+from top_down_paths
 order by
   path[2] asc nulls first,
   path[3] asc nulls first,
@@ -326,6 +360,7 @@ This is the result:
      2 | {mary,fred}
      3 | {mary,fred,alfie}
      3 | {mary,fred,dick}
+     3 | {mary,fred,doris}
      2 | {mary,george}
      2 | {mary,john}
      3 | {mary,john,alice}
@@ -342,7 +377,7 @@ You can see that the results are sorted in depth-first order with the employees 
 Notice that this:
 
 ```plpgsql
-select max(cardinality(path)) from top_down_path;
+select max(cardinality(path)) from top_down_paths;
 ```
 returns the value _4_ for the present example. This means that `path[5]` returns `NULL`—as would, for example, `path[6]`, `path[17]`, and `path[42]`. When such a query is issued programmatically, you can determine the maximum path cardinality and build the `ORDER BY	` clause to have just the necessary and sufficient number of terms. Alternatively, for simpler code, you could write it with a number of terms that exceeds your best estimate of the maximum cardinality of the arrays that your program will have to deal with, ensuring safety with a straightforward test of the actual maximum cardinality.
 
@@ -355,7 +390,7 @@ Users often like to use indentation to visualize hierarchical depth. This is eas
 ```plpgsl
 select
   rpad(' ', 2*cardinality(path) - 2, ' ')||path[cardinality(path)] as "emps hierarchy"
-from top_down_path
+from top_down_paths
 order by
   path[2] asc nulls first,
   path[3] asc nulls first,
@@ -372,6 +407,7 @@ This is the result:
    fred
      alfie
      dick
+     doris
    george
    john
      alice
@@ -391,7 +427,7 @@ with
     select
       cardinality(path) as depth,
       path
-    from top_down_path),
+    from top_down_paths),
 
   a2 as (
     select
@@ -428,12 +464,11 @@ Using _0_ as the actual for the third (optional) `lag()` parameter means that th
 This is the result:
 
 ```
- Approx. 'Unix tree' 
----------------------
  mary
   └── fred
        ├── alfie
-       └── dick
+       ├── dick
+       └── doris
   ├── george
   └── john
        ├── alice
@@ -449,7 +484,8 @@ It's easy to transform this result _manually_ into the format that Unix uses by 
  mary
   ├── fred
   │    ├── alfie
-  │    └── dick
+  │    ├── dick
+  │    └── doris
   ├── george
   ├── john
   │    ├── alice
@@ -478,7 +514,7 @@ begin
       select
         cardinality(path) as depth,
         path
-      from top_down_path),
+      from top_down_paths),
 
     a2 as (
       select
