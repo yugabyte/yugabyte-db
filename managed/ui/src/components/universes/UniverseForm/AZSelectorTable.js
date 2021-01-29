@@ -110,23 +110,9 @@ export default class AZSelectorTable extends Component {
       universe: { currentPlacementStatus, universeConfigTemplate },
       clusterType
     } = this.props;
-    console.log("This props currentPlacementStatus", currentPlacementStatus)
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const currentAZState = [...this.state.azItemState];
     const replicationFactor = currentPlacementStatus?.replicationFactor;
-    // if (!replicationFactor) {
-    //   const configTemplateCurrentCluster = isNonEmptyObject(universeTemplate)
-    //     ? getClusterByType(universeTemplate.clusters, clusterType)
-    //     : null;
-    //   const placementInfo = this.getGroupWithCounts(universeTemplate);
-    //   const placementStatusObject = {
-    //     numUniqueRegions: placementInfo.uniqueRegions,
-    //     numUniqueAzs: placementInfo.uniqueAzs,
-    //     replicationFactor: configTemplateCurrentCluster.userIntent.replicationFactor
-    //   };
-    //   this.props.setPlacementStatus(placementStatusObject);
-    //   console.log("CurrentPlacementStatus -- ", currentPlacementStatus);
-    // }
     const item = currentAZState.find(item => item.value === zoneId);
     const originalValue = item.count;
     let totalNumNodes = 0;
@@ -416,7 +402,8 @@ export default class AZSelectorTable extends Component {
       type,
       clusterType
     } = this.props;
-
+    
+    // If currentPlacementStatus is null the fetch it.
     if(!currentPlacementStatus) {
       const configTemplateCurrentCluster = isNonEmptyObject(universeConfigTemplate.data)
         ? getClusterByType(universeConfigTemplate.data.clusters, clusterType)
