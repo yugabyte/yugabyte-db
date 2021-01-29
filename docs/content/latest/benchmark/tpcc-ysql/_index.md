@@ -38,7 +38,7 @@ To download the TPC-C binaries, run the following commands.
 
 ```sh
 $ cd $HOME
-$ wget https://github.com/yugabyte/tpcc/releases/download/1.4/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/download/1.6/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
@@ -58,7 +58,7 @@ Workload configuration like IP addresses of the nodes, number of warehouses and 
 Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
 ```sh
-<port>5433</5433>
+<port>5433</port>
 <username>yugabyte</username>
 <password></password>
 ```
