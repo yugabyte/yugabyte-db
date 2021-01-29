@@ -85,11 +85,17 @@ readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
-# Locally cached copies
-readonly YB_BUILD_DIR="/opt/yb-build"
-readonly LOCAL_THIRDPARTY_DIRS="$YB_BUILD_DIR/thirdparty"
-readonly LOCAL_LINUXBREW_DIRS="$YB_BUILD_DIR/brew"
-readonly LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-$YB_BUILD_DIR/download_cache}"
+
+# This is the parent directory for all kinds of thirdparty and toolchain tarballs.
+readonly OPT_YB_BUILD_DIR="/opt/yb-build"
+
+readonly LOCAL_THIRDPARTY_DIR_PARENT="$OPT_YB_BUILD_DIR/thirdparty"
+
+# Parent directories for different compiler toolchains that we know how to download and install.
+readonly TOOLCHAIN_PARENT_DIR_LINUXBREW="$OPT_YB_BUILD_DIR/brew"
+readonly TOOLCHAIN_PARENT_DIR_LLVM="$OPT_YB_BUILD_DIR/llvm"
+
+readonly LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-$OPT_YB_BUILD_DIR/download_cache}"
 
 # The assumed number of cores per build worker. This is used in the default make parallelism level
 # calculation in yb_build.sh. This does not have to be the exact number of cores per worker, but
@@ -1090,18 +1096,18 @@ download_and_extract_archive() {
 }
 
 download_thirdparty() {
-  if [[ ! -w $YB_BUILD_DIR ]]; then
+  if [[ ! -w $OPT_YB_BUILD_DIR ]]; then
     echo >&2 "
   ERROR:  Cannot download pre-built thirdparty dependencies.
-          Due to embedded paths, they must be installed under: $YB_BUILD_DIR
+          Due to embedded paths, they must be installed under: $OPT_YB_BUILD_DIR
 
-          Option 1) To enable downloading: sudo mkdir -m 777 $YB_BUILD_DIR
+          Option 1) To enable downloading: sudo mkdir -m 777 $OPT_YB_BUILD_DIR
 
           Option 2) To build dependencies from source, use build option --ndltp
     "
     fatal "Cannot download pre-built thirdparty dependencies."
   fi
-  download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIRS"
+  download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIR_PARENT"
   if [[ -n ${YB_THIRDPARTY_DIR:-} &&
         $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then
     log_thirdparty_and_toolchain_details
@@ -1116,26 +1122,50 @@ download_thirdparty() {
     return
   fi
 
-  # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
+  local toolchain_url_path=""
+  local toolchain_dir_parent=""
+  local is_linuxbrew
+
   if [[ ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
+    # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
     # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
     # link to download and install the appropriate Linuxbrew package.
-    local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
-    if [[ -f $linuxbrew_url_path ]]; then
-      local linuxbrew_url
-      linuxbrew_url=$(<"$linuxbrew_url_path")
-      download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
-      if [[ -n ${YB_LINUXBREW_DIR:-} &&
-            $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
-        log_thirdparty_and_toolchain_details
-        fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
-              "'$extracted_dir'"
+    toolchain_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
+    is_linuxbrew=true
+  else
+    toolchain_url_path=$YB_THIRDPARTY_DIR/toolchain_url.txt
+    is_linuxbrew=false
+  fi
+
+  if [[ -n $toolchain_url_path ]]; then
+    if [[ -f $toolchain_url_path ]]; then
+      local toolchain_url
+      toolchain_url=$(<"$toolchain_url_path")
+      local toolchain_url_basename=${toolchain_url##*/}
+
+      if [[ $toolchain_url_basename == yb-llvm-* ]]; then
+        toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LLVM
+      elif "$is_linuxbrew"; then
+        toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LINUXBREW
+      else
+        fatal "Unable to determine the installation parent directory for the toolchain archive" \
+              "named '$toolchain_url_basename'. Toolchain URL: '$toolchain_url'."
       fi
-      export YB_LINUXBREW_DIR=$extracted_dir
-      yb_linuxbrew_dir_where_from=" (downloaded from $linuxbrew_url)"
-      save_brew_path_to_build_dir
-    else
-      fatal "Cannot download Linuxbrew: file $linuxbrew_url_path does not exist"
+
+      download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
+      if "$is_linuxbrew"; then
+        if [[ -n ${YB_LINUXBREW_DIR:-} &&
+              $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
+          log_thirdparty_and_toolchain_details
+          fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
+                "'$extracted_dir'"
+        fi
+        export YB_LINUXBREW_DIR=$extracted_dir
+        yb_linuxbrew_dir_where_from=" (downloaded from $toolchain_url)"
+        save_brew_path_to_build_dir
+      fi
+    elif "$is_linuxbrew"; then
+      fatal "Cannot download Linuxbrew: file '$toolchain_url_path' does not exist"
     fi
   fi
 }
