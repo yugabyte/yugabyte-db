@@ -23,7 +23,10 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Regions;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+<<<<<<< HEAD
 import com.yugabyte.yw.commissioner.Common.CloudType;
+=======
+>>>>>>> Heading:
 import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import java.util.UUID;
@@ -201,24 +204,14 @@ public class CustomerConfigValidator {
    * Currently is checked:
    *  - S3/AWS - S3 Bucket, whether it exists or not.
    *
-   * @param formData, customerUUID
+   * @param formData, region
    * @return Json filled with errors
    */
-  public ObjectNode validateS3DataContent(JsonNode formData, UUID customerUUID) {
+  public ObjectNode validateS3DataContent(JsonNode formData, String region) {
     ObjectNode errorJson = Json.newObject();
     try {
-      AWSCredentials credentials = new BasicAWSCredentials(
-        formData.get("data").get("AWS_ACCESS_KEY_ID").asText(),
-        formData.get("data").get("AWS_SECRET_ACCESS_KEY").asText()
-      );
-      String region = Region.getByProvider(Provider.get(customerUUID, CloudType.aws).uuid)
-        .get(0).code.replace('-', '_').toUpperCase();
       String bucketname = formData.get("data").get("BACKUP_LOCATION").asText();
-      AmazonS3 s3client = AmazonS3ClientBuilder
-        .standard()
-        .withCredentials(new AWSStaticCredentialsProvider(credentials))
-        .withRegion(Regions.valueOf(region))
-        .build();
+      AmazonS3 s3client = getS3Client(formData, region);
       List<Bucket> buckets = s3client.listBuckets();
       for (Bucket bucket : buckets) {
         if (bucket.getName().equals(bucketname))
@@ -230,5 +223,18 @@ public class CustomerConfigValidator {
       errorJson.set("BackupConfigException:", Json.newArray().add(s3Exception.getErrorMessage()));
     }
     return errorJson;
+  }
+
+  // TODO: move to some common utils or AWSCloudImpl file
+  public AmazonS3 getS3Client(JsonNode formData, String region) {
+    AWSCredentials credentials = new BasicAWSCredentials(
+      formData.get("data").get("AWS_ACCESS_KEY_ID").asText(),
+      formData.get("data").get("AWS_SECRET_ACCESS_KEY").asText()
+    );
+    return AmazonS3ClientBuilder
+      .standard()
+      .withCredentials(new AWSStaticCredentialsProvider(credentials))
+      .withRegion(Regions.valueOf(region))
+      .build();
   }
 }

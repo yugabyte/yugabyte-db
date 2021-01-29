@@ -91,6 +91,21 @@ public class CustomerConfigValidatorTest {
     assertEquals(expectedResult, result.size() == 0);
   }
 
+  @Test
+  public void testValidateS3DataContent() {
+    ObjectNode data = Json.newObject();
+    data.put("BACKUP_LOCATION", "abc");
+    data.put("AWS_ACCESS_KEY_ID", "xyz");
+    data.put("AWS_SECRET_ACCESS_KEY", "secret");
+    ObjectNode result = validator.validateS3DataContent(createFormData(
+      "STORAGE",
+      "S3",
+      data),
+      "AP_SOUTH_1"
+    );
+    assertEquals(1, result.size());
+  }
+
   private JsonNode createFormData(String type, String name, JsonNode data) {
     ObjectNode formData = Json.newObject();
     formData.put("type", type);
