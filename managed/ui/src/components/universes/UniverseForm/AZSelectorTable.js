@@ -107,8 +107,7 @@ export default class AZSelectorTable extends Component {
 
   handleAZNodeCountChange(zoneId, value) {
     const {
-      universe: { currentPlacementStatus, universeConfigTemplate },
-      clusterType
+      universe: { currentPlacementStatus, universeConfigTemplate }
     } = this.props;
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const currentAZState = [...this.state.azItemState];
@@ -402,7 +401,7 @@ export default class AZSelectorTable extends Component {
       type,
       clusterType
     } = this.props;
-    
+
     // If currentPlacementStatus is null the fetch it.
     if(!currentPlacementStatus) {
       const configTemplateCurrentCluster = isNonEmptyObject(universeConfigTemplate.data)
