@@ -190,7 +190,7 @@ class MetricsCollector : public CollectorBase {
 
   string collector_name() { return "MetricsCollector"; }
 
-  virtual CollectionLevel collection_level() { return CollectionLevel::MEDIUM; }
+  virtual CollectionLevel collection_level() { return CollectionLevel::HIGH; }
   virtual ServerType collector_type() { return ServerType::ALL; }
 };
 
@@ -224,7 +224,7 @@ class RpcsCollector : public CollectorBase {
 
   string collector_name() { return "RpcsCollector"; }
 
-  virtual CollectionLevel collection_level() { return CollectionLevel::MEDIUM; }
+  virtual CollectionLevel collection_level() { return CollectionLevel::HIGH; }
   virtual ServerType collector_type() { return ServerType::ALL; }
 
  private:
