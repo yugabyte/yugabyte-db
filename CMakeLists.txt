@@ -72,8 +72,11 @@ else()
   set(BUILD_TESTS ON)
 endif()
 
-message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
 parse_build_root_basename()
+if("${YB_BUILD_TYPE}" STREQUAL "")
+  message(FATAL_ERROR "YB_BUILD_TYPE still not set after parse_build_root_basename")
+endif()
+message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
