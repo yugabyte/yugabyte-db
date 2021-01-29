@@ -528,7 +528,10 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
   ASSERT_EQ(kNumRaftLeaders, kExpectedRaftLeaders);
 }
 
-TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
+// In TSAN, currently, initdb isn't created during build but on first start.
+// As a result transaction table gets created without waiting for the requisite
+// number of TS.
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreation)) {
   // Set up an RF 1.
   // Tell the Master leader to wait for 3 TS to join before creating the
   // transaction status table.
