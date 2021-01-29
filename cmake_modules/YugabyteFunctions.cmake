@@ -422,6 +422,12 @@ macro(YB_SETUP_SANITIZER)
 
     # Compile and link against the thirdparty TSAN instrumented libstdcxx.
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+    if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
+      # To avoid issues with missing libunwind symbols:
+      # https://gist.githubusercontent.com/mbautin/5bc53ed2d342eab300aec7120eb42996/raw
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lunwind")
+    endif()
   else()
     message(FATAL_ERROR "Invalid build type for YB_SETUP_SANITIZER: '${YB_BUILD_TYPE}'")
   endif()
