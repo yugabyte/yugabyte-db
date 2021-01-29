@@ -57,16 +57,19 @@ public class ResumeUniverse extends UniverseTaskBase {
 
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "start").setSubTaskGroupType(
-            SubTaskGroupType.StartingMasterProcess);
+            SubTaskGroupType.StartingNodeProcesses);
       }
       createStartMasterTasks(masterNodes).setSubTaskGroupType(
-          SubTaskGroupType.StartingMasterProcess);
+          SubTaskGroupType.StartingNodeProcesses);
 
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Mark universe task state to success.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
       unlockUniverseForUpdate();

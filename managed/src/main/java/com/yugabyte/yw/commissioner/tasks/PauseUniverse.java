@@ -56,13 +56,15 @@ public class PauseUniverse extends UniverseTaskBase {
       }
       createStopMasterTasks(masterNodes).setSubTaskGroupType(
           SubTaskGroupType.StoppingNodeProcesses);
-
+          
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
         createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(
             SubTaskGroupType.PauseUniverse);
       }
-
+      // Mark universe task state to success.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
       unlockUniverseForUpdate();
