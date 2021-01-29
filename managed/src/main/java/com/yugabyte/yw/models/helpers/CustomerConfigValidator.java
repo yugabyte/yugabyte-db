@@ -21,12 +21,6 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Regions;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-<<<<<<< HEAD
-import com.yugabyte.yw.commissioner.Common.CloudType;
-=======
->>>>>>> Heading:
 import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import java.util.UUID;
