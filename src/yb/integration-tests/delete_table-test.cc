@@ -516,7 +516,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   vector<string> tserver_flags, master_flags;
   master_flags.push_back("--replication_factor=2");
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));
-  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  const MonoDelta timeout = MonoDelta::FromSeconds(40);
   const int kTsIndex = 0;  // We'll test with the first TS.
 
   // We'll do a config change to remote bootstrap a replica here later. For
