@@ -53,15 +53,13 @@ begin
     recursive paths(path) as (
       select array[seed, node_2]
       from edges
-      where
-      node_1 = seed
+      where node_1 = seed
 
       union all
 
       select p.path||e.node_2
-      from edges e, paths p
-      where
-      e.node_1 = terminal(p.path)
+      from edges e
+      inner join paths p on e.node_1 = terminal(p.path)
       )
   insert into raw_paths(path)
   select path

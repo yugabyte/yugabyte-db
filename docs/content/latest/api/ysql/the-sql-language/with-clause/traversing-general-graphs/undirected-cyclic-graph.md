@@ -38,27 +38,31 @@ select node_2 as node_1, node_1 as node_2
 from edges;
 ```
 
-Recall the SQL for traversing an employee hierarchy (see the section [List the path top-down from the ultimate manager to each employee in breadth first order](../../emps-hierarchy/#list-the-path-top-down-from-the-ultimate-manager-to-each-employee-in-breadth-first-order)):
+Look back at the SQL for traversing an employee hierarchy (see the section [List the path top-down from the ultimate manager to each employee in breadth first order](../../emps-hierarchy/#list-the-path-top-down-from-the-ultimate-manager-to-each-employee-in-breadth-first-order)). The snippet here is the core algorithm. But it's re-written to transform it into a use-case agnostic form by making these substitutions:
+
+```
+emps                         >  nodes
+[the alias] e                >  n
+emps.name                    >  nodes.node_id
+emps.mgr_name                >  nodes.parent_node_id
+```
+
+This is the code that results:
 
 ```
 with
-  recursive hierarchy_of_emps(path, name) as (
-    (
-      select array['n/a'], name
-      from emps
-      where mgr_name is null
-    )
+  recursive paths(path) as (
+    select array[node_id]
+    from nodes
+    where parent_node_id is null
 
     union all
 
-    (
-      select h.path||e.mgr_name, e.name
-      from emps as e
-      inner join hierarchy_of_emps as h on e.mgr_name = h.name 
-    )
+    select p.path||n.node_id
+    from nodes as n
+    inner join paths as p on n.parent_node_id = p.path[cardinality(path)] 
   )
-select path[2:cardinality(path)]||name as path
-from hierarchy_of_emps
+select path from paths
 ```
 
 The first attempt at the SQL for traversing the present undirected cyclic graph is easily written down just as obvious paraphrase:
@@ -71,19 +75,28 @@ with
   recursive paths(path) as (
     select array[$1, node_2]
     from edges
-    where
-    node_1 = $1
+    where node_1 = $1
 
     union all
 
     select p.path||e.node_2
-    from edges e, paths p
-    where
-    e.node_1 = terminal(p.path)
-    )
-select path
-from paths;
+    from edges e
+    inner join paths p on e.node_1 = terminal(p.path)
+  )
+select path from paths;
 ```
+
+Notice what the changes are.
+
+- The hierarchy's _"nodes"_ table is replaced by the general graph's _"edges"_ table.
+
+- The hierarchy's _"parent_node_id"_ column is replaced by the general graph's _"node_1"_ column. Similarly, the hierarchy's _"node_id"_, is replaced by the general graph's _"node_2"_.
+
+- The fixed starting condition for the hierarchy in the non-recursive term (`parent_node_id is null`) is replaced by the parameterized choice of starting node for the general graph (`node_1 = $1`). And this implies replacing the `SELECT` list's [`array[]` value constructor](../../../../datatypes/type_array/array-constructor/) (`array[node_id]`) with `array[$1, node_2]`.
+
+- The stopping condition in the hierarchy's recursive term (`n.parent_node_id = p.path[cardinality(path)]`) is replaced with `node_1 = terminal(p.path)` -- but this is just a cosmetic change because the function "_terminal()"_ is just a wrapper for the final element in the path.
+
+- And the `SELECT` list's `array[]` value constructor in the non-recursive term gets changed appropriately.
 
 Now execute it:
 
@@ -128,16 +141,14 @@ begin
     recursive paths(path) as (
       select array[seed, node_2]
       from edges
-      where
-      node_1 = seed
+      where node_1 = seed
 
       union all
 
       select p.path||e.node_2
-      from edges e, paths p
-      where
-      e.node_1 = terminal(p.path)
-      and not e.node_2 = any(p.path) -- <<<<< Prevent cycles.
+      from edges e
+      inner join paths p on e.node_1 = terminal(p.path)
+      where not e.node_2 = any(p.path) -- <<<<< Prevent cycles.
       )
   insert into raw_paths(path)
   select path
@@ -383,16 +394,13 @@ begin
   with
     recursive paths(path) as (
       select array[seed, other_node(seed, node_1, node_2)]
-      from edges
-      where
-      node_1 = seed or node_2 = seed
+      from edges where node_1 = seed or node_2 = seed
 
       union all
 
       select p.path||other_node(terminal(p.path), e.node_1, e.node_2)
       from edges e, paths p
-      where
-      (e.node_1 = terminal(p.path) or e.node_2 = terminal(p.path))
+      where (e.node_1 = terminal(p.path) or e.node_2 = terminal(p.path))
       and not other_node(terminal(p.path), e.node_1, e.node_2) = any(p.path) -- <<<<< Prevent cycles.
       )
   insert into raw_paths(path)
@@ -468,8 +476,7 @@ begin
   insert into working_paths(path)
   select array[seed, e.node_2]
   from edges e
-  where
-  e.node_1 = seed;
+  where e.node_1 = seed;
 
   insert into raw_paths(path)
   select r.path from working_paths r;
@@ -479,10 +486,9 @@ begin
     delete from temp_paths;
     insert into temp_paths(path)
     select w.path||e.node_2
-    from edges e, working_paths w
-    where
-    e.node_1 = terminal(w.path)
-    and not e.node_2 = any(w.path);  -- <<<<< Prevent cycles.
+    from edges e
+    inner join working_paths w on e.node_1 = terminal(w.path)
+    where not e.node_2 = any(w.path); -- <<<<< Prevent cycles.
 
     get diagnostics n = row_count;
     exit when n < 1;
