@@ -213,7 +213,7 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 
 Automatic tablet splitting enables resharding of data in a cluster automatically while online, and transparently to users, when a specified size threshold has been reached.
 
-For details on the architecture design, see [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md). While the broader feature is [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004), tablets can be automatically split for a few scenarios starting in the v2.2 release.
+For details on the architecture design, see [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md).
 
 ### Enable automatic tablet splitting
 
@@ -277,11 +277,11 @@ diff -C1 after-load.json after-run.json | grep tablet_id | sort | uniq
 
 ## Current tablet splitting limitations
 
-To follow the work-in-progress on tablet splitting, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+To follow the tablet splitting work-in-progress, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
-Here are known limitations that are planned to be resolved in the next releases:
+The following are known limitations that are planned to be resolved in the upcoming releases:
 
-* During tablet splitting, client applications can get an error from the driver and need to retry the request.
+* During tablet splitting, client applications may get an error from the driver and need to retry the request.
 * If tablet splitting occurs during an ongoing distributed transaction, it could be aborted and need to be retried.
-* Because splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
+* Since splitting of tablets that are not completely compacted is not yet implemented, tablets created by tablet splitting might be split after they reach the specified size threshold.
 * Colocated tables cannot be split.
