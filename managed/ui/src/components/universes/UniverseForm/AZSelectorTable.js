@@ -89,7 +89,9 @@ export default class AZSelectorTable extends Component {
     } else {
       currentTemplate.clusterOperation = 'EDIT';
     }
-    this.props.submitConfigureUniverse(currentTemplate);
+    this.props.submitConfigureUniverse(currentTemplate).then(() => {
+      this.props.reloadInstanceTypes();
+    });
   };
 
   handleAZChange(oldZoneId, newZoneId) {
@@ -246,7 +248,9 @@ export default class AZSelectorTable extends Component {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'CREATE';
         newTaskParams.resetAZConfig = false;
-        this.props.submitConfigureUniverse(newTaskParams);
+        this.props.submitConfigureUniverse(newTaskParams).then(() => {
+          this.props.reloadInstanceTypes();
+        });
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
         newTaskParams.currentClusterType = clusterType.toUpperCase();
@@ -269,7 +273,9 @@ export default class AZSelectorTable extends Component {
             newTaskParams.resetAZConfig = true;
           }
         }
-        this.props.submitConfigureUniverse(newTaskParams);
+        this.props.submitConfigureUniverse(newTaskParams).then(() => {
+          this.props.reloadInstanceTypes();
+        });
       } else {
         const placementStatusObject = {
           error: {
@@ -464,6 +470,10 @@ export default class AZSelectorTable extends Component {
         }
       }
     }
+  }
+
+  componentDidMount() {
+    this.props.reloadInstanceTypes();
   }
 
   render() {
