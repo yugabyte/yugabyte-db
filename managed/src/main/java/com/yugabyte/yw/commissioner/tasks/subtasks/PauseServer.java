@@ -45,6 +45,7 @@ public class PauseServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
+    LOG.debug("Pausing node " + nodeName + " from universe " + taskParams().universeUUID); 
   }
 
   @Override
@@ -52,24 +53,24 @@ public class PauseServer extends NodeTaskBase {
     // Update the node state as stopping also can not set the node state to stopped
     // as it will be not reachable.
     setNodeState(NodeDetails.NodeState.Stopping);
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.universePaused = true;
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-    saveUniverseDetails(updater);
 
     try {
-      ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
+      ShellResponse response = getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
       processShellResponse(response);
+
+      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.universePaused = true;
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      saveUniverseDetails(updater);
       pauseUniverse(taskParams().nodeName);
     } catch (Exception e) {
       throw e;
-
     }
-
   }
 }

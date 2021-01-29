@@ -70,8 +70,7 @@ public class PauseUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     } catch (Throwable t) {
       try {
-        // If for any reason pause universe fails we would just unlock the universe for
-        // update
+        // If for any reason pause universe fails we would just unlock the universe for update
         unlockUniverseForUpdate();
       } catch (Throwable t1) {
         // Ignore the error

@@ -45,27 +45,18 @@ public class ResumeServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        LOG.debug("Resuming node " + nodeName + " from universe " + taskParams().universeUUID);
-      }
-    };
+    LOG.debug("Resuming node " + nodeName + " from universe " + taskParams().universeUUID); 
   }
 
   @Override
   public void run() {
-    // Update the node state as resuming..
-    // setNodeState(NodeDetails.NodeState.Starting);
-    // Execute the ansible command.
-
     try {
-      ShellResponse response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
+      ShellResponse response = getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
       processShellResponse(response);
+      
       setNodeState(NodeDetails.NodeState.Live);
-      resumeUniverse(taskParams().nodeName);
+      
       Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
         @Override
         public void run(Universe universe) {
@@ -75,6 +66,7 @@ public class ResumeServer extends NodeTaskBase {
         }
       };
       saveUniverseDetails(updater);
+      resumeUniverse(taskParams().nodeName);
     } catch (Exception e) {
       throw e;
     }
