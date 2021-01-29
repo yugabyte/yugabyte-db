@@ -15,6 +15,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.regions.Regions;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.amazonaws.services.s3.model.Bucket;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
+import java.util.UUID;
 
 import play.libs.Json;
 
@@ -177,6 +189,46 @@ public class CustomerConfigValidator {
     ObjectNode errorJson = Json.newObject();
     validators.forEach(v -> v.validate(formData.get("type").asText(), formData.get("name").asText(),
         formData.get("data"), errorJson));
+    return errorJson;
+  }
+
+  /**
+   * Validates data which is contained in formData.
+   * During the procedure it checks all the S3 config parameters whether they are valid or not.
+   * Errors are collected and
+   * returned back as a result. Empty result object means no errors.
+   *
+   * Currently is checked:
+   *  - S3/AWS - S3 Bucket, whether it exists or not.
+   *
+   * @param formData, customerUUID
+   * @return Json filled with errors
+   */
+  public ObjectNode validateS3DataContent(JsonNode formData, UUID customerUUID) {
+    ObjectNode errorJson = Json.newObject();
+    try {
+      AWSCredentials credentials = new BasicAWSCredentials(
+        formData.get("data").get("AWS_ACCESS_KEY_ID").asText(),
+        formData.get("data").get("AWS_SECRET_ACCESS_KEY").asText()
+      );
+      String region = Region.getByProvider(Provider.get(customerUUID, CloudType.aws).uuid)
+        .get(0).code.replace('-', '_').toUpperCase();
+      String bucketname = formData.get("data").get("BACKUP_LOCATION").asText();
+      AmazonS3 s3client = AmazonS3ClientBuilder
+        .standard()
+        .withCredentials(new AWSStaticCredentialsProvider(credentials))
+        .withRegion(Regions.valueOf(region))
+        .build();
+      List<Bucket> buckets = s3client.listBuckets();
+      for (Bucket bucket : buckets) {
+        if (bucket.getName().equals(bucketname))
+          return errorJson;
+      }
+      errorJson.set("S3BucketException:", Json.newArray().add("Bucket name " + bucketname +
+          " doesn't exist"));
+    } catch (AmazonS3Exception s3Exception) {
+      errorJson.set("BackupConfigException:", Json.newArray().add(s3Exception.getErrorMessage()));
+    }
     return errorJson;
   }
 }

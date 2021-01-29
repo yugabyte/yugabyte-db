@@ -39,6 +39,13 @@ public class CustomerConfigController extends AuthenticatedController {
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
+    if (formData.get("name").asText().equals("S3") &&
+      formData.get("data").get("AWS_ACCESS_KEY_ID") != null) {
+      errorJson = configValidator.validateS3DataContent(formData, customerUUID);
+    }
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     Audit.createAuditEntry(ctx(), request(), formData);
