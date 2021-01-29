@@ -281,7 +281,6 @@ export default class ClusterFields extends Component {
       }
 
       this.props.getRegionListItems(providerUUID);
-      this.props.getInstanceTypeListItems(providerUUID);
       if (primaryCluster.userIntent.providerType === 'onprem') {
         this.props.fetchNodeInstanceList(providerUUID);
       }
@@ -299,7 +298,6 @@ export default class ClusterFields extends Component {
             : 3
         });
         if (isNonEmptyString(formValues[clusterType].provider)) {
-          this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
           this.setState({ instanceTypeSelected: formValues[clusterType].instanceType });
 
@@ -850,31 +848,62 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+            this.reloadInstanceTypes();
+          });
         }
       } else {
         // Create flow
         if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+            this.reloadInstanceTypes();
+          });
         } else {
           const currentClusterConfiguration = getClusterByType(
             universeConfigTemplate.data.clusters,
             clusterType
           );
           if (!isDefinedNotNull(currentClusterConfiguration)) {
-            this.props.submitConfigureUniverse(universeTaskParams);
+            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+              this.reloadInstanceTypes();
+            });
           } else if (
             !areIntentsEqual(
               getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
               currentClusterConfiguration.userIntent
             )
           ) {
-            this.props.submitConfigureUniverse(universeTaskParams);
+            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+              this.reloadInstanceTypes();
+            });
           }
         }
       }
     }
   }
+
+  // fetch instance types with respect to selected availability zones (AZ)
+  reloadInstanceTypes = () => {
+    const {
+      universe: { universeConfigTemplate },
+      clusterType,
+      getInstanceTypeListItems
+    } = this.props;
+
+    const cluster = clusterType === 'async'
+      ? getReadOnlyCluster(universeConfigTemplate.data.clusters)
+      : getPrimaryCluster(universeConfigTemplate.data.clusters);
+
+    // AZs are available as part of universeConfigTemplate store record only
+    if (cluster) {
+      const provider = cluster.userIntent.provider;
+      const zones = cluster.placementInfo.cloudList[0].regionList
+        .flatMap(item => item.azList)
+        .map(item => item.name);
+
+      getInstanceTypeListItems(provider, zones);
+    }
+  };
 
   configureUniverseNodeList() {
     const {
@@ -1032,7 +1061,7 @@ export default class ClusterFields extends Component {
    * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
    * If ClientToNode TLS sets to enable and NodeToNode TLS sets to disable then
    * ClientToNode TLS will be disabled.
-   * 
+   *
    * @param isFieldReadOnly If true then readonly access.
    * @param enableNodeToNodeEncrypt NodeToNodeTLS state.
    */
@@ -1537,7 +1566,7 @@ export default class ClusterFields extends Component {
           providerCode={currentProvider.code}
         />
       );
-    } else if (currentProvider?.code === 'onprem' 
+    } else if (currentProvider?.code === 'onprem'
       && !(this.state.numNodes <= this.state.maxNumNodes)
       && self.props.universe.currentPlacementStatus
       && isNonEmptyArray(formValues[clusterType].regionList)
@@ -1568,6 +1597,7 @@ export default class ClusterFields extends Component {
           maxNumNodes={this.state.maxNumNodes}
           currentProvider={this.getCurrentProvider(currentProviderUUID)}
           isKubernetesUniverse={this.state.isKubernetesUniverse}
+          reloadInstanceTypes={this.reloadInstanceTypes}
         />
         {showPlacementStatus && placementStatus}
       </div>
@@ -1763,6 +1793,7 @@ export default class ClusterFields extends Component {
                   label="Instance Type"
                   options={universeInstanceTypeList}
                   onInputChanged={this.instanceTypeChanged}
+                  readOnlySelect={getPromiseState(cloud.instanceTypes).isLoading()}
                 />
               </div>
             </Col>

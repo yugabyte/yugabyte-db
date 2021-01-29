@@ -12,6 +12,7 @@ import {
   getInstanceTypeList,
   getRegionList,
   getRegionListResponse,
+  getInstanceTypeListLoading,
   getInstanceTypeListResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
@@ -123,8 +124,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider)).then((response) => {
+    getInstanceTypeListItems: (provider, zones) => {
+      dispatch(getInstanceTypeListLoading());
+      dispatch(getInstanceTypeList(provider, zones)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
