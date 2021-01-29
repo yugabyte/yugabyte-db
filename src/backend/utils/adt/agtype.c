@@ -152,7 +152,9 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
                                        bool *is_null,
                                        enum agtype_value_type *ag_type);
 static agtype_value *string_to_agtype_value(char *s);
-
+static agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
+                                                 int variadic_offset,
+                                                 int expected_nargs);
 PG_FUNCTION_INFO_V1(agtype_in);
 
 /*
@@ -7124,6 +7126,75 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name, agt
     return parsed_agtype_value;
 }
 
+/*
+ * Helper function to extract 1 datum from a variadic "any" and convert, if
+ * possible, to an agtype, if it isn't already.
+ *
+ * If the value is a NULL or agtype NULL, the function returns NULL.
+ * If the datum cannot be converted, the function will error out in
+ * extract_variadic_args.
+ */
+static agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
+                                                 int variadic_offset,
+                                                 int expected_nargs)
+{
+    int nargs;
+    Datum *args = NULL;
+    bool *nulls = NULL;
+    Oid *types = NULL;
+    agtype *agtype_result = NULL;
+
+    nargs = extract_variadic_args(fcinfo, variadic_offset, false, &args, &types,
+                                  &nulls);
+    /* throw an error if the number of args is not the expected number */
+    if (nargs != expected_nargs)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("number of args %d does not match expected %d",
+                               nargs, expected_nargs)));
+    /* if null, return null */
+    if (nulls[0])
+        return NULL;
+
+    /* if type is AGTYPEOID, we don't need to convert it */
+    if (types[0] == AGTYPEOID)
+    {
+        agtype_result = DATUM_GET_AGTYPE_P(args[0]);
+        /*
+         * Is this a scalar (scalars are stored as one element arrays)? If so,
+         * test for agtype NULL.
+         */
+        if (AGTYPE_CONTAINER_IS_SCALAR(&agtype_result->root))
+        {
+            agtype_value *agtv_test;
+
+            /* get the scalar value */
+            agtv_test = get_ith_agtype_value_from_container(&agtype_result->root,
+                                                        0);
+            /* is it agtype NULL? */
+            if (agtv_test->type == AGTV_NULL)
+                return NULL;
+        }
+    }
+    /* otherwise, try to convert it to an agtype */
+    else
+    {
+        agtype_in_state state;
+        agt_type_category tcategory;
+        Oid outfuncoid;
+
+        /* we need an empty state */
+        state.parse_state = NULL;
+        state.res = NULL;
+        /* get the category for the datum */
+        agtype_categorize_type(types[0], &tcategory, &outfuncoid);
+        /* convert it to an agtype_value */
+        datum_to_agtype(args[0], false, &state, tcategory, outfuncoid, false);
+        /* convert it to an agtype */
+        agtype_result = agtype_value_to_agtype(state.res);
+    }
+    return agtype_result;
+}
+
 PG_FUNCTION_INFO_V1(age_float8_stddev_samp_aggfinalfn);
 
 Datum age_float8_stddev_samp_aggfinalfn(PG_FUNCTION_ARGS)
@@ -7180,40 +7251,22 @@ Datum age_agtype_larger_aggtransfn(PG_FUNCTION_ARGS)
 {
     agtype *agtype_arg1;
     agtype *agtype_arg2;
-    agtype_value *agtv_arg1;
-    agtype_value *agtv_arg2;
     agtype *agtype_larger;
     int test;
 
     /* for max we need to ignore NULL values */
-    /* if both are NULL return NULL */
-    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+    /* extract the args as agtype */
+    agtype_arg1 = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    agtype_arg2 = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    /* return NULL if both are NULL */
+    if (agtype_arg1 == NULL && agtype_arg2 == NULL)
         PG_RETURN_NULL();
-
-    /* if either are NULL, return the other */
-    if (PG_ARGISNULL(0))
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
-
-    if (PG_ARGISNULL(1))
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
-
-    /* get the arguments */
-    agtype_arg1 = AG_GET_ARG_AGTYPE_P(0);
-    agtype_arg2 = AG_GET_ARG_AGTYPE_P(1);
-
-    /* get the values because we need to test for AGTV_NULL */
-    agtv_arg1 = get_ith_agtype_value_from_container(&agtype_arg1->root, 0);
-    agtv_arg2 = get_ith_agtype_value_from_container(&agtype_arg2->root, 0);
-
-    /* check for AGTV_NULL, same as NULL above */
-    if (agtv_arg1->type == AGTV_NULL && agtv_arg2->type == AGTV_NULL)
-        PG_RETURN_NULL();
-
-    if (agtv_arg1->type == AGTV_NULL)
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
-
-    if (agtv_arg2->type == AGTV_NULL)
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+    /* if one is NULL, return the other */
+    if (agtype_arg1 != NULL && agtype_arg2 == NULL)
+        PG_RETURN_POINTER(agtype_arg1);
+    if (agtype_arg1 == NULL && agtype_arg2 != NULL)
+        PG_RETURN_POINTER(agtype_arg2);
 
     /* test for max value */
     test = compare_agtype_containers_orderability(&agtype_arg1->root,
@@ -7228,42 +7281,24 @@ PG_FUNCTION_INFO_V1(age_agtype_smaller_aggtransfn);
 
 Datum age_agtype_smaller_aggtransfn(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_arg1;
-    agtype *agtype_arg2;
-    agtype_value *agtv_arg1;
-    agtype_value *agtv_arg2;
+    agtype *agtype_arg1 = NULL;
+    agtype *agtype_arg2 = NULL;
     agtype *agtype_smaller;
     int test;
 
     /* for min we need to ignore NULL values */
-    /* if both are NULL return NULL */
-    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+    /* extract the args as agtype */
+    agtype_arg1 = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    agtype_arg2 = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    /* return NULL if both are NULL */
+    if (agtype_arg1 == NULL && agtype_arg2 == NULL)
         PG_RETURN_NULL();
-
-    /* if either are NULL, return the other */
-    if (PG_ARGISNULL(0))
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
-
-    if (PG_ARGISNULL(1))
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
-
-    /* get the arguments */
-    agtype_arg1 = AG_GET_ARG_AGTYPE_P(0);
-    agtype_arg2 = AG_GET_ARG_AGTYPE_P(1);
-
-    /* get the values because we need to test for AGTV_NULL */
-    agtv_arg1 = get_ith_agtype_value_from_container(&agtype_arg1->root, 0);
-    agtv_arg2 = get_ith_agtype_value_from_container(&agtype_arg2->root, 0);
-
-    /* check for AGTV_NULL, same as NULL above */
-    if (agtv_arg1->type == AGTV_NULL && agtv_arg2->type == AGTV_NULL)
-        PG_RETURN_NULL();
-
-    if (agtv_arg1->type == AGTV_NULL)
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(1));
-
-    if (agtv_arg2->type == AGTV_NULL)
-        PG_RETURN_POINTER(AG_GET_ARG_AGTYPE_P(0));
+    /* if one is NULL, return the other */
+    if (agtype_arg1 != NULL && agtype_arg2 == NULL)
+        PG_RETURN_POINTER(agtype_arg1);
+    if (agtype_arg1 == NULL && agtype_arg2 != NULL)
+        PG_RETURN_POINTER(agtype_arg2);
 
     /* test for min value */
     test = compare_agtype_containers_orderability(&agtype_arg1->root,

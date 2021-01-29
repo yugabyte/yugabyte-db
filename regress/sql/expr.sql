@@ -1818,13 +1818,22 @@ AS (min agtype, max agtype, count agtype, count_star agtype);
 -- check that min() & max() can work against mixed types
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.zip), max(u.zip), count(u.zip), count(*) $$)
 AS (min agtype, max agtype, count agtype, count_star agtype);
+SELECT age_min(oid::int), age_max(oid::int) FROM pg_type;
+SELECT age_min(oid::int::float), age_max(oid::int::float) FROM pg_type;
+SELECT age_min(oid::int::float::numeric), age_max(oid::int::float::numeric) FROM pg_type;
+SELECT age_min(oid::text), age_max(oid::text) FROM pg_type;
 -- should return null
 SELECT * FROM cypher('UCSC', $$ RETURN min(NULL) $$) AS (min agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);
+SELECT age_min(NULL);
+SELECT age_min(agtype_in('null'));
+SELECT age_max(NULL);
+SELECT age_max(agtype_in('null'));
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
-
+SELECT age_min();
+SELECT age_min();
 --
 -- aggregate functions stDev() & stDevP()
 --

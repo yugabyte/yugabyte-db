@@ -4317,6 +4317,30 @@ AS (min agtype, max agtype, count agtype, count_star agtype);
  "95060" | 96062 | 5     | 9
 (1 row)
 
+SELECT age_min(oid::int), age_max(oid::int) FROM pg_type;
+ age_min | age_max 
+---------+---------
+ 16      | 17188
+(1 row)
+
+SELECT age_min(oid::int::float), age_max(oid::int::float) FROM pg_type;
+ age_min | age_max 
+---------+---------
+ 16.0    | 17188.0
+(1 row)
+
+SELECT age_min(oid::int::float::numeric), age_max(oid::int::float::numeric) FROM pg_type;
+   age_min   |    age_max     
+-------------+----------------
+ 16::numeric | 17188::numeric
+(1 row)
+
+SELECT age_min(oid::text), age_max(oid::text) FROM pg_type;
+ age_min | age_max 
+---------+---------
+ "1000"  | "869"
+(1 row)
+
 -- should return null
 SELECT * FROM cypher('UCSC', $$ RETURN min(NULL) $$) AS (min agtype);
  min 
@@ -4330,6 +4354,30 @@ SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);
  
 (1 row)
 
+SELECT age_min(NULL);
+ age_min 
+---------
+ 
+(1 row)
+
+SELECT age_min(agtype_in('null'));
+ age_min 
+---------
+ 
+(1 row)
+
+SELECT age_max(NULL);
+ age_max 
+---------
+ 
+(1 row)
+
+SELECT age_max(agtype_in('null'));
+ age_max 
+---------
+ 
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN min() $$) AS (min agtype);
 ERROR:  function ag_catalog.age_min() does not exist
@@ -4340,6 +4388,16 @@ SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agtype);
 ERROR:  function ag_catalog.age_max() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN max() $$) AS (max agt...
                                                ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT age_min();
+ERROR:  function age_min() does not exist
+LINE 1: SELECT age_min();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT age_min();
+ERROR:  function age_min() does not exist
+LINE 1: SELECT age_min();
+               ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 --
 -- aggregate functions stDev() & stDevP()

@@ -1289,37 +1289,35 @@ CREATE AGGREGATE ag_catalog.age_stdevp (float8)
 -- aggregate transfer functions for min & max
 --
 -- max
-CREATE FUNCTION ag_catalog.age_agtype_larger_aggtransfn(agtype, agtype)
+CREATE FUNCTION ag_catalog.age_agtype_larger_aggtransfn(agtype, variadic "any")
 RETURNS agtype
 LANGUAGE c
 IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 -- aggregate for max
-CREATE AGGREGATE ag_catalog.age_max (agtype)
+CREATE AGGREGATE ag_catalog.age_max(variadic "any")
 (
    stype = agtype,
    sfunc = ag_catalog.age_agtype_larger_aggtransfn,
    combinefunc = ag_catalog.age_agtype_larger_aggtransfn,
    finalfunc_modify = read_only,
-   sortop = >,
    parallel = safe
 );
 -- min
-CREATE FUNCTION ag_catalog.age_agtype_smaller_aggtransfn(agtype, agtype)
+CREATE FUNCTION ag_catalog.age_agtype_smaller_aggtransfn(agtype, variadic "any")
 RETURNS agtype
 LANGUAGE c
 IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 -- aggregate for min
-CREATE AGGREGATE ag_catalog.age_min (agtype)
+CREATE AGGREGATE ag_catalog.age_min(variadic "any")
 (
    stype = agtype,
    sfunc = ag_catalog.age_agtype_smaller_aggtransfn,
    combinefunc = ag_catalog.age_agtype_smaller_aggtransfn,
    finalfunc_modify = read_only,
-   sortop = <,
    parallel = safe
 );
 
