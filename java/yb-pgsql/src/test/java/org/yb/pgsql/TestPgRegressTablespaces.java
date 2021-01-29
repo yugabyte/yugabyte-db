@@ -23,11 +23,11 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressTablespaces extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 60;
+    return 300;
   }
 
   @Test
-  public void testPgRegressPartitions() throws Exception {
+  public void testPgRegressTablespaces() throws Exception {
     runPgRegressTest("yb_tablespaces_schedule");
   }
 }

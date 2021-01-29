@@ -58,10 +58,9 @@ extern text *transform_json_string_values(text *json, void *action_state,
 /* JSON text manipulation functions */
 extern text *get_json_array_element(text *json, int index);
 
-extern bool json_key_exists(text *json, char *key);
-
 extern int get_json_array_length(text *json);
 
 extern text *json_get_value(text *json, char *key);
 
+extern void validate_json_object_keys(text *json, char **expected_keys, int num_expected_keys);
 #endif

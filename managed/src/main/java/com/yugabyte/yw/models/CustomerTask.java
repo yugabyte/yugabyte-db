@@ -17,7 +17,6 @@ import javax.persistence.*;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -115,7 +114,10 @@ public class CustomerTask extends Model {
     DisableEncryptionAtRest,
 
     @EnumValue("StartMaster")
-    StartMaster;
+    StartMaster,
+
+    @EnumValue("CreateAlertDefinitions")
+    CreateAlertDefinitions;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -150,6 +152,8 @@ public class CustomerTask extends Model {
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
           return completed ? "Started Master process on " : "Starting Master process on ";
+        case CreateAlertDefinitions:
+          return completed ? "Created alert definitions " : "Creating alert definitions ";
         default:
           return null;
       }

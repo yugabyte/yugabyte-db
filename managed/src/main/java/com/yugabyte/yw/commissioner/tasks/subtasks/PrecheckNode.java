@@ -11,56 +11,57 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
 import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.Map;
 
 import play.libs.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class PrecheckNode extends NodeTaskBase {
+public class PrecheckNode extends UniverseTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(PrecheckNode.class);
 
+  // Parameters for failed precheck task.
+  public static class Params extends UniverseTaskParams {
+    // Map of nodes to error messages.
+    public Map<NodeInstance, String> failedNodes;
+    // Whether nodes should remain reserved or not.
+    public boolean reserveNodes = false;
+  }
+
+  @Override
+  protected Params taskParams() {
+    return (Params)taskParams;
+  }
+
   @Override
   public void run() {
-    Universe u = Universe.get(taskParams().universeUUID);
-    CloudType providerType = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent.providerType;
-    if (!providerType.equals(CloudType.onprem)) {
-      LOG.info("Skipping preflight checks.");
-      return;
-    }
-
-    LOG.info("Running preflight checks for universe.");
-    ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Precheck, taskParams());
-
-    if (response.code == 0) {
-      JsonNode responseJson = Json.parse(response.message);
-      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.preflight_checks = responseJson;
-          universe.setUniverseDetails(universeDetails);
-            }
-      };
-      saveUniverseDetails(updater);
-
-      for (JsonNode node: responseJson) {
-        if (!node.isBoolean() || !node.asBoolean()) {
-          // If a check failed, change the return code so processShellResponse errors.
-          response.code = 1;
-          break;
+    String errMsg = "";
+    for (Map.Entry<NodeInstance, String> entry: taskParams().failedNodes.entrySet()) {
+      NodeInstance node = entry.getKey();
+      if (!taskParams().reserveNodes) {
+        try {
+          node.clearNodeDetails();
+        } catch (RuntimeException e) {
+          continue;
         }
       }
+
+      errMsg += String.format("\n-----\nNode %s (%s) failed preflight checks:\n%s",
+        node.instanceName, node.getDetails().ip, entry.getValue());
     }
-    processShellResponse(response);
+
+    throw new RuntimeException(errMsg);
   }
 }

@@ -7,6 +7,7 @@ import akka.stream.Materializer;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import play.mvc.Http;
@@ -39,6 +40,24 @@ public class FakeApiHelper {
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
             .header("X-AUTH-TOKEN", authToken);
+    return route(request);
+  }
+
+  public static Result doRequestWithHAToken(String method, String url, String haToken) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
+      .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken);
+    return route(request);
+  }
+
+  public static Result doRequestWithHATokenAndBody(
+    String method,
+    String url,
+    String haToken,
+    JsonNode body
+  ) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
+      .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken)
+      .bodyJson(body);
     return route(request);
   }
 

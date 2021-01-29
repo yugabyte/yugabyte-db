@@ -461,12 +461,23 @@ public class TestClusterBase extends BaseCQLTest {
       removeMaster(leaderHostPort);
 
       long totalAfterKillMaster = client.getLoadMoveCompletion().getTotal();
+      long remainingAfterKillMaster = client.getLoadMoveCompletion().getRemaining();
 
-      // Killing master leader should reset the total count to be the same as remaining.
-      // Hence the new total should be strictly less than old total.
-      assertLessThan(totalAfterKillMaster, totalBeforeKillMaster);
+      // TODO(sanket): We should ideally ensure here that there has been at least
+      // one TS HB to the new leader master otherwise remaining load could be 0.
+      // After failover, the remaining load should be less than the initial load.
+      assertLessThan(remainingAfterKillMaster, totalAfterKillMaster);
+
+      // Killing master leader will set the total count to be the same as the
+      // initial total count during failover.
+      assertEquals(totalAfterKillMaster, totalBeforeKillMaster);
+
+      // The remaining work in the new leader will be less than the total
+      // in the original leader.
+      assertLessThan(remainingAfterKillMaster, totalBeforeKillMaster);
+
       // And there should be work remaining to do.
-      assertLessThan((long)0, client.getLoadMoveCompletion().getRemaining());
+      assertLessThan((long)0, remainingAfterKillMaster);
     }
 
     // Wait for the move to complete.

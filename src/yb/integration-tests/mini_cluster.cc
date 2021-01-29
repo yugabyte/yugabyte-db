@@ -43,6 +43,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -567,7 +568,8 @@ std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     auto* tserver = cluster->mini_tablet_server(i)->server();
     auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
     delta_changers.emplace_back(
-        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock()));
+        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(
+            hybrid_clock->physical_clock()));
   }
   return delta_changers;
 }
@@ -647,7 +649,7 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   return result;
 }
 
-std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const auto& peer) {
     return peer->tablet_metadata() &&
@@ -698,6 +700,18 @@ Status WaitUntilTabletHasLeader(
     });
     return tablet_peers.size() == 1;
   }, deadline, "Waiting for election in tablet " + tablet_id);
+}
+
+CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitFor([cluster] {
+    for (int i = 0; i != cluster->num_masters(); ++i) {
+      auto* sys_catalog = cluster->mini_master(i)->master()->catalog_manager()->sys_catalog();
+      if (sys_catalog->tablet_peer()->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        return true;
+      }
+    }
+    return false;
+  }, timeout, "Waiting for master leader");
 }
 
 Status WaitForLeaderOfSingleTablet(

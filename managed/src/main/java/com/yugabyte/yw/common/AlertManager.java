@@ -30,6 +30,20 @@ public class AlertManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
+  /**
+   * Sends email notification with information about the alert. Doesn't send email
+   * if:<br>
+   * <ul>
+   * <li>The alert has no flag {@link Alert#sendEmail} set;</li>
+   * <li>Destinations list (with recipients) for this customer is empty;</li>
+   * <li>SmtpData for this customer is empty/incorrect
+   * {@link CustomerRegisterFormData.SmtpData};</li>
+   * <li>The alert is related to a deleted universe.</li>
+   * </ul>
+   *
+   * @param alert  The alert to be processed
+   * @param state  The new state of the alert
+   */
   public void sendEmail(Alert alert, String state) {
     LOG.debug("sendEmail {}, state: {}", alert, state);
     if (!alert.sendEmail) {
@@ -54,12 +68,14 @@ public class AlertManager {
         : AlertDefinition.get(alert.definitionUUID);
     String content;
     if (definition != null) {
+      // The universe should exist (otherwise the definition should not exist as
+      // well).
       Universe universe = Universe.get(definition.universeUUID);
       content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
           state);
     } else {
       Universe universe = alert.targetType == Alert.TargetType.UniverseType
-          ? Universe.get(alert.targetUUID)
+          ? Universe.find.byId(alert.targetUUID)
           : null;
       if (universe != null) {
         content = String.format("Common failure for universe '%s':\n%s.", universe.name,

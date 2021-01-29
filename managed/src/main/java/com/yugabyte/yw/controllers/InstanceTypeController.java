@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
@@ -26,12 +27,18 @@ import static java.util.stream.Collectors.*;
 public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
+  private final Config config;
+  private final FormFactory formFactory;
+  private final CloudAPI.Factory cloudAPIFactory;
 
+  // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  FormFactory formFactory;
-
-  @Inject
-  CloudAPI.Factory cloudAPIFactory;
+  public InstanceTypeController(Config config, FormFactory formFactory,
+                                CloudAPI.Factory cloudAPIFactory) {
+    this.config = config;
+    this.formFactory = formFactory;
+    this.cloudAPIFactory = cloudAPIFactory;
+  }
 
   /**
    * GET endpoint for listing instance types
@@ -48,7 +55,7 @@ public class InstanceTypeController extends AuthenticatedController {
     }
     Map<String, InstanceType> instanceTypesMap;
     try {
-      instanceTypesMap = InstanceType.findByProvider(provider).stream()
+      instanceTypesMap = InstanceType.findByProvider(provider, config).stream()
         .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
     } catch (Exception e) {
       LOG.error("Unable to list Instance types {}:{} in DB.", providerUUID, e.getMessage());
