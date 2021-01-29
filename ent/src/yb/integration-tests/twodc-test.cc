@@ -77,6 +77,7 @@ DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
 DECLARE_int32(external_intent_cleanup_secs);
+DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 
@@ -111,6 +112,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     TwoDCTestBase::SetUp();
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
     FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
+    FLAGS_yb_num_shards_per_tserver = 1;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;

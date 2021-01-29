@@ -177,7 +177,11 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
   }
 
   twodc_resp_copy_ = *poller_resp;
-
+  auto timeout_ms = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
+  // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
+  // matters: we need to ensure that each record is handled sequentially.
+  auto all_tablets_result = local_client_->client->LookupAllTabletsFuture(
+      table_, CoarseMonoClock::now() + timeout_ms).get();
   for (int i = 0; i < twodc_resp_copy_.records_size(); i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
@@ -186,19 +190,14 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
     } else {
       const auto& record = twodc_resp_copy_.records(i);
       if (record.operation() == cdc::CDCRecordPB::APPLY) {
-        local_client_->client->LookupAllTablets(
-          table_,
-          CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-          std::bind(&TwoDCOutputClient::TabletRangeLookupCallback, this, i,
-                    record.partition().partition_key_start(),
-                    record.partition().partition_key_end(), std::placeholders::_1));
+        TabletRangeLookupCallback(i, record.partition().partition_key_start(),
+                                  record.partition().partition_key_end(), all_tablets_result);
       } else {
-        local_client_->client->LookupTabletByKey(
-            table_,
-            PartitionSchema::EncodeMultiColumnHashValue(
-                boost::lexical_cast<uint16_t>(record.key(0).key())),
-            CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-            std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
+        auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
+            boost::lexical_cast<uint16_t>(record.key(0).key()));
+        auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
+            table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms).get();
+        TabletLookupCallback(i, tablet_result);
       }
     }
   }
