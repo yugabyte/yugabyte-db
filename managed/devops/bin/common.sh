@@ -85,15 +85,25 @@ readonly VALID_CLOUD_TYPES=(
 readonly VALID_CLOUD_TYPES_RE=$( regex_from_list "${VALID_CLOUD_TYPES[@]}" )
 readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 
+set +u
+readonly MANAGED_PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
+set -u
+
 # Basename (i.e. name excluding the directory path) of our virtualenv.
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
   readonly YB_VIRTUALENV_BASENAME=venv
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
 else
   readonly YB_VIRTUALENV_BASENAME=python_virtual_env
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
 fi
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
@@ -196,6 +206,12 @@ deactivate_virtualenv() {
   if ! should_use_virtual_env; then
     return
   fi
+
+  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+    export PYTHONPATH=$MANAGED_PYTHONPATH_ORIGINAL
+    return
+  fi
+
   # Deactivate virtualenv if it is already activated.
   # The VIRTUAL_ENV variable is defined whenever we are using a Python virtualenv. It is set by
   # the bin/activate script.
@@ -226,6 +242,11 @@ deactivate_virtualenv() {
 
 activate_virtualenv() {
   if ! should_use_virtual_env; then
+    return
+  fi
+
+  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+    export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
     return
   fi
 
@@ -267,9 +288,20 @@ activate_virtualenv() {
   unset PYTHONPATH
 }
 
-create_virtualenv_package() {
-  cd $yb_devops_home
-  tar -czf $virtualenv_package $YB_VIRTUALENV_BASENAME
+create_pymodules_package() {
+  rm -rf "$YB_PYTHON_MODULES_DIR"
+  mkdir -p "$YB_PYTHON_MODULES_DIR"
+  run_pip install -r "$FROZEN_REQUIREMENTS_FILE" --target="$YB_PYTHON_MODULES_DIR"
+  run_pip install "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" --target="$YB_PYTHON_MODULES_DIR"
+  tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
+    $(basename "$YB_PYTHON_MODULES_DIR")
+  rm -rf "$YB_PYTHON_MODULES_DIR"
+}
+
+install_pymodules_package() {
+  rm -rf "$YB_INSTALLED_MODULES_DIR"
+  mkdir -p "$YB_INSTALLED_MODULES_DIR"
+  tar -C "$YB_INSTALLED_MODULES_DIR" -xvf "$YB_PYTHON_MODULES_PACKAGE" --strip-components=1
 }
 
 # Somehow permissions got corrupted for some files in the virtualenv, possibly due to sudo
@@ -494,4 +526,3 @@ export ANSIBLE_HOST_KEY_CHECKING=False
 log_dir=$HOME/logs
 
 readonly virtualenv_dir=$yb_devops_home/$YB_VIRTUALENV_BASENAME
-readonly virtualenv_package=$yb_devops_home/yb_platform_virtualenv.tar.gz
