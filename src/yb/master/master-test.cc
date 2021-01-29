@@ -134,8 +134,9 @@ TEST_F(MasterTest, TestCallHome) {
   std::unordered_map<string, set<string>> collection_levels;
   collection_levels["low"] = low;
   collection_levels["medium"] = low;
-  collection_levels["medium"].insert({"metrics", "rpcs", "hostname", "current_user"});
+  collection_levels["medium"].insert({"hostname", "current_user"});
   collection_levels["high"] = collection_levels["medium"];
+  collection_levels["high"].insert({"metrics", "rpcs"});
 
   for (const auto& collection_level : collection_levels) {
     LOG(INFO) << "Collection level: " << collection_level.first;
