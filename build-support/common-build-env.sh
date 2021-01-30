@@ -238,10 +238,6 @@ yb_mvn_parameters_already_set=false
 # Functions
 # -------------------------------------------------------------------------------------------------
 
-is_thirdparty_build() {
-  [[ ${YB_IS_THIRDPARTY_BUILD:-0} == "1" ]]
-}
-
 normalize_build_type() {
   if [[ -z ${build_type:-} ]]; then
     if [[ -n ${BUILD_TYPE:-} ]]; then
@@ -1726,9 +1722,6 @@ using_default_thirdparty_dir() {
 }
 
 find_or_download_thirdparty() {
-  if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
-    return
-  fi
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     fatal "YB_COMPILER_TYPE is not set"
   fi
@@ -1929,9 +1922,6 @@ kill_stuck_processes() {
 
 handle_build_root_from_current_dir() {
   predefined_build_root=""
-  if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
-    return
-  fi
   local handle_predefined_build_root_quietly=true
   local d=$PWD
   while [[ $d != "/" && $d != "" ]]; do
@@ -2284,3 +2274,9 @@ readonly -a YB_DEFAULT_CMAKE_OPTS=(
   "-DCMAKE_C_COMPILER=$YB_COMPILER_WRAPPER_CC"
   "-DCMAKE_CXX_COMPILER=$YB_COMPILER_WRAPPER_CXX"
 )
+
+if [[ ${YB_COMMON_BUILD_ENV_DEBUG:-0} == "1" ]]; then
+  echo >&2 \
+    "Turning debugging on in common-build-env.sh because YB_COMMON_BUILD_ENV_DEBUG is set to 1"
+  set -x
+fi

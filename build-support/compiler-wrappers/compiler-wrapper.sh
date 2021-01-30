@@ -20,7 +20,7 @@
 # To run shellcheck: shellcheck -x build-support/compiler-wrappers/compiler-wrapper.sh
 
 # shellcheck source=build-support/common-build-env.sh
-. "${0%/*}/../common-build-env.sh"
+. "${BASH_SOURCE[0]%/*}/../common-build-env.sh"
 
 if [[ ${YB_COMMON_BUILD_ENV_SOURCED:-} != "1" ]]; then
   echo >&2 "Failed to source common-build-env.sh"
@@ -260,8 +260,6 @@ input_files=()
 library_files=()
 compiling_pch=false
 
-is_pb_cc=false
-
 rpath_found=false
 num_output_files_found=0
 has_yb_c_files=false
@@ -289,9 +287,6 @@ while [[ $# -gt 0 ]]; do
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
-        if [[ $1 == *.pb.cc ]]; then
-          is_pb_cc=true
-        fi
         if [[ $1 =~ ^(.*/|)[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
@@ -356,6 +351,7 @@ if [[ $local_build_only == "false" &&
 
   declare -i attempt=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
+  rerun_on_the_same_host=false
   while true; do
     (( attempt+=1 ))
     if [[ $attempt -gt $YB_REMOTE_COMPILATION_MAX_ATTEMPTS ]]; then
@@ -363,12 +359,22 @@ if [[ $local_build_only == "false" &&
     fi
 
     get_build_worker_list
-    build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
-    build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
+    if "$rerun_on_the_same_host"; then
+      if [[ -z "${build_host:-}" ]]; then
+        fatal "Internal error: build_host is not defined but rerun_on_the_same_host is set to true"
+      fi
+      log "Re-running compilation command on the host '$build_host'"
+    else
+      build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
+      build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
+    fi
+    rerun_on_the_same_host=false  # For the next attempt.
+
     set +e
     run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
     exit_code=$?
     set -e
+
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
     # Exit code 127: "remote_cmd.sh: No such file or directory"
     # Exit code 141: SIGPIPE
@@ -403,11 +409,33 @@ if [[ $local_build_only == "false" &&
       if [[ $sleep_deciseconds -lt 9 ]]; then
         (( sleep_deciseconds+=1 ))
       fi
+      # We set this debugging variable for at most one iteration, so unset it for the next attempt.
+      unset YB_COMMON_BUILD_ENV_DEBUG
+
       continue
     fi
+    # Exit code 1 with empty output is a special case because it could indicate an error in our
+    # scripts. However, if YB_COMMON_BUILD_ENV_DEBUG is set to 1, we assume that we already went
+    # through the logic below and got the same output. (That in combination with stderr being empty
+    # is unlikely because stderr will be filled with debug information in that mode.)
+    if [[ $exit_code -eq 1 &&
+          ${YB_COMMON_BUILD_ENV_DEBUG:-0} != "1" ]] &&
+        ! grep -Eq '[^[:space:]]' "$stderr_path"
+    then
+      log "The compilation command run on the host '$build_host' with exit code '$exit_code'" \
+          "did not produce any valid output. Re-running the command on the same host with Bash" \
+          "debug output turned on (YB_COMMON_BUILD_ENV_DEBUG=1)."
+      export YB_COMMON_BUILD_ENV_DEBUG=1
+      rerun_on_the_same_host=true
+      continue
+    fi
+
     remote_build_flush_stderr_file
+
+    # We have decided not to retry the build. Break now and report the error if any.
     break
-  done
+  done  # End of loop that tries to run the build on different remote hosts.
+
   if [[ $exit_code -ne 0 ]]; then
     log_empty_line
     # Not using the log function here, because as of 07/23/2017 it does not correctly handle
@@ -431,7 +459,7 @@ Exit code:  $exit_code
 "
     PS4=$old_ps4
   fi
-  exit $exit_code
+  exit "$exit_code"
 elif debugging_remote_compilation && ! $is_build_worker; then
   log "Not doing remote build: local_build_only=$local_build_only," \
     "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}," \
@@ -446,11 +474,6 @@ local_build_exit_handler() {
   if [[ $exit_code -eq 0 ]]; then
     if [[ -f ${stderr_path:-} ]]; then
       tail -n +2 "$stderr_path" >&2
-    fi
-  elif is_thirdparty_build; then
-    # Do not add any fancy output if we're running as part of the third-party build.
-    if [[ -f ${stderr_path:-} ]]; then
-      flush_stderr_file_helper
     fi
   else
     # We output the compiler executable path because the actual command we're running will likely
@@ -666,7 +689,6 @@ add_brew_bin_to_path
 # PostgreSQL code because to do it correctly we need to know the eventual "installation" locations
 # of PostgreSQL binaries and libraries, which requires a bit more work.
 if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
-   ! is_thirdparty_build &&
    is_linux &&
    "$rpath_found" &&
    # In case BUILD_ROOT is defined (should be in all cases except for when we're determining the
@@ -746,31 +768,13 @@ ${cmd[*]}
 fi
   unset IFS
 
-if [[ $YB_COMPILER_TYPE == "clang" ]]; then
-  if [[ -n ${YB_DXR_CXX_CLANG_OBJECT_FOLDER:-} ]]; then
-    export DXR_CXX_CLANG_OBJECT_FOLDER=$YB_DXR_CXX_CLANG_OBJECT_FOLDER
-  fi
-  if [[ -n ${YB_DXR_CXX_CLANG_TEMP_FOLDER:-} ]]; then
-    export DXR_CXX_CLANG_TEMP_FOLDER=$YB_DXR_CXX_CLANG_TEMP_FOLDER
-  fi
-else
-  # DXR only works with clang.
-  YB_DXR_CLANG_FLAGS=""
-fi
-
-run_compiler_and_save_stderr "${cmd[@]}" ${YB_DXR_CLANG_FLAGS:-}
+run_compiler_and_save_stderr "${cmd[@]}"
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
 if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]] &&
    ! is_configure_mode_invocation; then
   show_compiler_command_line "$CYAN_COLOR"
-fi
-
-if is_thirdparty_build; then
-  # Don't do any extra error checking/reporting, just pass the compiler output back to the caller.
-  # The compiler's standard error will be passed to the calling process by the exit handler.
-  exit "$compiler_exit_code"
 fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
@@ -797,7 +801,6 @@ fi
 
 if is_clang &&
     [[ ${YB_ENABLE_STATIC_ANALYZER:-0} == "1" ]] &&
-    ! is_thirdparty_build &&
     [[ ${YB_PG_BUILD_STEP:-} != "configure" ]] &&
     ! is_configure_mode_invocation &&
     [[ $output_file == *.o ]] &&
