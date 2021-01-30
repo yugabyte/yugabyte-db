@@ -83,14 +83,8 @@ lazy val ywDependencyResolver = {
   }
 }
 
-// SBT will try to resolve dependencies in order of definition in externalResolvers.
-externalResolvers := {
-  if (ywDependencyResolver.isEmpty) {
-    ybClientResolver ++ externalResolvers.value
-  } else {
-    ybClientResolver ++ ywDependencyResolver
-  }
-}
+// Override default resolver order.
+externalResolvers := { ywDependencyResolver ++ externalResolvers.value ++ ybClientResolver }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.2-SNAPSHOT"
 
