@@ -290,9 +290,6 @@ class PostgresBuilder(YbBuildToolBase):
                     '-fsanitize-recover=shift-base',
                     '-fsanitize-recover=shift-exponent'
                 ]
-        if self.build_type == 'asan':
-            self.set_env_var('LSAN_OPTIONS', 'suppressions=%s' % os.path.join(YB_SRC_ROOT,
-                             'build-support', 'lsan-suppressions.txt'))
 
         # Tell gdb to pretend that we're compiling the code in the $YB_SRC_ROOT/src/postgres
         # directory.
