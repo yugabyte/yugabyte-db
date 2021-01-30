@@ -340,7 +340,6 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
   fi
 
   local test_list_item
-  local test
   local IFS=$'\n'  # so that we can iterate through lines in $gtest_list_tests_result
   for test_list_item in $gtest_list_tests_result; do
     if [[ "$test_list_item" =~ ^\ \  ]]; then
