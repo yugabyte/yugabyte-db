@@ -460,7 +460,8 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
-    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id));
+    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(
+        txn_snapshot_id, HybridTime::FromPB(req->restore_ht())));
     resp->set_restoration_id(id.data(), id.size());
     return Status::OK();
   }
@@ -573,7 +574,8 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        SendRestoreTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
+        SendRestoreTabletSnapshotRequest(
+            tablet, snapshot_id, HybridTime(), TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -1323,10 +1325,14 @@ void CatalogManager::SendCreateTabletSnapshotRequest(
 void CatalogManager::SendRestoreTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet,
     const string& snapshot_id,
+    HybridTime restore_at,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE);
+  if (restore_at) {
+    call->SetSnapshotHybridTime(restore_at);
+  }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(ScheduleTask(call), "Failed to send restore snapshot request");

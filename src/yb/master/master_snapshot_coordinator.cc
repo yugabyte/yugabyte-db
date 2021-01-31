@@ -838,7 +838,8 @@ class MasterSnapshotCoordinator::Impl {
     return restoration.ToPB(resp->add_restorations());
   }
 
-  Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id) {
+  Result<TxnSnapshotRestorationId> Restore(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
     auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
     TabletInfos tablet_infos;
     {
@@ -857,7 +858,7 @@ class MasterSnapshotCoordinator::Impl {
     auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
     for (const auto& tablet : tablet_infos) {
       context_.SendRestoreTabletSnapshotRequest(
-          tablet, snapshot_id_str,
+          tablet, snapshot_id_str, restore_at,
           MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id()));
     }
 
@@ -1050,8 +1051,8 @@ Status MasterSnapshotCoordinator::Delete(
 }
 
 Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
-    const TxnSnapshotId& snapshot_id) {
-  return impl_->Restore(snapshot_id);
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  return impl_->Restore(snapshot_id, restore_at);
 }
 
 Status MasterSnapshotCoordinator::ListRestorations(
