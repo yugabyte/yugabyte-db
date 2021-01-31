@@ -176,6 +176,7 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
 Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   const std::string top_snapshots_dir = metadata().snapshots_dir();
   const std::string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
+  auto restore_at = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
 
   RETURN_NOT_OK_PREPEND(
       FileExists(&rocksdb_env(), snapshot_dir),
@@ -184,14 +185,14 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());
-  const Status s = RestoreCheckpoint(snapshot_dir, frontier);
+  const Status s = RestoreCheckpoint(snapshot_dir, restore_at, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   return s;
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
-    const std::string& dir, const docdb::ConsensusFrontier& frontier) {
+    const std::string& dir, HybridTime restore_at, const docdb::ConsensusFrontier& frontier) {
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
   auto op_pause = PauseReadWriteOperations();
@@ -225,6 +226,9 @@ Status TabletSnapshots::RestoreCheckpoint(
 
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+    if (restore_at) {
+      RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+    }
   }
 
   // Reopen database from copied checkpoint.

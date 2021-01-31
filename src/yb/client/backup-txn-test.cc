@@ -26,6 +26,7 @@
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;
@@ -99,13 +100,17 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     return VERIFY_RESULT(SnapshotState(snapshot_id)) == SysSnapshotEntryPB::COMPLETE;
   }
 
-  Result<TxnSnapshotRestorationId> StartRestoration(const TxnSnapshotId& snapshot_id) {
+  Result<TxnSnapshotRestorationId> StartRestoration(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime()) {
     master::RestoreSnapshotRequestPB req;
     master::RestoreSnapshotResponsePB resp;
 
     rpc::RpcController controller;
     controller.set_timeout(60s);
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    if (restore_at) {
+      req.set_restore_ht(restore_at.ToUint64());
+    }
     RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
     return FullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
   }
@@ -129,8 +134,9 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     return resp.restorations(0).entry().state() == SysSnapshotEntryPB::RESTORED;
   }
 
-  CHECKED_STATUS RestoreSnapshot(const TxnSnapshotId& snapshot_id) {
-    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id));
+  CHECKED_STATUS RestoreSnapshot(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime()) {
+    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at));
 
     return WaitFor([this, &restoration_id] {
       return IsRestorationDone(restoration_id);
@@ -333,6 +339,19 @@ TEST_F(BackupTxnTest, Simple) {
   ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
 
   ASSERT_OK(RestoreSnapshot(snapshot_id));
+
+  ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
+}
+
+TEST_F(BackupTxnTest, PointInTimeRestore) {
+  ASSERT_NO_FATALS(WriteData());
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
