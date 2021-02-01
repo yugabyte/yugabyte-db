@@ -5,6 +5,8 @@
 import React, { Component } from 'react';
 import { YBModal, YBTextInput } from '../../common/forms/fields';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { browserHistory } from 'react-router';
 
 export default class ToggleUniverseState extends Component {
   constructor(props) {
@@ -57,6 +59,18 @@ export default class ToggleUniverseState extends Component {
     universePaused
     ? this.props.submitRestartUniverse(data.universeUUID)
     : this.props.submitPauseUniverse(data.universeUUID);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (
+      (getPromiseState(prevProps.universe.pauseUniverse).isLoading() &&
+        getPromiseState(this.props.universe.pauseUniverse).isSuccess()) ||
+      (getPromiseState(prevProps.universe.restartUniverse).isLoading() &&
+        getPromiseState(this.props.universe.restartUniverse).isSuccess())
+    ) {
+      this.props.fetchUniverseMetadata();
+      browserHistory.push('/universes');
+    }
   }
 
   render() {

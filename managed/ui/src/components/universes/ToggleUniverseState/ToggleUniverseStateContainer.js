@@ -12,14 +12,14 @@ import {
 const mapDispatchToProps = (dispatch) => {
   return {
     submitPauseUniverse: (universeUUID) => {
-      dispatch(pauseUniverse(universeUUID).then(res => {
+      dispatch(pauseUniverse(universeUUID)).then(res => {
         dispatch(pauseUniverseResponse(res.payload));
-      }));
+      });
     },
     submitRestartUniverse: (universeUUID) => {
-      dispatch(restartUniverse(universeUUID).then(res => {
+      dispatch(restartUniverse(universeUUID)).then(res => {
         dispatch(restartUniverseResponse(res.payload));
-      }));
+      });
     },
     resetUniverseInfo: () => {
       dispatch(resetUniverseInfo());
