@@ -1009,7 +1009,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
                                      consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
 
   // Verify that this tserver member type was set correctly.
-  for (const auto peer : cstate.config().peers()) {
+  for (const auto& peer : cstate.config().peers()) {
     if (peer.permanent_uuid() == tserver_to_add->uuid()) {
       ASSERT_EQ(RaftPeerPB::PRE_OBSERVER, peer.member_type());
     }
@@ -1201,7 +1201,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
                                        consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
 
     // Verify that this tserver member type was set correctly.
-    for (const auto peer : cstate.config().peers()) {
+    for (const auto& peer : cstate.config().peers()) {
       if (peer.permanent_uuid() == tserver_to_add->uuid()) {
         ASSERT_EQ(member_type, peer.member_type());
         LOG(INFO) << "tserver with uuid " << tserver_to_add->uuid() << " was added as a "

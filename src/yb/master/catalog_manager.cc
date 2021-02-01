@@ -7572,7 +7572,7 @@ void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* nu
   auto l = cluster_config_->LockForRead();
   const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
   *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
-  for (const auto read_replica_placement_info : replication_info.read_replicas()) {
+  for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas = read_replica_placement_info.num_replicas();
   }
 }

@@ -809,6 +809,7 @@ static void ybcBindScanKeys(Relation relation,
 					/* Should be ensured during planning. */
 					Assert(IsSearchNull(ybScan->key[i].sk_flags));
 					/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
+					switch_fallthrough();
 				case BTEqualStrategyNumber:
 					if (IsBasicOpSearch(ybScan->key[i].sk_flags) ||
 						IsSearchNull(ybScan->key[i].sk_flags))
@@ -826,6 +827,7 @@ static void ybcBindScanKeys(Relation relation,
 				case BTLessStrategyNumber:
 				case BTLessEqualStrategyNumber:
 					offsets[noffsets++] = i;
+					switch_fallthrough();
 
 				default:
 					break; /* unreachable */

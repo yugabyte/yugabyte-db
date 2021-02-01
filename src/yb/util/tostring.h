@@ -262,6 +262,15 @@ template <class Collection>
 std::string CollectionToString(const Collection& collection) {
   std::string result = "[";
   auto first = true;
+
+// Range loop analysis flags copying of objects in a range loop by suggesting the use of
+// references. It however prevents the use of references for trivial entities like 'bool'. Given
+// that this function is templatized, we have both the cases happening in the following loop.
+// Ignore the range-loop-analysis in this part of the code.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wrange-loop-analysis"
+#endif
   for (const auto& item : collection) {
     if (first) {
       first = false;
@@ -270,6 +279,9 @@ std::string CollectionToString(const Collection& collection) {
     }
     result += ToString(item);
   }
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
   result += "]";
   return result;
 }

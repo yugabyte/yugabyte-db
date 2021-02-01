@@ -1425,7 +1425,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							range_index = true;
 							break;
 						}
-						/* Fallthrough */
+						switch_fallthrough();
 					case SORTBY_HASH:
 						if (range_index)
 							ereport(ERROR,

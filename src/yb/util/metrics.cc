@@ -437,7 +437,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   }
 
   writer->StartArray();
-  for (const EntityMap::value_type e : entities) {
+  for (const EntityMap::value_type& e : entities) {
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
@@ -464,7 +464,7 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer) cons
     entities = entities_;
   }
 
-  for (const EntityMap::value_type e : entities) {
+  for (const EntityMap::value_type& e : entities) {
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
