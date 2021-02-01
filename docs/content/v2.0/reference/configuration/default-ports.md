@@ -28,8 +28,10 @@ Application clients connect to these addresses.
 Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
 
 ```
-/prometheus-metrics
+<target>/prometheus-metrics
 ```
+
+You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `93000` for node level metrics.
 
 For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
@@ -75,8 +77,8 @@ Along with the above, include the following common ports in firewall rules.
 
 | Service     | Port
 | ------- | ------------------------- |
-| SSH    | `tcp:22` |
-| HTTP   | `tcp:80` |
-| HTTPS   | `tcp:443` |
-| HTTP (alternate)   | `tcp:8080` |
-| HTTP (Replicated)    | `tcp:8800` |
+| SSH    | 22 |
+| HTTP for Platform  | 80 |
+| HTTP for Platform (alternate) | 8080 |
+| HTTPS for Platform  | 443 |
+| HTTP for Replicated | 8800 |
