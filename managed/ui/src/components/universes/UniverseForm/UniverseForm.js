@@ -170,6 +170,7 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
         enableIPV6: formValues[clusterType].enableIPV6,
+        enableExposingService: formValues[clusterType].enableExposingService,
         enableYEDIS: formValues[clusterType].enableYEDIS,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
@@ -369,6 +370,7 @@ class UniverseForm extends Component {
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
         enableIPV6: formValues[clusterType].enableIPV6,
+        enableExposingService: formValues[clusterType].enableExposingService,
         awsArnString: formValues[clusterType].awsArnString,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
@@ -943,6 +945,7 @@ class PrimaryClusterFields extends Component {
           'primary.useTimeSync',
           'primary.enableYSQL',
           'primary.enableIPV6',
+          'primary.enableExposingService',
           'primary.enableYEDIS',
           'primary.enableNodeToNodeEncrypt',
           'primary.enableClientToNodeEncrypt',
@@ -978,6 +981,7 @@ class ReadOnlyClusterFields extends Component {
           'async.useTimeSync',
           'async.enableYSQL',
           'async.enableIPV6',
+          'async.enableExposingService',
           'async.enableYEDIS',
           'async.enableNodeToNodeEncrypt',
           'async.enableClientToNodeEncrypt'
