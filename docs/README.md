@@ -1,5 +1,7 @@
 # Contributing to the YugabyteDB Documentation
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/c4c5aff9-0fc2-4db0-8c8d-ec4f7488d0f4/deploy-status)](https://app.netlify.com/sites/infallible-bardeen-164bc9/deploys)
+
 This account has three sections:
 
 &nbsp;&nbsp;&nbsp;[0. The art and craft of writing technical documentation](#0-the-art-and-craft-of-writing-technical-documentation)<br>
