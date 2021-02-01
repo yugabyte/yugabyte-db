@@ -41,7 +41,8 @@
     "tools": [
       "bin/yb-prof.py",
       "bin/print_stacks.sh",
-      "bin/yb-check-failed-tablets.sh"
+      "bin/yb-check-failed-tablets.sh",
+      "scripts/k8s_preflight.py"
     ],
     "www": ["www/*"]
   },
