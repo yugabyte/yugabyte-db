@@ -234,7 +234,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
                                                     : "cert";
 
     for (const auto addr : {"0.0.0.0/0", "::0/0"}) {
-      lines.push_back(Format("$0 all all all $2", host_type, addr, auth_method));
+      lines.push_back(Format("$0 all all all $1", host_type, auth_method));
     }
   }
 
