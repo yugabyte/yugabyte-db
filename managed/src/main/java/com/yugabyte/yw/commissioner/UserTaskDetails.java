@@ -81,7 +81,7 @@ public class UserTaskDetails {
     // Pausing universe
     PauseUniverse,
 
-    // Pausing universe
+    // Resuming universe
     ResumeUniverse,
 
     // Start master and tserver processes on a node

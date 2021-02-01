@@ -37,9 +37,6 @@ from ybops.cloud.aws.utils import set_yb_sg_and_fetch_vpc, query_vpc, get_zones,
     modify_tags, update_disk
 
 
-
-
-
 class AwsCloud(AbstractCloud):
     """Subclass specific to AWS cloud related functionality.
     """
