@@ -15,7 +15,7 @@ showAsideToc: true
 
 Intro ...
 
-## `SELECT` Statements
+## Retrieving Data
 
 The main purpose of `SELECT` statements is to retrieve data from specified tables. The first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions. 
 
@@ -33,7 +33,9 @@ SELECT * FROM employees;
 
 *list* can also contain expressions or literal values.
 
-The following `SELECT` statement clauses enable flexiblity with regards to fine-tuning queries:
+The `FROM` clause is evaluated before `SELECT`.
+
+The following `SELECT` statement clauses provide flexiblity and allow you to fine-tune queries:
 
 - The `DISTINCT` operator allows you to select distinct rows. 
 - The `ORDER BY` clause lets you sort rows.
@@ -44,7 +46,7 @@ The following `SELECT` statement clauses enable flexiblity with regards to fine-
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
 - `UNION`, `INTERSECT`, and `EXCEPT` allow you to perform set operations. 
 
-
+#### Examples
 
 
 
