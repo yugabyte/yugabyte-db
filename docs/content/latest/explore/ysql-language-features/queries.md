@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Intro ...
+This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.
 
 ## Retrieving Data
 
@@ -47,6 +47,42 @@ The following `SELECT` statement clauses provide flexiblity and allow you to fin
 - `UNION`, `INTERSECT`, and `EXCEPT` allow you to perform set operations. 
 
 #### Examples
+
+Suppose you work with a database that includes the following table:
+
+```sql
+CREATE TABLE employees (
+    employee_no integer,
+    name text,
+    department text
+);
+```
+
+You can use the `SELECT` statement to find names of all employees in the `employees` table. In this case, you apply `SELECT` to one column only, as follows:
+
+```sql
+SELECT name FROM employees;  
+```
+
+To retrieve data that includes the employee name and department, you need to query from multiple columns first name, last name and email of customers, you can specify these column names in the `SELECT` clause as shown in the following query:
+
+
+
+If you do not know the order of columns, you have an option of listing them within the `INSERT`  statement when adding a new row, as follows: 
+
+```sql
+INSERT INTO employees (employee_no, name, department) VALUES (1, 'John Smith', 'Marketing');  
+```
+
+You can always view your changes by executing the following command:
+
+```shell
+yugabyte=# \d employees
+```
+
+### 
+
+
 
 
 
