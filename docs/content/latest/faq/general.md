@@ -67,7 +67,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Open source
 
-- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/yugabyte/yugabyte-db/). 
+- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/yugabyte/yugabyte-db/).
 
 ### Built-in enterprise features
 
@@ -87,9 +87,9 @@ YugabyteDB supports two flavors of distributed SQL.
 
 {{< note title="Note" >}}
 
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases). 
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases).
 
-<b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
+**The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
 
 {{< /note >}}
 
@@ -119,7 +119,7 @@ Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
 
 **Benefits of YugabyteDB**
 
-- Low-latency reads and high-throughput writes. 
+- Low-latency reads and high-throughput writes.
 - Cloud-neutral deployments with a Kubernetes-native database.
 - 100% Apache 2.0 open source even for enterprise features.
 
@@ -135,7 +135,7 @@ Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
 
 **Benefits of YugabyteDB**
 
-- Scale write throughput linearly across multiple nodes and/or geographic regions. 
+- Scale write throughput linearly across multiple nodes and/or geographic regions.
 - Automatic failover and native repair.
 - 100% Apache 2.0 open source even for enterprise features.
 
@@ -161,7 +161,7 @@ Examples: Vitess, Citus
 
 Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
 
-### Transactional NoSQL 
+### Transactional NoSQL
 
 Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 
@@ -191,7 +191,7 @@ Examples: Apache Cassandra, Couchbase.
 
 **Trade-offs**
 
-- Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition. 
+- Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition.
 
 Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
 
@@ -263,19 +263,23 @@ Please do try our beta features and give feedback on them on our [Slack communit
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked the Yugabyte Cloud QL (YCQL) API against standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked the Yugabyte Cloud QL (YCQL) API against standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations.
 
-[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
+[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra.
 
 Details for both the above benchhmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). \
 
 ## Is YugabyteDB open source?
 
 Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+
+## How do I report a security vulnerability?
+
+Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
 
 ## How do YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 
