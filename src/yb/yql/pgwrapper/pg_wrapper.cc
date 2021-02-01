@@ -232,10 +232,8 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";
     const auto auth_method = FLAGS_ysql_enable_auth ? (conf.enable_tls ? "md5 clientcert=1" : "md5")
                                                     : "cert";
-
-    for (const auto addr : {"0.0.0.0/0", "::0/0"}) {
-      lines.push_back(Format("$0 all all all $1", host_type, auth_method));
-    }
+    lines.push_back(Format("$0 all all all $1", host_type, auth_method));
+    lines.push_back(Format("$0 all all all $1", host_type, auth_method));
   }
 
   if (!FLAGS_ysql_hba_conf_csv.empty()) {
