@@ -35,6 +35,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.mvc.Controller;
 import play.mvc.Result;
 
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+
 
 public class MetaMasterController extends Controller {
 
@@ -132,6 +134,10 @@ public class MetaMasterController extends Controller {
     List<String> allIPs = new ArrayList<String>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
+    // If no service is exposed, fail early.
+    if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      return null;
+    }
     Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
 
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
