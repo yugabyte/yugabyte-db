@@ -89,7 +89,7 @@ YugabyteDB supports two flavors of distributed SQL.
 
 The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases).
 
-**The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.**
+**The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
 
 {{< /note >}}
 
