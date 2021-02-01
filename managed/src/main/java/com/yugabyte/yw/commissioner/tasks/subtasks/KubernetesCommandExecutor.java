@@ -57,6 +57,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+
 public class KubernetesCommandExecutor extends UniverseTaskBase {
   public enum CommandType {
     CREATE_NAMESPACE,
@@ -650,6 +652,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     overrides.put("disableYsql", !userIntent.enableYSQL);
+
+    // If the value is anything else, that means the loadbalancer service by
+    // default needed to be exposed.
+    // NOTE: Will still be overriden from the provider level overrides.
+    if (userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      overrides.put("enableLoadBalancer", false);
+    } else {
+      // Even though the helm chart default is true, doing this from platform
+      // just to make it explicit.
+      overrides.put("enableLoadBalancer", true);
+    }
 
     // For now the assumption is the all deployments will have the same kind of
     // loadbalancers, so the annotations will be at the provider level.
