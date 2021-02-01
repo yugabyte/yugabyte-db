@@ -27,12 +27,6 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -82,6 +76,14 @@ import play.mvc.Results;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+
+import static com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import static com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
+import static com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 
 
 public class UniverseController extends AuthenticatedController {
@@ -512,6 +514,10 @@ public class UniverseController extends AuthenticatedController {
       for (Cluster c : taskParams.clusters) {
         Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
         c.userIntent.providerType = CloudType.valueOf(provider.code);
+        // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
+        if (c.userIntent.enableExposingService == ExposingServiceState.NONE) {
+          c.userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
+        }
         if (c.userIntent.providerType.equals(CloudType.onprem)) {
           if (provider.getConfig().containsKey("USE_HOSTNAME")) {
             c.userIntent.useHostname =
