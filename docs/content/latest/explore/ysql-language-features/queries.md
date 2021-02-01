@@ -64,7 +64,7 @@ You can use the `SELECT` statement to find names of all employees in the `employ
 SELECT name FROM employees;  
 ```
 
-To retrieve data that includes the employee name and department, you need to query from multiple columns first name, last name and email of customers, you can specify these column names in the `SELECT` clause as shown in the following query:
+To retrieve data that includes the employee name and department, you need to query multiple columns. you can specify these column names in the `SELECT` clause as shown in the following query:
 
 
 
