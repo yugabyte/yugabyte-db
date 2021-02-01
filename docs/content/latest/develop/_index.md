@@ -29,7 +29,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ecosystem-integrations/">
       <div class="head">
@@ -42,7 +42,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="realworld-apps/">
       <div class="head">
@@ -65,6 +65,19 @@ menu:
       </div>
       <div class="body">
         Use Hasura GraphQL Engine and Prisma to use GraphQL with YugabyteDB.
+      </div>
+    </a>
+  </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="query-1-performance/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">1 article</div>
+        <div class="title">Optimize query performance</div>
+      </div>
+      <div class="body">
+        Optimize query performance by creating and analyzing execution plans.
       </div>
     </a>
   </div>
