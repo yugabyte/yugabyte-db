@@ -89,7 +89,7 @@ YugabyteDB supports two flavors of distributed SQL.
 
 The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases). 
 
-<b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
+**The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.**
 
 {{< /note >}}
 
@@ -276,6 +276,10 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 ## Is YugabyteDB open source?
 
 Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+
+## How do I report a security vulnerability?
+
+Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
 
 ## How do YugabyteDB, Yugabyte Platform and Yugabyte Cloud differ from each other?
 
