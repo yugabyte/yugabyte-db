@@ -1,7 +1,40 @@
+# Deploy contexts
+# Environment variables here override variables set in the web UI.
+#
+# https://docs.netlify.com/site-deploys/overview/#deploy-contexts
+# https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
+
+[context.deploy-preview.environment]
+  HUGO_VERSION = "0.80.0"
+
+[context.branch-deploy.environment]
+  HUGO_VERSION = "0.80.0"
+
+[context.production.environment]
+  HUGO_VERSION = "0.80.0"
+
+# Redirects
+# - Default status is a 301 unless otherwise specified.
+# - First match wins: put wildcards AFTER specific paths!
+# - Wildcards include empty matches: /v1.0/* WILL match /v1.0 
+#
+# docs: https://docs.netlify.com/routing/redirects/
+#
+# validator: https://play.netlify.com/redirects
+
+# Legal and FAQ pages should always point to the latest
+
 [[redirects]]
-  from = "/v1.0"
-  to = "/latest"
+  from = "/:version/legal/*"
+  to = "/latest/legal/:splat"
   force = true
+
+[[redirects]]
+  from = "/:version/faq/*"
+  to = "/latest/faq/:splat"
+  force = true
+
+# Docs prior to v1.3 are not online
 
 [[redirects]]
   from = "/v1.0/*"
@@ -9,18 +42,8 @@
   force = true
 
 [[redirects]]
-  from = "/v1.1"
-  to = "/latest"
-  force = true
-
-[[redirects]]
   from = "/v1.1/*"
   to = "/latest/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v1.2"
-  to = "/latest"
   force = true
 
 [[redirects]]
