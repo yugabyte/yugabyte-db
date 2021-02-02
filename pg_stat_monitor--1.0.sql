@@ -177,6 +177,19 @@ SELECT
 $$
 LANGUAGE SQL PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION histogram(_bucket int, _quryid text)
+RETURNS SETOF RECORD AS $$
+DECLARE
+ rec record;
+BEGIN
+for rec in
+        with stat as (select queryid, bucket, unnest(range()) as range, unnest(resp_calls)::int freq from pg_stat_monitor) select range, freq, repeat('■', (freq::float / max(freq) over() * 30)::int) as bar from stat where queryid = _quryid and bucket = _bucket
+loop
+return next rec;
+end loop;
+END
+$$ language plpgsql;
+
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;
