@@ -138,7 +138,8 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
 
 
 class AwsPauseInstancesMethod(AbstractInstancesMethod):
-    """Subclass for stopping an instance in AWS, we fetch the host info
+    """
+    Subclass for stopping an instance in AWS, we fetch the host info
     and call the stop_instance method.
     """
     def __init__(self, base_command):
@@ -163,7 +164,8 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
 
 
 class AwsResumeInstancesMethod(AbstractInstancesMethod):
-    """Subclass for resuming an instance in AWS, we fetch the host info
+    """
+    Subclass for resuming an instance in AWS, we fetch the host info
     and call the start_instance method.
     """
     def __init__(self, base_command):

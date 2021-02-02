@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import socket
-import sys
 
 from botocore.utils import InstanceMetadataFetcher
 from botocore.credentials import InstanceMetadataProvider
