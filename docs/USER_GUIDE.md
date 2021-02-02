@@ -283,6 +283,21 @@ SELECT resp_calls, query FROM pg_stat_monitor;
 {1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
 {3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | select * from pg_stat_monitor_reset()
 {3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | SELECT * FROM foo
+
+SELECT * FROM histogram(4, '4B64EE85C83D9AAC') AS a(range TEXT, freq INT, bar TEXT);
+   range   | freq |              bar
+-----------+------+--------------------------------
+ (0 - 1)}  |  692 | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+ (1 - 1)}  |    0 |
+ (1 - 1)}  |    0 |
+ (1 - 2)}  |  572 | ■■■■■■■■■■■■■■■■■■■■■■■■■
+ (2 - 3)}  |   74 | ■■■
+ (3 - 3)}  |    0 |
+ (3 - 5)}  |    9 |
+ (5 - 6)}  |    1 |
+ (6 - 7)}  |    1 |
+ (7 - 10)} |    1 |
+(10 rows)
 ```
 
 There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.

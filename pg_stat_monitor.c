@@ -555,14 +555,16 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		exec_nested_level++;
 #endif
 
-		bufusage_start = pgBufferUsage;
-		INSTR_TIME_SET_CURRENT(start);
-
-		PG_TRY();
-		{
-			if (prev_ProcessUtility)
-				prev_ProcessUtility(pstmt, queryString,
-									context, params, queryEnv,
+	bufusage_start = pgBufferUsage;
+#if PG_VERSION_NUM >= 130000
+	walusage_start = pgWalUsage;
+#endif
+	INSTR_TIME_SET_CURRENT(start);
+	PG_TRY();
+	{
+		if (prev_ProcessUtility)
+			prev_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
 									dest
 #if PG_VERSION_NUM >= 130000
 									,qc
@@ -804,6 +806,7 @@ static void pgss_store(uint64 queryId,
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
 		return;
+	
 
 	/*
 	 * Confine our attention to the relevant part of the string, if the query
@@ -1001,9 +1004,18 @@ static void pgss_store(uint64 queryId,
 		if (sqlcode[0] != 0)
 			memset(&entry->counters.blocks, 0, sizeof(entry->counters.blocks));
 #if PG_VERSION_NUM >= 130000
-		e->counters.walusage.wal_records += walusage->wal_records;
-		e->counters.walusage.wal_fpi += walusage->wal_fpi;
-		e->counters.walusage.wal_bytes += walusage->wal_bytes;
+		if (sqlcode[0] == 0)
+		{
+			e->counters.walusage.wal_records += walusage->wal_records;
+			e->counters.walusage.wal_fpi += walusage->wal_fpi;
+			e->counters.walusage.wal_bytes += walusage->wal_bytes;
+		}
+		else
+		{
+			e->counters.walusage.wal_records = 0;
+			e->counters.walusage.wal_fpi = 0;
+			e->counters.walusage.wal_bytes  = 0;
+		}
 #endif
 		SpinLockRelease(&e->mutex);
 		}
@@ -2707,8 +2719,8 @@ get_histogram_bucket(double q_time)
 
 	for(index = 1; index <= b_count; index++)
 	{
-		double b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
-		double b_end = exp(bucket_size * index);
+		int64 b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
+		int64 b_end = exp(bucket_size * index);
 		if( (index == 1 && q_time < b_start)
 			|| (q_time >= b_start && q_time <= b_end)
 			|| (index == b_count && q_time > b_end) )
