@@ -4,14 +4,11 @@ headerTitle: Functions and operators
 linkTitle: Functions and operators
 description: YSQL supports all PostgreSQL-compatible built-in functions and operators.
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs
     parent: api-ysql
     weight: 4300
-aliases:
-  - /stable/api/ysql/exprs/
 isTocNested: true
 showAsideToc: true
 ---
@@ -25,4 +22,5 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 | [`nextval`](func_nextval) | Returns the next value from the session's sequence cache |
 | [`JSON functions and operators`](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |
 | [`Array functions and operators`](../datatypes/type_array/functions-operators/) | Detailed list of array-specific functions and operators |
-| [`Window functions`](./window_functions/) | Detailed list of SQL window functions |
+| [`Aggregate functions`](./aggregate_functions/) | Detailed list of YSQL aggregate functions |
+| [`Window functions`](./window_functions/) | Detailed list of YSQL window functions |

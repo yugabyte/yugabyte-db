@@ -79,7 +79,7 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_int32(update_metrics_interval_ms, 1000,
              "How often to update xDC cluster metrics.");
 
-DEFINE_bool(enable_collect_cdc_metrics, false, "Enable collecting cdc metrics.");
+DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -317,6 +317,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   Status s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
+  // Since GetChanges is called for a valid stream, mark cdc as enabled.
+  cdc_enabled_.store(true, std::memory_order_release);
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
   auto original_leader_term = tablet_peer ? tablet_peer->LeaderTerm() : OpId::kUnknownTerm;
@@ -553,6 +556,18 @@ void CDCServiceImpl::UpdateLagMetrics() {
   }
 }
 
+bool CDCServiceImpl::ShouldUpdateLagMetrics(MonoTime time_since_update_metrics) {
+  // Only update metrics if cdc is enabled, which means we have a valid replication stream.
+  return GetAtomicFlag(&FLAGS_enable_collect_cdc_metrics) &&
+         (time_since_update_metrics == MonoTime::kUninitialized ||
+         MonoTime::Now() - time_since_update_metrics >=
+             MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_update_metrics_interval_ms)));
+}
+
+bool CDCServiceImpl::CDCEnabled() {
+  return cdc_enabled_.load(std::memory_order_acquire);
+}
+
 MicrosTime CDCServiceImpl::GetLastReplicatedTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   yb::tablet::RemoveIntentsData data;
@@ -576,10 +591,12 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   };
 
   do {
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_enable_collect_cdc_metrics) &&
-        (time_since_update_metrics == MonoTime::kUninitialized ||
-         MonoTime::Now() - time_since_update_metrics >=
-             MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_update_metrics_interval_ms)))) {
+    if (!cdc_enabled_.load(std::memory_order_acquire)) {
+      // Have not yet received any GetChanges requests, so skip background thread work.
+      continue;
+    }
+    // Always update lag metrics, default every 1s.
+    if (ShouldUpdateLagMetrics(time_since_update_metrics)) {
       UpdateLagMetrics();
       time_since_update_metrics = MonoTime::Now();
     }

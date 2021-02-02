@@ -39,7 +39,7 @@ $ cd tpcc
 
 ## Step 2. Start your database
 
-Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
+Start the database using steps mentioned here: /latest/quick-start/explore-ysql/.
 
 ## Step 3. Configure connection properties
 

@@ -227,9 +227,10 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 ## How many major releases YugabyteDB has had so far?
 
-YugabyteDB has had 8 major releases.
+YugabyteDB has had the following major releases:
 
-- [v2.2](https://blog.yugabyte.com/) in July 2020.
+- [v2.4](https://blog.yugabyte.com/) in January 2021.
+- [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
 - [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
 - [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
 - [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
@@ -238,7 +239,7 @@ YugabyteDB has had 8 major releases.
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-The next major release is the v2.5 release in Fall 2020. Roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+Releases, including upcoming releases, are outlined on the [Releases Overview](/releases/releases-overview) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 
@@ -254,7 +255,7 @@ Some features are marked Beta in every release. Following are the points to cons
 
 - Code is well tested. Enabling the feature is considered safe. Some of these features enabled by default.
 
-- Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release. 
+- Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release.
 
 - Recommended only for non-production use.
 

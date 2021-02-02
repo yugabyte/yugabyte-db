@@ -12,11 +12,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this explained in the section [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/). 
+A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/). 
 
-The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key. A _"parent ID"_ column (list) references the table's primary key—the _"ID"_ column (list). This is  enforced by a foreign key constraint. (This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling.) The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
+The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key:
 
-The SQL that this section presents uses the simpler representation. But the section  [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy.
+- A _"parent ID"_ column [list] references the table's primary key—the _"ID"_ column [list] enforced by a foreign key constraint.
+
+This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling. The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
+
+The SQL that this section presents uses the simpler representation. But the section  [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy. See the section [Finding the paths in a rooted tree](../traversing-general-graphs/rooted-tree/).
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
@@ -137,7 +141,7 @@ $body$;
 
 ## List the employees top-down with their immediate managers in breadth first order
 
-This simplest formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive CTE like this:
+The naïve formulation of the query to list the employees with their immediate managers uses a `WITH` clause that has a recursive CTE like this:
 
 ##### `cr-view-top-down-simple.sql`
 
@@ -185,7 +189,7 @@ select
 from hierarchy_of_emps;
 ```
 
-Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous  iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report. 
+Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report. 
 
 Notice that the choice to define the ultimate manager to be at depth _1_ is just that: a design choice. You might prefer to define the ultimate manager to be at depth _0_, arguing that it's better to interpret this measure as the number of managers up the chain that the present employee has.
 
@@ -232,7 +236,7 @@ The blank lines were added by hand to make the results easier to read.
 
 ## List the path top-down from the ultimate manager to each employee in breadth first order
 
-The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section.
+The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section. Yet again, "array" functionality comes to the rescue.
 
 ##### `cr-view-top-down-paths.sql`
 
@@ -263,8 +267,15 @@ select cardinality(path) as depth, path
 from top_down_paths
 order by
   depth,
-  path[cardinality(path)];
+  path[2] asc nulls first,
+  path[3] asc nulls first,
+  path[4] asc nulls first,
+  path[5] asc nulls first;
 ```
+
+The design of the `ORDER BY` clause relies on the following fact—documented in the [Array data types and functionality](../../../datatypes/type_array/#synopsis) major section:
+
+> If you read a within-array value with a tuple of index values that puts it outside of the array bounds, then you silently get `NULL`.
 
 This is the result:
 
@@ -272,20 +283,25 @@ This is the result:
  depth |         path          
 -------+-----------------------
      1 | {mary}
+
      2 | {mary,fred}
      2 | {mary,george}
      2 | {mary,john}
      2 | {mary,susan}
+
      3 | {mary,fred,alfie}
-     3 | {mary,john,alice}
-     3 | {mary,john,bill}
      3 | {mary,fred,dick}
      3 | {mary,fred,doris}
+     3 | {mary,john,alice}
+     3 | {mary,john,bill}
      3 | {mary,john,edgar}
+
      4 | {mary,john,bill,joan}
 ```
 
-Notice that the _"top_down_paths"_ view has the same information content as the _"top_down_simple"_ view. But it's easier to read because you don't need mentally to construct the path by looking, recursively, for the row that has the "_mgr_name"_ of the row of interest as its _"name"_ until you reach the ultimate manager.
+The blank lines were added by hand to make the results easier to read.
+
+Notice that the _"top_down_paths"_ view has the same information content as the _"top_down_simple"_ view. And the queries that were used against each listed the information in the same order. The results from querying the _"top_down_paths"_ view show, in the last-but-one and last array elements, the identical values to the _"mgr_name"_ and _"name"_ columns in the output from querying the _"top_down_simple"_ view. But it's easier to read the results from the _"top_down_paths"_ view because you don't need mentally to construct the path by looking, recursively, for the row that has the "_mgr_name"_ of the row of interest as its _"name"_ until you reach the ultimate manager.
 
 This `assert` confirms the conclusion:
 
@@ -351,6 +367,8 @@ order by
   path[5] asc nulls first;
 ```
 
+This query is almost identical to the query shown at [`do-breadth-first-path-query.sql`](#do-breadth-first-path-query-sql). The only difference is that the first `ORDER BY` rule (to order by the depth) has been omitted.
+
 This is the result:
 
 ```
@@ -370,9 +388,7 @@ This is the result:
      2 | {mary,susan}
 ```
 
-You can see that the results are sorted in depth-first order with the employees at the same depth ordered by _"name_". The design of the `ORDER BY` clause relies on the following fact—documented in the [Array data types and functionality](../../../datatypes/type_array/#synopsis) major section:
-
-> If you read a within-array value with a tuple of index values that put it outside of the array bounds, then you silently get `NULL`.
+You can see that the results are sorted in depth-first order with the employees at the same depth ordered by _"name_".
 
 Notice that this:
 
