@@ -21,6 +21,7 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -2320,5 +2321,29 @@ public class UniverseControllerTest extends WithApplication {
     assertEquals("", UniverseController.removeEnclosingDoubleQuotes(""));
     // Null string
     assertEquals(null, UniverseController.removeEnclosingDoubleQuotes(null));
+  }
+
+  @Test
+  public void testClearNodeDetails() {
+    Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
+    azList.add(az1);
+    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(2, p, r, azList);
+
+    List<NodeInstance> nodeInstances = NodeInstance.listByProvider(p.uuid);
+    for (NodeInstance node : nodeInstances) {
+      node.setNodeName("TestUniverse");
+      node.inUse = true;
+      node.save();
+    }
+    for (NodeInstance node : nodeInstances) {
+      node.clearNodeDetails();
+    }
+    for (NodeInstance node : nodeInstances) {
+      assertFalse(node.inUse);
+      assertEquals("", node.getNodeName());
+    }
   }
 }
