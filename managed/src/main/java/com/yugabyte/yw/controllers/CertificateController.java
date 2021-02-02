@@ -151,6 +151,9 @@ public class CertificateController extends AuthenticatedController {
     if (certificate == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
     }
+    if (!certificate.customerUUID.equals(customerUUID)) {
+      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+    }
     if (!certificate.getInUse()) {
       if (certificate.delete()) {
         ObjectNode responseJson = Json.newObject();

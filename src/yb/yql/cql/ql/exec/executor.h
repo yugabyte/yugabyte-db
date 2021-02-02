@@ -272,7 +272,6 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS PTExprToPB(const PTConstBool *const_pt, QLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb);
   CHECKED_STATUS PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb);
-  CHECKED_STATUS PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb);
 
   // Bind variable.
   CHECKED_STATUS PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *bind_pb);
@@ -297,6 +296,10 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *bcall_pb);
   CHECKED_STATUS BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb);
   CHECKED_STATUS TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb);
+
+  // Constructors for collection and UDT.
+  CHECKED_STATUS PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTCollectionExpr *expr_pt, QLExpressionPB *expr_pb);
 
   // Logic expressions.
   CHECKED_STATUS PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *logic_pb);

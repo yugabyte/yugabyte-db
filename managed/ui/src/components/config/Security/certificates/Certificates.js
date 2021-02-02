@@ -13,8 +13,8 @@ import { isNotHidden, isDisabled } from '../../../../utils/LayoutUtils';
 import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
-import { YBFormInput } from '../common/forms/fields';
-import { api } from '../../redesign/helpers/api';
+import { api } from '../../../../redesign/helpers/api';
+import { YBFormInput } from '../../../common/forms/fields';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -124,7 +124,11 @@ class Certificates extends Component {
    * @param certificateUUID Unique id of certificate.
    */
   deleteCertificate = (certificateUUID) => {
-    api.deleteCertificate(certificateUUID).then(
+    const {
+      customer: { currentCustomer}
+    } = this.props;
+    
+    api.deleteCertificate(certificateUUID, currentCustomer?.data?.uuid).then(
       () => this.props.fetchCustomerCertificates()
     ).catch(
       err => console.error(`Failed to delete certificate ${certificateUUID}`, err)

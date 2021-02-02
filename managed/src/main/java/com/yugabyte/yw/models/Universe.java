@@ -831,12 +831,10 @@ public class Universe extends Model {
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     Set<Universe> universeList = Customer.get(customerUUID).getUniverses();
-    for (Universe universe : universeList) {
-      UUID certificateUUID = universe.getUniverseDetails().rootCA;
-      if (universe.getUniverseDetails().rootCA != null && certificateUUID.equals(certUUID)) {
-        return true;
-      }
-    }
-    return false;
+    universeList = universeList.stream()
+        .filter(s -> s.getUniverseDetails().rootCA != null
+             && s.getUniverseDetails().rootCA.equals(certUUID))
+                .collect(Collectors.toSet());
+    return universeList.size() != 0;
   }
 }

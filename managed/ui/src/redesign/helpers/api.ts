@@ -119,8 +119,8 @@ class ApiService {
    * 
    * @param certUUID - certificate UUID
    */
-  deleteCertificate = (certUUID: string): Promise<any> => {
-    const requestUrl = `${ROOT_URL}/certificates/${certUUID}`
+  deleteCertificate = (certUUID: string, customerUUID: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${customerUUID}/certificates/${certUUID}`
     return axios.delete<any>(requestUrl).then((res) => res.data);
   }
 }
