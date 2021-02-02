@@ -154,7 +154,12 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
         region = args.region
         search_pattern = args.search_pattern
     
-        host_info = self.cloud.get_host_info_specific_args(region, search_pattern, get_all=False, private_ip=args.node_ip)
+        host_info = self.cloud.get_host_info_specific_args(
+            region,
+            search_pattern,
+            get_all=False,
+            private_ip=args.node_ip
+        )
        
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
