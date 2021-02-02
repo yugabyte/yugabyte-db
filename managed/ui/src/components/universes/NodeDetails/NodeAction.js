@@ -26,7 +26,7 @@ export default class NodeAction extends Component {
     actionType: PropTypes.oneOf(['STOP', 'REMOVE'])
   };
 
-  openModal(actionType) {
+  openModal = (actionType) => {
     this.setState((prevState, props) => {
       return {
         selectedRow: props.row,
@@ -34,11 +34,11 @@ export default class NodeAction extends Component {
         showModal: true
       };
     });
-  }
+  };
 
   closeModal() {
     this.setState({
-      showModal: false      
+      showModal: false
     });
   }
 
@@ -85,7 +85,7 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-link';
     } else if (actionType === 'START_MASTER') {
       btnIcon = 'fa fa-play-circle';
-    } else if (actionType === 'QUERIES') {      
+    } else if (actionType === 'QUERIES') {
       btnIcon = 'fa fa-search';
     }
 
@@ -101,19 +101,30 @@ export default class NodeAction extends Component {
     } else {
       universeUrl = path.substring(0, path.lastIndexOf('/'));
     }
-    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);    
+    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);
   }
 
   render() {
-    const { currentRow, providerUUID, disableConnect, disableQueries, disabled } = this.props;
+    const {
+      currentRow,
+      providerUUID,
+      hideConnect,
+      hideQueries,
+      disableStop,
+      disableRemove,
+      disabled
+    } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
+      const isDisabled = disabled ||
+        (actionType === 'STOP' && disableStop) ||
+        (actionType === 'REMOVE' && disableRemove);
       return (
         <MenuItem
           key={btnId}
           eventKey={btnId}
-          disabled={disabled}
-          onClick={disabled ? null : this.openModal.bind(this, actionType)}
+          disabled={isDisabled}
+          onClick={() => isDisabled || this.openModal(actionType)}
         >
           {this.getLabel(actionType)}
         </MenuItem>
@@ -122,7 +133,7 @@ export default class NodeAction extends Component {
 
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-        {!disableConnect && (
+        {!hideConnect && (
           <NodeConnectModal
             currentRow={currentRow}
             providerUUID={providerUUID}
@@ -140,7 +151,7 @@ export default class NodeAction extends Component {
             />
           </Fragment>
         ) : null}
-        {!disableQueries &&
+        {!hideQueries &&
           <MenuItem key="queries_action_btn" eventKey="queries_action_btn"
             disabled={disabled} onClick={this.handleLiveQueryClick}>
             {this.getLabel('QUERIES')}
