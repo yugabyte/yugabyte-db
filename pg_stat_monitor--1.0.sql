@@ -70,7 +70,10 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT blk_write_time      float8,
     OUT resp_calls          text,
     OUT cpu_user_time       float8,
-    OUT cpu_sys_time        float8
+    OUT cpu_sys_time        float8,
+    OUT wal_records int8,
+    OUT wal_fpi int8,
+    OUT wal_bytes numeric
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
@@ -145,7 +148,10 @@ CREATE VIEW pg_stat_monitor AS SELECT
     blk_write_time,
 	(string_to_array(resp_calls, ',')) resp_calls,
 	round(cpu_user_time::numeric, 4) as cpu_user_time,
-	round(cpu_sys_time::numeric, 4) as cpu_sys_time
+	round(cpu_sys_time::numeric, 4) as cpu_sys_time,
+    wal_records,
+    wal_fpi,
+    wal_bytes
 FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid
 ORDER BY bucket_start_time;
 

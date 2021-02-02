@@ -21,7 +21,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.7.0"
-#define PG_STAT_STATEMENTS_COLS         42  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         45  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
@@ -1000,6 +1000,11 @@ static void pgss_store(uint64 queryId,
 		e->counters.sysinfo.stime = stime;
 		if (sqlcode[0] != 0)
 			memset(&entry->counters.blocks, 0, sizeof(entry->counters.blocks));
+#if PG_VERSION_NUM >= 130000
+		e->counters.walusage.wal_records += walusage->wal_records;
+		e->counters.walusage.wal_fpi += walusage->wal_fpi;
+		e->counters.walusage.wal_bytes += walusage->wal_bytes;
+#endif
 		SpinLockRelease(&e->mutex);
 		}
 	}
@@ -1251,6 +1256,28 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
+#if PG_VERSION_NUM >= 130000
+		{
+			char		buf[256];
+			Datum		wal_bytes;
+
+			values[i++] = Int64GetDatumFast(tmp.walusage.wal_records);
+			values[i++] = Int64GetDatumFast(tmp.walusage.wal_fpi);
+
+			snprintf(buf, sizeof buf, UINT64_FORMAT, tmp.walusage.wal_bytes);
+
+			/* Convert to numeric. */
+			wal_bytes = DirectFunctionCall3(numeric_in,
+											CStringGetDatum(buf),
+											ObjectIdGetDatum(0),
+											Int32GetDatum(-1));
+			values[i++] = wal_bytes;
+		}
+#else
+		nulls[i++] = true;
+		nulls[i++] = true;
+		nulls[i++] = true;
+#endif
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	free(query_txt);
@@ -2421,7 +2448,7 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 	{
 		if (planner_hook_next)
 			result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-			result = standard_planner(parse, query_string, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string, cursorOptions, boundParams);
 	}
 #else
 	if (planner_hook_next)
@@ -2587,7 +2614,7 @@ int
 read_query_buffer(int bucket_id, uint64 queryid, char *query_txt)
 {
     int           fd = 0;
-	int           buf_len;
+	int           buf_len = 0;
 	char          file_name[1024];
 	unsigned char *buf = NULL;
 	int           off = 0;
@@ -2711,7 +2738,7 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	{
 		int64 b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
 		int64 b_end = exp(bucket_size * index);
-		sprintf(range[index-1], "(%d - %d)}", b_start, b_end);
+		sprintf(range[index-1], "(%ld - %ld)}", b_start, b_end);
 	}
 	return TextArrayGetTextDatum(range, b_count, 1024);
 }

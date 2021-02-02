@@ -209,6 +209,12 @@ typedef struct SysInfo
 	float		stime;						/* system cpu time */
 } SysInfo;
 
+typedef struct Wal_Usage
+{
+	int64		wal_records;	/* # of WAL records generated */
+	int64		wal_fpi;		/* # of WAL full page images generated */
+	uint64		wal_bytes;		/* total amount of WAL bytes generated */
+} Wal_Usage;
 /*
  * The actual stats counters kept within pgssEntry.
  */
@@ -221,6 +227,7 @@ typedef struct Counters
 	Blocks		blocks;
 	SysInfo		sysinfo;
 	ErrorInfo   error;
+	Wal_Usage    walusage;
 	int			plans;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
 } Counters;
