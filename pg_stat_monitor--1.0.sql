@@ -14,6 +14,16 @@ RETURNS text
 AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
+CREATE FUNCTION get_histogram_timings()
+RETURNS text
+AS 'MODULE_PATHNAME'
+LANGUAGE C PARALLEL SAFE;
+
+CREATE FUNCTION range()
+RETURNS text[] AS $$
+SELECT string_to_array(get_histogram_timings(), ','); 
+$$ LANGUAGE SQL;
+
 CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT bucket              int,
     OUT userid              oid,

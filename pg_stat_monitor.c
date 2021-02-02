@@ -54,6 +54,7 @@ static struct rusage  rusage_start;
 static struct rusage  rusage_end;
 static unsigned char *pgss_qbuf[MAX_BUCKETS];
 
+static int  get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
 static double time_diff(struct timeval end, struct timeval start);
@@ -77,11 +78,12 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor_1_2);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_3);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
+PG_FUNCTION_INFO_V1(get_histogram_timings);
 
 static uint pg_get_client_addr(void);
 static int pg_get_application_name(char* application_name);
 static PgBackendStatus *pg_get_backend_status(void);
-static Datum textarray_get_datum(char arr[][CMD_LEN], int len);
+static Datum textarray_get_datum(char arr[][1024], int len, int str_len);
 static Datum intarray_get_datum(int32 arr[], int len);
 
 #if PG_VERSION_NUM >= 130000
@@ -949,16 +951,8 @@ static void pgss_store(uint64 queryId,
 		/* increment only in case of PGSS_EXEC */
 		if (kind == PGSS_EXEC)
 		{
-			for (i = 0; i < MAX_RESPONSE_BUCKET; i++)
-			{
-				if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
-				{
-					e->counters.resp_calls[i]++;
-					break;
-				}
-			}
-			if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
-				e->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
+			int index = get_histogram_bucket(total_time);
+			e->counters.resp_calls[index]++;
 		}
 		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
 
@@ -1209,7 +1203,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		else
 			values[i++] = IntArrayGetTextDatum(tmp.info.relations, len);
 
-		values[i++] = TextArrayGetTextDatum(tmp.info.cmd_type, CMD_LST);
+		values[i++] = TextArrayGetTextDatum((char (*)[1024])tmp.info.cmd_type, CMD_LST, CMD_LEN);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
 		if (strlen(tmp.error.sqlcode) <= 0)
 			values[i++] = CStringGetTextDatum("0");
@@ -2213,9 +2207,10 @@ comp_location(const void *a, const void *b)
 	else
 		return 0;
 }
+
 /* Convert array into Text dataum */
 static Datum
-textarray_get_datum(char arr[][CMD_LEN], int len)
+textarray_get_datum(char arr[][1024], int len, int str_len)
 {
 	int     j;
 	char    str[1024];
@@ -2226,15 +2221,15 @@ textarray_get_datum(char arr[][CMD_LEN], int len)
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
 	for (j = 0; j < len; j++)
 	{
-		if (strlen(arr[j]) <= 0)
+		if (arr[j] == NULL || strlen(arr[j]) <= 0)
 			continue;
 		if (first)
 		{
-			snprintf(str, CMD_LEN, "%s", arr[j]);
+			snprintf(str, str_len, "%s", arr[j]);
 			first = false;
 			continue;
 		}
-		snprintf(str, CMD_LEN, "%s,%s", str, arr[j]);
+		snprintf(str, str_len, "%s,%s", str, arr[j]);
 	}
 	return CStringGetTextDatum(str);
 
@@ -2663,5 +2658,61 @@ unpack_sql_state(int sql_state)
 
     buf[i] = '\0';
     return buf;
+}
+
+static int 
+get_histogram_bucket(double q_time)
+{
+	double q_min = PGSM_HISTOGRAM_MIN;
+	double q_max = PGSM_HISTOGRAM_MAX;
+	int    b_count = PGSM_HISTOGRAM_BUCKETS;
+	int    index = 0;
+	double b_max;
+	double b_min;
+	double bucket_size;
+
+	q_time -= q_min;
+
+	b_max = log(q_max - q_min);
+	b_min = 0;
+
+	bucket_size = (b_max - b_min) / (double)b_count;
+
+	for(index = 1; index <= b_count; index++)
+	{
+		double b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
+		double b_end = exp(bucket_size * index);
+		if( (index == 1 && q_time < b_start)
+			|| (q_time >= b_start && q_time <= b_end)
+			|| (index == b_count && q_time > b_end) )
+		{
+			return index - 1;
+		}
+	}
+	return 0;
+}
+
+Datum
+get_histogram_timings(PG_FUNCTION_ARGS)
+{
+	double q_min = PGSM_HISTOGRAM_MIN;
+	double q_max = PGSM_HISTOGRAM_MAX;
+	int    b_count = PGSM_HISTOGRAM_BUCKETS;
+	int    index = 0;
+	double b_max;
+	double b_min;
+	double bucket_size;
+	char   range[50][1024] = {0};
+	
+	b_max = log(q_max - q_min);
+	b_min = 0;
+	bucket_size = (b_max - b_min) / (double)b_count;
+	for(index = 1; index <= b_count; index++)
+	{
+		int64 b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
+		int64 b_end = exp(bucket_size * index);
+		sprintf(range[index-1], "(%d - %d)}", b_start, b_end);
+	}
+	return TextArrayGetTextDatum(range, b_count, 1024);
 }
 

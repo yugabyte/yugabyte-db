@@ -54,7 +54,7 @@
 #include "utils/guc.h"
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
-#define  TextArrayGetTextDatum(x,y) textarray_get_datum(x,y)
+#define  TextArrayGetTextDatum(x,y,z) textarray_get_datum(x,y,z)
 #define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
 
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
@@ -341,9 +341,10 @@ void pgss_startup(void);
 #define PGSM_NORMALIZED_QUERY get_conf(4)->guc_variable
 #define PGSM_MAX_BUCKETS get_conf(5)->guc_variable
 #define PGSM_BUCKET_TIME get_conf(6)->guc_variable
-#define PGSM_RESPOSE_TIME_LOWER_BOUND get_conf(7)->guc_variable
-#define PGSM_RESPOSE_TIME_STEP get_conf(8)->guc_variable
-#define PGSM_QUERY_BUF_SIZE get_conf(9)->guc_variable
-#define PGSM_TRACK_PLANNING get_conf(10)->guc_variable
+#define PGSM_HISTOGRAM_MIN get_conf(7)->guc_variable
+#define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
+#define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
+#define PGSM_QUERY_BUF_SIZE get_conf(10)->guc_variable
+#define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
 
 #endif

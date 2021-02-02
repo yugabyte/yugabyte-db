@@ -18,7 +18,7 @@
 
 #include "pg_stat_monitor.h"
 
-GucVariable conf[12];
+GucVariable conf[13];
 
 /*
  * Define (or redefine) custom GUC variables.
@@ -87,19 +87,27 @@ init_guc(void)
 	};
 
 	conf[i++] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_respose_time_lower_bound",
+		.guc_name = "pg_stat_monitor.pgsm_histogram_min",
 		.guc_desc = "Sets the time in millisecond.",
-		.guc_default = 1,
-		.guc_min = 1,
+		.guc_default = 0,
+		.guc_min = 0,
+		.guc_max = INT_MAX,
+		.guc_restart = true
+	};
+	conf[i++] = (GucVariable) {
+		.guc_name = "pg_stat_monitor.pgsm_histogram_max",
+		.guc_desc = "Sets the time in millisecond.",
+		.guc_default = 10,
+		.guc_min = 10,
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
 
 	conf[i++] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_respose_time_step",
-		.guc_desc = "Sets the response time steps in millisecond.",
-		.guc_default = 1,
-		.guc_min = 1,
+		.guc_name = "pg_stat_monitor.pgsm_histogram_buckets",
+		.guc_desc = "Sets the maximum number of histogram buckets",
+		.guc_default = 10,
+		.guc_min = 2,
 		.guc_max = INT_MAX,
 		.guc_restart = true
 	};
@@ -208,13 +216,25 @@ init_guc(void)
 							NULL,
 							NULL);
 
-
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_respose_time_lower_bound",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_min",
 							"Sets the time in millisecond.",
 							NULL,
-							&PGSM_RESPOSE_TIME_LOWER_BOUND,
-							1,
-							1,
+							&PGSM_HISTOGRAM_MIN,
+							0,
+							0,
+							INT_MAX,
+							PGC_POSTMASTER,
+							0,
+							NULL,
+							NULL,
+							NULL);
+	
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_max",
+							"Sets the time in millisecond.",
+							NULL,
+							&PGSM_HISTOGRAM_MAX,
+							10,
+							10,
 							INT_MAX,
 							PGC_POSTMASTER,
 							0,
@@ -222,12 +242,12 @@ init_guc(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_stat_monitor.pgsm_respose_time_step",
-							"Sets the response time steps in millisecond.",
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_buckets",
+							"Sets the total number of histogram buckets",
 							NULL,
-							&PGSM_RESPOSE_TIME_STEP,
-							1,
-							1,
+							&PGSM_HISTOGRAM_BUCKETS,
+							10,
+							2,
 							INT_MAX,
 							PGC_POSTMASTER,
 							0,
