@@ -11,6 +11,7 @@ import {
   deleteKMSProviderConfig,
   deleteKMSProviderConfigResponse
 } from '../../../actions/cloud';
+import { addToast } from '../../../actions/toaster';
 
 const mapStateToProps = (state) => {
   return {
@@ -38,6 +39,14 @@ const mapDispatchToProps = (dispatch) => {
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then((response) => {
+          dispatch(addToast({
+            toast: {
+              type: 'success',
+              description: 'This is a success toast component',
+              position: "bottom-right",
+              icon: "fa fa-check-circle fa-3x"
+            }
+          }))
           return dispatch(createKMSProviderConfigResponse(response.payload));
         })
         .catch((err) => console.err('Error submitting KMS configuration: ', err));

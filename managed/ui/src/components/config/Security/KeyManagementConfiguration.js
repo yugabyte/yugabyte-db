@@ -19,6 +19,7 @@ import { regionsData } from '../PublicCloud/views/providerRegionsData';
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import Toasters from '../../../pages/Toasters';
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns
 //  a list of supported KMS Configurations
@@ -37,8 +38,13 @@ const awsRegionList = regionsData.map((region, index) => {
 class KeyManagementConfiguration extends Component {
   state = {
     listView: false,
+    isVisible: false,
     enabledIAMProfile: false,
-    useCmkPolicy: false
+    useCmkPolicy: false,
+    toaster: {
+      isVisible: false,
+      toast: {}
+    }
   };
 
   updateFormField = (field, value) => {
@@ -71,7 +77,11 @@ class KeyManagementConfiguration extends Component {
               data['cmk_policy'] = text;
               setKMSConfig(kmsProvider.value, data).then(() => {
                 fetchKMSConfigList();
-                this.setState({ listView: true });
+                this.setState({
+                  listView: true,
+                  isVisible: true,
+                });
+                this.setState(this.props.configToasterMessage('success'));
               });
             });
             return;
@@ -87,7 +97,10 @@ class KeyManagementConfiguration extends Component {
       }
       setKMSConfig(kmsProvider.value, data).then(() => {
         fetchKMSConfigList();
-        this.setState({ listView: true });
+        this.setState({
+          listView: true,
+          isVisible: true,
+        });
       });
     }
   };
@@ -275,18 +288,23 @@ class KeyManagementConfiguration extends Component {
 
   render() {
     const { configList } = this.props;
-    const { listView, enabledIAMProfile } = this.state;
+    const { listView, enabledIAMProfile, toaster, isVisible } = this.state;
+
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
     }
     if (listView) {
       return (
-        <ListKeyManagementConfigurations
-          configs={configList}
-          onCreate={this.openCreateConfigForm}
-          onDelete={this.deleteAuthConfig}
-        />
+        <React.Fragment>
+          <ListKeyManagementConfigurations
+            configs={configList}
+            onCreate={this.openCreateConfigForm}
+            onDelete={this.deleteAuthConfig}
+          />
+          { isVisible && <Toasters/>}
+        </React.Fragment>
       );
+
     }
 
     const validationSchema = Yup.object().shape({
