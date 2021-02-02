@@ -2,3 +2,9 @@ Sitemap: https://docs.yugabyte.com/sitemap.xml
 User-agent: *
 Disallow: /latest/api/ysql/syntax_resources/
 Allow: /latest/api/ysql/syntax_resources/grammar_diagrams/
+# don't index the non-latest docs
+Disallow: /v1.3/
+Disallow: /v2.0/
+Disallow: /v2.1/
+Disallow: /v2.2/
+Disallow: /stable/
