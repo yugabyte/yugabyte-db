@@ -57,6 +57,11 @@ public class AvailabilityZone extends Model {
   @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
+  public String getKubeconfigPath() {
+    Map<String, String> configMap = this.getConfig();
+    return configMap.getOrDefault("KUBECONFIG", null);
+  }
+
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     for (String key : configMap.keySet()) {

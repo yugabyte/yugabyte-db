@@ -3,7 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Button } from 'react-bootstrap';
-import { FlexContainer, FlexShrink, FlexGrow } from '../../../common/flexbox/YBFlexBox';
+import { FlexContainer, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../../panels';
 import { Row, Col } from 'react-bootstrap';
@@ -13,6 +13,7 @@ import { KUBERNETES_PROVIDERS } from '../../../../config';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { YBTextInput, YBModal } from '../../../common/forms/fields';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
+import './ListKubernetesConfigurations.scss';
 
 export default class ListKubernetesConfigurations extends Component {
   constructor(props) {
@@ -43,6 +44,40 @@ export default class ListKubernetesConfigurations extends Component {
     );
   };
 
+  formatZones = (cell) => (
+    <>
+      {cell.map(item => (
+        <div key={item.uuid} className="k8s-providers-list__cell-subrow">
+          {item.name}
+        </div>
+      ))}
+    </>
+  );
+
+  formatConfigPath = (cell, row) => {
+    if (row.configPath) {
+      // render provider-level k8s config path, if any
+      return (
+        <div className="k8s-providers-list__cell-subrow">
+          <div>{row.configPath}</div>
+          <YBCopyButton text={row.configPath} />
+        </div>
+      );
+    } else {
+      // if there's no provider-level config path - render region-level config paths
+      return (
+        <>
+          {row.zones.map((item) => (
+            <div key={item.uuid} className="k8s-providers-list__cell-subrow">
+              <div>{item.kubeconfigPath}</div>
+              {item.kubeconfigPath && <YBCopyButton text={item.kubeconfigPath} />}
+            </div>
+          ))}
+        </>
+      );
+    }
+  };
+
   render() {
     const {
       providers,
@@ -62,19 +97,6 @@ export default class ListKubernetesConfigurations extends Component {
       if (item.uuid === activeProviderUUID) return item;
       return false;
     });
-
-    const formatConfigPath = (item, row) => {
-      return (
-        <FlexContainer>
-          <FlexGrow style={{ width: '75%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {row.configPath}
-          </FlexGrow>
-          <FlexGrow>
-            <YBCopyButton text={row.configPath || ''} />
-          </FlexGrow>
-        </FlexContainer>
-      );
-    };
 
     const actionList = (item, row) => {
       const disabled = !this.deleteProviderEnabled(row.uuid);
@@ -143,6 +165,7 @@ export default class ListKubernetesConfigurations extends Component {
               >
                 <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
                 <TableHeaderColumn
+                  width="15%"
                   dataField="name"
                   dataSort
                   dataFormat={providerLinkFormatter}
@@ -152,6 +175,7 @@ export default class ListKubernetesConfigurations extends Component {
                   Name
                 </TableHeaderColumn>
                 <TableHeaderColumn
+                  width="15%"
                   dataField="type"
                   dataSort
                   columnClassName="no-border name-column"
@@ -160,6 +184,7 @@ export default class ListKubernetesConfigurations extends Component {
                   Provider Type
                 </TableHeaderColumn>
                 <TableHeaderColumn
+                  width="10%"
                   dataField="region"
                   dataSort
                   columnClassName="no-border name-column"
@@ -168,28 +193,32 @@ export default class ListKubernetesConfigurations extends Component {
                   Region
                 </TableHeaderColumn>
                 <TableHeaderColumn
+                  width="12%"
                   dataField="zones"
                   dataSort
+                  dataFormat={this.formatZones}
                   columnClassName="no-border name-column"
                   className="no-border"
                 >
                   Zones
                 </TableHeaderColumn>
                 <TableHeaderColumn
+                  width="30%"
                   dataField="configPath"
                   dataSort
-                  dataFormat={formatConfigPath}
+                  dataFormat={this.formatConfigPath}
                   columnClassName="no-border name-column"
                   className="no-border"
                 >
                   Config Path
                 </TableHeaderColumn>
                 <TableHeaderColumn
+                  width="18%"
                   dataField="configActions"
                   dataFormat={actionList}
                   columnClassName="no-border name-column no-side-padding"
                   className="no-border"
-                ></TableHeaderColumn>
+                />
               </BootstrapTable>
 
               <YBModal

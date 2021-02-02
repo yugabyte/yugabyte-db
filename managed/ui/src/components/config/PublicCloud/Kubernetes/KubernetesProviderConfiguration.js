@@ -63,7 +63,7 @@ class KubernetesProviderConfiguration extends Component {
           uuid: region.provider.uuid,
           name: region.provider.name,
           region: region.name,
-          zones: region.zones.map((zone) => zone.name).join(', '),
+          zones: region.zones,
           configPath: providerData.config['KUBECONFIG'],
           namespace: providerData.config['KUBECONFIG_NAMESPACE'],
           serviceAccount: providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],

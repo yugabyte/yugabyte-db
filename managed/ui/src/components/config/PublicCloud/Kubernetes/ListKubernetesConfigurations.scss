@@ -1,0 +1,15 @@
+.k8s-providers-list {
+  &__cell-subrow {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .btn {
+      min-width: fit-content;
+    }
+  }
+}
