@@ -1757,17 +1757,9 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
   LOG(INFO) << "Created cdc stream " << stream_id;
 
-  GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5);
-  LOG(INFO) << "GetChanges request completed successfully";
-
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  // Check that the index hasn't been updated in any of the followers.
+  // Check that the index hasn't been updated in any of the peers.
   for (int idx = 0; idx < server_count(); idx++) {
-    if (idx == leader_idx) {
-      // This TServer is shutdown for now.
-      continue;
-    }
-
     if (cluster_->mini_tablet_server(idx)->server()->tablet_manager()->
         LookupTablet(tablet_id, &tablet_peer)) {
       ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64>::max());
@@ -1796,9 +1788,6 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
     return !has_error;
   }, MonoDelta::FromSeconds(180), "Wait until cdc state table can take writes."));
 
-  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
-  LOG(INFO) << "Done sleeping";
-
   std::unique_ptr<CDCServiceProxy> cdc_proxy;
   ASSERT_OK(WaitFor([&](){
     for (int idx = 0; idx < server_count(); idx++) {
@@ -1816,6 +1805,9 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
     }
     return false;
   }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+
+  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
+  LOG(INFO) << "Done sleeping";
 
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 5);
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 5);
