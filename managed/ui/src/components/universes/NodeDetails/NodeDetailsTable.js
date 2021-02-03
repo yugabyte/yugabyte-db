@@ -228,7 +228,12 @@ export default class NodeDetailsTable extends Component {
             >
               Status
             </TableHeaderColumn>
-            <TableHeaderColumn dataField="cloudItem" dataFormat={getCloudInfo}>
+            <TableHeaderColumn
+              dataField="cloudItem"
+              dataFormat={getCloudInfo}
+              className="cloud-info-cell"
+              columnClassName="cloud-info-cell"
+            >
               Cloud Info
             </TableHeaderColumn>
             <TableHeaderColumn dataFormat={getReadableSize} dataField="ram_used">
