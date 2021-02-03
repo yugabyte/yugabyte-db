@@ -53,8 +53,6 @@ const mapDispatchToProps = (dispatch) => {
             toast: {
               type: 'success',
               description: 'Success added configuration!!',
-              position: "bottom-right",
-              icon: "fa fa-check-circle fa-3x"
             }
           }))
           return dispatch(createKMSProviderConfigResponse(response.payload));
@@ -63,7 +61,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     deleteKMSConfig: (configUUID) => {
-      dispatch(deleteKMSProviderConfig('configUUID'))
+      dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
@@ -72,8 +70,6 @@ const mapDispatchToProps = (dispatch) => {
             toast: {
               type: 'error',
               description: 'Warning: Deleting configuration returned unsuccessful response.',
-              position: "bottom-right",
-              icon: "fa fa-warning fa-3x"
             }
           }))
           console.warn('Warning: Deleting configuration returned unsuccessful response.');

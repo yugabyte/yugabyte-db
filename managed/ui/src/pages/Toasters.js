@@ -31,7 +31,6 @@ const mapDispatchToProps = dispatch => ({
 });
 
 const mapStateToProps = state => {
-  console.log('State -- ', state);
   return { toasts: state.toast}
 };
 

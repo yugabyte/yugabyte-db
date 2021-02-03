@@ -4,20 +4,23 @@ import '../app/stylesheets/Toaster.scss';
 
 
 const Toaster = (props) => {
-  const { toast, dismissTime, onDismissClick} = props;
+  const { toast, onDismissClick} = props;
+
+  const icon = toast.type === 'success' ? 'fa-check-circle' : 'fa-warning';
+  const position = toast.position || 'bottom-right';
 
   useEffect(() => {
-    const timeout = dismissTime || 5000;
+    const timeout = toast.dismissTime || 5000;
     setTimeout(() => onDismissClick(), timeout)
   }, []);
 
   return (
     <div>
-      <div className={`toaster-container ${toast.position}`}>
-        <div className={`toaster toast ${toast.position} toast-${toast.type}`}>
+      <div className={`toaster-container ${position}`}>
+        <div className={`toaster toast ${position} toast-${toast.type}`}>
           <button onClick={onDismissClick}>X</button>
           <div className="toaster-icon">
-            <i className={`${toast.icon}`} />
+            <i className={`fa fa-3x ${icon}`} />
           </div>
           <div>
             <p className="toaster-title">{toast.type}</p>

@@ -34,6 +34,7 @@ import {
   fetchHostInfoSuccess,
   fetchHostInfoFailure
 } from '../../../actions/customers';
+import { addToast } from '../../../actions/toaster';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -52,6 +53,12 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
           dispatch(bootstrapProvider(providerUUID, regionFormVals)).then((boostrapResponse) => {
+            dispatch(addToast({
+              toast: {
+                type: 'success',
+                description: "Successfully created AWS Provider",
+              }
+            }))
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
         }
@@ -130,6 +137,13 @@ const mapDispatchToProps = (dispatch) => {
     deleteProviderConfig: (providerUUID) => {
       dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
+          const errorMessage = response.payload?.response?.data?.error;
+          dispatch(addToast({
+            toast: {
+              type: 'error',
+              description: errorMessage,
+            }
+          }))
           dispatch(deleteProviderFailure(response.payload));
         } else {
           dispatch(deleteProviderSuccess(response.payload));

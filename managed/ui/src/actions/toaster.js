@@ -1,11 +1,10 @@
-// Universe Modal Tasks
 export const ADD_TOAST = 'ADD_TOAST';
 export const REMOVE_TOAST = 'REMOVE_TOAST';
 
 let id = 0;
 
 
-export default function createToast(options) {
+const createToast = (options) => {
   return {
     ...options,
     id: id++
