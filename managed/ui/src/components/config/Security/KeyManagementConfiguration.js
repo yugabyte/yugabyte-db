@@ -38,13 +38,8 @@ const awsRegionList = regionsData.map((region, index) => {
 class KeyManagementConfiguration extends Component {
   state = {
     listView: false,
-    isVisible: false,
     enabledIAMProfile: false,
-    useCmkPolicy: false,
-    toaster: {
-      isVisible: false,
-      toast: {}
-    }
+    useCmkPolicy: false
   };
 
   updateFormField = (field, value) => {
@@ -79,7 +74,6 @@ class KeyManagementConfiguration extends Component {
                 fetchKMSConfigList();
                 this.setState({
                   listView: true,
-                  isVisible: true,
                 });
                 this.setState(this.props.configToasterMessage('success'));
               });
@@ -99,7 +93,6 @@ class KeyManagementConfiguration extends Component {
         fetchKMSConfigList();
         this.setState({
           listView: true,
-          isVisible: true,
         });
       });
     }
@@ -301,7 +294,7 @@ class KeyManagementConfiguration extends Component {
             onCreate={this.openCreateConfigForm}
             onDelete={this.deleteAuthConfig}
           />
-          { isVisible && <Toasters/>}
+          <Toasters/>
         </React.Fragment>
       );
 

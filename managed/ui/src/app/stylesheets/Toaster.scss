@@ -23,28 +23,28 @@
 	top: 12px;
 	right: 12px;
 	transition: transform .6s ease-in-out;
-	animation: toast-in-right .7s;
+	animation: toast-right .7s;
 }
 
 .bottom-right {
 	bottom: 12px;
 	right: 12px;
 	transition: transform .6s ease-in-out;
-	animation: toast-in-right .7s;
+	animation: toast-right .7s;
 }
 
 .top-left {
 	top: 12px;
 	left: 12px;
 	transition: transform .6s ease-in;
-	animation: toast-in-left .7s;
+	animation: toast-left .7s;
 }
 
 .bottom-left {
 	bottom: 12px;
 	left: 12px;
 	transition: transform .6s ease-in;
-	animation: toast-in-left .7s;
+	animation: toast-left .7s;
 }
 
 .toaster {
@@ -78,7 +78,6 @@
 	margin-top: 0;
 	margin-bottom: 6px;
   width: 300px;
-  height: 18px;
 }
 
 .toaster-message {
@@ -122,7 +121,7 @@
   width: auto !important;
 }
 
-@keyframes toast-in-right {
+@keyframes toast-right {
 	from {
 	  transform: translateX(100%);
 	  
@@ -132,7 +131,7 @@
 	}
 }
 
-@keyframes toast-in-left {
+@keyframes toast-left {
 	from {
 		transform: translateX(-100%);
 		

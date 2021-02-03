@@ -31,9 +31,19 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchKMSConfigList: () => {
-      return dispatch(fetchAuthConfigList()).then((response) =>
+      return dispatch(fetchAuthConfigList()).then((response) => 
         dispatch(fetchAuthConfigListResponse(response.payload))
-      );
+      )
+      .catch((err) => {
+        dispatch(addToast({
+          toast: {
+            type: 'error',
+            description: 'Error occured while fetching config.',
+            position: "bottom-right",
+            icon: "fa fa-warning fa-3x"
+          }
+        }))
+      })
     },
 
     setKMSConfig: (provider, body) => {
@@ -42,7 +52,7 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(addToast({
             toast: {
               type: 'success',
-              description: 'This is a success toast component',
+              description: 'Success added configuration!!',
               position: "bottom-right",
               icon: "fa fa-check-circle fa-3x"
             }
@@ -53,14 +63,24 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     deleteKMSConfig: (configUUID) => {
-      dispatch(deleteKMSProviderConfig(configUUID))
+      dispatch(deleteKMSProviderConfig('configUUID'))
         .then((response) => {
           if (response.payload.status === 200) {
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
+          dispatch(addToast({
+            toast: {
+              type: 'error',
+              description: 'Warning: Deleting configuration returned unsuccessful response.',
+              position: "bottom-right",
+              icon: "fa fa-warning fa-3x"
+            }
+          }))
           console.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          console.error(err)
+        });
     }
   };
 };

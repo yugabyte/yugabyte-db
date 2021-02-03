@@ -5,35 +5,28 @@ import '../app/stylesheets/Toaster.scss';
 
 const Toaster = (props) => {
   const { toast, dismissTime, onDismissClick} = props;
-  const [show, setShow] = useState(true);
 
   useEffect(() => {
     const timeout = dismissTime || 5000;
-    setTimeout(() => setShow(false), timeout)
-  }, [show])
+    setTimeout(() => onDismissClick(), timeout)
+  }, []);
 
-  const deleteToast = () => {
-    setShow(!show)
-  }
   return (
     <div>
-      {show &&
-        <div className={`toaster-container ${toast.position}`}>
-          <div className={`toaster toast ${toast.position} toast-${toast.type}`}>
-            <button onClick={onDismissClick}>X</button>
+      <div className={`toaster-container ${toast.position}`}>
+        <div className={`toaster toast ${toast.position} toast-${toast.type}`}>
+          <button onClick={onDismissClick}>X</button>
           <div className="toaster-icon">
-            <i className={`${toast.icon}`}/>
+            <i className={`${toast.icon}`} />
           </div>
-            <div>
-              <p className="toaster-title">{toast.type}</p>
-              <p className="toaster-message">
-                {toast.description}
-              </p>
-            </div>
+          <div>
+            <p className="toaster-title">{toast.type}</p>
+            <p title={toast.description} className="toaster-message">
+              {toast.description}
+            </p>
           </div>
         </div>
-      }
-      {/* <button onClick={deleteToast}>Show Toast</button> */}
+      </div>
     </div>
   )
 }
