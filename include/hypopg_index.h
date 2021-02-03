@@ -95,6 +95,8 @@ typedef struct hypoIndex
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 #if PG_VERSION_NUM >= 110000
 	bool		amcanparallel;	/* does AM support parallel scan? */
+	bool		amcaninclude;	/* does AM support columns included with clause
+								   INCLUDE? */
 #endif
 	bool		amcanunique;	/* does AM support UNIQUE indexes? */
 	bool		amcanmulticol;	/* does AM support multi-column indexes? */

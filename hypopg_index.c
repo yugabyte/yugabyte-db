@@ -173,6 +173,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry->amcanorder = amroutine->amcanorder;
 #if PG_VERSION_NUM >= 110000
 	entry->amcanparallel = amroutine->amcanparallel;
+	entry->amcaninclude = amroutine->amcaninclude;
 #endif
 #else
 	/* Up to 9.5, all information is available in the pg_am tuple */
@@ -442,6 +443,14 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
 							node->accessMethod)));
+
+#if PG_VERSION_NUM >= 110000
+		if (node-> indexIncludingParams != NIL && !entry->amcaninclude)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("hypopg: access method \"%s\" does not support included columns",
+							node->accessMethod)));
+#endif
 
 		entry->unique = node->unique;
 		entry->ncolumns = nkeycolumns + ninccolumns;

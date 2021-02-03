@@ -44,7 +44,7 @@ ifeq ($(MAJORVERSION),10)
 endif
 
 ifneq ($(MAJORVERSION),$(filter $(MAJORVERSION), 9.2 9.3 9.4 9.5 9.6 10))
-	REGRESS += hypo_index_part
+	REGRESS += hypo_index_part hypo_include
 endif
 
 DEBUILD_ROOT = /tmp/$(EXTENSION)
