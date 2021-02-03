@@ -2322,28 +2322,4 @@ public class UniverseControllerTest extends WithApplication {
     // Null string
     assertEquals(null, UniverseController.removeEnclosingDoubleQuotes(null));
   }
-
-  @Test
-  public void testClearNodeDetails() {
-    Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
-    azList.add(az1);
-    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(2, p, r, azList);
-
-    List<NodeInstance> nodeInstances = NodeInstance.listByProvider(p.uuid);
-    for (NodeInstance node : nodeInstances) {
-      node.setNodeName("TestUniverse");
-      node.inUse = true;
-      node.save();
-    }
-    for (NodeInstance node : nodeInstances) {
-      node.clearNodeDetails();
-    }
-    for (NodeInstance node : nodeInstances) {
-      assertFalse(node.inUse);
-      assertEquals("", node.getNodeName());
-    }
-  }
 }
