@@ -358,7 +358,7 @@ class GraphPanelHeader extends Component {
                     btnClass="btn btn-default refresh-btn"
                     onClick={this.refreshGraphQuery}
                   />
-                  {liveQueriesLink && 
+                  {liveQueriesLink && !universePaused &&
                     <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
                       <i className="fa fa-search" /> See Live Queries
                     </Link>

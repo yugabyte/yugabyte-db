@@ -195,7 +195,6 @@ class UniverseDetail extends Component {
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const clusters = universe?.currentUniverse?.data?.universeDetails?.clusters;
-    const statusCheck = universe?.currentUniverse?.data?.universeDetails?.updateSucceeded;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
 
     // This variable will store the universe provider type which helps to enable
@@ -616,9 +615,10 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         }
 
+                        {/* TODO: 1 more condition needs to be added which specifies the
+                        current status of the universe. */}
                         {isDefinedNotNull(providerType)
-                          && providerType.toString() === 'aws'
-                          && statusCheck &&
+                          && providerType.toString() === 'aws' &&
                           <YBMenuItem onClick={showToggleUniverseStateModal}>
                             {!universePaused ? 'Pause Universe' : 'Resume Universe'}
                           </YBMenuItem>

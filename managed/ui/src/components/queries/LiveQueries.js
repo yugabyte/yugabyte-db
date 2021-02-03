@@ -318,7 +318,7 @@ const LiveQueriesComponent = ({ location }) => {
             <div className="pull-left">
               <h2 className="content-title pull-left">
                 Live Queries
-                {loading && (
+                {loading && !universePaused && (
                   <span className="live-queries__loading-indicator">
                     <YBLoadingCircleIcon size="small" />
                   </span>
