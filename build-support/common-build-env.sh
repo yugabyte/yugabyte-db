@@ -75,12 +75,6 @@ declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 # Reuse the C errno value for this.
 declare -r -i YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY=2
 
-# What matches these expressions will be filtered out of Maven output.
-MVN_OUTPUT_FILTER_REGEX='^\[INFO\] (Download(ing|ed)( from [-a-z0-9.]+)?): '
-MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
-MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
-MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
-
 readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 
 # In our NFS environment, we keep Linuxbrew builds in this directory.
@@ -107,13 +101,7 @@ readonly YB_NUM_CORES_PER_BUILD_WORKER=8
 readonly MIN_EFFECTIVE_NUM_BUILD_WORKERS=5
 readonly MAX_EFFECTIVE_NUM_BUILD_WORKERS=10
 
-readonly MVN_OUTPUT_FILTER_REGEX
-
 readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
-
-readonly YB_SHARED_MVN_LOCAL_REPO="$YB_JENKINS_NFS_HOME_DIR/m2_repository"
-readonly YB_NON_SHARED_MVN_LOCAL_REPO=$HOME/.m2/repository
-readonly YB_SHARED_MVN_SETTINGS="$YB_JENKINS_NFS_HOME_DIR/m2_settings.xml"
 
 if [[ -z ${is_run_test_script:-} ]]; then
   is_run_test_script=false
@@ -179,15 +167,6 @@ readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
 readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net|servers|nfusr)/"
 
-# This is used in yb_build.sh and build-and-test.sh.
-# shellcheck disable=SC2034
-readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
-  dependency:go-offline
-  dependency:resolve
-  dependency:resolve-plugins
-  -DoutputFile=/dev/null
-)
-
 if is_mac; then
   if [[ -x /usr/local/bin/flock ]]; then
     readonly FLOCK="/usr/local/bin/flock"
@@ -205,6 +184,31 @@ readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
 declare -i -r MAX_ATTEMPTS_TO_GET_BUILD_WORKER=10
 
 readonly YB_VIRTUALENV_BASENAME=venv
+
+# -------------------------------------------------------------------------------------------------
+# Maven related constants
+# -------------------------------------------------------------------------------------------------
+
+readonly YB_DEFAULT_MVN_LOCAL_REPO=$HOME/.m2/repository
+
+readonly YB_SHARED_MVN_SETTINGS_PATH="$YB_JENKINS_NFS_HOME_DIR/m2_settings.xml"
+readonly YB_DEFAULT_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
+
+# What matches these expressions will be filtered out of Maven output.
+MVN_OUTPUT_FILTER_REGEX='^\[INFO\] (Download(ing|ed)( from [-a-z0-9.]+)?): '
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
+MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
+readonly MVN_OUTPUT_FILTER_REGEX
+
+# This is used in yb_build.sh and build-and-test.sh.
+# shellcheck disable=SC2034
+readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
+  dependency:go-offline
+  dependency:resolve
+  dependency:resolve-plugins
+  -DoutputFile=/dev/null
+)
 
 # -------------------------------------------------------------------------------------------------
 # Global variables
@@ -587,9 +591,9 @@ find_make_or_ninja_and_update_cmake_opts() {
 
 create_mvn_repo_path_file() {
   if [[ -n ${YB_MVN_LOCAL_REPO:-} ]]; then
-    local mvn_repo_path=$BUILD_ROOT/mvn_repo
-    echo "Saving YB_MVN_LOCAL_REPO to $mvn_repo_path"
-    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_path"
+    local mvn_repo_file_path=$BUILD_ROOT/mvn_repo
+    log "Saving YB_MVN_LOCAL_REPO ($YB_MVN_LOCAL_REPO) to $mvn_repo_file_path"
+    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_file_path"
   fi
 }
 
@@ -600,39 +604,26 @@ set_mvn_parameters() {
   local should_use_shared_dirs=false
   if is_jenkins; then
     if "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
-      should_use_shared_dirs=false
       YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
-      log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO)"
-    else
-      should_use_shared_dirs=true
-      if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
-        log "Will use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO)."
-      fi
-      if [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
-        log "Will use shared Maven settings file ($YB_SHARED_MVN_SETTINGS)."
-      fi
-      log "The above choices are based on:" \
-          "is_run_test_script=$is_run_test_script," \
-          "OSTYPE=$OSTYPE"
+      # Do not use the "shared Maven settings" path even if it is available.
+      YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
+      log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO) and the" \
+          "default Maven settings path ($YB_MVN_SETTINGS_PATH)"
+    elif [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
+      export YB_MVN_SETTINGS_PATH=$YB_SHARED_MVN_SETTINGS_PATH
+      log "Will use shared Maven settings file ($YB_MVN_SETTINGS_PATH)."
     fi
   fi
+
   if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
-    if "$should_use_shared_dirs"; then
-      YB_MVN_LOCAL_REPO=$YB_SHARED_MVN_LOCAL_REPO
-    else
-      YB_MVN_LOCAL_REPO=$YB_NON_SHARED_MVN_LOCAL_REPO
-    fi
+    YB_MVN_LOCAL_REPO=$YB_DEFAULT_MVN_LOCAL_REPO
   fi
   export YB_MVN_LOCAL_REPO
 
   if [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
-    if "$should_use_shared_dirs"; then
-      YB_MVN_SETTINGS_PATH=$YB_SHARED_MVN_SETTINGS
-    else
-      YB_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
-    fi
+    YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
   fi
-  export MVN_SETTINGS_PATH
+  export YB_MVN_SETTINGS_PATH
 
   mvn_common_options=(
     "--batch-mode"
