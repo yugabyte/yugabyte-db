@@ -327,6 +327,11 @@ public class HealthChecker {
       boolean reportOnlyErrors, String emailDestinations) {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    if (details.universePaused) {
+      LOG.warn("Skipping universe " + u.name + " as it is in paused state");
+      createAlert(c, u, "Health check skipped as the uiverse in in paused state.");
+      return;
+    }
     if (details == null) {
       LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
       createAlert(c, u, "Health check skipped due to invalid details json.");
