@@ -83,6 +83,7 @@ public class Module extends AbstractModule {
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
+      bind(PlatformInstanceClientFactory.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -14,16 +14,16 @@ import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import io.ebean.Model;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
@@ -65,12 +65,14 @@ public class PlatformReplicationManager extends DevopsBase {
 
   private final SettableRuntimeConfigFactory runtimeConfigFactory;
 
+  private final PlatformInstanceClientFactory remoteClientFactory;
+
+  private static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationManager.class);
+
   @Override
   protected String getCommandType() {
     return null;
   }
-
-  private final ApiHelper apiHelper;
 
   @Inject
   public PlatformReplicationManager(
@@ -78,13 +80,13 @@ public class PlatformReplicationManager extends DevopsBase {
     ExecutionContext executionContext,
     ShellProcessHandler shellProcessHandler,
     SettableRuntimeConfigFactory runtimeConfigFactory,
-    ApiHelper apiHelper
+    PlatformInstanceClientFactory remoteClientFactory
   ) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.shellProcessHandler = shellProcessHandler;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.apiHelper = apiHelper;
+    this.remoteClientFactory = remoteClientFactory;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -153,7 +155,7 @@ public class PlatformReplicationManager extends DevopsBase {
       .getBoolean(REPLICATION_SCHEDULE_ENABLED_KEY);
   }
 
-  public void setBackupScheduleEnabled(boolean enabled) {
+  private void setBackupScheduleEnabled(boolean enabled) {
     this.runtimeConfigFactory.globalRuntimeConf().setValue(
       REPLICATION_SCHEDULE_ENABLED_KEY,
       Boolean.toString(enabled)
@@ -179,13 +181,12 @@ public class PlatformReplicationManager extends DevopsBase {
 
   // TODO: (Daniel/Shashank) - https://github.com/yugabyte/yugabyte-db/issues/6961.
   public List<File> listBackups(String leader) throws Exception {
-    List<File> result = new ArrayList<>();
     Path backupDir = this.getReplicationDirFor(leader);
 
     if (!backupDir.toFile().exists() || !backupDir.toFile().isDirectory()) {
       LOG.debug(String.format("%s directory does not exist", backupDir.toFile().getName()));
 
-      return result;
+      return new ArrayList<>();
     }
 
     return listFiles(backupDir, "backup_*.tgz");
@@ -202,6 +203,42 @@ public class PlatformReplicationManager extends DevopsBase {
     return Json.newObject()
       .put("frequency_milliseconds", this.getBackupFrequency().toMillis())
       .put("is_running", this.isBackupScheduleRunning());
+  }
+
+  private boolean demotePreviousInstance(PlatformInstance remoteInstance) {
+    try {
+      HighAvailabilityConfig config = remoteInstance.getConfig();
+      PlatformInstanceClient client = this.remoteClientFactory.getClient(
+        config.getClusterKey(),
+        remoteInstance.getAddress()
+      );
+
+      // Ensure all local records for remote instances are set to follower state.
+      remoteInstance.demote();
+
+      // Send step down request to remote instance.
+      client.demoteInstance(config.getLastFailover().getTime());
+
+      return true;
+    } catch (Exception e) {
+      LOG.error("Error demoting remote platform instance {}", remoteInstance.getAddress(), e);
+    }
+
+    return false;
+  }
+
+  public void promoteInstance(PlatformInstance newLeader) {
+    HighAvailabilityConfig config = newLeader.getConfig();
+    // Update which instance should be local.
+    config.getInstances()
+      .forEach(i -> i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID())));
+    // Mark the failover timestamp.
+    config.updateLastFailover();
+    // Attempt to ensure all remote instances are in follower state.
+    // Remotely demote any instance reporting to be a leader.
+    config.getRemoteInstances().forEach(this::demotePreviousInstance);
+    // Promote the new local leader.
+    newLeader.promote();
   }
 
   /**
@@ -240,7 +277,6 @@ public class PlatformReplicationManager extends DevopsBase {
     newInstances.forEach(i -> {
       PlatformInstance existingInstance = PlatformInstance.getByAddress(i.getAddress());
       if (existingInstance != null) {
-        existingInstance.setUUID(i.getUUID());
         existingInstance.setLastBackup(i.getLastBackup());
         existingInstance.setIsLeader(i.getIsLeader());
         existingInstance.update();
@@ -250,84 +286,95 @@ public class PlatformReplicationManager extends DevopsBase {
     });
   }
 
-  private void exportPlatformInstances(
-    HighAvailabilityConfig config,
-    String clusterKey,
-    String remoteInstanceAddr
-  ) {
+  private void exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
     try {
-      Map<String, String> headers = ImmutableMap.of(
-        HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey
+      PlatformInstanceClient client = this.remoteClientFactory.getClient(
+        config.getClusterKey(),
+        remoteInstanceAddr
       );
-      String getConfigEndpoint = "api/v1/settings/ha/internal/config";
-      String getConfigUrl = String.format("%s/%s", remoteInstanceAddr, getConfigEndpoint);
-      JsonNode response = this.apiHelper.getRequest(getConfigUrl, headers);
-      if (response.get("error") != null) {
-        LOG.warn(String.format(
-          "Error querying remote instance %s for config uuid",
-          remoteInstanceAddr
-        ));
+
+      // Retrieve the remote platform instance's HA config.
+      HighAvailabilityConfig remoteConfig = client.getRemoteConfig();
+
+      if (remoteConfig.isLocalLeader()) {
+        LOG.debug("Skipping exporting platform instances to remote instance " + remoteInstanceAddr
+          + " since it reports being a leader");
 
         return;
       }
 
-      UUID remoteConfigUUID = UUID.fromString(response.get("uuid").asText());
-      // Only send instances that don't already exist on the remote instance
-      JsonNode instancesJson = Json.toJson(
-        config.getInstances()
-          .stream()
-          .peek(i -> i.setIsLocal(i.getAddress().equals(remoteInstanceAddr)))
-          .peek(i -> {
-            HighAvailabilityConfig remoteConfig = new HighAvailabilityConfig();
-            remoteConfig.setUUID(remoteConfigUUID);
-            i.setConfig(remoteConfig);
-          })
-          .collect(Collectors.toList())
-      );
-      String importEndpoint = String.format(
-        "api/v1/settings/ha/internal/config/%s",
-        remoteConfigUUID
-      );
-      String importUrl = String.format("%s/%s", remoteInstanceAddr, importEndpoint);
-      response = this.apiHelper.putRequest(importUrl, instancesJson, headers);
-      if (response.get("error") != null) {
-        LOG.warn(String.format(
-          "Error exporting platform instances to remote instance %s",
-          remoteInstanceAddr
-        ));
-      }
-    } catch (Exception e) {
-      LOG.error(String.format(
-        "Error exporting platform instances to remote instance %s",
-        remoteInstanceAddr
-      ), e);
-    }
-  }
+      // Process payload to send to remote platform instance.
+      List<PlatformInstance> instances = config.getInstances();
+      instances.forEach(i -> {
+        i.setIsLocal(i.getAddress().equals(remoteInstanceAddr));
+        i.setConfig(remoteConfig);
+      });
+      JsonNode instancesJson = Json.toJson(instances);
 
-  private void syncPlatformInstances(HighAvailabilityConfig config) {
-    String clusterKey = config.getClusterKey();
-    config.getRemoteInstances()
-      .forEach(remoteInstance ->
-        exportPlatformInstances(config, clusterKey, remoteInstance.getAddress()));
+      // Export the platform instances to the given remote platform instance.
+      client.syncInstances(config.getLastFailover().getTime(), instancesJson);
+    } catch (Exception e) {
+      LOG.error("Error exporting local platform instances to remote instance "
+        + remoteInstanceAddr, e);
+    }
   }
 
   // TODO: (Shashank) - Implement https://github.com/yugabyte/yugabyte-db/issues/6503.
   //  You'll want to run "updateLastBackup()" on each remote instance the backup has
-  //  successfully been sent to.
-  private boolean sendBackup() {
+  //  successfully been sent to (You'll probably want to do this on the leader instance so that
+  //  the backup times get picked up by the followers through syncPlatformInstances).
+  //  If you update the last backup timestamp directly on the followers, it will be overwritten
+  //  on there by the leader platform.
+  private boolean sendBackup(PlatformInstance remoteInstance) {
     return true;
   }
 
-  private void sync() {
-    final HighAvailabilityConfig config = HighAvailabilityConfig.list().get(0);
+  private void syncToRemoteInstance(PlatformInstance remoteInstance) {
+    HighAvailabilityConfig config = remoteInstance.getConfig();
+    String remoteAddr = remoteInstance.getAddress();
+    LOG.debug("Syncing data to " + remoteAddr + "...");
 
-    if (config.getRemoteInstances().isEmpty() || !this.createBackup() || !this.sendBackup()) {
+    // Ensure that the remote instance is demoted if this instance is the most current leader.
+    if (!this.demotePreviousInstance(remoteInstance)) {
+      LOG.error("Error demoting remote instance " + remoteAddr);
+
       return;
     }
 
-    // Update local last backup time if creating + sending the backups succeeded.
-    config.getLocal().updateLastBackup();
-    this.syncPlatformInstances(config);
+    // Send the platform backup to the remote instance.
+    if (!this.sendBackup(remoteInstance)) {
+      LOG.error("Error sending platform backup to " + remoteAddr);
+
+      return;
+    }
+
+    // Sync the HA cluster metadata to the remote instance.
+    this.exportPlatformInstances(config, remoteAddr);
+  }
+
+  private void sync() {
+    HighAvailabilityConfig.list().forEach(config -> {
+      List<PlatformInstance> remoteInstances = config.getRemoteInstances();
+      // No point in taking a backup if there is no one to send it to.
+      if (remoteInstances.isEmpty()) {
+        LOG.debug("Skipping HA cluster sync...");
+
+        return;
+      }
+
+      // Create the platform backup.
+      if (!this.createBackup()) {
+        LOG.error("Error creating platform backup");
+
+        return;
+      }
+
+      // Update local last backup time if creating the backup succeeded.
+      config.getLocal().updateLastBackup();
+
+      // Sync data to remote address.
+      remoteInstances.forEach(this::syncToRemoteInstance);
+    });
   }
 
   public boolean saveReplicationData(String fileName, File uploadedFile, String leader,
@@ -455,7 +502,7 @@ public class PlatformReplicationManager extends DevopsBase {
     List<String> commandArgs = params.getCommandArgs();
     Map<String, String> extraVars = params.getExtraVars();
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    LOG.debug("Command to run: [" + String.join(" ", commandArgs) + "]");
 
     return shellProcessHandler.run(commandArgs, extraVars);
   }
