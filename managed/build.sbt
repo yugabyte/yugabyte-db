@@ -2,9 +2,65 @@ import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 
-import scala.util.Try
+// ------------------------------------------------------------------------------------------------
+// Functions
+// ------------------------------------------------------------------------------------------------
 
-name := """yugaware"""
+def normalizeEnvVarValue(value: String): String = {
+  if (value == null) null else value.trim()
+}
+
+def strToBool(s: String): Boolean = {
+  val normalizedStr = normalizeEnvVarValue(s)
+  normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
+}
+
+// Use this to enable debug logging in this script.
+val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
+
+def ybLog(s: String): Unit = {
+  println("[Yugabyte sbt log] " + s)
+}
+
+def getEnvVar(envVarName: String): String = {
+  val envVarValue = System.getenv(envVarName)
+  val strValue = normalizeEnvVarValue(envVarValue)
+  if (YB_DEBUG_ENABLED) {
+    ybLog("getEnvVar: envVarName=" + envVarName + ", strValue=" + strValue)
+  }
+  strValue
+}
+
+def getBoolEnvVar(envVarName: String): Boolean = {
+  val strValue = getEnvVar(envVarName)
+  val boolValue = strToBool(strValue)
+  if (YB_DEBUG_ENABLED) {
+    ybLog("getBoolEnvVar: envVarName=" + envVarName + ", boolValue=" + boolValue)
+  }
+  boolValue
+}
+
+def isDefined(s: String): Boolean = {
+  s != null && normalizeEnvVarValue(s).nonEmpty
+}
+
+def validateResolver(
+    resolver: Seq[sbt.Resolver],
+    description: String): Seq[sbt.Resolver] = {
+  if (resolver == null) {
+    throw new AssertionError("Undefined resolver: " + description)
+  }
+  // We are logging this even in non-debug mode, because these log messages are very useful and
+  // only one message is logged per resolver.
+  ybLog("[Resolver] " + description + ": " + resolver)
+  resolver
+}
+
+// ------------------------------------------------------------------------------------------------
+// Main build.sbt script
+// ------------------------------------------------------------------------------------------------
+
+name := "yugaware"
 
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
@@ -59,32 +115,73 @@ bootResolvers := None
 otherResolvers := Seq()
 
 // Whether to use local maven repo to retrieve artifacts (used for yb-client).
-lazy val mavenLocal = Try(System.getenv("USE_MAVEN_LOCAL").toBoolean).getOrElse(false)
-lazy val ybClientResolver = {
+lazy val ybUseMavenLocalEnvVarName = "USE_MAVEN_LOCAL"
+lazy val mavenLocal = getBoolEnvVar(ybUseMavenLocalEnvVarName)
+
+lazy val ybMvnSnapshotUrlEnvVarName = "YB_MVN_SNAPSHOT_URL"
+lazy val ybMvnLocalRepoEnvVarName = "YB_MVN_LOCAL_REPO"
+
+lazy val ybLocalResolverDescription =
+    "Local resolver (enabled by " + ybUseMavenLocalEnvVarName + ", path can be customized with " +
+    ybMvnLocalRepoEnvVarName + ")"
+lazy val ybLocalResolver = {
   if (mavenLocal) {
-    lazy val localMavenRepo = System.getenv("YB_MVN_LOCAL_REPO")
-    if (localMavenRepo == null || localMavenRepo.isEmpty) {
-      Seq(Resolver.mavenLocal)
-    } else {
+    val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+    if (isDefined(localMavenRepo)) {
       Seq("Local Maven Repository" at "file://" + localMavenRepo)
+    } else {
+      Seq(Resolver.mavenLocal)
     }
   } else {
-    Seq("Yugabyte Maven Snapshots" at System.getenv("YB_MVN_SNAPSHOT_URL"))
+    Seq()
+  }
+}
+
+lazy val ybClientSnapshotResolverDescription =
+    "Snapshot resolver for yb-client jar (used when " + ybUseMavenLocalEnvVarName + " is not " +
+    "set, mostly during local development, configured with " + ybMvnSnapshotUrlEnvVarName + ")"
+
+lazy val ybClientSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybMavenSnapshotUrl = getEnvVar(ybMvnSnapshotUrlEnvVarName)
+    if (isDefined(ybMavenSnapshotUrl)) {
+      Seq("Yugabyte Maven Snapshots" at ybMavenSnapshotUrl)
+    } else {
+      Seq()
+    }
   }
 }
 
 // Custom remote maven repository to retrieve library dependencies from.
-lazy val mavenRemoteUrl = System.getenv("YB_MVN_CACHE_URL")
-lazy val ywDependencyResolver = {
-  if (mavenRemoteUrl == null || mavenRemoteUrl.isEmpty) {
-    Seq()
+lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
+lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
+lazy val mavenCacheServerResolverDescription =
+    "Maven cache server (such as Nexus or Artifactory), specified by " + ybMvnCacheUrlEnvVarName
+lazy val mavenCacheServerResolver = {
+  if (isDefined(ybMvnCacheUrl)) {
+    Seq("Yugabyte Maven Cache" at ybMvnCacheUrl)
   } else {
-    Seq("Yugabyte Maven Cache" at mavenRemoteUrl)
+    Seq()
   }
 }
 
 // Override default resolver order.
-externalResolvers := { ywDependencyResolver ++ externalResolvers.value ++ ybClientResolver }
+
+// We put the local resolver because of a weird issue that happens on Jenkins. We somehow end up
+// with only the .pom file but not the .jar file downloaded to the local Maven repo for the
+// com.fasterxml.jackson.core#jackson-core;2.9.9 artifact, and then sbt 0.13.15 fails with the
+// error below. When this issue is resolved, we can put the local resolver first to use cached
+// jars as much as possible.
+// https://gist.githubusercontent.com/mbautin/61a505cc9d35833d37557c9762130fd0/raw
+
+externalResolvers := {
+  validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
+  validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
+  validateResolver(externalResolvers.value, "Default resolver") ++
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+}
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.2-SNAPSHOT"
 
@@ -102,7 +199,7 @@ publishArtifact in (Compile, packageDoc) := false
 topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
-lazy val autoReload = Try(System.getenv("AUTO_RELOAD").toBoolean).getOrElse(true)
+lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
 playMonitoredFiles := { if (autoReload) playMonitoredFiles.value else Seq() }
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
@@ -148,4 +245,3 @@ consoleSetting := {
 }
 
 playInteractionMode := consoleSetting.value
-
