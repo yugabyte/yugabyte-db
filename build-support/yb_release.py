@@ -169,8 +169,10 @@ def main():
                     arg for arg in build_cmd_list if arg != 'packaged_targets'
                 ] + ['--target', preliminary_target]
 
-            if not args.yw:
-                preliminary_step_cmd_list += ["--skip-java"]
+            # Skipping Java in these "preliminary" builds whether or not we are building YugaWare.
+            # We will still build YBClient Java code needed for YugaWare as part of the final
+            # build step below.
+            preliminary_step_cmd_list += ["--skip-java"]
 
             logging.info(
                     "Running a preliminary step to build target %s: %s",
@@ -262,9 +264,8 @@ def main():
         try:
             subprocess.check_output(package_yw_cmd, cwd=managed_dir)
         except subprocess.CalledProcessError as e:
-            logging.error(
-                "Failed to build YugaWare package:\n{}\nOutput:\n{}".format(
-                    traceback.format_exc(), e.output))
+            logging.error("Failed to build YugaWare package:\n%s", traceback.format_exc())
+            logging.error("Output from YugaWare build:\n%s", e.output.decode('utf-8'))
             raise
         except OSError as e:
             logging.error("Failed to build YugaWare package: {}".format(e))

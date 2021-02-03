@@ -7,17 +7,18 @@ import logging
 import os
 import shutil
 import tarfile
+import subprocess
+
 from subprocess import Popen, PIPE, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file
 from ybops.common.exceptions import YBOpsRuntimeError
 
-"""This script is basically builds and packages yugaware application.
-  - Builds the React API and generates production files (js, css, etc)
+"""This script is builds and packages YugaWare application.
+  - Builds the React API and generates production files (js, css, etc.)
   - Run sbt packaging command to package yugaware along with the react files
   - Rename the package file to have the commit sha in it
   - Move the package file to the required destination
   - A higher level user, such as itest, will upload all release packages to s3 release bucket
-
 """
 
 parser = argparse.ArgumentParser()
@@ -34,13 +35,22 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    _, err = Popen(["sbt", "clean", "-batch"], stderr=PIPE).communicate()
+    common_sbt_options = ['-batch', '-no-color']
+
+    _, err = Popen(["sbt", "clean"] + common_sbt_options, stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
 
     log_message(logging.INFO, "Kick off SBT universal packaging")
+
+    subprocess.check_call(["df", "-h"])
+
     # Ignore any error output from packaging as npm is expected to have some warnings.
-    os.system("df -h; sbt universal:packageZipTarball -batch")
+    os.system(' '.join([
+        "sbt",
+        "universal:packageZipTarball"
+    ] + common_sbt_options))
+
     log_message(logging.INFO, "Finished running SBT universal packaging.")
 
     yugaware_tar_gz_glob = os.path.join(script_dir, "target", "universal", "yugaware*.tgz")
