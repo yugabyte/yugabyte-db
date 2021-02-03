@@ -367,7 +367,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					errmsg("Create table with oid is not allowed."),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			Oid table_oid = defGetInt32(def);
+			Oid table_oid = strtol(defGetString(def), NULL, 10);
 			if (table_oid < FirstNormalObjectId)
 			{
 				elog(ERROR, "User tables must have an OID >= %d.",
@@ -1676,7 +1676,11 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 		/* Add the operator class name, if non-default */
 		iparam->opclass = get_opclass(indclass->values[keyno], keycoltype);
 
-		iparam->ordering = SORTBY_DEFAULT;
+		if (opt & INDOPTION_HASH)
+			iparam->ordering = SORTBY_HASH;
+		else
+			iparam->ordering = SORTBY_DEFAULT;
+
 		iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
 
 		/* Adjust options if necessary */
@@ -2704,7 +2708,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 					errmsg("Create index with oid is not allowed."),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			Oid table_oid = defGetInt32(def);
+			Oid table_oid = strtol(defGetString(def), NULL, 10);
 			if (table_oid < FirstNormalObjectId)
 			{
 				elog(ERROR, "User tables must have an OID >= %d.",

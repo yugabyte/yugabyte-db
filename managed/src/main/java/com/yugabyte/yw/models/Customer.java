@@ -33,9 +33,11 @@ public class Customer extends Model {
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
   // to be partitioned in case the db is being sharded.
+  // Use IDENTITY strategy because `customer.id` is a `bigserial` type; not a sequence.
   @Id
-  @SequenceGenerator(name="customer_id_seq", sequenceName="customer_id_seq", allocationSize=1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_id_seq")  private Long id;
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
   public Long getCustomerId() { return id; }
 
   @Column(length = 15, nullable = false)
@@ -61,14 +63,14 @@ public class Customer extends Model {
     Set<UUID> universes = getUniverseUUIDs();
     universes.add(universeUUID);
     universeUUIDs = Joiner.on(",").join(universes);
-    LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
+    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
   }
 
   public synchronized void removeUniverseUUID(UUID universeUUID) {
     Set<UUID> universes = getUniverseUUIDs();
     universes.remove(universeUUID);
     universeUUIDs = Joiner.on(",").join(universes);
-    LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
+    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
   }
 
   public Set<UUID> getUniverseUUIDs() {
@@ -158,5 +160,10 @@ public class Customer extends Model {
       deepMerge(features, input);
     }
     save();
+  }
+
+  @JsonIgnore
+  public String getTag() {
+    return String.format("[%s][%s]", name, code);
   }
 }

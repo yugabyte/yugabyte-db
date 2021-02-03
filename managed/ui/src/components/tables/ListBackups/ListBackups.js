@@ -408,7 +408,7 @@ export default class ListBackups extends Component {
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
                     <TableAction
-                      disabled={currentUniverse.universeDetails.backupInProgress}
+                      disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
                       className="table-action"
                       btnClass="btn-orange"
                       actionType="create-backup"

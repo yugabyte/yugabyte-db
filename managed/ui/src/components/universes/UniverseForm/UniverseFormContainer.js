@@ -12,6 +12,7 @@ import {
   getInstanceTypeList,
   getRegionList,
   getRegionListResponse,
+  getInstanceTypeListLoading,
   getInstanceTypeListResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
@@ -123,8 +124,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider)).then((response) => {
+    getInstanceTypeListItems: (provider, zones) => {
+      dispatch(getInstanceTypeListLoading());
+      dispatch(getInstanceTypeList(provider, zones)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
@@ -208,6 +210,7 @@ const formFieldNames = [
   'primary.enableClientToNodeEncrypt',
   'primary.enableEncryptionAtRest',
   'primary.selectEncryptionAtRestConfig',
+  'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
   'async.universeName',
@@ -234,7 +237,7 @@ const formFieldNames = [
 
 function getFormData(currentUniverse, formType, clusterType) {
   const {
-    universeDetails: { clusters, encryptionAtRestConfig }
+    universeDetails: { clusters, encryptionAtRestConfig, rootCA }
   } = currentUniverse.data;
   const cluster = getClusterByType(clusters, clusterType);
   const data = {};
@@ -276,6 +279,7 @@ function getFormData(currentUniverse, formType, clusterType) {
       return { name: key, value: userIntent.instanceTags[key] };
     });
 
+    data[clusterType].tlsCertificateId = rootCA;
     if (encryptionAtRestConfig) {
       data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
       data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;
@@ -298,7 +302,7 @@ function mapStateToProps(state, ownProps) {
       instanceType: 'c5.large',
       accessKeyCode: 'yugabyte-default',
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
       enableYEDIS: false,
@@ -313,7 +317,7 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
       enableYEDIS: false,

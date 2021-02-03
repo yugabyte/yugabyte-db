@@ -18,6 +18,12 @@
 #include "yb/common/ql_expr.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/pg_expr.h"
+
+// This file comes from this directory:
+// postgres_build/src/include/catalog
+// added as a special include path to CMakeLists.txt
+#include "pg_type_d.h" // NOLINT
 
 using yb::pggate::PgValueFromPB;
 using yb::pggate::PgValueToPB;
@@ -151,6 +157,49 @@ Status DocPgEvalExpr(const std::string& expr_str,
   return s;
 }
 
+Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
+                                         vector<QLValuePB> *const ql_value_vec) {
+  PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
+
+  RETURN_NOT_OK(ExtractVectorFromQLBinaryValueHelper(
+      ql_value,
+      TEXTARRAYOID,
+      TEXTOID,
+      ql_value_vec));
+  PG_RETURN_NOT_OK(YbgResetMemoryContext());
+  return Status::OK();
+}
+
+// This function expects that YbgPrepareMemoryContext was called by the caller of this function.
+Status ExtractVectorFromQLBinaryValueHelper(
+  const QLValuePB& ql_value,
+  const int array_type,
+  const int elem_type,
+  vector<QLValuePB> *const result) {
+
+  const uint64_t size = ql_value.binary_value().size();
+  char *val = const_cast<char *>(ql_value.binary_value().c_str());
+
+  YbgTypeDesc pg_arg_type {array_type, -1 /* typmod */};
+  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+  YBCPgTypeAttrs type_attrs {-1 /* typmod */};
+  uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
+
+  uint64_t *datum_elements;
+  int num_elems = 0;
+  PG_RETURN_NOT_OK(YbgSplitArrayDatum(datum, elem_type, &datum_elements, &num_elems));
+  YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
+  const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
+  VLOG(4) << "Number of parsed elements: " << num_elems;
+  for (int i = 0; i < num_elems; ++i) {
+    QLValuePB ql_val;
+    pggate::PgConstant value(elem_arg_type, datum_elements[i], false /* isNull */);
+    RETURN_NOT_OK(value.Eval(&ql_val));
+    VLOG(4) << "Parsed value: " << ql_val.string_value();
+    result->emplace_back(std::move(ql_val));
+  }
+  return Status::OK();
+}
 
 }  // namespace docdb
 }  // namespace yb

@@ -156,6 +156,12 @@ public class NodeManager extends DevopsBase {
             subCommand.add(customSecurityGroupId);
           }
       }
+
+      if (params instanceof AnsibleDestroyServer.Params &&
+          userIntent.providerType.equals(Common.CloudType.onprem)) {
+        subCommand.add("--install_node_exporter");
+      }
+
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
@@ -325,8 +331,10 @@ public class NodeManager extends DevopsBase {
             taskParam.allowInsecure ? "true" : "false"
           );
           String yb_home_dir = taskParam.getProvider().getYbHome();
-          // TODO: This directory location should also be passed into subcommand: --certs_node_dir
+
           extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+          subcommand.add("--certs_node_dir");
+          subcommand.add(yb_home_dir + "/yugabyte-tls-config");
 
           if (cert.certType == CertificateInfo.Type.SelfSigned) {
             subcommand.add("--rootCA_cert");
@@ -442,12 +450,45 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      case Certs:
+        {
+          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+          if (cert == null) {
+            throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+          }
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
+            throw new RuntimeException("Self signed certs cannot be rotated.");
+          }
+          String processType = taskParam.getProperty("processType");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else {
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
+          }
+          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+          subcommand.add("--use_custom_certs");
+          subcommand.add("--rotating_certs");
+          subcommand.add("--root_cert_path");
+          subcommand.add(customCertInfo.rootCertPath);
+          subcommand.add("--node_cert_path");
+          subcommand.add(customCertInfo.nodeCertPath);
+          subcommand.add("--node_key_path");
+          subcommand.add(customCertInfo.nodeKeyPath);
+          if (customCertInfo.clientCertPath != null) {
+            subcommand.add("--client_cert_path");
+            subcommand.add(customCertInfo.clientCertPath);
+            subcommand.add("--client_key_path");
+            subcommand.add(customCertInfo.clientKeyPath);
+          }
+        }
+        break;
     }
     return subcommand;
   }
 
-  public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
-                                                       NodeTaskParams nodeTaskParam) throws RuntimeException {
+  public ShellResponse nodeCommand(NodeCommandType type,
+                                   NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     switch (type) {

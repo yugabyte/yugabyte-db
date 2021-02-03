@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -137,10 +138,15 @@ public abstract class CommissionerBaseTest extends WithApplication {
   }
 
   public void mockWaits(YBClient mockClient) {
+    mockWaits(mockClient, 1);
+  }
+
+  public void mockWaits(YBClient mockClient, int version) {
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       // PlacementUtil mock.
-      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
+      Master.SysClusterConfigEntryPB.Builder configBuilder =
+        Master.SysClusterConfigEntryPB.newBuilder().setVersion(version);
       GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
     } catch (Exception e) {

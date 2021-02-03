@@ -70,18 +70,45 @@ class SecureContext {
   EVP_PKEY* private_key() const { return pkey_.get(); }
   X509* certificate() const { return certificate_.get(); }
 
+  void set_require_client_certificate(bool value) {
+    require_client_certificate_ = value;
+  }
+
+  bool require_client_certificate() const {
+    return require_client_certificate_;
+  }
+
+  void set_use_client_certificate(bool value) {
+    use_client_certificate_ = value;
+  }
+
+  bool use_client_certificate() const {
+    return use_client_certificate_;
+  }
+
+  void set_required_uid(const std::string& value) {
+    required_uid_ = value;
+  }
+
+  const std::string& required_uid() const {
+    return required_uid_;
+  }
+
  private:
   CHECKED_STATUS AddCertificateAuthority(X509* cert);
 
   detail::SSL_CTXPtr context_;
   detail::EVP_PKEYPtr pkey_;
   detail::X509Ptr certificate_;
+  bool require_client_certificate_ = false;
+  bool use_client_certificate_ = false;
+  std::string required_uid_;
 };
 
 const Protocol* SecureStreamProtocol();
 StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
-    SecureContext* context);
+    const SecureContext* context);
 
 } // namespace rpc
 } // namespace yb

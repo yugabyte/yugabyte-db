@@ -3,15 +3,12 @@ title: Deploy on Azure Kubernetes Service (AKS) using StatefulSet YAML
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use StatefulSet YAML to deploy a single-zone Kubernetes cluster on Azure Kubernetes Service (AKS).
-block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-2
     weight: 624
-aliases:
-  - /stable/deploy/kubernetes/aks/statefulset-yaml
 type: page
 isTocNested: true
 showAsideToc: true
@@ -20,13 +17,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
@@ -94,7 +91,7 @@ aks-nodepool1-25019584-2   Ready     agent     4h        v1.7.9
 Create a YugabyteDB cluster by running the following.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ curl -s "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml" | sed "s/storageClassName: standard/storageClassName: default/g" | kubectl create -f -
 ```
 
 ```

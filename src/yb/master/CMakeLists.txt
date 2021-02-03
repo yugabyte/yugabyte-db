@@ -56,6 +56,8 @@ set(MASTER_PROTO_LIBS
   master_proto
   ${MASTER_PROTO_LIBS_EXTENSIONS})
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
@@ -110,8 +112,7 @@ set(MASTER_SRCS
   ysql_transaction_ddl.cc
   ${MASTER_SRCS_EXTENSIONS})
 
-add_library(master ${MASTER_SRCS})
-target_link_libraries(master
+set(MASTER_DEPS
   yb_common
   tablet
   server_common
@@ -125,7 +126,14 @@ target_link_libraries(master
   rpc_header_proto
   master_util
   version_info_proto
-  yb_pggate_flags)
+  yb_pggate_flags
+  yb_pggate
+)
+
+ADD_YB_LIBRARY(master
+  SRCS ${MASTER_SRCS}
+  DEPS ${MASTER_DEPS}
+  NONLINK_DEPS postgres)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)

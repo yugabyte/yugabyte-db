@@ -23,6 +23,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -51,6 +52,7 @@ import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -398,9 +400,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return toPgConnection(connection).getBackendPID();
   }
 
-  protected static class AgregatedValue {
+  protected static class AggregatedValue {
     long count;
     double value;
+    long rows;
   }
 
   protected void resetStatementStat() throws Exception {
@@ -413,8 +416,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected AgregatedValue getStatementStat(String statName) throws Exception {
-    AgregatedValue value = new AgregatedValue();
+  protected AggregatedValue getStatementStat(String statName) throws Exception {
+    AggregatedValue value = new AggregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       URL url = new URL(String.format("http://%s:%d/statements",
                                       ts.getLocalhostIP(),
@@ -427,6 +430,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       if (ysqlStat != null) {
         value.count += ysqlStat.calls;
         value.value += ysqlStat.total_time;
+        value.rows += ysqlStat.rows;
       }
       scanner.close();
     }
@@ -502,8 +506,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getRawMetric((ts) -> ts.getPgsqlWebPort());
   }
 
-  protected AgregatedValue getMetric(String metricName) throws Exception {
-    AgregatedValue value = new AgregatedValue();
+  protected AggregatedValue getMetric(String metricName) throws Exception {
+    AggregatedValue value = new AggregatedValue();
     for (JsonArray rawMetric : getRawYSQLMetric()) {
       JsonObject obj = rawMetric.get(0).getAsJsonObject();
       assertEquals(obj.get("type").getAsString(), "server");
@@ -511,6 +515,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
       value.count += metric.count;
       value.value += metric.sum;
+      value.rows += metric.rows;
     }
     return value;
   }
@@ -542,37 +547,111 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getMetric(metricName).count;
   }
 
-  /** Time execution of a query. */
-  protected long verifyStatementMetric(Statement stmt, String sql, String metricName,
-                                       int queryMetricDelta, int txnMetricDelta,
-                                       boolean validStmt) throws Exception {
-    long oldQueryMetricValue = metricName == null ? 0 : getMetricCounter(metricName);
-    long oldTxnMetricValue = getMetricCounter(TRANSACTIONS_METRIC);
+  private interface MetricFetcher {
+    AggregatedValue fetch(String name) throws Exception;
+  }
 
-    final long startTimeMillis = System.currentTimeMillis();
-    if (validStmt) {
-      stmt.execute(sql);
-    } else {
-      runInvalidQuery(stmt, sql, "ERROR");
+  private static abstract class QueryExecutionMetricChecker {
+    private MetricFetcher fetcher;
+    private String metricName;
+    private AggregatedValue oldValue;
+
+    public QueryExecutionMetricChecker(String metricName, MetricFetcher fetcher) {
+      this.fetcher = fetcher;
+      this.metricName = metricName;
     }
 
+    public void beforeQueryExecution() throws Exception {
+      oldValue = fetcher.fetch(metricName);
+    }
+
+    public void afterQueryExecution(String query) throws Exception {
+      check(query, metricName, oldValue, fetcher.fetch(metricName));
+    }
+
+    protected abstract void check(
+      String query, String metricName, AggregatedValue oldValue, AggregatedValue newValue);
+  }
+
+  private class MetricCountChecker extends QueryExecutionMetricChecker {
+    private long countDelta;
+
+    public MetricCountChecker(String name, MetricFetcher fetcher, long countDelta) {
+      super(name, fetcher);
+      this.countDelta = countDelta;
+    }
+
+    @Override
+    public void check(
+      String query, String metric, AggregatedValue oldValue, AggregatedValue newValue) {
+      assertEquals(
+        String.format("'%s' count delta assertion failed for query '%s'", metric, query),
+        countDelta, newValue.count - oldValue.count);
+    }
+  }
+
+  private class MetricRowsChecker extends MetricCountChecker {
+    private long rowsDelta;
+
+    public MetricRowsChecker(String name, MetricFetcher fetcher, long countDelta, long rowsDelta) {
+      super(name, fetcher, countDelta);
+      this.rowsDelta = rowsDelta;
+    }
+
+    @Override
+    public void check(
+      String query, String metric, AggregatedValue oldValue, AggregatedValue newValue) {
+      super.check(query, metric, oldValue, newValue);
+      assertEquals(
+        String.format("'%s' row count delta assertion failed for query '%s'", metric, query),
+        rowsDelta, newValue.rows - oldValue.rows);
+    }
+  }
+
+  /** Time execution of a query. */
+  private long verifyQuery(Statement statement,
+                           String query,
+                           boolean validStmt,
+                           QueryExecutionMetricChecker... checkers) throws Exception {
+    for (QueryExecutionMetricChecker checker : checkers) {
+      checker.beforeQueryExecution();
+    }
+    final long startTimeMillis = System.currentTimeMillis();
+    if (validStmt) {
+      statement.execute(query);
+    } else {
+      runInvalidQuery(statement, query, "ERROR");
+    }
     // Check the elapsed time.
-    long result = System.currentTimeMillis() - startTimeMillis;
-
-    long newValue = metricName == null ? 0 : getMetricCounter(metricName);
-    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
-
-    assertEquals("Metric '" + metricName + "' assertion failed for query '" + sql + "'",
-        oldQueryMetricValue + queryMetricDelta, newValue);
-    assertEquals("Metric '" + TRANSACTIONS_METRIC + "' assertion failed for query '" + sql + "'",
-        oldTxnMetricValue + txnMetricDelta, newTxnValue);
-
+    final long result = System.currentTimeMillis() - startTimeMillis;
+    for (QueryExecutionMetricChecker checker : checkers) {
+      checker.afterQueryExecution(query);
+    }
     return result;
   }
 
-  protected void verifyStatementTxnMetric(Statement statement, String sql,
-                                          int txnMetricDelta) throws Exception {
-    verifyStatementMetric(statement, sql, null, 0, txnMetricDelta, true);
+  /** Time execution of a query. */
+  protected long verifyStatementMetric(
+    Statement statement, String query, String metricName,
+    int queryMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
+    return verifyQuery(
+      statement, query, validStmt,
+      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
+      new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
+  }
+
+  protected void verifyStatementTxnMetric(
+    Statement statement, String query, int txnMetricDelta) throws Exception {
+    verifyQuery(
+      statement, query,true,
+      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta));
+  }
+
+  protected void verifyStatementMetricRows(
+    Statement statement, String query, String metricName,
+    int countDelta, int rowsDelta) throws Exception {
+    verifyQuery(statement, query, true,
+      new MetricRowsChecker(metricName, this::getMetric, countDelta, rowsDelta));
   }
 
   protected void executeWithTimeout(Statement statement, String sql)
@@ -737,6 +816,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     String getString(int index) {
       return (String) elems.get(index);
+    }
+
+    public boolean elementEquals(int idx, Object value) {
+      return compare(elems.get(idx), value) == 0;
     }
 
     @Override
@@ -946,13 +1029,53 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  /** Better alternative to assertEquals, which provides more mismatch details. */
+  protected void assertRows(List<Row> expected, List<Row> actual) {
+    assertEquals("Collection length mismatch: expected " + expected.size()
+        + ", but was ", expected.size(), actual.size());
+    for (int i = 0; i < expected.size(); ++i) {
+      assertRow("Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
+    }
+  }
+
+  /** Better alternative to assertEquals, which provides more mismatch details. */
+  protected void assertRow(String messagePrefix, Row expected, Row actual) {
+    assertEquals(messagePrefix
+        + "Expected row width mismatch: expected:<" + expected.elems.size()
+        + "> but was:<" + actual.elems.size() + ">"
+        + "\nExpected row: " + expected
+        + "\nActual row:   " + actual,
+        expected.elems.size(), actual.elems.size());
+    for (int i = 0; i < expected.elems.size(); ++i) {
+      assertTrue(messagePrefix
+          + "Column " + (i + 1) + " mismatch: expected:<" + expected.elems.get(i)
+          + "> but was:<" + actual.elems.get(i) + ">"
+          + "\nExpected row: " + expected
+          + "\nActual row:   " + actual,
+          expected.elementEquals(i, actual.elems.get(i)));
+    }
+  }
+
+  protected void assertRow(Row expected, Row actual) {
+    assertRow("", expected, actual);
+  }
+
   protected void assertQuery(Statement stmt, String query, Row... expectedRows)
       throws SQLException {
     List<Row> actualRows = getRowList(stmt.executeQuery(query));
     assertEquals(
         "Expected " + expectedRows.length + " rows, got " + actualRows.size() + ": " + actualRows,
         expectedRows.length, actualRows.size());
-    assertArrayEquals(expectedRows, actualRows.toArray(new Row[0]));
+    assertRows(Arrays.asList(expectedRows), actualRows);
+  }
+
+  protected void assertQuery(PreparedStatement stmt, Row... expectedRows)
+      throws SQLException {
+    List<Row> actualRows = getRowList(stmt.executeQuery());
+    assertEquals(
+        "Expected " + expectedRows.length + " rows, got " + actualRows.size() + ": " + actualRows,
+        expectedRows.length, actualRows.size());
+    assertRows(Arrays.asList(expectedRows), actualRows);
   }
 
   protected void assertNoRows(Statement stmt, String query) throws SQLException {
@@ -964,7 +1087,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     assertTrue(rs.next());
     Row expected = new Row(values);
     Row actual = Row.fromResultSet(rs);
-    assertEquals(expected, actual);
+    assertRow(expected, actual);
   }
 
   protected void assertOneRow(Statement statement,
@@ -988,7 +1111,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                String query,
                                List<Row> expectedRows) throws SQLException {
     try (ResultSet rs = statement.executeQuery(query)) {
-      assertEquals(expectedRows, getRowList(rs));
+      assertRows(expectedRows, getRowList(rs));
     }
   }
 
@@ -1152,7 +1275,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Run a query and check row-count. */
-  private void runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
+  public int runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
       throws Exception {
     // Query and check row count.
     int rowCount = 0;
@@ -1167,6 +1290,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     } else {
       LOG.info(String.format("Exec query: row count = %d", rowCount));
     }
+
+    return rowCount;
   }
 
   /** Run a query and check row-count. */
@@ -1363,9 +1488,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  /** Immutable connection builder */
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
+  /** Run a process, returning output lines. */
+  protected List<String> runProcess(String... args) throws Exception {
+    return runProcess(new ProcessBuilder(args));
+  }
+
+  /** Run a process, returning output lines. */
+  protected List<String> runProcess(ProcessBuilder procBuilder) throws Exception {
+    Process proc = procBuilder.start();
+    int code = proc.waitFor();
+    if (code != 0) {
+      String err = IOUtils.toString(proc.getErrorStream(), StandardCharsets.UTF_8);
+      fail("Process exited with code " + code + ", message: <" + err.trim() + ">");
+    }
+    String output = IOUtils.toString(proc.getInputStream(), StandardCharsets.UTF_8);
+    return Arrays.asList(output.split("\n"));
   }
 
   protected HostAndPort getMasterLeaderAddress() {

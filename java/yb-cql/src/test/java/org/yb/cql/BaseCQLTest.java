@@ -52,22 +52,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
-  public static final int TP_NO_FLAGS          = 0;
-  public static final int TP_NON_TRANSACTIONAL = TP_NO_FLAGS;
-  public static final int TP_TRANSACTIONAL     = 1; // bit 0
-  public static final int TP_DIRECT_QUERY      = TP_NO_FLAGS;
-  public static final int TP_PREPARED_QUERY    = 2; // bit 1
-  public class TableProperty {
-    public int flags;
-    public TableProperty() { flags = TP_NO_FLAGS; }
-    public TableProperty(int f) { flags = f; }
-    public Boolean isTransactional() throws Exception {
-      return (flags & TP_TRANSACTIONAL) == TP_TRANSACTIONAL;
-    }
-    public Boolean usePreparedQueries() throws Exception {
-      return (flags & TP_PREPARED_QUERY) == TP_PREPARED_QUERY;
-    }
-  };
 
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
@@ -88,7 +72,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   // CQL and Redis settings.
   protected static boolean startCqlProxy = true;
   protected static boolean startRedisProxy = false;
-  protected static int systemQueryCacheMsecs = 4000;
   protected static boolean systemQueryCacheEmptyResponses = false;
   protected static int cqlClientTimeoutMs = 120 * 1000;
 
@@ -126,12 +109,16 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
   }
 
+  protected int systemQueryCacheMsecs() {
+    return 4000;
+  }
+
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
-    flagMap.put("cql_update_system_query_cache_msecs", Integer.toString(systemQueryCacheMsecs));
+    flagMap.put("cql_update_system_query_cache_msecs", Integer.toString(systemQueryCacheMsecs()));
     flagMap.put("cql_system_query_cache_empty_responses",
         Boolean.toString(systemQueryCacheEmptyResponses));
 

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
@@ -20,6 +21,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.YBClient;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.*;
@@ -37,11 +41,21 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     @InjectMocks
     Commissioner commissioner;
     Universe defaultUniverse;
-    ShellProcessHandler.ShellResponse dummyShellResponse;
+    ShellResponse dummyShellResponse;
+    YBClient mockClient;
 
     @Before
     public void setUp() {
         super.setUp();
+        Master.SysClusterConfigEntryPB.Builder configBuilder =
+          Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+        GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        mockClient = mock(YBClient.class);
+        try {
+          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+        } catch (Exception e) {}
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
         Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
         AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
         // create default universe
@@ -59,7 +73,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         gflags.put("foo", "bar");
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-        dummyShellResponse =  new ShellProcessHandler.ShellResponse();
+        dummyShellResponse =  new ShellResponse();
         dummyShellResponse.message = "true";
         when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     }

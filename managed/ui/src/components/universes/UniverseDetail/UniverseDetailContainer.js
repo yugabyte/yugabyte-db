@@ -10,6 +10,11 @@ import {
   getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../actions/tasks';
 
 import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
 
@@ -66,13 +71,28 @@ const mapDispatchToProps = (dispatch) => {
     showRunSampleAppsModal: () => {
       dispatch(openDialog('runSampleAppsModal'));
     },
+    showTLSConfigurationModal: () => {
+      dispatch(openDialog('tlsConfigurationModal'));
+    },
+    showRollingRestartModal: () => {
+      dispatch(openDialog('rollingRestart'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
-      dispatch(closeUniverseDialog());
     },
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid)).then((response) => {
         dispatch(getHealthCheckResponse(response.payload));
+      });
+    },
+    
+    fetchCustomerTasks: () => {
+      return dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          return dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          return dispatch(fetchCustomerTasksFailure(response.payload));
+        }
       });
     },
     getAlertsList: () => {

@@ -17,6 +17,7 @@ import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -94,6 +95,7 @@ public final class YBBackupUtil {
         "--remote_ysql_dump_binary=" + ysqlDumpPath,
         "--remote_ysql_shell_binary=" + ysqlShellPath,
         "--storage_type", "nfs",
+        "--nfs_storage_path", TestUtils.getBaseTmpDir(),
         "--no_ssh",
         "--no_auto_name"));
 
@@ -151,5 +153,30 @@ public final class YBBackupUtil {
     if (!resultOk) {
       throw new YBBackupException("Backup-restore operation result: " + resultOk);
     }
+  }
+
+  public static String runYbAdmin(String... args) throws Exception {
+    final String ybAdminPath = TestUtils.findBinary("yb-admin");
+    List<String> processCommand = new ArrayList<String>(Arrays.asList(
+        ybAdminPath,
+        "--master_addresses", masterAddresses
+    ));
+
+    processCommand.addAll(Arrays.asList(args));
+    final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
+    LOG.info("yb_backup output: " + output);
+
+    return output;
+  }
+
+  // Returns list of tablet uuids for a given table.
+  public static List<String> getTabletsForTable(String namespace, String tableName)
+      throws Exception {
+    String output = runYbAdmin("list_tablets", namespace, tableName);
+    return Arrays.stream(output.split(System.lineSeparator()))
+                 .filter(line -> !line.startsWith("Tablet-UUID"))
+                 .map(line -> line.split(" ")[0])
+                 .collect(Collectors.toList());
+
   }
 }

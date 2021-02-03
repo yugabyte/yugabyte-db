@@ -60,17 +60,8 @@ First, install [Homebrew](https://brew.sh/), if you do not already have it. Home
 Install the following packages using Homebrew:
 
 ```sh
-brew install autoconf automake bash ccache cmake  \
-             coreutils flex gnu-tar icu4c libtool \
-             maven ninja pkg-config pstree wget \
-             zlib python
-```
-
-An older version of `bison` is required to correctly compile the code. The following command installs the required `3.4.1` version of bison.
-
-```sh
-brew install \
-https://raw.githubusercontent.com/Homebrew/homebrew-core/ee89a1d59df03f495a85c15e253b60299082ab9d/Formula/bison.rb
+brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
+             maven ninja pkg-config pstree wget python
 ```
 
 {{< note title="Note" >}}

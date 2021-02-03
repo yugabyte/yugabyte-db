@@ -455,7 +455,8 @@ void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
 						   Datum ybctid,
-						   bool is_backfill)
+						   bool is_backfill,
+						   uint64_t *write_time)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
@@ -488,6 +489,7 @@ void YBCExecuteInsertIndex(Relation index,
 
 	if (is_backfill)
 	{
+		Assert(write_time);
 		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
 													true /* is_backfill */));
 		/*
@@ -495,9 +497,8 @@ void YBCExecuteInsertIndex(Relation index,
 		 * This is to guarantee that backfilled writes are temporally before
 		 * any online writes.
 		 */
-		/* TODO(jason): don't hard-code 50 (issue #6208). */
 		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt,
-												   50 /* write_time */));
+												   *write_time));
 	}
 
 	/* Execute the insert and clean up. */
@@ -578,6 +579,20 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	                      ybctid, false /* ybctid_as_value */);
 
 	YBCForeignKeyReferenceCacheDeleteIndex(index, values, isnull);
+
+	/*
+	 * If index backfill hasn't finished yet, deletes to the index should be
+	 * persisted.  Normally, deletes aren't persisted when they can be
+	 * optimized out, but that breaks correctness if there's a pending
+	 * backfill.
+	 * TODO(jason): consider issue #6812.  We may be able to avoid persisting
+	 * deletes when indisready is false.
+	 * TODO(jason): consider how this will unnecessarily cause deletes to be
+	 * persisted when online dropping an index (issue #4936).
+	 */
+	if (!YBCGetDisableIndexBackfill() && !index->rd_index->indisvalid)
+		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
+														 true));
 
 	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
 }

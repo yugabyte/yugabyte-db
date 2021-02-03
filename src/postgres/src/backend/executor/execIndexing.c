@@ -277,6 +277,20 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 					  bool *specConflict,
 					  List *arbiterIndexes)
 {
+	return ExecInsertIndexTuplesOptimized(
+	    slot, tuple, estate, noDupErr, specConflict,
+	    arbiterIndexes, NIL /* no_update_index_list */);
+}
+
+List *
+ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
+                               HeapTuple tuple,
+                               EState *estate,
+                               bool noDupErr,
+                               bool *specConflict,
+                               List *arbiterIndexes,
+                               List *no_update_index_list)
+{
 	List	   *result = NIL;
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -319,8 +333,13 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 		IndexUniqueCheck checkUnique;
 		bool		satisfiesConstraint;
 
-		if (indexRelation == NULL)
-			continue;
+		/*
+		 * For an update command check if we need to skip index. For that purpose,
+		 * we check if the relid of the index is part of the skip list.
+		 */
+		if (indexRelation == NULL || (no_update_index_list &&
+		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
+		continue;
 
 		indexInfo = indexInfoArray[i];
 		Assert(indexInfo->ii_ReadyForInserts ==
@@ -483,6 +502,15 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 void
 ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 {
+  ExecDeleteIndexTuplesOptimized(ybctid, tuple, estate, NIL /* no_update_index_list */);
+}
+
+void
+ExecDeleteIndexTuplesOptimized(Datum ybctid,
+                               HeapTuple tuple,
+                               EState *estate,
+                               List *no_update_index_list)
+{
 	ResultRelInfo *resultRelInfo;
 	int			i;
 	int			numIndices;
@@ -528,8 +556,13 @@ ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
 
-		if (indexRelation == NULL)
-			continue;
+		/*
+		 * For an update command check if we need to skip index.
+		 * For that purpose, we check if the relid of the index is part of the skip list.
+		 */
+		if (indexRelation == NULL || (no_update_index_list &&
+		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
+		  continue;
 
 		/*
 		 * No need to update YugaByte primary key which is intrinic part of

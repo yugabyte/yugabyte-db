@@ -3,15 +3,12 @@ title: Build a Scala application that uses YCQL
 headerTitle: Build a Scala application
 linkTitle: Scala
 description: Build a Scala application with the Yugabyte Java Driver for YCQL and sbt dependency.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Scala
     identifier: scala-1
     weight: 558
-aliases:
-  - /stable/quick-start/build-apps/scala/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -19,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/stable/quick-start/build-apps/scala/ycql" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/scala/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

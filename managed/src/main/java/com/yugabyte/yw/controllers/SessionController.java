@@ -20,9 +20,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
@@ -362,7 +360,7 @@ public class SessionController extends Controller {
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
     String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = System.getProperty("log.override.path", String.format("%s/logs", appHomeDir));
+    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
@@ -390,6 +388,7 @@ public class SessionController extends Controller {
     }
   }
 
+  @With(TokenAuthenticator.class)
   public Result proxyRequest(UUID universeUUID, String requestUrl) {
     try {
       // Validate that the request is of <ip/hostname>:<port> format

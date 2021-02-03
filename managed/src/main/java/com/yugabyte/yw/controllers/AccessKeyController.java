@@ -90,6 +90,12 @@ public class AccessKeyController extends AuthenticatedController {
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
     AccessKey accessKey;
+
+    LOG.info(
+      "Creating access key {} for customer {}, provider {}.",
+      keyCode, customerUUID, providerUUID
+    );
+
     // Check if a public/private key was uploaded as part of the request
     Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
     try {
@@ -149,6 +155,11 @@ public class AccessKeyController extends AuthenticatedController {
     if (accessKey == null) {
       return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
     }
+
+    LOG.info(
+      "Deleting access key {} for customer {}, provider {}",
+      keyCode, customerUUID, providerUUID
+    );
 
     if (accessKey.delete()) {
       Audit.createAuditEntry(ctx(), request());

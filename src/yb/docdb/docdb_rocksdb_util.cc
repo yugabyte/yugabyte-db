@@ -35,6 +35,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -99,6 +100,9 @@ DEFINE_bool(use_docdb_aware_bloom_filter, true,
 DEFINE_int32(max_nexts_to_avoid_seek, 2,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
+TAG_FLAG(trace_docdb_calls, advanced);
+TAG_FLAG(trace_docdb_calls, runtime);
+
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
@@ -632,7 +636,9 @@ class RocksDBPatcher::Impl {
       if (!file.largest.user_frontier) {
         return;
       }
-      if (down_cast<ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time() <= value) {
+      auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
+      if (consensus_frontier.hybrid_time() <= value ||
+          consensus_frontier.hybrid_time_filter() <= value) {
         return;
       }
       rocksdb::FileMetaData fmd = file;
@@ -707,30 +713,7 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
   return impl_->ModifyFlushedFrontier(frontier);
 }
 
-bool HasPendingCompaction(rocksdb::DB* db) {
-  uint64_t compaction_pending = 0;
-  db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
-  return compaction_pending > 0;
-}
-
-bool HasRunningCompaction(rocksdb::DB* db) {
-  uint64_t running_compactions = 0;
-  db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
-  return running_compactions > 0;
-}
-
-void ForceRocksDBCompact(rocksdb::DB* db) {
-  auto s = ForceFullRocksDBCompactAsync(db);
-  if (s.ok()) {
-    while (HasPendingCompaction(db) || HasRunningCompaction(db)) {
-      std::this_thread::sleep_for(10ms);
-    }
-  } else {
-    LOG(WARNING) << s;
-  }
-}
-
-Status ForceFullRocksDBCompactAsync(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");

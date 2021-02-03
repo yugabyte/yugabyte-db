@@ -60,6 +60,7 @@
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -128,6 +129,11 @@ static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.
 using PlacementId = std::string;
 
 typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+
+typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
+  TablespaceIdToReplicationInfoMap;
+
+typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
 // Component within the catalog manager which tracks blacklist (decommission) operation
 // related information.
@@ -288,6 +294,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
 
+  // Get the information about the specified colocated databsae.
+  CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
+                                          GetColocatedTabletSchemaResponsePB* resp);
+
   // List all the running tables.
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
                             ListTablesResponsePB* resp);
@@ -295,13 +305,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
                                    GetTableLocationsResponsePB* resp);
 
+  // Lookup tablet by ID, then call GetTabletLocations below.
+  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb);
+
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
   // If the tablet is not found, returns Status::NotFound.
   // If the tablet is not running, returns Status::ServiceUnavailable.
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
-  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
+  CHECKED_STATUS GetTabletLocations(scoped_refptr<TabletInfo> tablet_info,
                                     TabletLocationsPB* locs_pb);
 
   // Returns the system tablet in catalog manager by the id.
@@ -449,6 +462,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(lock_);
 
   // Get Table info given namespace id and table name.
+  // Does not work for YSQL tables because of possible ambiguity.
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
       YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
@@ -493,6 +507,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table id from a table created for colocated database?
+  bool IsColocatedParentTableId(const TableId& table_id) const;
 
   // Is the table a table created for colocated database?
   bool IsColocatedParentTable(const TableInfo& table) const;
@@ -720,7 +737,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   MonoDelta TimeSinceElectedLeader();
 
   Result<std::vector<TableDescription>> CollectTables(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, bool add_indexes);
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table = false);
+
+  // Returns 'table_replication_info' itself if set. Else looks up placement info for its
+  // 'tablespace_id'. If neither is set, returns the cluster level replication info.
+  Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const ReplicationInfoPB& table_replication_info,
+      const TablespaceId& tablespace_id);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -912,7 +937,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
       const consensus::ConsensusStatePB& consensus_state,
-      const tablet::RaftGroupStatePB& replica_state);
+      const ReportedTabletPB& report);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -921,12 +946,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // TODO: See if we can remove this logic, as it seems confusing.
   void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                         const consensus::ConsensusStatePB* consensus_state,
-                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const ReportedTabletPB& report,
                                         const scoped_refptr<TabletInfo>& tablet_to_update);
 
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
-                                             const tablet::RaftGroupStatePB& replica_state,
+                                             const ReportedTabletPB& report,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -1014,7 +1039,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   void SendSplitTabletRequest(
-      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
   // Send the "truncate table request" to all tablets of the specified table.
@@ -1040,7 +1065,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1102,15 +1127,34 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
-  // replication info.
-  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+  // Return the tablespace information to caller.
+  void GetTablespaceInfo(
+      std::shared_ptr<TablespaceIdToReplicationInfoMap>* out_tablespace_placement_map,
+      std::shared_ptr<TableToTablespaceIdMap>* out_table_to_tablespace_map);
+
+  // Given 'tablespace_id' return the replication info associated with it.
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
+      const TablespaceId& tablespace_id);
 
   // Returns whether 'replication_info' has any relevant fields set.
   bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
 
   // Validates that 'replication_info' for a table has supported fields set.
   CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+
+  // Return the tablespaces in the system and their associated replication info from
+  // pg catalog tables.
+  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
+
+  // Starts the periodic job to update tablespace info if it is not running.
+  void StartRefreshYSQLTablePlacementInfo();
+
+  // Background task that refreshes the in-memory state for YSQL tables with their associated
+  // tablespace info.
+  void RefreshYSQLTablePlacementInfo();
+
+  // Helper function to refresh tablespace_placement_map_ and table_to_tablespace_map_.
+  void DoRefreshYSQLTablePlacementInfo();
 
   // Report metrics.
   void ReportMetrics();
@@ -1125,6 +1169,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Used on normal master startup or when master comes out of the shell mode.
   CHECKED_STATUS EnableBgTasks();
 
+  // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
+  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet);
+  // Background task for automatically rebuilding system.partitions every
+  // partitions_vtable_cache_refresh_secs seconds.
+  void RebuildYQLSystemPartitions();
+
   // Set the current list of black listed nodes, which is used to track the load movement off of
   // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
   // when the blacklist load removal operation was started. It permits overwrite semantics
@@ -1136,7 +1186,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
   Result<TabletInfo*> RegisterNewTabletForSplit(
-      const TabletInfo& source_tablet_info, const PartitionPB& partition);
+      TabletInfo* source_tablet_info, const PartitionPB& partition,
+      TableInfo::lock_type* table_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
@@ -1195,6 +1246,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Table map: [namespace-id, table-name] -> TableInfo
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
+  // Note that this map isn't used for YSQL tables.
   TableInfoByNameMap table_names_map_ GUARDED_BY(lock_);
 
   // Tablet maps: tablet-id -> TabletInfo
@@ -1345,6 +1397,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
 
+  // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
+  std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
+
   // Handles querying and processing YSQL DDL Transactions as a catalog manager background task.
   YsqlTransactionDdl ysql_transaction_;
 
@@ -1353,11 +1408,33 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
+  mutable LockType tablespace_lock_;
+
+  // The following shared_ptrs are periodically updated by a background task that
+  // reads tablespace information from the PG catalog tables. The task creates a new map,
+  // populates it with the information read from the catalog tables and updates these
+  // shared_ptrs. The maps themselves are thus never updated (no inserts/deletes/updates)
+  // once populated and are garbage collected once all references to them go out of scope.
+  // No clients are expected to update these maps, they take a lock merely to copy the
+  // shared_ptr and read from it.
+  std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map_
+    GUARDED_BY(tablespace_lock_);
+
+  // Map to provide the tablespace associated with a given table.
+  std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_lock_);
+
+  // Whether the periodic job to update tablespace info is running.
+  std::atomic<bool> tablespace_info_task_running_;
+
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
+
+  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

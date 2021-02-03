@@ -270,7 +270,7 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
 
-std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id);
 
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
@@ -284,6 +284,8 @@ CHECKED_STATUS WaitUntilTabletHasLeader(
 CHECKED_STATUS WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
+
+CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
 
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 

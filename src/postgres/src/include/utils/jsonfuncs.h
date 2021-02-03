@@ -55,4 +55,12 @@ extern Jsonb *transform_jsonb_string_values(Jsonb *jsonb, void *action_state,
 extern text *transform_json_string_values(text *json, void *action_state,
 										  JsonTransformStringValuesAction transform_action);
 
+/* JSON text manipulation functions */
+extern text *get_json_array_element(text *json, int index);
+
+extern int get_json_array_length(text *json);
+
+extern text *json_get_value(text *json, char *key);
+
+extern void validate_json_object_keys(text *json, char **expected_keys, int num_expected_keys);
 #endif

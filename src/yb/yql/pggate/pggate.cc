@@ -46,6 +46,7 @@
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb {
 namespace pggate {
@@ -79,7 +80,9 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
   if (FLAGS_use_node_to_node_encryption) {
-    secure_context = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir));
+    secure_context = VERIFY_RESULT(server::CreateSecureContext(
+        FLAGS_certs_dir,
+        server::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
   }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
@@ -562,15 +565,14 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
 }
 
 Status PgApiImpl::AlterTableAddColumn(PgStatement *handle, const char *name,
-                                      int order, const YBCPgTypeEntity *attr_type,
-                                      bool is_not_null) {
+                                      int order, const YBCPgTypeEntity *attr_type) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
-  return pg_stmt->AddColumn(name, attr_type, order, is_not_null);
+  return pg_stmt->AddColumn(name, attr_type, order);
 }
 
 Status PgApiImpl::AlterTableRenameColumn(PgStatement *handle, const char *oldname,
@@ -1052,6 +1054,15 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
+Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDelete*>(handle)->SetIsPersistNeeded(is_persist_needed);
+  return Status::OK();
+}
+
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
@@ -1232,6 +1243,10 @@ Result<bool> PgApiImpl::IsInitDbDone() {
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
+}
+
+Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
+  return pg_session_->GetSharedAuthKey();
 }
 
 // Transaction Control -----------------------------------------------------------------------------

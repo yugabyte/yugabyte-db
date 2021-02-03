@@ -84,6 +84,8 @@ class AzureCloud(AbstractCloud):
         vmName = args.search_pattern
         region = args.region
         zone = args.zone.split('-')[-1]  # last character of zone (eastus-1) relevant for template
+        logging.info("[app] About to create Azure VM {} in {}/{}.".format(vmName, region, zone))
+
         subnet = args.cloud_subnet
         numVolumes = args.num_volumes
         volSize = args.volume_size
@@ -99,6 +101,7 @@ class AzureCloud(AbstractCloud):
         self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
                                    instanceType, adminSSH, image, nsg, pub, offer,
                                    sku, volType, args.type, region, nicId)
+        logging.info("[app] Created Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -119,7 +122,7 @@ class AzureCloud(AbstractCloud):
         return self.metadata["regions"][region]["image"]
 
     def get_regions(self):
-        return self.metadata.get("regions", {}).keys()
+        return list(self.metadata.get("regions", {}).keys())
 
     def get_zones(self, args):
         result = {}

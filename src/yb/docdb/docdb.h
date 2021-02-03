@@ -139,6 +139,25 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     HybridTime* restart_read_ht,
     const std::string& table_name);
 
+struct ExternalTxnApplyStateData {
+  HybridTime commit_ht;
+  IntraTxnWriteId write_id = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+  }
+};
+
+using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
+
+void AddPairToWriteBatch(
+    const KeyValuePairPB& kv_pair,
+    HybridTime hybrid_time,
+    int write_id,
+    ExternalTxnApplyState* apply_external_transactions,
+    rocksdb::WriteBatch* regular_write_batch,
+    rocksdb::WriteBatch* intents_write_batch);
+
 // Prepares non transaction write batch.
 // Batch could contain intents for external transactions, in this case those intents
 // will be added to intents_write_batch.
@@ -243,6 +262,8 @@ class ExternalIntentsProvider {
 
   // Get next external intent, returns false when there are no more intents.
   virtual boost::optional<std::pair<Slice, Slice>> Next() = 0;
+
+  virtual const Uuid& InvolvedTablet() = 0;
 
   virtual ~ExternalIntentsProvider() = default;
 };

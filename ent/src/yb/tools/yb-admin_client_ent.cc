@@ -19,6 +19,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
@@ -31,6 +32,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/encryption_util.h"
 
@@ -379,23 +381,27 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                                table_index);
         }
 
+        const auto colocated_prefix = meta.colocated() ? "colocated " : "";
+
         if (meta.indexed_table_id().empty()) {
-          cout << "Table type: table" << endl;
+          cout << "Table type: " << colocated_prefix << "table" << endl;
         } else {
-          cout << "Table type: index (attaching to the old table id "
+          cout << "Table type: " << colocated_prefix << "index (attaching to the old table id "
                << meta.indexed_table_id() << ")" << endl;
         }
 
         if (!table_name.empty()) {
           DCHECK(table_name.has_namespace());
           DCHECK(table_name.has_table());
-          cout << "Target imported table name: " << table_name.ToString() << endl;
+          cout << "Target imported " << colocated_prefix << "table name: "
+               << table_name.ToString() << endl;
         } else if (!keyspace.name.empty()) {
-          cout << "Target imported table name: " << keyspace.name << "."
-               << orig_table_name.table_name() << endl;
+          cout << "Target imported " << colocated_prefix << "table name: "
+               << keyspace.name << "." << orig_table_name.table_name() << endl;
         }
 
-        cout << "Table being imported: " << orig_table_name.ToString() << endl;
+        cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
+             << orig_table_name.ToString() << endl;
         ++table_index;
         orig_table_name = YBTableName();
         break;
@@ -436,7 +442,13 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
          << table_meta.namespace_ids().old_id() << kColumnSep
          << table_meta.namespace_ids().new_id() << endl;
 
-    cout << pad_object_type("Table") << kColumnSep
+    if (!ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type())) {
+      return STATUS_FORMAT(InternalError, "Found unknown table type: ", table_meta.table_type());
+    }
+
+    const string table_type =
+        AllCapsToCamelCase(ImportSnapshotMetaResponsePB_TableType_Name(table_meta.table_type()));
+    cout << pad_object_type(table_type) << kColumnSep
          << table_meta.table_ids().old_id() << kColumnSep
          << new_table_id << endl;
 

@@ -43,6 +43,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -57,6 +58,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -265,9 +267,15 @@ Status MiniCluster::RestartSync() {
   }
   LOG(INFO) << "Restart master server(s)...";
   for (auto& master_server : mini_masters_) {
+    LOG(INFO) << "Restarting master " << master_server->permanent_uuid();
+    LongOperationTracker long_operation_tracker("Master restart", 5s);
     CHECK_OK(master_server->Restart());
+    LOG(INFO) << "Waiting for catalog manager at " << master_server->permanent_uuid();
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
+  LOG(INFO) << string(80, '-');
+  LOG(INFO) << __FUNCTION__ << " done";
+  LOG(INFO) << string(80, '-');
 
   RETURN_NOT_OK_PREPEND(WaitForAllTabletServers(),
                         "Waiting for tablet servers to start");
@@ -445,6 +453,7 @@ Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kTabletReportWaitTimeSeconds) {
+    locations->Clear();
     Status s =
         leader_mini_master()->master()->catalog_manager()->GetTabletLocations(tablet_id, locations);
     if (s.ok() && ((locations->stale() && expected_count == 0) ||
@@ -559,7 +568,8 @@ std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     auto* tserver = cluster->mini_tablet_server(i)->server();
     auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
     delta_changers.emplace_back(
-        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock()));
+        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(
+            hybrid_clock->physical_clock()));
   }
   return delta_changers;
 }
@@ -639,7 +649,7 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   return result;
 }
 
-std::vector<tablet::TabletPeerPtr> ListTableTabletLeadersPeers(
+std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const auto& peer) {
     return peer->tablet_metadata() &&
@@ -690,6 +700,18 @@ Status WaitUntilTabletHasLeader(
     });
     return tablet_peers.size() == 1;
   }, deadline, "Waiting for election in tablet " + tablet_id);
+}
+
+CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitFor([cluster] {
+    for (int i = 0; i != cluster->num_masters(); ++i) {
+      auto* sys_catalog = cluster->mini_master(i)->master()->catalog_manager()->sys_catalog();
+      if (sys_catalog->tablet_peer()->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        return true;
+      }
+    }
+    return false;
+  }, timeout, "Waiting for master leader");
 }
 
 Status WaitForLeaderOfSingleTablet(
@@ -818,11 +840,11 @@ Status WaitForInitDb(MiniCluster* cluster) {
       LOG(INFO) << "IsInitDbDone failure: " << status;
       continue;
     }
-    if (resp.done()) {
-      return Status::OK();
-    }
     if (resp.has_initdb_error()) {
       return STATUS_FORMAT(RuntimeError, "Init DB failed: $0", resp.initdb_error());
+    }
+    if (resp.done()) {
+      return Status::OK();
     }
     std::this_thread::sleep_for(500ms);
   }

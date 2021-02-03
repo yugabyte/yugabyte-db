@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,11 +55,11 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.removeNode(nodeName);
-        LOG.info("Removed node " + nodeName + " from universe " + taskParams().universeUUID);
+        LOG.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
       }
     };
 
-    Universe.saveDetails(taskParams().universeUUID, updater);
+    saveUniverseDetails(updater);
   }
 
   @Override
@@ -67,12 +68,15 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
-      ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+      ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.Destroy, taskParams());
-      logShellResponse(response);
+      processShellResponse(response);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
+      } else {
+        LOG.debug("Ignoring error deleting {} due to isForceDelete being set.",
+                  taskParams().nodeName, e);
       }
     }
 

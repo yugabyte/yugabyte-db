@@ -2,14 +2,10 @@
 title: CREATEDB
 linkTitle: CREATEDB
 description: CREATEDB
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2032
-aliases:
-  - /stable/api/redis/createdb
-  - /stable/api/yedis/createdb
 isTocNested: true
 showAsideToc: true
 ---

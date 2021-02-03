@@ -4,8 +4,12 @@ import React, { Component, Fragment } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
+import {
+  getPrimaryCluster,
+  getProxyNodeAddress,
+  getReadOnlyCluster
+} from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
@@ -26,14 +30,7 @@ export default class NodeDetailsTable extends Component {
         return <span>{cell}</span>;
       }
       const isMaster = type === 'master';
-      let href = '';
-
-      if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
-        href = 'http://' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort);
-      } else {
-        href = '/universes/' + universeUUID + '/proxy/' + row.privateIP + ':' + (isMaster ? row.masterPort : row.tserverPort) + '/';
-      }
-
+      const href = getProxyNodeAddress(universeUUID, customer, row.privateIP, isMaster ? row.masterPort : row.tserverPort);
       if (row.nodeAlive) {
         return (
           <div>
@@ -160,12 +157,21 @@ export default class NodeDetailsTable extends Component {
           row.allowedActions.splice(index, 1);
         }
       }
+
+      // get universe provider type to disable STOP and REMOVE actions for kubernetes pods (GH #6084)
+      const cluster = clusterType === 'primary'
+        ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
+        : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
+      const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
+
       return (
         <NodeAction
           currentRow={row}
           providerUUID={providerUUID}
-          disableConnect={hideIP}
-          disableQueries={hideQueries}
+          disableStop={isKubernetes}
+          disableRemove={isKubernetes}
+          hideConnect={hideIP}
+          hideQueries={hideQueries}
           disabled={actions_disabled}
         />
       );

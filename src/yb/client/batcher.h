@@ -81,8 +81,8 @@ YB_DEFINE_ENUM(
     (kTransactionPrepare) // Preparing associated transaction for flushing operations of this
                           // batcher, for instance it picks status tablet and fills
                           // transaction metadata for this batcher.
-                          // When there is no associated transaction move to the next state
-                          // immediately.
+                          // When there is no associated transaction or no operations moves to the
+                          // next state immediately.
     (kTransactionReady)   // Transaction is ready, sending operations to appropriate tablets and
                           // wait for response. When there is no transaction - we still sending
                           // operations marking transaction as auto ready.
@@ -260,6 +260,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // initial - whether this method is called first time for this batch.
   void ExecuteOperations(Initial initial);
 
+  BatcherState state() const;
+
   // See note about lock ordering in batcher.cc
   mutable simple_spinlock mutex_;
 
@@ -283,7 +285,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during Finished of AsyncRpc.
-  std::unordered_set<InFlightOpPtr> ops_;
+  std::unordered_set<InFlightOpPtr> ops_ GUARDED_BY(mutex_);
   InFlightOps ops_queue_;
   InFlightOpsGroupsWithMetadata ops_info_;
 

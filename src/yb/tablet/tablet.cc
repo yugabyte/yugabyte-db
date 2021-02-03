@@ -127,7 +127,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_quote.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
@@ -218,6 +218,9 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
+
+DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+                 "Pause before triggering post split compaction.");
 
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -810,6 +813,9 @@ void Tablet::CleanupIntentFiles() {
 }
 
 void Tablet::DoCleanupIntentFiles() {
+  if (metadata_->is_under_twodc_replication()) {
+    return;
+  }
   HybridTime best_file_max_ht = HybridTime::kMax;
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
@@ -928,6 +934,10 @@ bool Tablet::StartShutdown() {
     transaction_participant_->StartShutdown();
   }
 
+  if (post_split_compaction_task_pool_token_) {
+    post_split_compaction_task_pool_token_->Shutdown();
+  }
+
   return true;
 }
 
@@ -1038,9 +1048,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   auto txn_op_ctx = CreateTransactionOperationContext(
       transaction_id, schema.table_properties().is_ysql_catalog_table());
-  const auto read_time =
-      (read_hybrid_time ? read_hybrid_time
-                        : ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse)));
+  const auto read_time = read_hybrid_time
+      ? read_hybrid_time
+      : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_op_counter_);
@@ -1069,7 +1079,8 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
   }
 }
 
-Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
+Status Tablet::ApplyRowOperations(
+    WriteOperationState* operation_state, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   const auto& write_request =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
@@ -1081,12 +1092,14 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
     metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
   }
 
-  return ApplyOperationState(*operation_state, write_request.batch_idx(), put_batch);
+  return ApplyOperationState(
+      *operation_state, write_request.batch_idx(), put_batch, already_applied_to_regular_db);
 }
 
 Status Tablet::ApplyOperationState(
     const OperationState& operation_state, int64_t batch_idx,
-    const docdb::KeyValueWriteBatchPB& write_batch) {
+    const docdb::KeyValueWriteBatchPB& write_batch,
+    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   docdb::ConsensusFrontiers frontiers;
   set_op_id(yb::OpId::FromPB(operation_state.op_id()), &frontiers);
 
@@ -1096,7 +1109,7 @@ Status Tablet::ApplyOperationState(
   // frontier.
   set_hybrid_time(operation_state.hybrid_time(), &frontiers);
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, &frontiers, hybrid_time);
+      batch_idx, write_batch, &frontiers, hybrid_time, already_applied_to_regular_db);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1140,10 +1153,12 @@ Status Tablet::PrepareTransactionWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
-                                          const KeyValueWriteBatchPB& put_batch,
-                                          const rocksdb::UserFrontiers* frontiers,
-                                          const HybridTime hybrid_time) {
+Status Tablet::ApplyKeyValueRowOperations(
+    int64_t batch_idx,
+    const KeyValueWriteBatchPB& put_batch,
+    const rocksdb::UserFrontiers* frontiers,
+    const HybridTime hybrid_time,
+    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -1160,15 +1175,19 @@ Status Tablet::ApplyKeyValueRowOperations(int64_t batch_idx,
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
     rocksdb::WriteBatch regular_write_batch;
+    auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
     // See comments for PrepareNonTransactionWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     PrepareNonTransactionWriteBatch(
-        put_batch, hybrid_time, intents_db_.get(), &regular_write_batch, &intents_write_batch);
+        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
 
     if (regular_write_batch.Count() != 0) {
-      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+      WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
     }
     if (intents_write_batch.Count() != 0) {
+      if (!metadata_->is_under_twodc_replication()) {
+        RETURN_NOT_OK(metadata_->set_is_under_twodc_replication(true));
+      }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
     }
 
@@ -1573,7 +1592,7 @@ void Tablet::UpdateQLIndexesFlushed(
     // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
     // returns IOError. When it happens, retrieves the errors and discard the IOError.
     if (status.IsIOError()) {
-      for (const auto& error : session->GetPendingErrors()) {
+      for (const auto& error : session->GetAndClearPendingErrors()) {
         // return just the first error seen.
         operation->state()->CompleteWithStatus(error->status());
         return;
@@ -1619,6 +1638,7 @@ void Tablet::UpdateQLIndexesFlushed(
 Status Tablet::HandlePgsqlReadRequest(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
+    bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     PgsqlReadRequestResult* result,
@@ -1648,7 +1668,8 @@ Status Tablet::HandlePgsqlReadRequest(
           table_info->schema.table_properties().is_ysql_catalog_table());
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
-      deadline, read_time, pgsql_read_request, *txn_op_ctx, result, num_rows_read);
+      deadline, read_time, is_explicit_request_read_time,
+      pgsql_read_request, *txn_op_ctx, result, num_rows_read);
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.
@@ -2002,7 +2023,7 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
   return RemoveIntentsImpl(data, transactions);
 }
 
-HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
+Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
@@ -2146,7 +2167,8 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     const CoarseTimePoint deadline,
     const HybridTime read_time,
     const HostPort& pgsql_proxy_bind_address,
-    const std::string& database_name) {
+    const std::string& database_name,
+    const uint64_t postgres_auth_key) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2161,14 +2183,16 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
         "YSQL index backfill does not support backfill_from, yet");
   }
 
-  // Construct connection string.
-  // TODO(jason): handle "yugabyte" role being password protected
+  // Construct connection string.  Note that the plain password in the connection string will be
+  // sent over the wire, but since it only goes over a unix-domain socket, there should be no
+  // eavesdropping/tampering issues.
   std::string conn_str = Format(
-      "dbname=$0 host=$1 port=$2 user=$3",
-      QuotePgConnStrValue(database_name),
-      pgsql_proxy_bind_address.host(),
+      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+      "postgres",
+      postgres_auth_key,
+      PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
       pgsql_proxy_bind_address.port(),
-      "yugabyte");
+      pgwrapper::PqEscapeLiteral(database_name));
   VLOG(1) << __func__ << ": libpq connection string: " << conn_str;
 
   // Construct query string.
@@ -2855,7 +2879,6 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
     return Status::OK();
   }
 
- private:
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
     if (now != result) {
       tablet_.clock()->Update(result);
@@ -2865,22 +2888,28 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
   }
 
   void TransactionalConflictsResolved() {
+    auto status = DoTransactionalConflictsResolved();
+    if (!status.ok()) {
+      LOG(DFATAL) << status;
+      InvokeCallback(status);
+    }
+  }
+
+  CHECKED_STATUS DoTransactionalConflictsResolved() {
     if (!read_time_) {
-      auto safe_time = tablet_.SafeTime(RequireLease::kTrue);
+      auto safe_time = VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue));
       read_time_ = ReadHybridTime::FromHybridTimeRange(
           {safe_time, tablet_.clock()->NowRange().second});
     } else if (prepare_result_.need_read_snapshot &&
                isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
-      auto status = STATUS_FORMAT(
+      return STATUS_FORMAT(
           InvalidArgument,
           "Read time should NOT be specified for serializable isolation level: $0",
           read_time_);
-      LOG(DFATAL) << status;
-      InvokeCallback(status);
-      return;
     }
 
     Complete();
+    return Status::OK();
   }
 
   bool allow_immediate_read_restart() const {
@@ -2928,8 +2957,8 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
       real_read_time.read = restart_read_ht;
       if (!local_limit_updated) {
         local_limit_updated = true;
-        real_read_time.local_limit =
-            std::min(real_read_time.local_limit, tablet_.SafeTime(RequireLease::kTrue));
+        real_read_time.local_limit = std::min(
+            real_read_time.local_limit, VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue)));
       }
 
       restart_read_ht = HybridTime();
@@ -2980,30 +3009,27 @@ void Tablet::StartDocWriteOperation(
   doc_write_operation->Start();
 }
 
-HybridTime Tablet::DoGetSafeTime(
+Result<HybridTime> Tablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   if (!require_lease) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (require_lease && ht_lease_provider_) {
-    // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
-    // the resulting ht_lease is at least min_allowed.
-    auto min_allowed_lease = min_allowed.GetPhysicalValueMicros();
-    if (min_allowed.GetLogicalValue()) {
-      ++min_allowed_lease;
-    }
     // This will block until a leader lease reaches the given value or a timeout occurs.
-    ht_lease = ht_lease_provider_(min_allowed_lease, deadline);
-    if (!ht_lease.lease.is_valid()) {
-      // This could happen in case of timeout.
-      return HybridTime::kInvalid;
+    ht_lease = VERIFY_RESULT(ht_lease_provider_(min_allowed, deadline));
+    if (min_allowed > ht_lease.time) {
+      return STATUS_FORMAT(
+          InternalError, "Read request hybrid time after current time: $0, lease: $1",
+          min_allowed, ht_lease);
     }
+  } else if (min_allowed) {
+    RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {
-    LOG_WITH_PREFIX(DFATAL)
-        << "Read request hybrid time after leader lease: " << min_allowed << ", " << ht_lease;
-    return HybridTime::kInvalid;
+    return STATUS_FORMAT(
+        InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
+        min_allowed, ht_lease);
   }
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
@@ -3021,28 +3047,22 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-bool Tablet::MightHaveNonRelevantData() {
+bool Tablet::StillHasParentDataAfterSplit() {
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
-  if (regular_db_) {
-    docdb::ForceRocksDBCompact(regular_db_.get());
-  }
-  if (intents_db_) {
-    CHECK_OK(intents_db_->Flush(rocksdb::FlushOptions()));
-    docdb::ForceRocksDBCompact(intents_db_.get());
-  }
+  CHECK_OK(ForceFullRocksDBCompact());
 }
 
-Status Tablet::ForceFullRocksDBCompactAsync() {
+Status Tablet::ForceFullRocksDBCompact() {
   if (regular_db_) {
-    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(regular_db_.get()));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get()));
   }
   if (intents_db_) {
     RETURN_NOT_OK_PREPEND(
         intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
-    RETURN_NOT_OK(docdb::ForceFullRocksDBCompactAsync(intents_db_.get()));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get()));
   }
   return Status::OK();
 }
@@ -3314,6 +3334,25 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
   return middle_key;
 }
 
+Status Tablet::TriggerPostSplitCompactionIfNeeded(
+    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction) {
+  if (post_split_compaction_task_pool_token_) {
+    return STATUS(
+        IllegalState, "Already triggered post split compaction for this tablet instance.");
+  }
+  if (StillHasParentDataAfterSplit()) {
+    post_split_compaction_task_pool_token_ = get_token_for_compaction();
+    return post_split_compaction_task_pool_token_->SubmitFunc(
+        std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
+  }
+  return Status::OK();
+}
+
+void Tablet::TriggerPostSplitCompactionSync() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(
@@ -3321,7 +3360,7 @@ Result<ScopedReadOperation> ScopedReadOperation::Create(
     RequireLease require_lease,
     ReadHybridTime read_time) {
   if (!read_time) {
-    read_time = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
+    read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(tablet->SafeTime(require_lease)));
   }
   auto* retention_policy = tablet->RetentionPolicy();
   if (retention_policy) {

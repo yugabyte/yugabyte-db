@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import io.ebean.*;
 import io.ebean.annotation.EnumValue;
 import org.slf4j.Logger;
@@ -28,16 +29,28 @@ public class Alert extends Model {
    */
   public enum TargetType {
     @EnumValue("UniverseType")
-    UniverseType;
+    UniverseType,
 
-    public Class<?> getType() {
-      switch (this) {
-        case UniverseType:
-          return Universe.class;
-        default:
-          return null;
-      }
-    }
+    @EnumValue("BackupType")
+    BackupType,
+
+    @EnumValue("ClusterType")
+    ClusterType,
+
+    @EnumValue("KMSConfigurationType")
+    KMSConfigurationType,
+
+    @EnumValue("NodeType")
+    NodeType,
+
+    @EnumValue("ProviderType")
+    ProviderType,
+
+    @EnumValue("TableType")
+    TableType,
+
+    @EnumValue("TaskType")
+    TaskType;
   }
 
   public enum State {

@@ -140,12 +140,6 @@ JENKINS_ENV_VARS = [
 # In addition, all variables with names starting with the following prefix are propagated.
 PROPAGATED_ENV_VAR_PREFIX = 'YB_'
 
-# This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
-# program).
-#
-# This must match the constant with the same name in common-test-env.sh.
-LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
-
 SPARK_URLS = {
     'linux_default': os.getenv(
         'YB_LINUX_PY3_SPARK_URL',
@@ -895,6 +889,16 @@ def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.
         for test_descriptor_str in test_descriptor_str_list]
     logging.info("Collected the list of %d gtest tests in %.2f sec" % (
         len(test_descriptor_strs), elapsed_time_sec))
+    for test_descriptor_str in test_descriptor_strs:
+        if 'YB_DISABLE_TEST_IN_' in test_descriptor_str:
+            raise RuntimeError(
+                f"For test descriptor '{test_descriptor_str}': " +
+                "YB_DISABLE_TEST_IN_... is not allowed in final C++ test names, i.e. test names " +
+                "reported using --gtest_list_test. This could happen when trying to use " +
+                "YB_DISABLE_TEST_IN_TSAN or YB_DISABLE_TEST_IN_SANITIZERS in a parameterized " +
+                "test with TEST_P. For parameterized tests, please use " +
+                "YB_SKIP_TEST_IN_TSAN() as the first line of the test instead."
+            )
 
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 

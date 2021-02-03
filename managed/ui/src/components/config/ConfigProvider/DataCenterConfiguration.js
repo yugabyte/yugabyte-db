@@ -15,7 +15,8 @@ import './providerConfig.scss';
 import awsLogo from './images/aws.svg';
 import azureLogo from './images/azure.png';
 import k8sLogo from './images/k8s.png';
-import pksLogo from './images/pks.png';
+import openshiftLogo from './images/redhat.png';
+import tanzuLogo from './images/tanzu.png';
 import gcpLogo from './images/gcp.png';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
@@ -37,28 +38,35 @@ class DataCenterConfiguration extends Component {
       </div>
     );
 
-    const k8sTabContent = (
+    const openshiftTabContent = (
       <Row className="custom-tab">
         <Col md={4}>
-          <img src={k8sLogo} alt="Managed Kubernetes" className="k8s-logo" />
+          <img src={openshiftLogo} alt="Red Hat OpenShift" />
         </Col>
         <Col md={8}>
-          Managed
-          <br />
-          Kubernetes Service
+          Red Hat OpenShift
         </Col>
       </Row>
     );
 
-    const pksTabContent = (
+    const k8sTabContent = (
       <Row className="custom-tab">
         <Col md={4}>
-          <img src={pksLogo} alt="Pivotal Container Service" className="pks-logo" />
+          <img src={k8sLogo} alt="Managed Kubernetes" />
         </Col>
-        <Col md={8} className="provider-map-container">
-          Pivotal
-          <br />
-          Container Service
+        <Col md={8}>
+          Managed Kubernetes Service
+        </Col>
+      </Row>
+    );
+
+    const tanzuTabContent = (
+      <Row className="custom-tab">
+        <Col md={4}>
+          <img src={tanzuLogo} alt="VMware Tanzu" />
+        </Col>
+        <Col md={8}>
+          VMware Tanzu
         </Col>
       </Row>
     );
@@ -110,8 +118,13 @@ class DataCenterConfiguration extends Component {
                 >
                   <ProviderConfigurationContainer providerType="azu" />
                 </Tab>
-                <Tab eventKey="pks" title={pksTabContent} key="pks-tab" unmountOnExit={true}>
-                  <KubernetesProviderConfigurationContainer type="pks" params={params} />
+                <Tab eventKey="tanzu" title={tanzuTabContent} key="tanzu-tab" unmountOnExit={true}>
+                  <KubernetesProviderConfigurationContainer type="tanzu" params={params} />
+                </Tab>
+                <Tab eventKey="openshift" title={openshiftTabContent} key="openshift-tab" unmountOnExit={true}>
+                  <div className="h4">
+                    Coming Soon! Stay tuned for Red Hat OpenShift integration!
+                  </div>
                 </Tab>
                 <Tab eventKey="k8s" title={k8sTabContent} key="k8s-tab" unmountOnExit={true}>
                   <KubernetesProviderConfigurationContainer type="k8s" params={params} />

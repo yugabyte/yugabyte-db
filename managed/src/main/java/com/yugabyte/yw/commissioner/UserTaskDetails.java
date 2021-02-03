@@ -19,7 +19,7 @@ public class UserTaskDetails {
     Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
-    PreflightChecks(true),
+    PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
@@ -145,21 +145,10 @@ public class UserTaskDetails {
     KubernetesInitYSQL,
 
     // Start master process on a node
-    StartingMasterProcess;
+    StartingMasterProcess,
 
-    private boolean alwaysRunAll;
-
-    SubTaskGroupType() {
-      this.alwaysRunAll = false;
-    }
-
-    SubTaskGroupType(boolean alwaysRunAll) {
-      this.alwaysRunAll = alwaysRunAll;
-    }
-
-    public boolean getAlwaysRunAll() {
-      return this.alwaysRunAll;
-    }
+    // Rotate Node Certs.
+    RotatingCert;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -330,6 +319,10 @@ public class UserTaskDetails {
       case StartingMasterProcess:
         title = "Starting Master Process";
         description = "Waiting for node to start the master process.";
+        break;
+      case RotatingCert:
+        title = "Rotating Cert";
+        description = "Changing certs.";
         break;
       case CreateNamespace:
         title = "Creating Namespace";
