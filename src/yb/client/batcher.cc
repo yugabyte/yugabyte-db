@@ -70,6 +70,9 @@
 // status of batch. Useful in tests, when we don't need complex error analysis.
 DEFINE_test_flag(bool, combine_batcher_errors, false,
                  "Whether combine errors into batcher status.");
+DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_probability, 0.0,
+                 "Probability for simulating the error that happens when a key is not in the key "
+                 "range of the resolved tablet's partition.");
 
 using std::pair;
 using std::set;
@@ -388,7 +391,7 @@ void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, co
 }
 
 void Batcher::TabletLookupFinished(
-    InFlightOpPtr op, const Result<internal::RemoteTabletPtr>& lookup_result) {
+    InFlightOpPtr op, Result<internal::RemoteTabletPtr> lookup_result) {
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
@@ -414,11 +417,11 @@ void Batcher::TabletLookupFinished(
 
     if (lookup_result.ok()) {
       op->tablet = *lookup_result;
-#ifndef NDEBUG
+
       const Partition& partition = op->tablet->partition();
 
       bool partition_contains_row = false;
-      std::string partition_key;
+      const auto& partition_key = op->partition_key;
       switch (op->yb_op->type()) {
         case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
         case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
@@ -426,21 +429,26 @@ void Batcher::TabletLookupFinished(
         case YBOperation::PGSQL_WRITE: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
         case YBOperation::REDIS_WRITE: {
-          CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
           partition_contains_row = partition.ContainsKey(partition_key);
           break;
         }
       }
 
-      if (!partition_contains_row) {
+      if (!partition_contains_row ||
+          (PREDICT_FALSE(
+              RandomActWithProbability(
+                  FLAGS_TEST_simulate_tablet_lookup_does_not_match_partition_key_probability) &&
+              op->yb_op->table()->name().namespace_name() == "yb_test"))) {
         const Schema& schema = GetSchema(op->yb_op->table()->schema());
         const PartitionSchema& partition_schema = op->yb_op->table()->partition_schema();
-        LOG_WITH_PREFIX(DFATAL)
-            << "Row " << op->yb_op->ToString()
-            << " not in partition " << partition_schema.PartitionDebugString(partition, schema)
-            << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
+        const auto msg = Format(
+            "Row $0 not in partition $1, partition key: $2",
+            op->yb_op->ToString(),
+            partition_schema.PartitionDebugString(partition, schema),
+            Slice(partition_key).ToDebugHexString());
+        LOG_WITH_PREFIX(DFATAL) << msg;
+        lookup_result = STATUS(InternalError, msg);
       }
-#endif
     }
 
     VLOG_WITH_PREFIX(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": "
