@@ -61,13 +61,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess,
                                                     boolean isForceUpdate,
-                                                    boolean isResume) {
+                                                    boolean isResumeOrDelete) {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         verifyUniverseVersion(expectedUniverseVersion, universe);
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        if (universeDetails.universePaused && !isResume) {
+        if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is currently paused";
           LOG.error(msg);
           throw new RuntimeException(msg);
@@ -217,12 +217,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
-  public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResume) {
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
     UniverseUpdater updater = getLockingUniverseUpdater(
         expectedUniverseVersion,
         true, 
         false, 
-        isResume
+        isResumeOrDelete
     );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
@@ -235,6 +235,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         true,
         true,
         false
+    );
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  public Universe forceLockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
+    LOG.info("Force lock universe {} at version {}.", taskParams().universeUUID,
+             expectedUniverseVersion);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        true,
+        isResumeOrDelete
     );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }

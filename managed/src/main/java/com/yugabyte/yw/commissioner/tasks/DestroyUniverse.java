@@ -46,9 +46,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe = null;
       if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
+        universe = forceLockUniverseForUpdate(-1, true);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockUniverseForUpdate(-1 , true);
       }
 
       // Cleanup the kms_history table
