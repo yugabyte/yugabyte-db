@@ -173,11 +173,11 @@ Because all existing passwords must be changed, you can manage the migration of 
 ## Resetting user password
 
 There are cases where we have lost the password of a user and want to reset it. The `pg_hba.conf` file can be modified 
-to allow administrator access without a password by changing the `--ysql_hba_conf_csv` configuration flag in yb-tserver. This is done by setting
-the flag as below and restarting the yb-tserver:
+to allow administrator access without a password by changing the `--ysql_hba_conf_csv` configuration flag in the yb-tserver which 
+we'll connect to reset the password. This is done by setting the flag as below and restarting the yb-tserver:
 
 ```
---ysql_hba_conf=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
+--ysql_hba_conf_csv=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
 ```
 
 After restarting the yb-tserver, password authentication will be enforced for all users except `yugabyte` user. Now we 
