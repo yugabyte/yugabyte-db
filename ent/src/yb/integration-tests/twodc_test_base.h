@@ -38,7 +38,7 @@ using client::YBClient;
 
 namespace enterprise {
 
-constexpr int kRpcTimeout = NonTsanVsTsan(30, 120);
+constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
