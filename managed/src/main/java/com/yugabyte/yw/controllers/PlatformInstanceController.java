@@ -57,7 +57,7 @@ public class PlatformInstanceController extends AuthenticatedController {
           "Cannot create a remote platform instance before creating local platform instance"
         );
       // Cannot create a remote instance if local instance is follower.
-      } else if (!formData.get().is_local && !config.isLeaderLocal()) {
+      } else if (!formData.get().is_local && !config.isLocalLeader()) {
         return ApiResponse.error(
           BAD_REQUEST,
           "Cannot create a remote platform instance on a follower platform instance"
@@ -66,7 +66,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       } else if (formData.get().is_local && config.getLocal() != null) {
         return ApiResponse.error(BAD_REQUEST, "Local platform instance already exists");
       // Cannot create multiple leader platform instances.
-      } else if (formData.get().is_leader && config.getLeader() != null) {
+      } else if (formData.get().is_leader && config.isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "Leader platform instance already exists");
       }
 
@@ -76,6 +76,11 @@ public class PlatformInstanceController extends AuthenticatedController {
         formData.get().is_leader,
         formData.get().is_local
       );
+
+      // Mark this instance as "failed over to" initially since it is a leader instance.
+      if (instance.getIsLeader()) {
+        config.updateLastFailover();
+      }
 
       return ApiResponse.success(instance);
     } catch (Exception e) {
@@ -100,7 +105,7 @@ public class PlatformInstanceController extends AuthenticatedController {
         return ApiResponse.error(NOT_FOUND, "Invalid instance UUID");
       }
 
-      if (!config.isLeaderLocal()) {
+      if (!config.isLocalLeader()) {
         return ApiResponse.error(
           BAD_REQUEST,
           "Follower platform instance cannot delete platform instances"
@@ -120,29 +125,6 @@ public class PlatformInstanceController extends AuthenticatedController {
       LOG.error("Error deleting platform instance", e);
 
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error deleting platform instance");
-    }
-  }
-
-  public Result getLeader(UUID configUUID) {
-    try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
-        return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
-      }
-
-      PlatformInstance leaderInstance = config.getLeader();
-      if (leaderInstance == null) {
-        return ApiResponse.error(BAD_REQUEST, "No leader platform instance for config");
-      }
-
-      return ApiResponse.success(leaderInstance);
-    } catch (Exception e) {
-      LOG.error("Error retrieving leader platform instance for config", e);
-
-      return ApiResponse.error(
-        INTERNAL_SERVER_ERROR,
-        "Error retrieving leader platform instance for config"
-      );
     }
   }
 
@@ -169,8 +151,6 @@ public class PlatformInstanceController extends AuthenticatedController {
     }
   }
 
-  // TODO: (Daniel) - This needs to validate that another instance is not still
-  //  reachable + is a leader, etc (#6505)
   public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr) {
     try {
       HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
@@ -215,16 +195,14 @@ public class PlatformInstanceController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, "Could not find backup file");
       }
 
+      // Cache local instance address before restore so we can query to new corresponding model.
       String localInstanceAddr = instance.getAddress();
 
-      // Run the backup.
+      // Restore the backup.
       backup.ifPresent(file -> replicationManager.restoreBackup(file.getAbsolutePath()));
 
-      // Promote the local instance to leader.
-      PlatformInstance newInstance = PlatformInstance.getByAddress(localInstanceAddr);
-      config = newInstance.getConfig();
-      HighAvailabilityConfig.promoteInstance(config, newInstance);
-      config.getInstances().forEach(i -> i.setIsLocal(i.getUUID().equals(newInstance.getUUID())));
+      // Promote the local instance.
+      replicationManager.promoteInstance(PlatformInstance.getByAddress(localInstanceAddr));
 
       // Finally, start the new backup schedule.
       replicationManager.start();

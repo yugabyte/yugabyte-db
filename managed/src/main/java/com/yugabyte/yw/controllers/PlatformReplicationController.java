@@ -53,7 +53,7 @@ public class PlatformReplicationController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
-      if (!config.isLeaderLocal()) {
+      if (!config.isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "This platform instance is not a leader");
       }
 

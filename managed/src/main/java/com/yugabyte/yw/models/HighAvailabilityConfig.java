@@ -15,16 +15,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.Transactional;
 import play.data.validation.Constraints;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.persistence.*;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Entity
@@ -41,6 +37,9 @@ public class HighAvailabilityConfig extends Model {
 
   @Column(nullable = false, unique = true)
   private String clusterKey;
+
+  @Temporal(TemporalType.TIMESTAMP)
+  private Date lastFailover;
 
   @OneToMany(mappedBy = "config", cascade= CascadeType.ALL)
   private List<PlatformInstance> instances;
@@ -62,6 +61,20 @@ public class HighAvailabilityConfig extends Model {
     this.clusterKey = clusterKey;
   }
 
+  @JsonGetter("last_failover")
+  public Date getLastFailover() {
+    return this.lastFailover;
+  }
+
+  public void setLastFailover(Date lastFailover) {
+    this.lastFailover = lastFailover;
+  }
+
+  public void updateLastFailover() {
+    this.lastFailover = new Date();
+    this.update();
+  }
+
   public List<PlatformInstance> getInstances() {
     return this.instances;
   }
@@ -74,15 +87,7 @@ public class HighAvailabilityConfig extends Model {
   }
 
   @JsonIgnore
-  public PlatformInstance getLeader() {
-    return this.instances.stream()
-      .filter(PlatformInstance::getIsLeader)
-      .findFirst()
-      .orElse(null);
-  }
-
-  @JsonIgnore
-  public boolean isLeaderLocal() {
+  public boolean isLocalLeader() {
     return this.instances.stream()
       .anyMatch(i -> i.getIsLeader() && i.getIsLocal());
   }
@@ -91,20 +96,16 @@ public class HighAvailabilityConfig extends Model {
   public PlatformInstance getLocal() {
     return this.instances.stream()
       .filter(PlatformInstance::getIsLocal)
-      .findFirst().orElse(null);
+      .findFirst()
+      .orElse(null);
   }
 
-  @Transactional
-  public static synchronized void promoteInstance(
-    HighAvailabilityConfig config,
-    PlatformInstance instance
-  ) {
-    PlatformInstance currentLeader = config.getLeader();
-    if (currentLeader != null) {
-      currentLeader.demoteLeader();
-    }
-
-    instance.promoteFollower();
+  @JsonIgnore
+  public PlatformInstance getLeader() {
+    return this.instances.stream()
+      .filter(PlatformInstance::getIsLeader)
+      .findFirst()
+      .orElse(null);
   }
 
   public static HighAvailabilityConfig create(String clusterKey) {
