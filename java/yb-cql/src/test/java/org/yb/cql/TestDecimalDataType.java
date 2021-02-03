@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -23,6 +24,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 
 import java.math.BigDecimal;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import java.util.TreeSet;
 
@@ -729,5 +731,52 @@ public class TestDecimalDataType extends BaseCQLTest {
     session.execute(dropStmt);
     LOG.info("TEST CQL DECIMAL TYPE SUM - End");
   }
+
+    @Test
+    public void testDecimalDataTypeInPartitionKey() {
+
+        LOG.info("TEST DECIMAL DATA-TYPE PARTITION KEY - Start");
+
+        String tableName = "test_decimal";
+        String createTable = String.format(
+                "CREATE TABLE %S "
+                + "(h1 decimal, h2 int, r1 decimal, v1 int, "
+                + "primary key((h1, h2), r1));",
+                tableName);
+        session.execute(createTable);
+
+        BigDecimal hashDecimal = new BigDecimal(getRandomDecimal());
+        TreeSet<BigDecimal> decimals = new TreeSet<BigDecimal>();
+        for (int i = 0; i < 100; i++) {
+            BigDecimal decimal;
+            do {
+                decimal = new BigDecimal(getRandomDecimal());
+            } while (!decimals.add(decimal));
+        }
+
+        for (BigDecimal decimal : decimals) {
+            // Insert one row. Deliberately insert with same hash key but different range
+            // column values.
+            BoundStatement insertStmt = session
+                    .prepare("INSERT INTO " + tableName
+                    + " (h1, h2, r1, v1) " + "VALUES (?, ?, ?, ?)")
+                    .bind(hashDecimal, 1, decimal, decimal.intValue());
+
+            LOG.info("insertStmt: " + insertStmt.preparedStatement().getQueryString());
+            session.execute(insertStmt);
+        }
+
+        BoundStatement selectStmt = session.prepare("SELECT h1, h2, r1, v1 FROM "
+                + tableName + " WHERE h1 = ?")
+                .bind(hashDecimal);
+        ResultSet selectResult = session.execute(selectStmt);
+        List<Row> rows = selectResult.all();
+        assertEquals(hashDecimal, rows.get(0).getDecimal(0));
+
+        final String dropStmt = "DROP TABLE test_decimal;";
+        session.execute(dropStmt);
+        LOG.info("TEST DECIMAL DATA-TYPE PARTITION KEY - End");
+
+    }
 
 }
