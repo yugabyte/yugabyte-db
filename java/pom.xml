@@ -84,7 +84,7 @@
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
-    <cassandra-driver-core.version>3.8.0-yb-5</cassandra-driver-core.version>
+    <cassandra-driver-core.version>3.8.0-yb-6</cassandra-driver-core.version>
     <spark-cassandra-connector.version>2.4-yb-3</spark-cassandra-connector.version>
     <lz4.version>1.3.0</lz4.version>
     <snappy.version>1.1.4</snappy.version>
@@ -347,6 +347,11 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-cql</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-cql-4x</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
