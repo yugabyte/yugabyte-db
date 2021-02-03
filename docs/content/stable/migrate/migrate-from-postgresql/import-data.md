@@ -1,10 +1,9 @@
 
 ---
-title: Import Data
-headerTitle: Import Data
-linkTitle: Import Data
-description: How to import data into YugabyteDB.
-block_indexing: true
+title: Import PostgreSQL data
+headerTitle: Import PostgreSQL data
+linkTitle: Import PostgreSQL data
+description: Steps for importing PostgreSQL data into YugabyteDB.
 menu:
   stable:
     identifier: migrate-postgresql-import-data
@@ -14,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-The next step is to import the data that was previously exported into YugabyteDB.
+The next step is to import the PostgreSQL data into YugabyteDB.
 
 {{< note title="Note" >}}
 After the data import step, remember to recreate any constraints and triggers that might have been disabled to speed up loading the data. This would ensure that the database will perform relational integrity checking for data going forward.
@@ -39,7 +38,7 @@ The `ysqlsh` tool is a derivative of the PostgreSQL tool, `psql`. All `psql` com
 Importing a single table (or a partial export from a table) can be done by running the COPY FROM command, and providing it the location of the export file prepared in a previous step. This should look as shown below.
 
 ```
-COPY country FROM 'export.csv';
+COPY country FROM 'export.csv' DELIMITER ',' CSV HEADER;
 ```
 
 

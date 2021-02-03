@@ -6,7 +6,7 @@
     "destroy-instance.yml",
     "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
-    "yb_platform_virtualenv.tar.gz",
+    "python*_modules.tar.gz",
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
     "yb-server-provision.yml",

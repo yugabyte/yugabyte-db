@@ -4,14 +4,11 @@ headerTitle: sysbench
 linkTitle: sysbench
 description: Benchmark YSQL performance using sysbench.
 headcontent: Benchmark YSQL performance using sysbench.
-block_indexing: true
 menu:
   stable:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
-aliases:
-  - /benchmark/sysbench/
 showAsideToc: true
 isTocNested: true
 ---
@@ -30,6 +27,10 @@ isTocNested: true
 sysbench is a popular tool for benchmarking databases like Postgres and MySQL, as well as system capabilities like CPU, memory and I/O. Follow the steps below to run Sysbench against YugabyteDB.
 
 The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
+
+{{< note title="Note" >}}
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/)  
+{{< /note >}}
 
 ## Running the benchmark
 
@@ -76,7 +77,7 @@ This section outlines instructions in case you need to run workloads individuall
 
 ```sh
 $ sysbench oltp_point_select        \
-      --num-tables=10               \
+      --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
       --db-driver=pgsql             \
@@ -91,7 +92,7 @@ Then you can run the workload as follows
 
 ```sh
 $ sysbench oltp_point_select        \
-      --num-tables=10               \
+      --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
       --db-driver=pgsql             \

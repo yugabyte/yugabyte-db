@@ -52,7 +52,7 @@ The [Rook YugabyteDB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) i
 
 A YugabyteDB cluster installed in a Kubernetes environment is required.
 
-- To create a local cluster in Kubernetes for development and learning, see [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+- To create a local cluster in Kubernetes for development and learning, see [Quick start](/latest/quick-start/).
 - To deploy a production cluster, see the YugabyteDB documentation on [deploying in  Kubernetes](../../../kubernetes/).
 
 Verify that your Kubernetes cluster is ready for Rook by reviewing the [Kubernetes cluster prerequisites for using the Rook operator](https://github.com/rook/rook/blob/master/Documentation/k8s-pre-reqs.md).

@@ -3,7 +3,6 @@ title: row_to_json()
 headerTitle: row_to_json()
 linkTitle: row_to_json()
 description: Create a JSON object from a SQL record.
-block_indexing: true
 menu:
   stable:
     identifier: row-to-json

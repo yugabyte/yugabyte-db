@@ -33,9 +33,14 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
+DECLARE_bool(verify_client_endpoint);
+DECLARE_bool(verify_server_endpoint);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(certs_dir);
+DECLARE_string(cert_file_pattern);
+DECLARE_string(key_file_pattern);
+DECLARE_string(node_to_node_encryption_required_uid);
 DECLARE_string(ssl_protocols);
 DECLARE_string(TEST_public_hostname_suffix);
 
@@ -54,13 +59,17 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
     FLAGS_allow_insecure_connections = false;
     FLAGS_TEST_public_hostname_suffix = ".ip.yugabyte";
     FLAGS_TEST_private_broadcast_address = true;
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    auto root_dir = env_util::GetRootDir(sub_dir);
-    FLAGS_certs_dir = JoinPathSegments(root_dir, sub_dir);
+    FLAGS_certs_dir = CertsDir();
 
     KeyValueTableTest::SetUp();
 
     DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
+  }
+
+  virtual std::string CertsDir() {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    auto root_dir = env_util::GetRootDir(sub_dir);
+    return JoinPathSegments(root_dir, sub_dir);
   }
 
   CHECKED_STATUS CreateClient() override {
@@ -82,7 +91,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
       std::unique_ptr<rpc::SecureContext>* secure_context) {
     rpc::MessengerBuilder messenger_builder("test_client");
     *secure_context = VERIFY_RESULT(server::SetupSecureContext(
-        FLAGS_certs_dir, name, server::SecureContextType::kServerToServer, &messenger_builder));
+        FLAGS_certs_dir, name, server::SecureContextType::kInternal, &messenger_builder));
     auto messenger = VERIFY_RESULT(messenger_builder.Build());
     messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
     return cluster_->CreateClient(std::move(messenger));
@@ -167,6 +176,7 @@ class SecureConnectionWithClientCertificatesTest : public SecureConnectionTest {
   void SetUp() override {
     FLAGS_TEST_nodes_per_cloud = 100;
     FLAGS_node_to_node_encryption_use_client_certificates = true;
+    FLAGS_verify_client_endpoint = true;
     SecureConnectionTest::SetUp();
   }
 };
@@ -175,6 +185,25 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
   TestSimpleOps();
 
   ASSERT_NOK(CreateBadClient());
+}
+
+class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_TEST_nodes_per_cloud = 100;
+    FLAGS_node_to_node_encryption_use_client_certificates = true;
+    FLAGS_node_to_node_encryption_required_uid = "yugabyte-test";
+    SecureConnectionTest::SetUp();
+  }
+
+  std::string CertsDir() override {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs", "named");
+    auto root_dir = env_util::GetRootDir(sub_dir);
+    return JoinPathSegments(root_dir, sub_dir);
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, VerifyNameOnly, SecureConnectionVerifyNameOnlyTest) {
+  TestSimpleOps();
 }
 
 } // namespace yb

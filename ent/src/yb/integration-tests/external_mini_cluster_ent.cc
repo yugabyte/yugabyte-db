@@ -19,7 +19,10 @@
 
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 DECLARE_string(certs_dir);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb {
 
@@ -30,14 +33,16 @@ void StartSecure(
     const std::vector<std::string>& master_flags) {
   rpc::MessengerBuilder messenger_builder("test_client");
   *secure_context = ASSERT_RESULT(server::SetupSecureContext(
-      "", "", server::SecureContextType::kClientToServer, &messenger_builder));
+      "", "127.0.0.100", server::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
   (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 
   ExternalMiniClusterOptions opts;
   opts.extra_tserver_flags = {
       "--use_node_to_node_encryption=true", "--allow_insecure_connections=false",
-      "--certs_dir=" + FLAGS_certs_dir};
+      "--certs_dir=" + FLAGS_certs_dir,
+      "--node_to_node_encryption_use_client_certificates="s +
+          (FLAGS_node_to_node_encryption_use_client_certificates ? "true" : "false")};
   opts.extra_master_flags = opts.extra_tserver_flags;
   opts.extra_master_flags.insert(
       opts.extra_master_flags.end(), master_flags.begin(), master_flags.end());

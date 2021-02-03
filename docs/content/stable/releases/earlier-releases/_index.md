@@ -5,17 +5,18 @@ description: Release history
 headcontent: Download links and release information for earlier releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
-block_indexing: true
 menu:
   stable:
     identifier: earlier-releases
-    weight: 2590 
+    weight: 2589
 ---
 
 Links to the release notes and downloads for earlier YugabyteDB are listed below.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
+[v2.2.2](./v2.2.2) |August 19, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.2.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.2.0-b15
+[v2.2.0](./v2.2.0) |July 15, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.0.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.0.0-b80
 [v2.1.8](./v2.1.8) |June 19, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.1.8.2-b1
 [v2.1.6](./v2.1.6) |May 8, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.1.6.0-b17
 [v2.1.5](./v2.1.5) |April 27, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.1.5.0-b17
