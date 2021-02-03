@@ -43,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Random;
+import java.util.Date;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
@@ -108,6 +109,14 @@ public class InternalHAControllerTest extends FakeDBApplication {
     return Json.parse(contentAsString(createResult));
   }
 
+  private JsonNode getHAConfig() {
+    String authToken = user.createAuthToken();
+    String uri = "/api/settings/ha/config";
+    Result getResult = FakeApiHelper.doRequestWithAuthToken("GET", uri, authToken);
+    assertOk(getResult);
+    return Json.parse(contentAsString(getResult));
+  }
+
   private JsonNode createPlatformInstance(UUID configUUID, boolean isLocal, boolean isLeader) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
@@ -155,9 +164,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncInstancesNoLocalInstances() {
     JsonNode haConfigJson = createHAConfig();
-    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    String uri = "/api/settings/ha/internal/config/" + configUUID;
+    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertBadRequest(syncResult, "No local instance configured");
@@ -166,10 +174,12 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncInstancesNoLocalFollower() {
     JsonNode haConfigJson = createHAConfig();
-    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(configUUID, true, true);
-    String uri = "/api/settings/ha/internal/config/" + configUUID;
+    createPlatformInstance(config.getUUID(), true, true);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    String uri = "/api/settings/ha/internal/config/sync/" + config.getLastFailover().getTime();
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertBadRequest(syncResult, "Cannot import instances for a leader");
@@ -178,10 +188,10 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncInstancesInvalidJson() {
     JsonNode haConfigJson = createHAConfig();
-    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(configUUID, true, false);
-    String uri = "/api/settings/ha/internal/config/" + configUUID;
+    createPlatformInstance(config.getUUID(), true, false);
+    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
     assertInternalServerError(syncResult, "Error importing platform instances");
@@ -190,10 +200,10 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncInstancesEmptyArray() {
     JsonNode haConfigJson = createHAConfig();
-    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(configUUID, true, false);
-    String uri = "/api/settings/ha/internal/config/" + configUUID;
+    createPlatformInstance(config.getUUID(), true, false);
+    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
     ArrayNode body = Json.newArray();
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
@@ -223,11 +233,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
   }
 
   private String createInstances(JsonNode haConfigJson, String leaderAddr) {
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    HighAvailabilityConfig config = new HighAvailabilityConfig();
-    config.setUUID(configUUID);
-    config.setClusterKey(clusterKey);
     JsonNode localInstance = createPlatformInstance(configUUID, true, false);
     ArrayNode body = Json.newArray();
     PlatformInstance i1 = new PlatformInstance();
@@ -238,7 +246,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     i1.setIsLocal(false);
     body.add(Json.toJson(i1));
     body.add(localInstance);
-    String uri = "/api/settings/ha/internal/config/" + configUUID;
+    String uri = "/api/settings/ha/internal/config/sync/" + new Date().getTime();
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(syncResult);
@@ -378,5 +386,28 @@ public class InternalHAControllerTest extends FakeDBApplication {
         .bodyMultipart(ImmutableList.of(formData0, formData1, filePart),
           singletonTemporaryFileCreator(),
           mat));
+  }
+
+  @Test
+  public void testSyncInstancesFromStaleLeader() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    config.updateLastFailover();
+    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    JsonNode localInstance = createPlatformInstance(configUUID, true, false);
+    ArrayNode body = Json.newArray();
+    PlatformInstance i1 = new PlatformInstance();
+    i1.setUUID(UUID.randomUUID());
+    i1.setConfig(config);
+    i1.setAddress("abcdef.com");
+    i1.setIsLeader(true);
+    i1.setIsLocal(false);
+    body.add(Json.toJson(i1));
+    body.add(localInstance);
+    String uri = "/api/settings/ha/internal/config/sync/" + 0;
+    Result syncResult =
+      FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    assertBadRequest(syncResult, "Cannot import instances from stale leader");
   }
 }
