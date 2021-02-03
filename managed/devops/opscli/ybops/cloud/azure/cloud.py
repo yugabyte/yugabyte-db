@@ -83,7 +83,8 @@ class AzureCloud(AbstractCloud):
     def create_instance(self, args, adminSSH):
         vmName = args.search_pattern
         region = args.region
-        zone = args.zone.split('-')[-1]  # last character of zone (eastus-1) relevant for template
+        zoneParts = args.zone.split('-')
+        zone = zoneParts[1] if len(zoneParts) > 1 else None
         logging.info("[app] About to create Azure VM {} in {}/{}.".format(vmName, region, zone))
 
         subnet = args.cloud_subnet

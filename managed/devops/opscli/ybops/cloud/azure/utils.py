@@ -286,22 +286,23 @@ class AzureCloudAdmin():
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
 
     def appendDisk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region):
+        disk_params = {
+            "location": region,
+            "disk_size_gb": size,
+            "creation_data": {
+                "create_option": DiskCreateOption.empty
+            },
+            "sku": {
+                "name": AZURE_SKU_FORMAT[vol_type]
+            }
+        }
+        if zone is not None:
+            disk_params["zones"] = [zone]
+
         data_disk = self.compute_client.disks.create_or_update(
             RESOURCE_GROUP,
             disk_name,
-            {
-                "location": region,
-                "disk_size_gb": size,
-                "creation_data": {
-                    "create_option": DiskCreateOption.empty
-                },
-                "sku": {
-                    "name": AZURE_SKU_FORMAT[vol_type]
-                },
-                "zones": [
-                    zone
-                ]
-            }
+            disk_params
         ).result()
 
         vm.storage_profile.data_disks.append({
@@ -335,11 +336,11 @@ class AzureCloudAdmin():
             "sku": {
                 "name": "Standard"  # Only standard SKU supports zone
             },
-            "public_ip_allocation_method": "Static",
-            "zones": [
-                zone
-            ]
+            "public_ip_allocation_method": "Static"
         }
+        if zone is not None:
+            public_ip_addess_params["zones"] = [zone]
+
         creation_result = self.network_client.public_ip_addresses.create_or_update(
             RESOURCE_GROUP,
             self.get_public_ip_name(vm_name),
@@ -496,11 +497,10 @@ class AzureCloudAdmin():
                 "network_interfaces": [{
                     "id": nic_id
                 }]
-            },
-            "zones": [
-                zone
-            ]
+            }
         }
+        if zone is not None:
+            vm_parameters["zones"] = [zone]
 
         if (vol_type == "ultrassd_lrs"):
             vm_parameters["additionalCapabilities"] = {"ultraSSDEnabled": True}

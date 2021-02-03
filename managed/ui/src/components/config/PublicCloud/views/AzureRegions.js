@@ -7,60 +7,170 @@ import { YBFormInput, YBFormSelect, YBModal } from '../../../common/forms/fields
 
 const AZURE_REGIONS = [
   {
+    region: 'westus',
+    name: 'West US',
+    zones: ['westus']
+  },
+  {
     region: 'westus2',
-    name: 'US West 2 (Washington)',
+    name: 'West US 2',
     zones: ['westus2-1', 'westus2-2', 'westus2-3']
   },
   {
+    region: 'westcentralus',
+    name: 'West Central US',
+    zones: ['westcentralus']
+  },
+  {
     region: 'centralus',
-    name: 'US Central (Iowa)',
+    name: 'Central US',
     zones: ['centralus-1', 'centralus-2', 'centralus-3']
   },
   {
+    region: 'northcentralus',
+    name: 'North Central US',
+    zones: ['northcentralus']
+  },
+  {
+    region: 'southcentralus',
+    name: 'South Central US',
+    zones: ['southcentralus-1', 'southcentralus-2', 'southcentralus-3']
+  },
+  {
     region: 'eastus',
-    name: 'US East (Virginia)',
+    name: 'East US',
     zones: ['eastus-1', 'eastus-2', 'eastus-3']
   },
   {
     region: 'eastus2',
-    name: 'US East 2 (Virginia)',
+    name: 'East US 2',
     zones: ['eastus2-1', 'eastus2-2', 'eastus2-3']
   },
   {
+    region: 'canadacentral',
+    name: 'Canada Central',
+    zones: ['canadacentral-1', 'canadacentral-2', 'canadacentral-3']
+  },
+  {
+    region: 'canadaeast',
+    name: 'Canada East',
+    zones: ['canadaeast']
+  },
+  {
     region: 'westeurope',
-    name: 'West Europe (Netherlands)',
+    name: 'West Europe',
     zones: ['westeurope-1', 'westeurope-2', 'westeurope-3']
   },
   {
     region: 'northeurope',
-    name: 'North Europe (Ireland)',
+    name: 'North Europe',
     zones: ['northeurope-1', 'northeurope-2', 'northeurope-3']
   },
   {
-    region: 'japaneast',
-    name: 'Japan East (Tokyo)',
-    zones: ['japaneast-1', 'japaneast-2', 'japaneast-3']
-  },
-  {
-    region: 'southeastasia',
-    name: 'Southeast Asia (Singapore)',
-    zones: ['southeastasia-1', 'southeastasia-2', 'southeastasia-3']
-  },
-  {
-    region: 'australiaeast',
-    name: 'Australia East (New South Wales)',
-    zones: ['australiaeast-1', 'australiaeast-2', 'australiaeast-3']
+    region: 'ukwest',
+    name: 'UK West',
+    zones: ['ukwest']
   },
   {
     region: 'uksouth',
-    name: 'UK South (London)',
+    name: 'UK South',
     zones: ['uksouth-1', 'uksouth-2', 'uksouth-3']
   },
   {
     region: 'francecentral',
-    name: 'France Central (Paris)',
+    name: 'France Central',
     zones: ['francecentral-1', 'francecentral-2', 'francecentral-3']
-  }
+  },
+  {
+    region: 'germanywestcentral',
+    name: 'Germany West Central',
+    zones: ['germanywestcentral-1', 'germanywestcentral-2', 'germanywestcentral-3']
+  },
+  {
+    region: 'norwayeast',
+    name: 'Norway East',
+    zones: ['norwayeast']
+  },
+  {
+    region: 'switzerlandnorth',
+    name: 'Switzerland North',
+    zones: ['switzerlandnorth']
+  },
+  {
+    region: 'eastasia',
+    name: 'East Asia',
+    zones: ['eastasia']
+  },
+  {
+    region: 'southeastasia',
+    name: 'Southeast Asia',
+    zones: ['southeastasia-1', 'southeastasia-2', 'southeastasia-3']
+  },
+  {
+    region: 'centralindia',
+    name: 'Central India',
+    zones: ['centralindia']
+  },
+  {
+    region: 'southindia',
+    name: 'South India',
+    zones: ['southindia']
+  },
+  {
+    region: 'westindia',
+    name: 'West India',
+    zones: ['westindia']
+  },
+  {
+    region: 'japaneast',
+    name: 'Japan East',
+    zones: ['japaneast-1', 'japaneast-2', 'japaneast-3']
+  },
+  {
+    region: 'japanwest',
+    name: 'Japan West',
+    zones: ['japanwest']
+  },
+  {
+    region: 'koreacentral',
+    name: 'Korea Central',
+    zones: ['koreacentral']
+  },
+  {
+    region: 'koreasouth',
+    name: 'Korea South',
+    zones: ['koreasouth']
+  },
+  {
+    region: 'uaenorth',
+    name: 'UAE North',
+    zones: ['uaenorth']
+  },
+  {
+    region: 'australiacentral',
+    name: 'Australia Central',
+    zones: ['australiacentral']
+  },
+  {
+    region: 'australiaeast',
+    name: 'Australia East',
+    zones: ['australiaeast-1', 'australiaeast-2', 'australiaeast-3']
+  },
+  {
+    region: 'australiasoutheast',
+    name: 'Australia Southeast',
+    zones: ['australiasoutheast']
+  },
+  {
+    region: 'southafricanorth',
+    name: 'South Africa North',
+    zones: ['southafricanorth']
+  },
+  {
+    region: 'brazilsouth',
+    name: 'Brazil South',
+    zones: ['brazilsouth']
+  },
 ];
 
 const zonesMap = {};
@@ -235,7 +345,11 @@ export const AzureRegions = ({ regions, onChange }) => {
               <div className="divider" />
               <h5>AZ Mapping</h5>
               {values.azToSubnetIds.map((item, index) => (
-                <Row key={index}>
+                <Row
+                  key={index}
+                  className={(index >= (zonesMap[values.region.value] || []).length) &&
+                             values.region ? "invisible" : "visible"}
+                >
                   <Col lg={6}>
                     <Field
                       name={`azToSubnetIds[${index}].zone`}
