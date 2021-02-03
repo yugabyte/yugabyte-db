@@ -180,8 +180,17 @@ If you follow a similar approach for an existing cluster, you can enhance your c
 
 ## Resetting user password
 
-There are cases where we have lost the password of a user and want to reset it. The `pg_hba.conf` file can be modified 
-to allow administrator access without a password by changing the `--ysql_hba_conf_csv` configuration flag in the yb-tserver which 
+In PostgreSQL if the administrator password is lost or changed to an unknown value the `pg_hba.conf` can be modified to allow 
+administrator access without a password. In PostgreSQL this is a static file that is used to control client authentication. 
+To reset the password for the `postgres` user, parameters are modified in this configuration file, the database is restarted, and then 
+the `postgres` user can login as `postgres` without a password, and reset the password.
+
+The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to Postgres. 
+However, unlike PostgreSQL, the contents of the file are dynamically generated leveraging a flag called [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) 
+at yb-tserver startup. The following steps will outline how the use of this flag can allow administrative access for the `yugabyte` user if the 
+password is ever lost or changes to an unknown value.
+
+The `ysql_hba.conf` file can be modified to allow administrator access without a password by changing the `--ysql_hba_conf_csv` configuration flag in the yb-tserver which 
 we'll connect to reset the password. This is done by setting the flag as below and restarting the yb-tserver:
 
 ```
