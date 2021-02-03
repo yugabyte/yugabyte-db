@@ -270,7 +270,11 @@ class GraphPanelHeader extends Component {
   };
 
   render() {
-    const { origin } = this.props;
+    const {
+      origin,
+      universe: { currentUniverse }
+    } = this.props;
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
@@ -366,10 +370,12 @@ class GraphPanelHeader extends Component {
                   <div id="reportrange" className="pull-right">
                     {datePicker}
                     <Dropdown id="graph-filter-dropdown" pullRight={true}>
-                      <Dropdown.Toggle>
-                        <i className="fa fa-clock-o"></i>&nbsp;
-                        {this.state.filterLabel}
-                      </Dropdown.Toggle>
+                      {!universePaused &&
+                        <Dropdown.Toggle>
+                          <i className="fa fa-clock-o"></i>&nbsp;
+                          {this.state.filterLabel}
+                        </Dropdown.Toggle>
+                      }
                       <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                     </Dropdown>
                   </div>

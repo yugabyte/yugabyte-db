@@ -160,6 +160,7 @@ class Schedules extends Component {
       modal: { visibleModal, showModal }
     } = this.props;
 
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     const findUniverseName = (uuid) => {
       if (getPromiseState(universeList).isSuccess()) {
         const currentUniverse =
@@ -214,12 +215,14 @@ class Schedules extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    <TableAction
-                      className="table-action"
-                      btnClass={'btn-orange'}
-                      actionType="create-scheduled-backup"
-                      isMenuItem={false}
-                    />
+                    {!universePaused &&
+                      <TableAction
+                        className="table-action"
+                        btnClass={'btn-orange'}
+                        actionType="create-scheduled-backup"
+                        isMenuItem={false}
+                      />
+                    }
                   </div>
                 )}
               </div>

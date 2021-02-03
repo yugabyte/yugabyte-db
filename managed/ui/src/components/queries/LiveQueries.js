@@ -74,6 +74,7 @@ const LiveQueriesComponent = ({ location }) => {
   const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
+  const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
   const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useApiQueriesFetch({
     universeUUID
   });
@@ -331,23 +332,25 @@ const LiveQueriesComponent = ({ location }) => {
                 btnClass="btn btn-default refresh-btn"
                 onClick={getLiveQueries}
               />
-              <div>
-                <div className="live-queries__dropdown-label">Show live queries</div>
-                <Dropdown id="queries-filter-dropdown" pullRight={true}>
-                  <Dropdown.Toggle>
-                    <i className="fa fa-database"></i>&nbsp;
+              {!universePaused &&
+                <div>
+                  <div className="live-queries__dropdown-label">Show live queries</div>
+                  <Dropdown id="queries-filter-dropdown" pullRight={true}>
+                    <Dropdown.Toggle>
+                      <i className="fa fa-database"></i>&nbsp;
                     {type}
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
-                      YCQL
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>
+                      <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
+                        YCQL
                     </MenuItem>
-                    <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
-                      YSQL
+                      <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
+                        YSQL
                     </MenuItem>
-                  </Dropdown.Menu>
-                </Dropdown>
-              </div>
+                    </Dropdown.Menu>
+                  </Dropdown>
+                </div>
+              }
             </div>
           </div>
         }

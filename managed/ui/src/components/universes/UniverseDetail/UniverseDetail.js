@@ -472,23 +472,27 @@ class UniverseDetail extends Component {
                   parentDropdownOpen={this.state.actionsDropdownOpen}
                   mainMenu={(showSubmenu) => (
                     <>
-                      <YBMenuItem
-                        onClick={showSoftwareUpgradesModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.upgradeSoftware'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                          Upgrade Software
-                        </YBLabelWithIcon>
-                        {this.showUpgradeMarker() && (
-                          <span className="badge badge-pill badge-red pull-right">
-                            {updateAvailable}
-                          </span>
-                        )}
-                      </YBMenuItem>
+                      {!universePaused &&
+                        <YBMenuItem
+                          onClick={showSoftwareUpgradesModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.upgradeSoftware'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                            Upgrade Software
+                          </YBLabelWithIcon>
+                          {this.showUpgradeMarker() && (
+                            <span className="badge badge-pill badge-red pull-right">
+                              {updateAvailable}
+                            </span>
+                          )}
+                        </YBMenuItem>
+                      }
+
                       {!isReadOnlyUniverse &&
+                        !universePaused &&
                         isNotHidden(
                           currentCustomer.data.features,
                           'universes.details.overview.editUniverse'
@@ -503,61 +507,70 @@ class UniverseDetail extends Component {
                             <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
                           </YBMenuItem>
                         )}
-                      <YBMenuItem
-                        onClick={showGFlagsModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.editGFlags'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
-                      </YBMenuItem>
 
-                      <YBMenuItem
-                        onClick={() => showSubmenu('security')}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.manageEncryption'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-key fa-fw">Edit Security</YBLabelWithIcon>
-                        <span className="pull-right">
-                          <i className="fa fa-chevron-right submenu-icon" />
-                        </span>
-                      </YBMenuItem>
+                      {!universePaused &&
+                        <YBMenuItem
+                          onClick={showGFlagsModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
+                        </YBMenuItem>
+                      }
+
+                      {!universePaused &&
+                        <YBMenuItem
+                          onClick={() => showSubmenu('security')}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.manageEncryption'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-key fa-fw">Edit Security</YBLabelWithIcon>
+                          <span className="pull-right">
+                            <i className="fa fa-chevron-right submenu-icon" />
+                          </span>
+                        </YBMenuItem>
+                      }
 
                       <YBMenuItem onClick={() => showSubmenu('universeControls')}>
                         <YBLabelWithIcon icon="fa fa-pencil">
-                          Modify Universe State
+                          Modify Universe
                         </YBLabelWithIcon>
                         <span className="pull-right">
                           <i className="fa fa-chevron-right submenu-icon" />
                         </span>
                       </YBMenuItem>
 
-                      {!isReadOnlyUniverse && (
-                        <YBMenuItem
-                          to={`/universes/${uuid}/edit/async`}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.readReplica'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                            {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
+                      {!isReadOnlyUniverse &&
+                        !universePaused && (
+                          <YBMenuItem
+                            to={`/universes/${uuid}/edit/async`}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.readReplica'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-copy fa-fw">
+                              {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
                           </YBLabelWithIcon>
-                        </YBMenuItem>
-                      )}
-                      <UniverseAppsModal
-                        currentUniverse={currentUniverse.data}
-                        modal={modal}
-                        closeModal={closeModal}
-                        button={
-                          <YBMenuItem onClick={showRunSampleAppsModal}>
-                            <YBLabelWithIcon icon="fa fa-terminal">Run Sample Apps</YBLabelWithIcon>
                           </YBMenuItem>
-                        }
-                      />
+                        )}
+
+                      {!universePaused &&
+                        <UniverseAppsModal
+                          currentUniverse={currentUniverse.data}
+                          modal={modal}
+                          closeModal={closeModal}
+                          button={
+                            <YBMenuItem onClick={showRunSampleAppsModal}>
+                              <YBLabelWithIcon icon="fa fa-terminal">Run Sample Apps</YBLabelWithIcon>
+                            </YBMenuItem>
+                          }
+                        />
+                      }
                     </>
                   )}
                   subMenus={{
@@ -590,21 +603,24 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
                         </MenuItem>
                         <MenuItem divider />
-                        <YBMenuItem
-                          onClick={showRollingRestartModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.restartUniverse'
-                          )}
-                        >
-                          Initiate Rolling Restart
-                        </YBMenuItem>
+
+                        {!universePaused &&
+                          <YBMenuItem
+                            onClick={showRollingRestartModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.restartUniverse'
+                            )}
+                          >
+                            Initiate Rolling Restart
+                          </YBMenuItem>
+                        }
 
                         {isDefinedNotNull(providerType)
                           && providerType.toString() === 'aws'
                           && statusCheck &&
                           <YBMenuItem onClick={showToggleUniverseStateModal}>
-                            {!universePaused ? 'Pause Universe' : 'Restart Universe'}
+                            {!universePaused ? 'Pause Universe' : 'Resume Universe'}
                           </YBMenuItem>
                         }
 
@@ -646,8 +662,8 @@ class UniverseDetail extends Component {
         <ToggleUniverseStateContainer
           visible={showModal && visibleModal === 'toggleUniverseStateForm'}
           onHide={closeModal}
-          title={`${!universePaused ? 'Pause' : 'Restart'} Universe: `}
-          body={`Are you sure you want to ${!universePaused ? 'pause' : 'restart'} the universe?`}
+          title={`${!universePaused ? 'Pause' : 'Resume'} Universe: `}
+          body={`Are you sure you want to ${!universePaused ? 'pause' : 'resume'} the universe?`}
           type="primary"
           universePaused={universePaused}
         />

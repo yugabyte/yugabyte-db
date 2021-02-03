@@ -21,6 +21,7 @@ export default class NodeDetailsTable extends Component {
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
 
     const formatIpPort = function (cell, row, type) {
       if (cell === '-') {
@@ -237,16 +238,17 @@ export default class NodeDetailsTable extends Component {
             >
               Processes
             </TableHeaderColumn>
-            {!this.props.isReadOnlyUniverse && (
-              <TableHeaderColumn
-                dataField="nodeAction"
-                className={'yb-actions-cell'}
-                columnClassName={'yb-actions-cell'}
-                dataFormat={getNodeAction}
-              >
-                Action
-              </TableHeaderColumn>
-            )}
+            {!this.props.isReadOnlyUniverse &&
+              !universePaused && (
+                <TableHeaderColumn
+                  dataField="nodeAction"
+                  className={'yb-actions-cell'}
+                  columnClassName={'yb-actions-cell'}
+                  dataFormat={getNodeAction}
+                >
+                  Action
+                </TableHeaderColumn>
+              )}
           </BootstrapTable>
         }
       />
