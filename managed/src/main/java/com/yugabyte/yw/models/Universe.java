@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import com.google.common.net.HostAndPort;
 import com.google.common.base.Joiner;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -144,10 +145,11 @@ public class Universe extends Model {
   }
 
   public JsonNode toJson() {
+    SimpleDateFormat dateObject = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     ObjectNode json = Json.newObject()
         .put("universeUUID", universeUUID.toString())
         .put("name", name)
-        .put("creationDate", creationDate.toString())
+        .put("creationDate", dateObject.format(creationDate))
         .put("version", version);
     String dnsName = getDnsName();
     if (dnsName != null) {
