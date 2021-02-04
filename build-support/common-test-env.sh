@@ -1295,16 +1295,16 @@ find_spark_submit_cmd() {
   fi
 
   if is_mac; then
-    spark_submit_cmd_path=$YB_MACOS_PY3_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=${YB_MACOS_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
 
   if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
-    spark_submit_cmd_path=$YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=${YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
 
-  spark_submit_cmd_path=$YB_LINUX_PY3_SPARK_SUBMIT_CMD
+  spark_submit_cmd_path=${YB_LINUX_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
 }
 
 spark_available() {
