@@ -31,16 +31,14 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchKMSConfigList: () => {
-      return dispatch(fetchAuthConfigList()).then((response) => 
+      return dispatch(fetchAuthConfigList()).then((response) =>
         dispatch(fetchAuthConfigListResponse(response.payload))
       )
       .catch((err) => {
         dispatch(addToast({
           toast: {
             type: 'error',
-            description: 'Error occured while fetching config.',
-            position: "bottom-right",
-            icon: "fa fa-warning fa-3x"
+            description: 'Error occured while fetching config.'
           }
         }))
       })

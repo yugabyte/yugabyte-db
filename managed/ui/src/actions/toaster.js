@@ -1,8 +1,8 @@
-export const ADD_TOAST = 'ADD_TOAST';
-export const REMOVE_TOAST = 'REMOVE_TOAST';
-
 let id = 0;
 
+// Contant for toaster action
+export const ADD_TOAST = 'ADD_TOAST';
+export const REMOVE_TOAST = 'REMOVE_TOAST';
 
 const createToast = (options) => {
   return {
@@ -11,6 +11,7 @@ const createToast = (options) => {
   }
 }
 
+// Add Toast action
 export function addToast(options = {}) {
   return {
     type: ADD_TOAST,
@@ -18,6 +19,7 @@ export function addToast(options = {}) {
   };
 }
 
+// Remove Toast action
 export function removeToast(id) {
   return {
     payload: id,

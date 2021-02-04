@@ -2,10 +2,8 @@ import React, { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import '../app/stylesheets/Toaster.scss';
 
-
 const Toaster = (props) => {
   const { toast, onDismissClick} = props;
-
   const icon = toast.type === 'success' ? 'fa-check-circle' : 'fa-warning';
   const position = toast.position || 'bottom-right';
 

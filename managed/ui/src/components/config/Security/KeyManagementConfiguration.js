@@ -72,7 +72,7 @@ class KeyManagementConfiguration extends Component {
               data['cmk_policy'] = text;
               setKMSConfig(kmsProvider.value, data).then(() => {
                 fetchKMSConfigList();
-                this.setState({listView: true});
+                this.setState({ listView: true });
               });
             });
             return;
@@ -88,7 +88,7 @@ class KeyManagementConfiguration extends Component {
       }
       setKMSConfig(kmsProvider.value, data).then(() => {
         fetchKMSConfigList();
-        this.setState({listView: true});
+        this.setState({ listView: true });
       });
     }
   };
@@ -276,7 +276,7 @@ class KeyManagementConfiguration extends Component {
 
   render() {
     const { configList } = this.props;
-    const { listView, enabledIAMProfile} = this.state;
+    const { listView, enabledIAMProfile } = this.state;
 
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
@@ -293,7 +293,7 @@ class KeyManagementConfiguration extends Component {
         </React.Fragment>
       );
 
-    }
+    };
 
     const validationSchema = Yup.object().shape({
       apiUrl: Yup.string(),
