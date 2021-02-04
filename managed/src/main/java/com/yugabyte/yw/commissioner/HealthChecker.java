@@ -12,6 +12,8 @@ package com.yugabyte.yw.commissioner;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
 import javax.mail.MessagingException;
 
 import java.util.Date;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -67,7 +70,8 @@ public class HealthChecker {
   public static final String kCheckLabel = "check_name";
   public static final String kNodeLabel = "node";
 
-  private static final String ALERT_ERROR_CODE = "HEALTH_CHECKER_FAILURE";
+  @VisibleForTesting
+  static final String ALERT_ERROR_CODE = "HEALTH_CHECKER_FAILURE";
 
   play.Configuration config;
 
@@ -90,9 +94,11 @@ public class HealthChecker {
 
   private final CollectorRegistry promRegistry;
 
-  private HealthCheckerReport healthCheckerReport;
+  private final HealthCheckerReport healthCheckerReport;
 
-  private EmailHelper emailHelper;
+  private final EmailHelper emailHelper;
+
+  private final AlertManager alertManager;
 
   @VisibleForTesting
   HealthChecker(
@@ -102,7 +108,8 @@ public class HealthChecker {
       HealthManager healthManager,
       CollectorRegistry promRegistry,
       HealthCheckerReport healthCheckerReport,
-      EmailHelper emailHelper) {
+      EmailHelper emailHelper,
+      AlertManager alertManager) {
     this.actorSystem = actorSystem;
     this.config = config;
     this.executionContext = executionContext;
@@ -110,6 +117,7 @@ public class HealthChecker {
     this.promRegistry = promRegistry;
     this.healthCheckerReport = healthCheckerReport;
     this.emailHelper = emailHelper;
+    this.alertManager = alertManager;
 
     this.initialize();
   }
@@ -122,10 +130,11 @@ public class HealthChecker {
     ExecutionContext executionContext,
     HealthManager healthManager,
     HealthCheckerReport healthCheckerReport,
-    EmailHelper emailHelper) {
+    EmailHelper emailHelper,
+    AlertManager alertManager) {
     this(actorSystem, config, executionContext, healthManager,
         CollectorRegistry.defaultRegistry, healthCheckerReport,
-        emailHelper);
+        emailHelper, alertManager);
   }
 
   private void initialize() {
@@ -189,6 +198,10 @@ public class HealthChecker {
         LOG.info("Health check for universe {} reported {}. [ {} ms ]", u.name,
             (hasErrors ? "errors" : " success"), durationMs);
 
+        if (!hasErrors) {
+          resolveHealthCheckAlerts(c, u);
+        }
+
       } catch (Exception e) {
         LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
         createAlert(c, u,
@@ -207,6 +220,23 @@ public class HealthChecker {
           createAlert(c, u, "Error sending Health check email: " + mailError);
         }
       }
+    }
+  }
+
+  /**
+   * Updates states of all active health-check alerts to RESOLVED.
+   *
+   * @param c Customer
+   * @param u Universe
+   */
+  private void resolveHealthCheckAlerts(Customer c, Universe u) {
+    List<Alert> activeAlerts = Alert.list(c.uuid, ALERT_ERROR_CODE, u.universeUUID).stream()
+        .filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
+        .collect(Collectors.toList());
+    LOG.debug("Resetting health-check alerts, count: " + activeAlerts.size());
+    for (Alert alert : activeAlerts) {
+        alert.setState(State.RESOLVED);
+        alert.save();
     }
   }
 

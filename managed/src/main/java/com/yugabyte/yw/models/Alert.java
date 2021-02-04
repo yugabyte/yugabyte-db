@@ -163,11 +163,11 @@ public class Alert extends Model {
   }
 
   public static Boolean exists(String errCode) {
-    return find.query().where().eq("errCode", errCode).findCount() != 0;
+    return find.query().where().eq("err_code", errCode).findCount() != 0;
   }
 
   public static Boolean exists(String errCode, UUID targetUUID) {
-    return find.query().where().eq("errCode", errCode)
+    return find.query().where().eq("err_code", errCode)
                                .eq("target_uuid", targetUUID).findCount() != 0;
   }
 
@@ -213,10 +213,12 @@ public class Alert extends Model {
       .findList();
   }
 
-  public static Alert get(UUID customerUUID, String errCode, UUID targetUUID) {
+  public static List<Alert> list(UUID customerUUID, String errCode, UUID targetUUID) {
     return find.query().where().eq("customer_uuid", customerUUID)
-                               .eq("errCode", errCode)
-                               .eq("target_uuid", targetUUID).findOne();
+                               .eq("err_code", errCode)
+                               .eq("target_uuid", targetUUID)
+                               .orderBy("create_time desc")
+                               .findList();
   }
 
   public static Alert get(UUID alertUUID) {
@@ -229,5 +231,9 @@ public class Alert extends Model {
       .eq("target_uuid", targetUUID)
       .eq("target_type", targetType)
       .findOne();
+  }
+
+  public void setState(State state) {
+    this.state = state;
   }
 }

@@ -147,7 +147,7 @@ def check_output(cmd, env):
             return 'Error executing command {}: timeout occurred'.format(cmd)
 
         output, stderr = command.communicate()
-        return output.decode('utf-8').encode("ascii", "ignore")
+        return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
@@ -249,6 +249,9 @@ class NodeChecker():
 
         # Do not process the headers.
         lines = output.split('\n')
+        if len(lines) < 2:
+            return e.fill_and_return_entry([output], True)
+
         msgs.append(lines[0])
         for line in lines[1:]:
             msgs.append(line)
@@ -480,11 +483,11 @@ class CheckCoordinator:
                     checks_remaining += 1
                     sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
 
+                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.tries > 0:
                         logging.info("Retry # " + str(check.tries) +
-                                     " for check " + check.func_name)
+                                     " for check " + check_func_name)
 
-                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.yb_process is None:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
