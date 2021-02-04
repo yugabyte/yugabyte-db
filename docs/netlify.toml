@@ -40,6 +40,11 @@
   from="/:version/releases/*"
   to="/latest/releases/:splat"
 
+# Stable quick-start needs to point to macOS by default
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
+
 # Docs prior to v1.3 are not online
 
 [[redirects]]
