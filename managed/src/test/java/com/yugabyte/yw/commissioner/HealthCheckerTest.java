@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 
+import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
@@ -19,6 +20,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.Alert.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
@@ -88,7 +91,10 @@ public class HealthCheckerTest extends FakeDBApplication {
   private HealthCheckerReport report;
 
   @Mock
-  private EmailHelper emailHelper;
+  private EmailHelper mockEmailHelper;
+
+  @Mock
+  private AlertManager mockAlertManager;
 
   @Before
   public void setUp() {
@@ -118,7 +124,8 @@ public class HealthCheckerTest extends FakeDBApplication {
       mockHealthManager,
       testRegistry,
       report,
-      emailHelper
+      mockEmailHelper,
+      mockAlertManager
     );
   }
 
@@ -533,14 +540,15 @@ public class HealthCheckerTest extends FakeDBApplication {
     });
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
     // Imitate error while sending the email.
-    doThrow(new MessagingException("TestException")).when(emailHelper).sendEmail(any(), any(),
+    doThrow(new MessagingException("TestException")).when(mockEmailHelper).sendEmail(any(), any(),
         any(), any(), any());
-    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(EmailFixtures.createSmtpData());
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
 
     assertEquals(0, Alert.list(defaultCustomer.uuid).size());
     healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
 
-    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
+    verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that alert is created.
     List<Alert> alerts = Alert.list(defaultCustomer.uuid);
     assertNotEquals(0, alerts.size());
@@ -550,11 +558,48 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Test
   public void testEmailSentWithTwoContentTypes() throws MessagingException {
     Universe u = setupUniverse("test");
-    when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(EmailFixtures.createSmtpData());
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
     healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
 
-    verify(emailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
+    verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     verify(report, times(1)).asHtml(eq(u), any(), anyBoolean());
     verify(report, times(1)).asPlainText(any(), anyBoolean());
+  }
+
+  private void mockGoodHealthResponse() {
+    ShellResponse dummyShellResponse = ShellResponse.create(0,
+        ("{''error'': false, ''data'': [ {''node'':''" + dummyNode
+            + "'', ''has_error'': false, ''message'':''" + dummyCheck + "'' } ] }").replace("''",
+                "\""));
+    when(mockHealthManager.runCommand(any(), any(), any())).thenReturn(dummyShellResponse);
+  }
+
+  @Test
+  public void testEmailSent_RightAlertsResetted() throws MessagingException {
+    Universe u = setupUniverse("test");
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
+    setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+    mockGoodHealthResponse();
+
+    // alert1 is in state ACTIVE.
+    Alert alert1 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
+        HealthChecker.ALERT_ERROR_CODE, "Warning", "Test 1");
+    alert1.setState(State.ACTIVE);
+    alert1.save();
+    // alert1 is in state CREATED.
+    Alert alert2 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
+        HealthChecker.ALERT_ERROR_CODE, "Warning", "Test 2");
+    // alert3 should not be updated as it has another errCode.
+    Alert alert3 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
+        "Another Error Code", "Warning", "Test 3");
+
+    healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
+
+    assertEquals(State.RESOLVED, Alert.get(alert1.uuid).state);
+    assertEquals(State.RESOLVED, Alert.get(alert2.uuid).state);
+    // Alert3 is not related to health-check, so it should not be updated.
+    assertNotEquals(State.RESOLVED, Alert.get(alert3.uuid).state);
   }
 }

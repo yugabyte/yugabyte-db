@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -99,7 +98,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
         // Create new alert or update existing alert with current node name if alert already exists.
         if (Alert.exists(alertErrCode, universe.universeUUID)) {
-          Alert cronAlert = Alert.get(cust.uuid, alertErrCode, universe.universeUUID);
+          Alert cronAlert = Alert.list(cust.uuid, alertErrCode, universe.universeUUID).get(0);
           List<String> failedNodesList = universe.getNodes().stream()
               .map(nodeDetail -> nodeDetail.nodeName)
               .collect(Collectors.toList());
