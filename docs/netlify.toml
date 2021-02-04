@@ -34,6 +34,12 @@
   to = "/latest/faq/:splat"
   force = true
 
+# Point all release notes to latest
+
+[[redirects]]
+  from="/:version/releases/*"
+  to="/latest/releases/:splat"
+
 # Docs prior to v1.3 are not online
 
 [[redirects]]
