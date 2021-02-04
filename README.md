@@ -13,6 +13,7 @@ There are multiple ways you can contribute to the project. And help is always we
 - Documentation changes
 - Bug reports
 - JIRA maintenance
+
 For more details, please refer to the "CONTRIBUTION" section of the [Apache AGE Website](https://age.apache.org/#).
 
 Connecting
@@ -26,5 +27,4 @@ News and Updates
 - The next Apache AGE release (0.3.0-incubating) will be available around Jan 15, 2021.
 - User guide for version 0.3.0-incubating will be available by Feb 5, 2021.
 - Apache AGE at the Postgres Build 2020 (virtual) conference, Check out the [webinar](https://bitnine.net/blog-agens-solution/apache-age-postgres-build-2020-review/).
-- The next release, 0.3.0-incubating, will be out around mid January.
 - Apache AGE plans to incorporate another open-source project for graph visualization and analytics.
