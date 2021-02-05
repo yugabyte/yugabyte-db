@@ -106,6 +106,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     expectedCommandArgs.add("--prometheus_host");
     expectedCommandArgs.add(prometheusHost);
     expectedCommandArgs.add("--verbose");
+    expectedCommandArgs.add("--skip_restart");
 
     return expectedCommandArgs;
   }
