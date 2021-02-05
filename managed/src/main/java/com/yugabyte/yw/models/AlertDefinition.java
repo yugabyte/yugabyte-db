@@ -30,7 +30,7 @@ public class AlertDefinition extends Model {
   public String name;
 
   @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
+  @Column(nullable = false)
   public UUID universeUUID;
 
   @Constraints.Required
