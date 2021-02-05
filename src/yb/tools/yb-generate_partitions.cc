@@ -53,7 +53,8 @@ Status YBPartitionGenerator::Init() {
   client_ = VERIFY_RESULT(builder.Build());
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table_));
   RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(client_->GetTablets(table_name_, /* max_tablets */ 0, &tablets));
+  RETURN_NOT_OK(client_->GetTablets(
+      table_name_, /* max_tablets */ 0, &tablets, /* partition_list_version =*/ nullptr));
   RETURN_NOT_OK(BuildTabletMap(tablets));
   return Status::OK();
 }

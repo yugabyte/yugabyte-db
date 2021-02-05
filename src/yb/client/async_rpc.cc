@@ -196,8 +196,8 @@ void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
-        ClientError(new_status) == ClientErrorCode::kTablePartitionsAreStale) {
-      ops_[0]->yb_op->MarkTablePartitionsAsStale();
+        ClientError(new_status) == ClientErrorCode::kTablePartitionListIsStale) {
+      ops_[0]->yb_op->MarkTablePartitionListAsStale();
     }
     if (async_rpc_metrics_ && status.ok() && tablet_invoker_.is_consistent_prefix()) {
       IncrementCounter(async_rpc_metrics_->consistent_prefix_successful_reads);

@@ -588,7 +588,12 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
 
   const client::YBTableName kNewTableName(YQL_DATABASE_CQL, "new_my_keyspace", "test-table");
   google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(kNewTableName, -1, &tablets, RequireTabletsRunning::kFalse));
+  ASSERT_OK(client_->GetTablets(
+      kNewTableName,
+      -1,
+      &tablets,
+      /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
   for (int i = 0 ; i < kNumPartitions; ++i) {
     Partition p;
     Partition::FromPB(tablets[i].partition(), &p);
