@@ -636,7 +636,9 @@ class RocksDBPatcher::Impl {
       if (!file.largest.user_frontier) {
         return;
       }
-      if (down_cast<ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time() <= value) {
+      auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
+      if (consensus_frontier.hybrid_time() <= value ||
+          consensus_frontier.hybrid_time_filter() <= value) {
         return;
       }
       rocksdb::FileMetaData fmd = file;
