@@ -34,6 +34,27 @@
   to = "/latest/faq/:splat"
   force = true
 
+# Point all release notes to latest
+
+[[redirects]]
+  from="/:version/releases/*"
+  to="/latest/releases/:splat"
+
+# Stable quick-starts need defaults,
+# since archiving from /latest removes aliases
+
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/create-local-cluster/"
+  to="/stable/quick-start/create-local-cluster/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/explore/"
+  to="/stable/quick-start/explore/ysql/"
+
 # Docs prior to v1.3 are not online
 
 [[redirects]]

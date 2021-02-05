@@ -1,0 +1,11 @@
+{
+  "default": true,
+  "MD007": {"indent": 4},
+  "MD009": false,
+  "MD013": false,
+  "MD014": false,
+  "MD024": {"siblings_only": true},
+  "MD033": false,
+  "MD036": false,
+  "MD041": {"front_matter_title": "^\\s*title\\s*[:=]"}
+}
