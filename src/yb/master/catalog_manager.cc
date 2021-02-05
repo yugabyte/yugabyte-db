@@ -4528,7 +4528,7 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     std::lock_guard<LockType> l(lock_);
 
     auto& table_pb = table_write_lock->mutable_data()->pb;
-    table_pb.set_partitions_version(table_pb.partitions_version() + 1);
+    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
     // If we crash here - we will have new partitions version with the same set of tablets which
@@ -8330,7 +8330,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   }
 
   resp->set_table_type(l->data().pb.table_type());
-  resp->set_partitions_version(l->data().pb.partitions_version());
+  resp->set_partition_list_version(l->data().pb.partition_list_version());
 
   return Status::OK();
 }

@@ -43,6 +43,7 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
@@ -343,6 +344,11 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
 
+  // The last version of the table's partition list that we know the tablet was serving data with.
+  PartitionListVersion GetLastKnownPartitionListVersion() const;
+
+  void MakeLastKnownPartitionListVersionAtLeast(PartitionListVersion partition_list_version);
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
@@ -358,6 +364,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   bool stale_;
   bool is_split_ = false;
   std::vector<RemoteReplica> replicas_;
+  PartitionListVersion last_known_partition_list_version_ = 0;
 
   std::atomic<ReplicasCount> replicas_count_{{0, 0}};
 
@@ -382,10 +389,21 @@ class RequestCleanup {
   virtual ~RequestCleanup() = default;
 };
 
-typedef std::string PartitionKey;
-typedef std::string PartitionGroupKey;
-typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
-typedef std::shared_ptr<const PartitionGroupKey> PartitionGroupKeyPtr;
+// We store partition_list_version in addition to start_key to be able to uniquely identify exact
+// partition (as a result of split we can have new partition with same start key, but different
+// version).
+struct VersionedPartitionStartKey {
+  PartitionKeyPtr key;
+  PartitionListVersion partition_list_version;
+
+  std::string ToString() {
+    return YB_STRUCT_TO_STRING(key, partition_list_version);
+  }
+};
+
+typedef PartitionKey PartitionGroupStartKey;
+typedef PartitionKeyPtr PartitionGroupStartKeyPtr;
+typedef VersionedPartitionStartKey VersionedPartitionGroupStartKey;
 
 using LookupCallbackParam = boost::variant<RemoteTabletPtr, std::vector<RemoteTabletPtr>>;
 
@@ -428,11 +446,31 @@ struct LookupDataGroup {
 };
 
 struct TableData {
+  explicit TableData(const VersionedTablePartitionListPtr& partition_list_)
+      : partition_list(partition_list_) {
+    DCHECK_ONLY_NOTNULL(partition_list);
+  }
+
+  VersionedTablePartitionListPtr partition_list;
   std::map<PartitionKey, RemoteTabletPtr> tablets_by_partition;
-  std::unordered_map<PartitionGroupKey, LookupDataGroup> tablet_lookups_by_group;
+  std::unordered_map<PartitionGroupStartKey, LookupDataGroup> tablet_lookups_by_group;
   std::vector<RemoteTabletPtr> all_tablets;
   LookupDataGroup full_table_lookups;
   bool stale = false;
+  // To resolve partition_key to tablet_id MetaCache uses client::FindPartitionStart with
+  // TableData::partition_list and then translates partition_start to tablet_id based on
+  // TableData::tablets_by_partition.
+  //
+  // We maintain the invariant that TableData::tablets_by_partition and
+  // TableData::tablet_lookups_by_group always correspond to the version of
+  // TableData::partition_list to avoid inconsistencies like the following:
+  //
+  // If TableData::tablets_by_partition was populated based on a newer version of Table partition
+  // list than partition_list.version, for a key belonging to 2nd (with the higher key range)
+  // post-split tablet we can get partition_start key of the parent partition as of the state before
+  // the split and then translates it using newer TableData::tablets_by_partition into 1st
+  // (with the lower key range) post-split tablet instead of 2nd post-split tablet. This way we will
+  // miss the key, because it doesn't exist in 1st post-split tablet.
 };
 
 class LookupCallbackVisitor : public boost::static_visitor<> {
@@ -477,9 +515,6 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
 // This class will also be responsible for cache eviction policies, etc.
 class MetaCache : public RefCountedThreadSafe<MetaCache> {
  public:
-  typedef std::string PartitionKey;
-  typedef std::string PartitionGroupKey;
-
   // The passed 'client' object must remain valid as long as MetaCache is alive.
   explicit MetaCache(YBClient* client);
 
@@ -521,7 +556,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
                         LookupTabletRangeCallback callback);
 
   // If table is specified and cache is not used or has no tablet leader also checks whether table
-  // partitions are stale and returns ClientErrorCode::kTablePartitionsAreStale in that case.
+  // partitions are stale and returns ClientErrorCode::kTablePartitionListIsStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
                         CoarseTimePoint deadline,
@@ -546,18 +581,19 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Called on the slow LookupTablet path when the master responds.
   // Populates the tablet caches.
-  // If partition_group_start is not nullptr then corresponding lookup callbacks from
-  // TableData.tablet_lookups_by_group will be notified and removed from tablet_lookups_by_group.
+  // If table_partition_list_version is specified, the function checks for it to match
+  // TableData::partitions and returns Status with ClientErrorCode::kTablePartitionListIsStale if
+  // versions do not match.
+  // TableData::tablets_by_partition is only updated when these versions are defined and match.
   // Also notifies all callbacks that are waiting on received tablet ids.
   // REQUIRES locations to be in order of partitions and without overlaps.
   // There could be gaps due to post-tablets not yet being running, in this case, MetaCache will
   // just skip updating cache for these tablets until they become running.
   CHECKED_STATUS ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      const PartitionGroupKey* partition_group_start,
-      LookupRpc* lookup_rpc);
+      boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 
-  void InvalidateTableCache(const TableId& table_id);
+  void InvalidateTableCache(const YBTable& table);
 
  private:
   friend class LookupRpc;
@@ -567,11 +603,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   FRIEND_TEST(client::ClientTest, TestMasterLookupPermits);
 
-  // Lookup the given tablet by key, only consulting local information.
+  // Lookup the given tablet by partition_start_key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
   RemoteTabletPtr LookupTabletByKeyFastPathUnlocked(
-      const std::shared_ptr<const YBTable>& table,
-      const PartitionKey& partition_key) REQUIRES_SHARED(mutex_);
+      const TableId& table_id,
+      const VersionedPartitionStartKey& partition_key) REQUIRES_SHARED(mutex_);
 
   RemoteTabletPtr LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id)
       REQUIRES_SHARED(mutex_);
@@ -585,11 +621,16 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.
   void LookupByKeyFailed(
-      const std::shared_ptr<const YBTable>& table, const PartitionGroupKey& partition_group_start,
+      const std::shared_ptr<const YBTable>& table,
+      const VersionedPartitionGroupStartKey& partition_group_start,
+      PartitionListVersion response_partition_list_version,
       int64_t request_no, const Status& status);
 
   void LookupByIdFailed(
-      const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table, int64_t request_no,
+      const TabletId& tablet_id,
+      const std::shared_ptr<const YBTable>& table,
+      const boost::optional<PartitionListVersion>& response_partition_list_version,
+      int64_t request_no,
       const Status& status);
 
   void LookupFullTableFailed(const std::shared_ptr<const YBTable>& table,
@@ -608,8 +649,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       CallbackNotifier* notifier) REQUIRES(mutex_);
 
   RemoteTabletPtr FastLookupTabletByKeyUnlocked(
-      const std::shared_ptr<const YBTable>& table,
-      const PartitionKey& partition_start) REQUIRES_SHARED(mutex_);
+      const TableId& table_id,
+      const VersionedPartitionStartKey& partition_start) REQUIRES_SHARED(mutex_);
 
   // Lookup from cache the set of tablets corresponding to a tiven table.
   // Returns empty vector if the cache is invalid or a tablet is stale,
@@ -624,13 +665,17 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // start from scratch - tserver will treat these requests as duplicates/incorrect, because
   // on tserver side related structure for tracking duplicate requests is also copied from
   // pre-split tablet to post-split tablets.
-  void MaybeUpdateClientRequests(const TableData& table_data, const RemoteTablet& tablet);
+  void MaybeUpdateClientRequests(const RemoteTablet& tablet);
+
+  std::unordered_map<TableId, TableData>::iterator InitTableDataUnlocked(
+      const TableId& table_id, const VersionedTablePartitionListPtr& partitions)
+      REQUIRES_SHARED(mutex_);
 
   template <class Lock>
   bool DoLookupTabletByKey(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<const YBTable>& table, const VersionedTablePartitionListPtr& partitions,
       const PartitionKeyPtr& partition_start, CoarseTimePoint deadline,
-      LookupTabletCallback* callback, PartitionGroupKeyPtr* partition_group_start);
+      LookupTabletCallback* callback, PartitionGroupStartKeyPtr* partition_group_start);
 
   template <class Lock>
   bool DoLookupTabletById(

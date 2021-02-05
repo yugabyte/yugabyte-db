@@ -371,7 +371,7 @@ message SysTablesEntryPB {
   optional PartitionSchemaPB partition_schema = 9;
 
   // The table's partitions version. Incremented each time partitions change.
-  optional uint32 partitions_version = 28;
+  optional uint32 partition_list_version = 28;
 
   // The next column ID to assign to newly added columns in this table.
   // This prevents column ID reuse.
@@ -877,7 +877,7 @@ message GetTabletLocationsRequestPB {
   // The tablet IDs about which to fetch info.
   repeated bytes tablet_ids = 1;
 
-  // If table ID is specified, table's partitions_version will be included into response.
+  // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;
 }
 
@@ -886,9 +886,9 @@ message GetTabletLocationsResponsePB {
 
   repeated TabletLocationsPB tablet_locations = 2;
 
-  // If GetTabletLocationsRequestPB::table_id is set we return table's partitions_version for this
-  // table (see SysTablesEntryPB::partitions_version).
-  optional uint32 partitions_version = 4;
+  // If GetTabletLocationsRequestPB::table_id is set we return table's partition_list_version for
+  // this table (see SysTablesEntryPB::partition_list_version).
+  optional uint32 partition_list_version = 4;
 
   message Error {
     required bytes tablet_id = 1;
@@ -1080,7 +1080,7 @@ message GetTableLocationsResponsePB {
   optional TableType table_type = 3;
 
   // See SysTablesEntryPB for field with the same name.
-  optional uint32 partitions_version = 4;
+  optional uint32 partition_list_version = 4;
 
   optional bool creating = 5;
 }
