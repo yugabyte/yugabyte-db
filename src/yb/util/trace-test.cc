@@ -116,8 +116,8 @@ TEST_F(TraceTest, TestChildTrace) {
     TRACE("hello from traceB");
   }
   EXPECT_EQ("XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n"
-            "..  Related trace:\n"
-            "..  XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n",
+            "Related trace:\n"
+            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n",
             XOutDigits(traceA->DumpToString(false)));
 }
 
