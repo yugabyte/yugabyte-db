@@ -128,13 +128,13 @@ public class AlertController extends AuthenticatedController {
    * Saves a value to customer's configuration with name 'paramName'. The saved
    * double value is normalized (removed trailing '.0').
    *
-   * @param customer
+   * @param universe
    * @param paramName
    * @param value
    */
-  private void updateAlertDefinitionParameter(Customer customer, String paramName, double value) {
+  private void updateAlertDefinitionParameter(Universe universe, String paramName, double value) {
     String valueStr = value == (int) value ? String.valueOf((int) value) : String.valueOf(value);
-    configFactory.forCustomer(customer).setValue(paramName, valueStr);
+    configFactory.forUniverse(universe).setValue(paramName, valueStr);
   }
 
   public Result createDefinition(UUID customerUUID, UUID universeUUID) {
@@ -144,8 +144,6 @@ public class AlertController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
-      Universe universe = Universe.get(universeUUID);
-
       Form<AlertDefinitionFormData> formData =
         formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
@@ -153,8 +151,8 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
-
-      updateAlertDefinitionParameter(customer, data.template.getParameterName(), data.value);
+      Universe universe = Universe.get(universeUUID);
+      updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
       AlertDefinition definition = AlertDefinition.create(
         customerUUID,
         universeUUID,
@@ -171,25 +169,24 @@ public class AlertController extends AuthenticatedController {
   }
 
   public Result getAlertDefinition(UUID customerUUID, UUID universeUUID, String name) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
+    if (Customer.get(customerUUID) == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
     AlertDefinition definition = AlertDefinition.get(customerUUID, universeUUID, name);
-
     if (definition == null) {
       return ApiResponse.error(BAD_REQUEST, "Could not find Alert Definition");
     }
-    definition.query =
-      new ConfigSubstitutor(configFactory.forCustomer(customer)).replace(definition.query);
+
+    Universe universe = Universe.get(universeUUID);
+    definition.query = new ConfigSubstitutor(configFactory.forUniverse(universe))
+        .replace(definition.query);
     return ok(Json.toJson(definition));
   }
 
   public Result updateAlertDefinition(UUID customerUUID, UUID alertDefinitionUUID) {
     try {
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
+      if (Customer.get(customerUUID) == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
@@ -199,8 +196,6 @@ public class AlertController extends AuthenticatedController {
           "Invalid Alert Definition UUID: " + alertDefinitionUUID);
       }
 
-      Universe universe = Universe.get(definition.universeUUID);
-
       Form<AlertDefinitionFormData> formData =
         formFactory.form(AlertDefinitionFormData.class).bindFromRequest();
       if (formData.hasErrors()) {
@@ -208,8 +203,8 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
-
-      updateAlertDefinitionParameter(customer, data.template.getParameterName(), data.value);
+      Universe universe = Universe.get(definition.universeUUID);
+      updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
       definition = AlertDefinition.update(
         definition.uuid,
         data.template.buildTemplate(universe.getUniverseDetails().nodePrefix),
