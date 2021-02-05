@@ -17,6 +17,8 @@ PLATFORM_DB_NAME="yugaware"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
 # This is the UID for nobody user which is used by the prometheus container as the default user.
 NOBODY_UID=65534
+# When false, we won't stop/start platform and prometheus services when executing the script
+RESTART_PROCESSES=true
 
 set +e
 # Check whether the script is being run from a VM running replicated-based Yugabyte Platform.
@@ -83,7 +85,7 @@ set_prometheus_data_dir() {
 
 # Modify service status if the script is being run against a service-based Yugabyte Platform
 modify_service() {
-  if [[ "$SERVICE_BASED" = true ]]; then
+  if [[ "$SERVICE_BASED" = true ]] && [[ "$RESTART_PROCESSES" = true ]]; then
     set +e
     service="$1"
     operation="$2"
@@ -247,6 +249,7 @@ print_backup_usage() {
   echo "  -r, --exclude_releases         exclude Yugabyte releases from backup (default: false)"
   echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
   echo "  -v, --verbose                  verbose output of script (default: false)"
+  echo "  -s  --skip_restart             don't restart processes during execution (default: false)"
   echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
@@ -262,6 +265,7 @@ print_restore_usage() {
   echo "  -o, --destination=DIRECTORY    where to un-tar the backup (default: /opt/yugabyte)"
   echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
   echo "  -v, --verbose                  verbose output of script (default: false)"
+  echo "  -s  --skip_restart             don't restart processes during execution (default: false)"
   echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
@@ -342,6 +346,11 @@ case $command in
           set -x
           shift
           ;;
+        -s|--skip_restart)
+          RESTART_PROCESSES=false
+          set -x
+          shift
+          ;;
         -u|--db_username)
           db_username=$2
           shift 2
@@ -400,6 +409,11 @@ case $command in
           ;;
         -v|--verbose)
           verbose=true
+          set -x
+          shift
+          ;;
+        -s|--skip_restart)
+          RESTART_PROCESSES=false
           set -x
           shift
           ;;
