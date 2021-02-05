@@ -95,6 +95,7 @@ message ListSnapshotsResponsePB {
 
 message RestoreSnapshotRequestPB {
   optional bytes snapshot_id = 2;
+  optional fixed64 restore_ht = 3;
 }
 
 message RestoreSnapshotResponsePB {
