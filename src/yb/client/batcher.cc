@@ -293,8 +293,8 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
 
-  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitions())) {
-    client_->data_->meta_cache_->InvalidateTableCache(yb_op->table()->id());
+  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitionList())) {
+    client_->data_->meta_cache_->InvalidateTableCache(*yb_op->table());
   }
 
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
@@ -378,14 +378,14 @@ void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Stat
 void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
-  if (ClientError(s) == ClientErrorCode::kTablePartitionsAreStale) {
-    // MetaCache returns ClientErrorCode::kTablePartitionsAreStale error for tablet lookup request
+  if (ClientError(s) == ClientErrorCode::kTablePartitionListIsStale) {
+    // MetaCache returns ClientErrorCode::kTablePartitionListIsStale error for tablet lookup request
     // in case GetTabletLocations from master returns newer version of table partitions.
     // Since MetaCache has no write access to YBTable, it just returns an error which we receive
     // here and mark the table partitions as stale, so they will be refetched on retry.
     // TODO(tsplit): handle splitting-related retries on YB level instead of returning back to
     // client app/driver.
-    in_flight_op->yb_op->MarkTablePartitionsAsStale();
+    in_flight_op->yb_op->MarkTablePartitionListAsStale();
   }
   CombineErrorUnlocked(in_flight_op, s);
 }

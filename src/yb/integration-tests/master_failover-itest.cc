@@ -456,7 +456,7 @@ TEST_F(MasterFailoverTest, TestFailoverAfterTsFailure) {
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_name, 0, &tablets));
+  ASSERT_OK(client_->GetTablets(table_name, 0, &tablets, /* partition_list_version =*/ nullptr));
 
   // Assert master sees that all tablets have 3 replicas.
   for (const auto& loc : tablets) {

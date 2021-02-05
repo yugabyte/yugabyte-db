@@ -58,7 +58,7 @@ tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* 
 class TabletInvoker {
  public:
   // If table is specified, TabletInvoker can detect that table partitions are stale in case tablet
-  // is no longer available and return ClientErrorCode::kTablePartitionsAreStale.
+  // is no longer available and return ClientErrorCode::kTablePartitionListIsStale.
   explicit TabletInvoker(const bool local_tserver_only,
                          const bool consistent_prefix,
                          YBClient* client,

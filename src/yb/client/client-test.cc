@@ -1076,7 +1076,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
-        strings::Substitute("GetTableLocations($0, hash_code: NaN, 1) failed: "
+        strings::Substitute("GetTableLocations($0, hash_code: NaN, 0, 1) failed: "
             "timed out after deadline expired", client_table_->name().ToString()));
   }
 

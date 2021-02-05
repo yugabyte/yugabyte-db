@@ -92,7 +92,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
  private:
   std::shared_ptr<client::YBTable> table_;
-  const std::shared_ptr<const client::VersionedTablePartitions> table_partitions_;
+  const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
 
   std::vector<PgColumn> columns_;
   std::unordered_map<int, size_t> attr_num_map_; // Attr number to column index map.

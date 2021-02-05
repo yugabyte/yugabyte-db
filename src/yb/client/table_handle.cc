@@ -193,7 +193,8 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
   session_ = client->NewSession();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
+  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(
+      table->name(), /* max_tablets = */ 0, &tablets, /* partition_list_version =*/nullptr));
   if (tablets.size() == 0) {
     table_ = nullptr;
     return;

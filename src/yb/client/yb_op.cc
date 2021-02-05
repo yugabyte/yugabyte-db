@@ -104,11 +104,11 @@ bool YBOperation::IsYsqlCatalogOp() const {
   return table_->schema().table_properties().is_ysql_catalog_table();
 }
 
-void YBOperation::MarkTablePartitionsAsStale() {
+void YBOperation::MarkTablePartitionListAsStale() {
   table_->MarkPartitionsAsStale();
 }
 
-Result<bool> YBOperation::MaybeRefreshTablePartitions() {
+Result<bool> YBOperation::MaybeRefreshTablePartitionList() {
   return table_->MaybeRefreshPartitions();
 }
 

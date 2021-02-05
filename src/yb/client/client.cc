@@ -1519,6 +1519,7 @@ Status YBClient::GetTabletsFromTableId(const string& table_id,
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets,
+                            PartitionListVersion* partition_list_version,
                             const RequireTabletsRunning require_tablets_running) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
@@ -1536,6 +1537,9 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   req.set_require_tablets_running(require_tablets_running);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
+  if (partition_list_version) {
+    *partition_list_version = resp.partition_list_version();
+  }
   return Status::OK();
 }
 
@@ -1587,7 +1591,9 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             std::vector<master::TabletLocationsPB>* locations,
                             const RequireTabletsRunning require_tablets_running) {
   RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, require_tablets_running));
+  RETURN_NOT_OK(GetTablets(
+      table_name, max_tablets, &tablets, /* partition_list_version =*/ nullptr,
+      require_tablets_running));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
   return Status::OK();
 }
@@ -1599,11 +1605,13 @@ Status YBClient::GetTabletsAndUpdateCache(
     vector<string>* ranges,
     std::vector<master::TabletLocationsPB>* locations) {
   RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, RequireTabletsRunning::kFalse));
+  PartitionListVersion partition_list_version;
+  RETURN_NOT_OK(GetTablets(
+      table_name, max_tablets, &tablets, &partition_list_version, RequireTabletsRunning::kFalse));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, /* partition_group_start= */ nullptr, /* lookup_rpc= */ nullptr));
+      tablets, partition_list_version, /* lookup_rpc = */ nullptr));
 
   return Status::OK();
 }

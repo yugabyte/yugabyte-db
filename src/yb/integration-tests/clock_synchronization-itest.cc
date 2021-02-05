@@ -82,7 +82,8 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void PerformOps(int num_writes_per_tserver) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    ASSERT_OK(client_->GetTablets(*table_name_, 0, &tablets));
+    ASSERT_OK(
+        client_->GetTablets(*table_name_, 0, &tablets, /* partition_list_version =*/ nullptr));
     std::shared_ptr<client::YBSession> session =  client_->NewSession();
     for (int i = 0; i < num_writes_per_tserver; i++) {
       auto ql_write = std::make_shared<client::YBqlWriteOp>(table_);

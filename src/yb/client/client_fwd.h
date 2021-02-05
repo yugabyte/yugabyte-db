@@ -62,8 +62,12 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
-typedef std::vector<std::string> TablePartitions;
-struct VersionedTablePartitions;
+typedef std::string PartitionKey;
+typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
+typedef std::vector<PartitionKey> TablePartitionList;
+typedef uint32_t PartitionListVersion;
+struct VersionedTablePartitionList;
+struct VersionedPartitionStartKey;
 
 class YBOperation;
 typedef std::shared_ptr<YBOperation> YBOperationPtr;
