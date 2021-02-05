@@ -24,7 +24,6 @@ import play.mvc.*;
 import java.io.File;
 import java.util.Map;
 import java.util.Date;
-import java.util.UUID;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {
@@ -143,6 +142,8 @@ public class InternalHAController extends Controller {
     try {
       HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
       if (config == null) {
+        LOG.warn("No HA configuration configured");
+
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
@@ -152,10 +153,6 @@ public class InternalHAController extends Controller {
         LOG.warn("No local instance configured");
 
         return ApiResponse.error(BAD_REQUEST, "No local instance configured");
-      } else if (!localInstance.getIsLeader()) {
-        LOG.warn("Local platform instance is already a follower; ignoring demote request");
-
-        return ApiResponse.success(localInstance);
       }
 
       Date requestLastFailover = new Date(timestamp);
@@ -169,6 +166,12 @@ public class InternalHAController extends Controller {
       } else {
         config.setLastFailover(requestLastFailover);
         config.update();
+      }
+
+      if (!localInstance.getIsLeader()) {
+        LOG.debug("Local platform instance is already a follower; ignoring demote request");
+
+        return ApiResponse.success(localInstance);
       }
 
       // Stop the old backup schedule.
