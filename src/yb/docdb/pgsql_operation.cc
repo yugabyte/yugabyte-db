@@ -38,6 +38,7 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+DECLARE_bool(trace_docdb_calls);
 DECLARE_bool(ysql_disable_index_backfill);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
@@ -673,7 +674,9 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
         result_buffer, restart_read_ht, &has_paging_state));
   }
 
-  VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
+  }
   *restart_read_ht = table_iter_->RestartReadHt();
   return fetched_rows;
 }
@@ -729,7 +732,9 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
     scan_schema = &schema;
   }
 
-  VTRACE(1, "Initialized iterator");
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Initialized iterator");
+  }
 
   // Set scan start time.
   bool scan_time_exceeded = false;

@@ -39,23 +39,10 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
-
-DEFINE_int32(txn_print_trace_every_n, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
-TAG_FLAG(txn_print_trace_every_n, advanced);
-TAG_FLAG(txn_print_trace_every_n, runtime);
-
-DEFINE_int32(txn_slow_op_threshold_ms, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
-TAG_FLAG(txn_slow_op_threshold_ms, advanced);
-TAG_FLAG(txn_slow_op_threshold_ms, runtime);
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
@@ -105,9 +92,7 @@ YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction)
-      : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
-        manager_(manager),
+      : manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
@@ -118,9 +103,7 @@ class YBTransaction::Impl final {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
-      : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
-        manager_(manager),
+      : manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
         read_point_(manager->clock()),
@@ -130,9 +113,7 @@ class YBTransaction::Impl final {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
-      : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
-        manager_(manager),
+      : manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kTrue),
@@ -153,16 +134,6 @@ class YBTransaction::Impl final {
   ~Impl() {
     manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_, &abort_handle_});
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
-    const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
-    const auto now = CoarseMonoClock::Now();
-    if (threshold > 0 && ToMilliseconds(now - start_) > threshold) {
-     LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
-        << trace_->DumpToString(true);
-    } else {
-     YB_LOG_IF_EVERY_N(INFO, FLAGS_txn_print_trace_every_n > 0, FLAGS_txn_print_trace_every_n)
-        << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
-        << trace_->DumpToString(true);
-    }
   }
 
   void SetPriority(uint64_t priority) {
@@ -178,7 +149,6 @@ class YBTransaction::Impl final {
   }
 
   CHECKED_STATUS Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
-    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_time << ")";
     if (read_point_.GetReadTime().read.is_valid()) {
@@ -209,7 +179,6 @@ class YBTransaction::Impl final {
   CHECKED_STATUS FillRestartedTransaction(Impl* other) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
     auto transaction = transaction_->shared_from_this();
-    TRACE_TO(trace_, __func__);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
@@ -245,8 +214,7 @@ class YBTransaction::Impl final {
                Waiter waiter) {
     VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
                         << force_consistent_read << ", " << initial << ")";
-    TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
-    VTRACE_TO(2, trace_, "Perparing $0 ops", AsString(ops_info->groups));
+
     {
       std::unique_lock<std::mutex> lock(mutex_);
       const bool defer = !ready_;
@@ -301,7 +269,6 @@ class YBTransaction::Impl final {
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
       const Status& status) {
-    TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
         << ", status: " << status;
@@ -335,7 +302,6 @@ class YBTransaction::Impl final {
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
-          trace_->AddChildTrace(op->yb_op->trace());
           if (op->yb_op->applied() && op->yb_op->should_add_intents(metadata_.isolation)) {
             const std::string& tablet_id = op->tablet->tablet_id();
             if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
@@ -373,7 +339,6 @@ class YBTransaction::Impl final {
 
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
     auto transaction = transaction_->shared_from_this();
-    TRACE_TO(trace_, __func__);
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto status = CheckCouldCommit(seal_only, &lock);
@@ -407,10 +372,9 @@ class YBTransaction::Impl final {
   }
 
   void Abort(CoarseTimePoint deadline) {
-    auto transaction = transaction_->shared_from_this();
-
     VLOG_WITH_PREFIX(2) << "Abort";
-    TRACE_TO(trace_, __func__);
+
+    auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
@@ -471,7 +435,6 @@ class YBTransaction::Impl final {
       ForceConsistentRead force_consistent_read, CoarseTimePoint deadline,
       PrepareChildCallback callback) {
     auto transaction = transaction_->shared_from_this();
-    TRACE_TO(trace_, __func__);
     std::unique_lock<std::mutex> lock(mutex_);
     auto status = CheckRunning(&lock);
     if (!status.ok()) {
@@ -498,7 +461,6 @@ class YBTransaction::Impl final {
   }
 
   Result<ChildTransactionResultPB> FinishChild() {
-    TRACE_TO(trace_, __func__);
     std::unique_lock<std::mutex> lock(mutex_);
     RETURN_NOT_OK(CheckRunning(&lock));
     if (!child_) {
@@ -521,7 +483,6 @@ class YBTransaction::Impl final {
   }
 
   Status ApplyChildResult(const ChildTransactionResultPB& result) {
-    TRACE_TO(trace_, __func__);
     std::vector<std::string> cleanup_tablet_ids;
     auto se = ScopeExit([this, &cleanup_tablet_ids] {
       if (cleanup_tablet_ids.empty()) {
@@ -736,7 +697,6 @@ class YBTransaction::Impl final {
   void CommitDone(const Status& status,
                   const tserver::UpdateTransactionResponsePB& response,
                   const YBTransactionPtr& transaction) {
-    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Committed: " << status;
 
     UpdateClock(response, manager_);
@@ -765,7 +725,6 @@ class YBTransaction::Impl final {
   void AbortDone(const Status& status,
                  const tserver::AbortTransactionResponsePB& response,
                  const YBTransactionPtr& transaction) {
-    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Aborted: " << status;
 
     if (response.has_propagated_hybrid_time()) {
@@ -775,7 +734,6 @@ class YBTransaction::Impl final {
   }
 
   void RequestStatusTablet(const CoarseTimePoint& deadline) {
-    TRACE_TO(trace_, __func__);
     bool expected = false;
     if (!requested_status_tablet_.compare_exchange_strong(
         expected, true, std::memory_order_acq_rel)) {
@@ -794,7 +752,6 @@ class YBTransaction::Impl final {
   void StatusTabletPicked(const Result<std::string>& tablet,
                           const CoarseTimePoint& deadline,
                           const YBTransactionPtr& transaction) {
-    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
     if (!tablet.ok()) {
@@ -808,7 +765,6 @@ class YBTransaction::Impl final {
   void LookupStatusTablet(const std::string& tablet_id,
                           const CoarseTimePoint& deadline,
                           const YBTransactionPtr& transaction) {
-    TRACE_TO(trace_, __func__);
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
@@ -819,7 +775,6 @@ class YBTransaction::Impl final {
 
   void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
                         const YBTransactionPtr& transaction) {
-    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
     if (!result.ok()) {
@@ -992,7 +947,6 @@ class YBTransaction::Impl final {
                       const YBTransactionPtr& transaction,
                       PrepareChildCallback callback,
                       std::unique_lock<std::mutex>* parent_lock) {
-    TRACE_TO(trace_, __func__);
     if (!status.ok()) {
       callback(status);
       return;
@@ -1023,10 +977,6 @@ class YBTransaction::Impl final {
 
     return Status::OK();
   }
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
-  CoarseTimePoint start_;
 
   // Manager is created once per service.
   TransactionManager* const manager_;

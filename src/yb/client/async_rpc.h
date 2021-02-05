@@ -119,7 +119,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   TabletInvoker tablet_invoker_;
 
-  CoarseTimePoint start_;
+  MonoTime start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
   rpc::RpcCommandPtr retained_self_;
 };
