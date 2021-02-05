@@ -169,7 +169,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
 In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command.
 
 ```bash
-$ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
 This produces the following output. Note the tablet UUID for later use, to split this tablet.
@@ -184,7 +184,7 @@ Tablet UUID                       Range                         Leader
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command.
 
 ```sh
-$ bin/yb-admin \
+bin/yb-admin \
     --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     split_tablet 9991368c4b85456988303cd65a3c6503
 ```
@@ -192,7 +192,7 @@ $ bin/yb-admin \
 After the split, you see two tablets for the table `t`.
 
 ```sh
-$ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
 ```plpgsql
