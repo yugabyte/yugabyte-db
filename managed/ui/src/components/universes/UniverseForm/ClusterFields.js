@@ -1820,6 +1820,8 @@ export default class ClusterFields extends Component {
                 </div>
               )}
             </Col>
+          </Row>
+          <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 {selectTlsCert}
