@@ -62,7 +62,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.setValueInternal(path, ConfigValueFactory.fromAnyRef(value));
-    LOG.debug("After setValue {}", delegate());
+    LOG.trace("After setValue {}", delegate());
     return this;
   }
 

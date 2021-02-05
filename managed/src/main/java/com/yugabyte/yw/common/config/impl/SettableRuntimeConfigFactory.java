@@ -53,7 +53,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     Config config = getConfigForScope(
       customer.uuid, "Scoped Config (" + customer.toString() + ")")
       .withFallback(globalConfig());
-    LOG.debug("forCustomer {}: {}", customer.uuid, config);
+    LOG.trace("forCustomer {}: {}", customer.uuid, config);
     return new RuntimeConfig<>(customer, config);
   }
 
@@ -68,7 +68,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       .withFallback(getConfigForScope(customer.uuid,
         "Scoped Config (" + customer.toString() + ")"))
       .withFallback(globalConfig());
-    LOG.debug("forUniverse {}: {}", universe.universeUUID, config);
+    LOG.trace("forUniverse {}: {}", universe.universeUUID, config);
     return new RuntimeConfig<>(universe, config);
   }
 
@@ -83,7 +83,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       .withFallback(getConfigForScope(customer.uuid,
         "Scoped Config (" + customer.toString() + ")"))
       .withFallback(globalConfig());
-    LOG.debug("forProvider {}: {}", provider.uuid, config);
+    LOG.trace("forProvider {}: {}", provider.uuid, config);
     return new RuntimeConfig<>(provider, config);
   }
 
@@ -104,7 +104,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     Config config = getConfigForScope(GLOBAL_SCOPE_UUID,
       "Global Runtime Config (" + GLOBAL_SCOPE_UUID.toString() + ")")
       .withFallback(appConfig);
-    LOG.debug("globalConfig : {}", config);
+    LOG.trace("globalConfig : {}", config);
     return config;
   }
 
@@ -116,7 +116,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       .stream()
       .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
     Config config = ConfigFactory.parseMap(values, description);
-    LOG.debug("Read from DB for {}: {}", description, config);
+    LOG.trace("Read from DB for {}: {}", description, config);
     return config;
   }
 }
