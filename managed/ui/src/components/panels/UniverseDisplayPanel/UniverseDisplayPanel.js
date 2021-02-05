@@ -65,7 +65,7 @@ class UniverseDisplayItem extends Component {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={'month'} />;
     }
     const universeCreationDate = universe.creationDate
-      ? moment(Date.parse(universe.creationDate), 'x').format('MM/DD/YYYY')
+      ? moment(universe.creationDate).format('MM/DD/YYYY')
       : '';
     return (
       <Col sm={4} md={3} lg={2}>

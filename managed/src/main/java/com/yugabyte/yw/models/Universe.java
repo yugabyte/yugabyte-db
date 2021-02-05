@@ -147,7 +147,7 @@ public class Universe extends Model {
     ObjectNode json = Json.newObject()
         .put("universeUUID", universeUUID.toString())
         .put("name", name)
-        .put("creationDate", String.valueOf(creationDate.getTime()))
+        .put("creationDate", creationDate.getTime())
         .put("version", version);
     String dnsName = getDnsName();
     if (dnsName != null) {
