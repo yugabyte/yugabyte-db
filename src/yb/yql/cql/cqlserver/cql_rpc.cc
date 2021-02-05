@@ -306,9 +306,7 @@ void CQLInboundCall::LogTrace() const {
       rpc::RpcCallInProgressPB call_in_progress_pb;
       GetCallDetails(&call_in_progress_pb);
       LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
-      if (trace_) {
-        trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
-      }
+      trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
   }
 }
 
