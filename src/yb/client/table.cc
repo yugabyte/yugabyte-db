@@ -157,18 +157,18 @@ bool YBTable::IsRangePartitioned() const {
   return info_.schema.num_hash_key_columns() == 0;
 }
 
-std::shared_ptr<const TablePartitions> YBTable::GetPartitionsShared() const {
+std::shared_ptr<const TablePartitionList> YBTable::GetPartitionsShared() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
-  return std::shared_ptr<const TablePartitions>(partitions_, &partitions_->keys);
+  return std::shared_ptr<const TablePartitionList>(partitions_, &partitions_->keys);
 }
 
-std::shared_ptr<const VersionedTablePartitions> YBTable::GetVersionedPartitions() const {
+VersionedTablePartitionListPtr YBTable::GetVersionedPartitions() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_;
 }
 
-TablePartitions YBTable::GetPartitionsCopy() const {
-  TablePartitions result;
+TablePartitionList YBTable::GetPartitionsCopy() const {
+  TablePartitionList result;
 
   SharedLock<decltype(mutex_)> lock(mutex_);
   result.reserve(partitions_->keys.size());
@@ -183,7 +183,7 @@ int32_t YBTable::GetPartitionCount() const {
   return partitions_->keys.size();
 }
 
-int32_t YBTable::GetPartitionsVersion() const {
+int32_t YBTable::GetPartitionListVersion() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_->version;
 }
@@ -214,13 +214,13 @@ std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
   return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 
-size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t group_by) const {
+size_t YBTable::FindPartitionStartIndex(const PartitionKey& partition_key, size_t group_by) const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   return client::FindPartitionStartIndex(partitions_->keys, partition_key, group_by);
 }
 
-std::shared_ptr<const std::string> YBTable::FindPartitionStart(
-    const std::string& partition_key, size_t group_by) const {
+PartitionKeyPtr YBTable::FindPartitionStart(
+    const PartitionKey& partition_key, size_t group_by) const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   size_t idx = FindPartitionStartIndex(partition_key, group_by);
   return std::shared_ptr<const std::string>(partitions_, &partitions_->keys[idx]);
@@ -261,9 +261,9 @@ bool YBTable::ArePartitionsStale() const {
   return partitions_are_stale_;
 }
 
-Result<std::shared_ptr<const VersionedTablePartitions>> YBTable::FetchPartitions() {
+Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartitions() {
   // TODO: fetch the schema from the master here once catalog is available.
-  auto partitions = std::make_shared<VersionedTablePartitions>();
+  auto partitions = std::make_shared<VersionedTablePartitionList>();
 
   master::GetTableLocationsRequestPB req;
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
@@ -342,7 +342,7 @@ Result<std::shared_ptr<const VersionedTablePartitions>> YBTable::FetchPartitions
     if (!s.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 10) << "Error getting table locations: " << s << ", retrying.";
     } else if (resp.tablet_locations_size() > 0) {
-      partitions->version = resp.partitions_version();
+      partitions->version = resp.partition_list_version();
       partitions->keys.reserve(resp.tablet_locations().size());
       for (const auto& tablet_location : resp.tablet_locations()) {
         partitions->keys.push_back(tablet_location.partition().partition_key_start());
@@ -404,8 +404,8 @@ std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
   return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
 }
 
-size_t FindPartitionStartIndex(const std::vector<std::string>& partitions,
-                               const std::string& partition_key,
+size_t FindPartitionStartIndex(const TablePartitionList& partitions,
+                               const PartitionKey& partition_key,
                                size_t group_by) {
   auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
   if (it == partitions.end() || *it > partition_key) {
@@ -415,6 +415,14 @@ size_t FindPartitionStartIndex(const std::vector<std::string>& partitions,
   return group_by <= 1 ? it - partitions.begin() :
                          (it - partitions.begin()) / group_by * group_by;
 }
+
+PartitionKeyPtr FindPartitionStart(
+    const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,
+    size_t group_by) {
+  const auto idx = FindPartitionStartIndex(versioned_partitions->keys, partition_key, group_by);
+  return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
+}
+
 
 } // namespace client
 } // namespace yb
