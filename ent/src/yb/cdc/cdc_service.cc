@@ -288,7 +288,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   client::YBTableName table_name;
   table_name.set_table_id(stream_metadata->table_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(async_client_init_->client()->GetTablets(table_name, 0, &tablets));
+  RETURN_NOT_OK(async_client_init_->client()->GetTablets(
+      table_name, 0, &tablets, /* partition_list_version =*/ nullptr));
   return tablets;
 }
 
