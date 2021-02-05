@@ -277,10 +277,14 @@ public class PlatformReplicationManager extends DevopsBase {
     newInstances.forEach(i -> {
       PlatformInstance existingInstance = PlatformInstance.getByAddress(i.getAddress());
       if (existingInstance != null) {
+        // Since we sync instances after sending backups, the leader instance has the source of
+        // truth as to when the last backup has been successfully sent to followers.
         existingInstance.setLastBackup(i.getLastBackup());
         existingInstance.setIsLeader(i.getIsLeader());
         existingInstance.update();
       } else {
+        i.setIsLocal(false);
+        i.setConfig(config);
         i.save();
       }
     });
@@ -293,22 +297,8 @@ public class PlatformReplicationManager extends DevopsBase {
         remoteInstanceAddr
       );
 
-      // Retrieve the remote platform instance's HA config.
-      HighAvailabilityConfig remoteConfig = client.getRemoteConfig();
-
-      if (remoteConfig.isLocalLeader()) {
-        LOG.debug("Skipping exporting platform instances to remote instance " + remoteInstanceAddr
-          + " since it reports being a leader");
-
-        return;
-      }
-
-      // Process payload to send to remote platform instance.
+      // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
-      instances.forEach(i -> {
-        i.setIsLocal(i.getAddress().equals(remoteInstanceAddr));
-        i.setConfig(remoteConfig);
-      });
       JsonNode instancesJson = Json.toJson(instances);
 
       // Export the platform instances to the given remote platform instance.
@@ -429,6 +419,7 @@ public class PlatformReplicationManager extends DevopsBase {
       commandArgs.add("--prometheus_host");
       commandArgs.add(prometheusHost);
       commandArgs.add("--verbose");
+      commandArgs.add("--skip_restart");
 
       return commandArgs;
     }
