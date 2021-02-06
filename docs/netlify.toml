@@ -22,7 +22,8 @@
 #
 # validator: https://play.netlify.com/redirects
 
-# Legal and FAQ pages should always point to the latest
+# Legal, FAQ, and release notes should always point to the latest,
+# even if we have content in the older version's folder.
 
 [[redirects]]
   from = "/:version/legal/*"
@@ -34,11 +35,10 @@
   to = "/latest/faq/:splat"
   force = true
 
-# Point all release notes to latest
-
 [[redirects]]
-  from="/:version/releases/*"
-  to="/latest/releases/:splat"
+  from = "/:version/releases/*"
+  to = "/latest/releases/:splat"
+  force = true
 
 # Stable quick-starts need defaults,
 # since archiving from /latest removes aliases
