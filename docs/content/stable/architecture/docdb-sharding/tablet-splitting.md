@@ -137,7 +137,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
 1. Create a three-node local cluster.
 
     ```sh
-    $ bin/yb-ctl --rf=3 create --num_shards_per_tserver=1
+    bin/yb-ctl --rf=3 create --num_shards_per_tserver=1
     ```
 
 1. Create a sample table and insert some data.
