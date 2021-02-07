@@ -692,7 +692,7 @@ yb-admin -master_addresses <master-addresses> modify_placement_info <placement_i
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
+- *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*:*num_replicas*. Default value is `cloud1.datacenter1.rack1:1`.
 - *replication_factor*: The number of replicas for each tablet.
 - *placement_id*: The identifier of the primary cluster, which can be any unique string. If not set, a randomly-generated ID will be used.
 
