@@ -17,7 +17,13 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#if PG_VERSION_NUM < 120000
+#include "access/sysattr.h"
+#endif
 #include "access/transam.h"
+#if PG_VERSION_NUM < 140000
+#include "catalog/indexing.h"
+#endif
 #if PG_VERSION_NUM >= 110000
 #include "catalog/partition.h"
 #include "nodes/pg_list.h"
@@ -186,14 +192,9 @@ hypo_getNewOid(Oid relid)
 	{
 		Relation	pg_class;
 		Relation	relation;
-		Oid			reltablespace;
-		char		relpersistence;
 
 		/* Open the relation on which we want a new OID */
 		relation = table_open(relid, AccessShareLock);
-
-		reltablespace = relation->rd_rel->reltablespace;
-		relpersistence = relation->rd_rel->relpersistence;
 
 		/* Close the relation and release the lock now */
 		table_close(relation, AccessShareLock);
@@ -201,8 +202,14 @@ hypo_getNewOid(Oid relid)
 		/* Open pg_class to aks a new OID */
 		pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
-		/* ask for a new relfilenode */
-		newoid = GetNewRelFileNode(reltablespace, pg_class, relpersistence);
+		/* ask for a new Oid */
+		newoid = GetNewOidWithIndex(pg_class, ClassOidIndexId,
+#if PG_VERSION_NUM < 120000
+									ObjectIdAttributeNumber
+#else
+									Anum_pg_class_oid
+#endif
+									);
 
 		/* Close pg_class and release the lock now */
 		table_close(pg_class, RowExclusiveLock);
