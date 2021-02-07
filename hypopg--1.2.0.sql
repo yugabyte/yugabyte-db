@@ -42,11 +42,12 @@ AS '$libdir/hypopg', 'hypopg';
 
 CREATE VIEW hypopg_list_indexes
 AS
-    SELECT h.indexrelid, h.indexname, n.nspname, c.relname, am.amname
+    SELECT h.indexrelid, h.indexname AS index_name, n.nspname AS schema_name,
+    coalesce(c.relname, '<dropped>') AS table_name, am.amname AS am_name
     FROM hypopg() h
-    JOIN pg_catalog.pg_class c ON c.oid = h.indrelid
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_catalog.pg_am am ON am.oid = h.amid;
+    LEFT JOIN pg_catalog.pg_class c ON c.oid = h.indrelid
+    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_catalog.pg_am am ON am.oid = h.amid;
 
 CREATE FUNCTION
 hypopg_relation_size(IN indexid oid)

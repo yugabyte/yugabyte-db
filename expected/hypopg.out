@@ -26,10 +26,10 @@ WARNING:  hypopg: SQL order #3 is not a CREATE INDEX statement
   1
 (1 row)
 
-SELECT nspname, relname, amname FROM public.hypopg_list_indexes;
- nspname | relname | amname 
----------+---------+--------
- public  | hypo    | btree
+SELECT schema_name, table_name, am_name FROM public.hypopg_list_indexes;
+ schema_name | table_name | am_name 
+-------------+------------+---------
+ public      | hypo       | btree
 (1 row)
 
 -- Should use hypothetical index
