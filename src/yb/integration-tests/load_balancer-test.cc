@@ -72,7 +72,7 @@ class LoadBalancerTest : public YBTableTestBase {
 };
 
 TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
 
   ASSERT_OK(WaitFor([&]() {
@@ -100,7 +100,7 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
 // 2. Check that load balancer becomes active and completes balancing load.
 // 3. Delete table should not activate the load balancer. Not triggered through LB.
 TEST_F(LoadBalancerTest, IsLoadBalancerIdle) {
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
 
   std::vector<std::string> extra_opts;
   extra_opts.push_back("--placement_cloud=c");
@@ -133,7 +133,7 @@ TEST_F(LoadBalancerTest, IsLoadBalancerIdle) {
 // and multiple stepdown tasks were sent to the same tablet on subsequent LB runs.
 TEST_F(LoadBalancerTest, PendingLeaderStepdownRegressTest) {
   const int test_bg_task_wait_ms = 1000;
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
 
   // Move all leaders to one tablet.

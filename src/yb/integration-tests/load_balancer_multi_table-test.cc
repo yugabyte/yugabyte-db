@@ -119,7 +119,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   const int test_bg_task_wait_ms = 5000;
 
   // Start with 3 tables each with 5 tablets on 3 servers.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
 
   // Disable leader balancing.
   for (int i = 0; i < num_masters(); ++i) {
@@ -180,7 +180,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   const int rf = 3;
   std::vector<uint32_t> z0_tserver_loads;
   // Start with 3 tables with 5 tablets.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", rf, ""));
 
   // Disable global load balancing.
   for (int i = 0; i < num_masters(); ++i) {
@@ -272,7 +272,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancingWithBlacklist) {
   const int rf = 3;
   std::vector<uint32_t> z0_tserver_loads;
   // Start with 3 tables with 5 tablets.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", rf, ""));
 
   // Add two tservers to z0 and wait for everything to be balanced (globally and per table).
   std::vector<std::string> extra_opts;

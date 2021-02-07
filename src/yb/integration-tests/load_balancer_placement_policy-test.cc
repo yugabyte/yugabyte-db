@@ -143,7 +143,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
 TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   // Set cluster placement policy.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
 
   const string& create_custom_policy_table = "creation-placement-test";
   const yb::client::YBTableName placement_table(
@@ -199,7 +199,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   // Set cluster placement policy.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
 
   // Add a new tserver to zone 1.
   int num_tservers = num_tablet_servers() + 1;
@@ -293,7 +293,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
 TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
   // Set cluster placement policy.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1", 2, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1", 2, ""));
 
   // Start workload on a table.
   const string& table = "placement-data-consistency-test";
@@ -344,7 +344,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
 TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   // Set cluster placement policy.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
 
   // Add 2 tservers with custom placement uuid.
   int num_tservers = num_tablet_servers() + 1;
@@ -366,7 +366,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   // Now there are 2 tservers with custom placement_uuid and 3 tservers with default placement_uuid.
   // Modify the cluster config to have new placement_uuid matching the new tservers.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
-    "c.r.z0,c.r.z1,c.r.z2", 2, random_placement_uuid));
+    "c.r.z0:1,c.r.z1:1,c.r.z2:1", 2, random_placement_uuid));
 
   // Change the table placement policy and verify that the change reflected.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(

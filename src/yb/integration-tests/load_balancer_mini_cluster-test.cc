@@ -76,7 +76,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   const int test_short_delay_ms = 100;
   // See MiniTabletServer::MiniTabletServer for default placement info.
   ASSERT_OK(yb_admin_client_->
-      ModifyPlacementInfo("cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+      ModifyPlacementInfo("cloud1.rack1.zone:1,cloud1.rack2.zone:1,cloud2.rack3.zone:1", 3, ""));
 
   // Disable load balancing.
   SetAtomicFlag(false, &FLAGS_enable_load_balancing);

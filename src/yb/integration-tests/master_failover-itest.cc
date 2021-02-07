@@ -551,7 +551,7 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
     yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
         cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
     ASSERT_OK(yb_admin_client_->Init());
-    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, kLivePlacementUuid));
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, kLivePlacementUuid));
   }
 
   virtual void TearDown() override {

@@ -70,7 +70,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
 
 TEST_F(LoadBalancerRespectAffinityTest,
        YB_DISABLE_TEST_IN_TSAN(TransactionUsePreferredZones)) {
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3, ""));
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
 
   // First test whether load is correctly balanced when transaction tablet leaders are not

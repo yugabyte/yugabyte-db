@@ -357,7 +357,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   auto yb_admin_client_ = std::make_unique<yb::tools::enterprise::ClusterAdminClient>(
     cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
   ASSERT_OK(yb_admin_client_->Init());
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone:1", 3, "table_uuid"));
   TestUrl(url, &result);
   const string& cluster_str = result.ToString();
   pos = cluster_str.find("Replication Info", 0);

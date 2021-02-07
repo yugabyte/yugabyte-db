@@ -150,7 +150,7 @@ TEST_F(LoadBalancerColocatedTablesTest,
   const int rf = 3;
   std::vector<uint32_t> z0_tserver_loads;
   // Start with 3 tables with 5 tablets.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", rf, ""));
 
   // Add two tservers to z0 and wait for everything to be balanced (globally and per table).
   std::vector<std::string> extra_opts;
