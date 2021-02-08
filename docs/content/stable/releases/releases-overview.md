@@ -2,14 +2,14 @@
 title: Releases overview
 headerTitle: Releases overview
 linkTitle: Releases overview
-description: An overview of the latest and current stable releases, release support, and upcoming releases.
+description: An overview of the latest and current stable releases, and upcoming releases.
 section: RELEASES
 menu:
   stable:
     identifier: releases-overview
     weight: 2585
 isTocNested: true
-showAsideToc: true
+showAsideToc: false
 ---
 
 {{< note title="Important" >}}
@@ -48,7 +48,8 @@ For details, see [Yugabyte Services Policy](https://www.yugabyte.com/support-pol
 
 | Release series                                                                  | Released     | End of maintenance support | End of Life (EOL)          |
 | :-------------------------------------------------------------------- | :----------- | :----------------------- | :----------- |
-| [v2.3](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png)            | Sep 08, 2020 | ---                      | ---          |
+| [v2.5](../whats-new/latest-releases) ![LATEST](/images/releases/latest.png)            | Nov 12, 2020 | ---                      | ---          |
+| [v2.3](../whats-new/latest-releases)            | Sep 08, 2020 | Sep 08, 2021                      | Sep 08, 2022          |
 | [v2.2](../whats-new/stable-releases) ![CURRENT STABLE](/images/releases/current-stable.png)               | Jul 15, 2020 | Jul 15, 2021             | Jan 15, 2022 |
 | [v2.1](../earlier-releases/v2.1.0)                                               | Feb 25, 2020 | Feb 25, 2021             | Aug 08, 2021 |
 | [v2.0](../earlier-releases/v2.0.0)                                               | Sep 17, 2019 | Sep 17, 2020             | Mar 03, 2021 |
@@ -76,6 +77,6 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 | Production go-live  | Recommended release series |
 | :------------------ | :------------------------- |
 | < 3 months          | v2.2 (current stable)      |
-| > 3 months          | v2.3 (latest)              |
+| > 3 months          | v2.5 (latest)              |
 
 If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.

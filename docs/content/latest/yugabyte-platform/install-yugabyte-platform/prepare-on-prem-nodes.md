@@ -16,8 +16,8 @@ For on-premises deployments of YugabyteDB universes, you need to import nodes th
 
 
 
-1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](https://docs.yugabyte.com/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](https://docs.yugabyte.com/latest/deploy/checklist/#running-on-public-clouds). 
-2. Install the prerequisites and verify the system resource limits as described in [system configuration](https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config).
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
+2. Install the prerequisites and verify the system resource limits as described in [system configuration](/latest/deploy/manual-deployment/system-config).
 3. Need ssh access to the machine and root access (or ability to run sudo)
     *   This sudo user can require a password but having passwordless access is desirable for simplicity and ease of use.
 4. 3.Verify that you can `ssh` into this node (from your local machine if the node has a public address).

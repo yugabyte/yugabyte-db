@@ -3,12 +3,6 @@ title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
 linkTitle: Node.js
 description: Build a Node.js application with the pg driver that uses YSQL.
-aliases:
-  - /develop/client-drivers/nodejs/
-  - /stable/develop/client-drivers/nodejs/
-  - /stable/develop/build-apps/nodejs/  
-  - /stable/quick-start/build-apps/nodejs/
-block_indexing: true
 menu:
   stable:
     parent: build-apps

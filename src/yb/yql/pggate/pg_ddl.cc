@@ -178,7 +178,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool if_not_exist,
                              bool add_primary_key,
                              const bool colocated,
-                             const PgObjectId& tablegroup_oid)
+                             const PgObjectId& tablegroup_oid,
+                             const PgObjectId& tablespace_oid)
     : PgDdl(pg_session),
       table_name_(YQL_DATABASE_PGSQL,
                   GetPgsqlNamespaceId(table_id.database_oid),
@@ -191,7 +192,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
       is_shared_table_(is_shared_table),
       if_not_exist_(if_not_exist),
       colocated_(colocated),
-      tablegroup_oid_(tablegroup_oid) {
+      tablegroup_oid_(tablegroup_oid),
+      tablespace_oid_(tablespace_oid) {
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
     // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
@@ -338,6 +340,10 @@ Status PgCreateTable::Exec() {
     table_creator->tablegroup_id(tablegroup_oid_.GetYBTablegroupId());
   }
 
+  if (tablespace_oid_.IsValid()) {
+    table_creator->tablespace_id(tablespace_oid_.GetYBTablespaceId());
+  }
+
   // For index, set indexed (base) table id.
   if (indexed_table_id()) {
     table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
@@ -433,10 +439,12 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              bool is_unique_index,
                              const bool skip_index_backfill,
                              bool if_not_exist,
-                             const PgObjectId& tablegroup_oid)
+                             const PgObjectId& tablegroup_oid,
+                             const PgObjectId& tablespace_oid)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
                     is_shared_index, if_not_exist, false /* add_primary_key */,
-                    tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid),
+                    tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid,
+                    tablespace_oid),
       base_table_id_(base_table_id),
       is_unique_index_(is_unique_index),
       skip_index_backfill_(skip_index_backfill) {

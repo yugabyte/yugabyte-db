@@ -322,12 +322,14 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool add_primary_key,
                               const bool colocated,
                               const YBCPgOid tablegroup_oid,
+                              const YBCPgOid tablespace_oid,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
+  const PgObjectId tablespace_id(database_oid, tablespace_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, handle));
+      if_not_exist, add_primary_key, colocated, tablegroup_id, tablespace_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -477,14 +479,16 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const bool skip_index_backfill,
                               bool if_not_exist,
                               const YBCPgOid tablegroup_oid,
+                              const YBCPgOid tablespace_oid,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
+  const PgObjectId tablespace_id(database_oid, tablespace_oid);
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
                                            skip_index_backfill, if_not_exist, tablegroup_id,
-                                           handle));
+                                           tablespace_id, handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -682,6 +686,10 @@ YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDelete(handle));
+}
+
+YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is_persist_needed) {
+  return ToYBCStatus(pgapi->DeleteStmtSetIsPersistNeeded(handle, is_persist_needed));
 }
 
 // Colocated TRUNCATE Operations -------------------------------------------------------------------

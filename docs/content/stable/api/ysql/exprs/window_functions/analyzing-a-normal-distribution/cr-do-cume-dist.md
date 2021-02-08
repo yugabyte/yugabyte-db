@@ -3,7 +3,6 @@ title: cr_do_cume_dist.sql
 linkTitle: cr_do_cume_dist.sql
 headerTitle: cr_do_cume_dist.sql
 description: cr_do_cume_dist.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: cr-do-cume-dist

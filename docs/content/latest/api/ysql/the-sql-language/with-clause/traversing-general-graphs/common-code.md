@@ -16,7 +16,7 @@ Make sure that you have run [`cr-edges.sql`](../graph-representation/#cr-edges-s
 
 ## Create wrapper functions to return the start and the terminal node of a path
 
-The main value of this function is to bring readability. Without it, all of the SQL implementations described in the following sections would otherwise be cluttered with, in some cases, three occurrences of this expression:
+The main value of this function is to bring readability. Without it, all of the SQL implementations described in the following sections would be cluttered with, in some cases, three occurrences of this expression:
 
 ```
 a.path[cardinality(a.path)]
@@ -81,7 +81,7 @@ $body$;
 
 ## Create a procedure to create the set of tables into which to insert paths and filtered paths
 
-It will be useful to insert the paths that the code examples for the various kinds of graph generate so that subsequent ad _hoc_ queries can be run on these results. For example (see _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_), it is interesting to generate the set of shortest paths to the distinct reachable nodes. Because all these tables have the same shape and constraints, it is best to use dynamic SQL issued from a procedure to create them.
+It will be useful to insert the paths that the code examples for the various kinds of graph generate into a table so that subsequent ad _hoc_ queries can be run on these results. For example, it is interesting to generate the set of shortest paths to the distinct reachable nodes (see _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_). Because all these tables have the same shape and constraints, it is best to use dynamic SQL issued from a procedure to create them.
 
 Notice that, in order to ensure that every computed path is unique, a unique index is created on the _"path"_ column. However, [GitHub Issue #6606](https://github.com/yugabyte/yugabyte-db/issues/6606) currently prevents the direct creation of an index on an array. The workaround is to create the index on the `text` typecast of the array. However,  the naïve attempt:
 
@@ -151,11 +151,11 @@ You'll use the procedure _["create_path_table()"](#cr-cr-path-table-sql)_ to cre
 - _"raw_paths"_. This is the target table for the paths that each of the code examples for the various kinds of graph generates.
 - _"shortest_paths"_. This is the target table for the paths produced by procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_.
 - _"unq_containing_paths"_. This is the target table for the paths produced by procedure _["restrict_to_unq_containing_paths()"](#cr-restrict-to-unq-containing-paths-sql)_.
-- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
+- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL, issued from a PL/pgsql stored procedure, that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
 
-First create the _"raw_paths"_ and optionally adds a column and creates a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be be traced to help the developer see how the code works. (It has this effect only for the implementations of the _"find_paths()"_ procedure that implements early-path-pruning.) 
+First create the _"raw_paths"_ table and optionally add a column and create a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be traced to help the developer see how the code works. (It has this effect only for the implementation of the _"find_paths()"_ procedure that implements early-path-pruning.) 
 
-Because the purpose of the trigger is entirely pedagogical, because is not needed by the substantive _"find_paths()"_ logic, and because its presence brings a theoretical performance drag, you should _either_ use the script that adds the extra tracing column and trigger for the _"raw_paths"_ table _or_ use the script that simply creates the _"raw_paths"_ table bare.
+Because the purpose of the trigger is entirely pedagogical, because it is not needed by the substantive _"find_paths()"_ logic, and because its presence brings a theoretical performance drag, you should _either_ use the script that adds the extra tracing column and trigger for the _"raw_paths"_ table _or_ use the script that simply creates the _"raw_paths"_ table bare—according to your purpose.
 
 **EITHER:**
 
@@ -194,7 +194,7 @@ call create_path_table('raw_paths', false);
 drop function if exists raw_paths_trg_f() cascade;
 ```
 
-You can see that you can run either one of `cr-raw-paths-with-tracing.sql` or `cr-raw-paths-no-tracing.sql` at any time to get the regime that you need. Normally, you'll set up the _"raw_paths"_ table for tracing. But when your purpose is to compare the times for different approaches, you'll you'll set it up without tracing code.
+You can see that you can run either one of `cr-raw-paths-with-tracing.sql` or `cr-raw-paths-no-tracing.sql` at any time to get the regime that you need. Normally, you'll set up the _"raw_paths"_ table for tracing. But when your purpose is to compare the times for different approaches, you'll set it up without tracing code.
 
 Now create the other tables:
 
@@ -222,7 +222,8 @@ Notice how ordinary (non-recursive) CTEs are used, just as functions and procedu
 ```plpgsql
 drop procedure if exists restrict_to_shortest_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Restrict the paths from the start node to every other node
+-- to just the shortest path to each distinct node.
 create procedure restrict_to_shortest_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -293,7 +294,8 @@ This procedure is derived trivially from the procedure _["restrict_to_shortest_p
 ```plpgsql
 drop procedure if exists restrict_to_longest_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Restrict the paths from the start node to every other node
+-- to just the longest path to each distinct node.
 create procedure restrict_to_longest_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -360,17 +362,18 @@ $body$;
 Suppose that the paths _"n1 > n2"_, _"n1 > n2 > n3"_, _"n1 > n2 > n3 > n4"_, and _"n1 > n2 > n3 > n4 > n5"_ were all found by a call like this:
 
 ```
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 ```
 
-See, for example, [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql). By construction, all of the paths that it finds start at the node _"n1"_. You can see that the path _"n1 > n2 > n3 > n4 > n5"_ contains each of the shorter paths  _"n1 > n2"_, _"n1 > n2 > n3"_, and _"n1 > n2 > n3 > n4"_. This means that all of the useful information about the paths that have been found, in this example, is conveyed by just the longest containing path. It can sometimes be useful, therefore, to summarize the many results produced by a call to `find_paths()` by listing only the set of unique longest containing paths. The procedure `restrict_to_unq_containing_paths()` finds this set. It relies on the [`@>` built-in array containment operator](../../../../datatypes/type_array/functions-operators/comparison/#the-160-160-160-160-and-160-160-160-160-operators-1).
+See, for example, [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql). By construction, all of the paths that it finds start at the node _"n1"_. You can see that the path _"n1 > n2 > n3 > n4 > n5"_ contains each of the shorter paths  _"n1 > n2"_, _"n1 > n2 > n3"_, and _"n1 > n2 > n3 > n4"_. This means that all of the useful information about the paths that have been found, in this example, is conveyed by just the longest containing path. It can sometimes be useful, therefore, to summarize the many results produced by a call to `find_paths()` by listing only the set of unique longest containing paths. The procedure `restrict_to_unq_containing_paths()` finds this set. It relies on the [`@>` built-in array "contains" operator](../../../../datatypes/type_array/functions-operators/comparison/#the-160-160-160-160-and-160-160-160-160-operators-1).
 
 ##### `cr-restrict-to-unq-containing-paths.sql`
 
 ```plpgsql
 drop procedure if exists restrict_to_unq_containing_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Filter the input set of paths to set of longest paths
+-- that jointly contain all the other paths.
 create procedure restrict_to_unq_containing_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -410,7 +413,7 @@ end;
 $body$;
 ```
 
-## Create a table function to to list paths from the table of interest
+## Create a table function to list paths from the table of interest
 
 The table function _"list_paths()"_ achieves what you could achieve with an ordinary top-level SQL statement if you edited it before each execution to  use the name of the target table of interest. This is a canonical use case for dynamic SQL.
 
@@ -465,7 +468,7 @@ $body$;
 
 ## Create a procedure to assert that the contents of the "shortest_paths" and the "raw_paths" tables are identical.
 
-In some cases, the result from one of the implementations of the procedure that finds all the paths from a specified starting node finds only the shortest paths. In these cases, the output of the procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_ is identical to its input. The following procedure tests that this is the case.
+In some cases, the result from one of the implementations of the procedure that finds all the paths from a specified start node finds only the shortest paths. In these cases, the output of the procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_ is identical to its input. The following procedure tests that this is the case.
 
 ##### `cr_assert-shortest-paths-same-as-raw-paths.sql`
 
@@ -542,7 +545,7 @@ ysqlsh -h localhost -p 5433 -d demo -U u1 < t.sql 1> t-1.txt 2> t-2.txt
 
 This invokes `t.sql` and sends the output from the `SELECT` statement to the `t-o.txt` spool file, the output from the `timing off` and `\echo` metacommands to `t-1.txt`, and the output from `raise info` to `t-2.txt`.
 
-This outcome is no good when you want a coherent report. Moreover, it turns out that if you send the `1>` and `2>` redirects to the `t-o.txt` spool file, then you get a surprising outcome: the three streams are interleaved in an unhelpful order, thus:
+This outcome is no good when you want a coherent report. Moreover, it turns out that if you send the `1>` and `2>` redirects to the same `t-o.txt` spool file, then you get a surprising outcome: the three streams are interleaved in an unhelpful order, thus:
 
 ```
 INFO:  done sleeping

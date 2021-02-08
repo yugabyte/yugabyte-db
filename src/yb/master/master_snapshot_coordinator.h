@@ -50,7 +50,7 @@ class SnapshotCoordinatorContext {
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      TabletSnapshotOperationCallback callback) = 0;
+      HybridTime restore_at, TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendDeleteTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
@@ -89,7 +89,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
 
-  Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id);
+  Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
   CHECKED_STATUS ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
