@@ -85,4 +85,33 @@ public class ScheduleTest extends FakeDBApplication {
     schedules = Schedule.getAllActive();
     assertEquals(1, schedules.size());
   }
+
+  @Test
+  public void testCreateManualBackupWithExpiryTime() {
+    UUID universeUUID = UUID.randomUUID();
+
+    Backup backup = ModelFactory.createBackupWithExpiry(
+        defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+    BackupTableParams taskParams = backup.getBackupInfo();
+
+    assertNotNull(backup);
+    assertEquals(s3StorageConfig.configUUID, taskParams.storageConfigUUID);
+    assertEquals(universeUUID, taskParams.universeUUID);
+    assertNotNull(backup.getExpiry());
+  }
+
+  @Test
+  public void testGetAllCompletedBackupsWithExpiryForDelete() {
+    UUID universeUUID = UUID.randomUUID();
+    Backup backup1 = ModelFactory.createBackupWithExpiry(
+        defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+    Backup backup2 = ModelFactory.createBackupWithExpiry(
+        defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+
+    backup1.transitionState(Backup.BackupState.Completed);
+    backup2.transitionState(Backup.BackupState.Completed);
+
+    List<Backup> expiredBackups = Backup.getExpiredBackups(); 
+    assertEquals(2, expiredBackups.size());
+  }
 }

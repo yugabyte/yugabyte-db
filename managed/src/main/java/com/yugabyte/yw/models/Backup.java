@@ -190,11 +190,10 @@ public class Backup extends Model {
       .findOne();
   }
 
-  public static List<Backup> getExpiredBackups(UUID scheduleUUID) {
+  public static List<Backup> getExpiredBackups() {
     // Get current timestamp.
     Date now = new Date();
     return Backup.find.query().where()
-      .eq("schedule_uuid", scheduleUUID)
       .lt("expiry", now)
       .eq("state", BackupState.Completed)
       .findList();

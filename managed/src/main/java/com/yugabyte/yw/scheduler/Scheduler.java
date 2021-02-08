@@ -174,8 +174,8 @@ public class Scheduler {
                        "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
             }
           }
-        }
-
+        } 
+        
         if (runTask) {
           if (taskType == TaskType.BackupUniverse) {
             this.runBackupTask(schedule);
@@ -184,10 +184,10 @@ public class Scheduler {
             this.runMultiTableBackupsTask(schedule);
           }
         }
-        List<Backup> expiredBackups = Backup.getExpiredBackups(schedule.scheduleUUID);
-        for (Backup backup : expiredBackups) {
-          this.runDeleteBackupTask(backup, schedule);
-        }
+      }
+      List<Backup> expiredBackups = Backup.getExpiredBackups();
+      for (Backup backup : expiredBackups) {
+        this.runDeleteBackupTask(backup);
       }
     } catch (Exception e) {
       LOG.error("Error Running scheduler thread" + e);
@@ -268,7 +268,7 @@ public class Scheduler {
         taskParams.universeUUID, universe.name);
   }
 
-  public void runDeleteBackupTask(Backup backup, Schedule schedule) {
+  public void runDeleteBackupTask(Backup backup) {
     if (backup.state != Backup.BackupState.Completed) {
       LOG.warn("Cannot delete backup {} since it is not in completed state.",
                 backup.backupUUID);
@@ -276,20 +276,27 @@ public class Scheduler {
     }
     BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
     Universe universe = null;
+    boolean isScheduled =  (backup.getScheduleUUID()!=null) ? true: false;
     try {
       universe = Universe.get(backupParams.universeUUID);
     } catch (Exception e) {
-      schedule.stopSchedule();
+      if (isScheduled){
+        Schedule schedule = Schedule.get(backup.getScheduleUUID());
+        schedule.stopSchedule();
+      }
       return;
     }
-    UUID customerUUID = schedule.getCustomerUUID();
+    UUID customerUUID = backup.customerUUID;
     Customer customer = Customer.get(customerUUID);
-    JsonNode params = schedule.getTaskParams();
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
     taskParams.customerUUID = customerUUID;
     taskParams.backupUUID = backup.backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    if (isScheduled) {
+      Schedule schedule = Schedule.get(backup.getScheduleUUID());
+      JsonNode params = schedule.getTaskParams();
+      ScheduleTask.create(taskUUID, backup.getScheduleUUID());
+    }
     LOG.info("Submitted task to delete backup {}, task uuid = {}.",
         backup.backupUUID, taskUUID);
     CustomerTask.create(customer,

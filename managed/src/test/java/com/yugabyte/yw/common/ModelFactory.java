@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
@@ -171,6 +172,18 @@ public class ModelFactory {
     params.keyspace = "foo";
     params.tableName = "bar";
     params.tableUUID = UUID.randomUUID();
+    return Backup.create(customerUUID, params);
+  }
+
+  public static Backup createBackupWithExpiry(
+      UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.keyspace = "foo";
+    params.tableName = "bar";
+    params.tableUUID = UUID.randomUUID();
+    params.timeBeforeDelete = -100L;
     return Backup.create(customerUUID, params);
   }
 
