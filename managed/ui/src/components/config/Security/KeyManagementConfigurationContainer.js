@@ -62,6 +62,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
+            dispatch(addToast({
+              toast: {
+                type: 'success',
+                description: 'Successfully deleted KMS configuration',
+              }
+            }))
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
           dispatch(addToast({
