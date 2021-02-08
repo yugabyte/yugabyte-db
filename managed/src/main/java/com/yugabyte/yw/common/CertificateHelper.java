@@ -87,7 +87,7 @@ public class CertificateHelper {
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
-      KeyPair clientKeyPair = getKeyPairObject();
+      KeyPair keyPair = getKeyPairObject();
 
       UUID rootCA_UUID = UUID.randomUUID();
       Calendar cal = Calendar.getInstance();
@@ -425,15 +425,16 @@ public class CertificateHelper {
   }
 
   public static KeyPair getKeyPairObject() {
+    KeyPairGenerator keypairGen = null;
     try {
       // Add the security provider in case it was never called.
       Security.addProvider(new BouncyCastleProvider());
-      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
+      keypairGen = KeyPairGenerator.getInstance("RSA");
       keypairGen.initialize(2048);
-      return keypairGen.generateKeyPair();
     } catch (Exception e) {
       LOG.error(e.getMessage());
     }
+    return keypairGen.generateKeyPair();
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {
