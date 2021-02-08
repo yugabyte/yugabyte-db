@@ -5,11 +5,15 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0
+ * .txt
  */
 
 package com.yugabyte.yw.common;
 
+import akka.stream.javadsl.FileIO;
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.controllers.HAAuthenticator;
@@ -19,10 +23,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Call;
+import play.mvc.Http;
 import v1.RoutesPrefix;
 
+import java.io.File;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.stream.Collectors;
+
 import static scala.compat.java8.JFunction.func;
 
 public class PlatformInstanceClient {
@@ -97,11 +105,39 @@ public class PlatformInstanceClient {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp)}
+   * calls
+   * {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp)}
    * on remote platform instance
-   *
    */
   public void demoteInstance(long timestamp) {
     this.makeRequest(this.controller.demoteLocalLeader(timestamp), Json.newObject());
   }
+
+  public JsonNode syncBackups(
+    String leaderAddr,
+    String senderAddr,
+    File backupFile) {
+    return this.apiHelper.multipartRequest(
+      this.controller.syncBackups().url(),
+      this.requestHeader,
+      buildPartsList(backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+  }
+
+  public static List<Http.MultipartFormData.Part<Source<ByteString, ?>>> buildPartsList(
+    File file, ImmutableMap<String, String> dataParts) {
+    Http.MultipartFormData.FilePart<Source<ByteString, ?>> filePart =
+      new Http.MultipartFormData.FilePart<>(
+        "backup",
+        file.getName(),
+        "application/octet-stream",
+        FileIO.fromFile(file, 1024));
+
+    List<Http.MultipartFormData.Part<Source<ByteString, ?>>> ret = dataParts.entrySet().stream()
+      .map(kv -> new Http.MultipartFormData.DataPart(kv.getKey(), kv.getValue()))
+      .collect(Collectors.toList());
+
+    ret.add(filePart);
+    return ret;
+  }
+
 }

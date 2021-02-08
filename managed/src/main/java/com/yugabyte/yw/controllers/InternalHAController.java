@@ -19,11 +19,14 @@ import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Files;
-import play.mvc.*;
+import play.mvc.Controller;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.mvc.With;
 
 import java.io.File;
-import java.util.Map;
 import java.util.Date;
+import java.util.Map;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {
@@ -132,7 +135,7 @@ public class InternalHAController extends Controller {
     boolean success = replicationManager.saveReplicationData(
       fileName, temporaryFile, leader, sender);
     if (success) {
-      return Results.status(OK, "File uploaded");
+      return ApiResponse.success("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }

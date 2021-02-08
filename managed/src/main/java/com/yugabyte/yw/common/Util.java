@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Functions;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
@@ -23,10 +24,15 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,59 +41,6 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
-
-  /**
-   * Convert a list of {@link HostAndPort} objects to a comma separate string.
-   *
-   * @param hostsAndPorts A list of {@link HostAndPort} objects.
-   * @return Comma separate list of "host:port" pairs.
-   */
-  public static String hostsAndPortsToString(List<HostAndPort> hostsAndPorts) {
-    return Joiner.on(",").join(Lists.transform(hostsAndPorts, Functions.toStringFunction()));
-  }
-
-  // Create the list which contains the outcome of 'a - b', i.e., elements in a but not in b.
-  public static <T> List<T> ListDiff(List<T> a, List<T> b) {
-    List<T> diff = new ArrayList<T> (a.size());
-    diff.addAll(a);
-    diff.removeAll(b);
-
-    return diff;
-  }
-
-  public static String CHARACTERS="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  // Helper to create a random string of length numChars from characters in CHARACTERS.
-  public static String randomString(Random rng, int numChars) {
-    if (numChars < 1) {
-      return "";
-    }
-
-    StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < numChars; i++) {
-      sb.append(CHARACTERS.charAt(rng.nextInt(CHARACTERS.length())));
-    }
-
-    return sb.toString();
-  }
-
-  // In place of apache StringUtils.indexInArray(), check if needle is in haystack.
-  public static boolean existsInList(String needle, List<String> haystack) {
-    for (String something : haystack) {
-      if (something.equals(needle))
-        return true;
-    }
-
-    return false;
-  }
-
-  // Convert node details to list of host/ports.
-  public static List<HostAndPort> getHostPortList(Collection<NodeDetails> nodes) {
-    List<HostAndPort> curServers = new ArrayList<HostAndPort>();
-    for (NodeDetails node : nodes) {
-      curServers.add(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
-    }
-    return curServers;
-  }
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -199,7 +152,8 @@ public class Util {
    * @param numMastersToBeAdded number of masters to be added.
    * @return true if starting a master on the node will enhance master replication of the universe.
    */
-  public static boolean needMasterQuorumRestore(NodeDetails currentNode,
+  @VisibleForTesting
+  static boolean needMasterQuorumRestore(NodeDetails currentNode,
                                                 Set<NodeDetails> nodeDetailsSet,
                                                 long numMastersToBeAdded) {
     Map<UUID, Integer> mastersToAZMap = getMastersToAZMap(nodeDetailsSet);
@@ -314,17 +268,18 @@ public class Util {
   }
 
   public static void writeStringToFile(File file, String contents) throws Exception {
-    FileWriter writer = new FileWriter(file);
-    writer.write(contents);
-    writer.close();
+    try(FileWriter writer = new FileWriter(file)) {
+      writer.write(contents);
+    }
   }
 
+  // TODO: check correctness  why newline chars are skipped
   public static String readStringFromFile(File file) throws Exception {
     StringBuilder stringBuilder = new StringBuilder();
-    Scanner fileReader = new Scanner(file);
-    while (fileReader.hasNextLine()) stringBuilder.append(fileReader.nextLine());
-    fileReader.close();
-
+    try(Scanner fileReader = new Scanner(file)) {
+      while (fileReader.hasNextLine())
+        stringBuilder.append(fileReader.nextLine());
+    }
     return stringBuilder.toString();
   }
 
@@ -340,6 +295,7 @@ public class Util {
    * @param fullName
    * @return
    */
+  // TODO: replace with return Paths.get(fullName).getFileName().toString();
   public static String getFileName(String fullName) {
     if (fullName == null) {
       return null;
@@ -366,5 +322,12 @@ public class Util {
       sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
     }
    return sb.toString();
+  }
+
+  static List<File> listFiles(Path backupDir, String pattern) throws IOException {
+    return StreamSupport.stream(
+      Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
+      .map(Path::toFile)
+      .collect(Collectors.toList());
   }
 }
