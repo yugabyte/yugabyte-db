@@ -798,6 +798,12 @@ AlterRole(AlterRoleStmt *stmt)
 
 	if (dconnlimit)
 	{
+		/* Check connection limit for postgres. */
+		if (roleid == 10 && connlimit != -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot set connection limit for postgres"),
+					 errhint("did you mean ALTER ROLE %s CONNECTION LIMIT -1", rolename)));
 		new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
 		new_record_repl[Anum_pg_authid_rolconnlimit - 1] = true;
 	}
@@ -1202,6 +1208,14 @@ RenameRole(const char *oldname, const char *newname)
 				 errmsg("role name \"%s\" is reserved",
 						newname),
 				 errdetail("Role names starting with \"pg_\" are reserved.")));
+
+	/* Check whether postgres is being renamed. */
+	if (roleid == 10 && strcmp(newname, "postgres") != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot rename postgres"),
+				 strcmp(oldname, "postgres") != 0 ?
+				  errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists1(AUTHNAME, CStringGetDatum(newname)))
