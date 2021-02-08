@@ -39,7 +39,7 @@ Now create a simpler implementation of _"find_paths()"_ that omits the cycle pre
 ```plpgsql
 drop procedure if exists find_paths(text) cascade;
 
-create procedure find_paths(seed in text)
+create procedure find_paths(start_node in text)
   language plpgsql
 as $body$
 begin
@@ -51,9 +51,9 @@ begin
 
   with
     recursive paths(path) as (
-      select array[seed, node_2]
+      select array[start_node, node_2]
       from edges
-      where node_1 = seed
+      where node_1 = start_node
 
       union all
 
@@ -71,7 +71,7 @@ $body$;
 Find all the paths from _"n1"_ and create the filtered subset of shortest paths to the distinct terminal nodes:
 
 ```plpgsql
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 call restrict_to_shortest_paths('raw_paths', 'shortest_paths');
 ```
 
@@ -128,7 +128,7 @@ begin
     select distinct node_1 from edges
     where node_1 <> 'n1')
   loop
-    call find_paths(seed => node);
+    call find_paths(start_node => node);
     call restrict_to_shortest_paths('raw_paths', 'shortest_paths', append=>true);
   end loop;
 end;
