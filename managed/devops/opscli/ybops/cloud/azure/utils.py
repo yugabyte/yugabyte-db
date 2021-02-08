@@ -39,6 +39,10 @@ YUGABYTE_SG_PREFIX = "yugabyte-sg-{}"
 YUGABYTE_PEERING_FORMAT = "yugabyte-peering-{}-{}"
 RESOURCE_SKU_URL = "https://management.azure.com/subscriptions/{}/providers/Microsoft.Compute/skus".format(SUBSCRIPTION_ID)
 GALLERY_IMAGE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Compute/galleries/(?P<gallery_name>[^/]*)/images/(?P<image_definition_name>[^/]*)/versions/(?P<version_id>[^/]*)")
+VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
+    "serviceFamily eq 'Compute' " \
+    "and serviceName eq 'Virtual Machines' and priceType eq 'Consumption' " \
+    "and armRegionName eq '{}'"
 
 
 def get_credentials():
@@ -557,6 +561,7 @@ class AzureCloudAdmin():
         vm_info["numCores"] = vm.get("numberOfCores")
         vm_info["memSizeGb"] = float(vm.get("memoryInMB")) / 1000.0
         vm_info["maxDiskCount"] = vm.get("maxDataDiskCount")
+        vm_info['prices'] = {}
         return vm_info
 
     def get_instance_types(self, regions):
@@ -565,22 +570,37 @@ class AzureCloudAdmin():
         regex = re.compile(premium_regex_format, re.IGNORECASE)
 
         all_vms = {}
-        regionsPresent = defaultdict(set)
+        # Base list of VMs to check for.
+        vm_list = [vm.serialize() for vm in
+                   self.compute_client.virtual_machine_sizes.list(location=regions[0])]
+        for vm in vm_list:
+            vm_size = vm.get("name")
+            # We only care about VMs that support Premium storage. Promo is pricing special.
+            if (not regex.match(vm_size) or vm_size.endswith("Promo")):
+                continue
+            all_vms[vm_size] = self.parse_vm_info(vm)
 
         for region in regions:
-            vm_list = [vm.serialize() for vm in
-                       self.compute_client.virtual_machine_sizes.list(location=region)]
-            for vm in vm_list:
-                vm_size = vm.get("name")
-                # We only care about VMs that support Premium storage. Promo is pricing special.
-                if (not regex.match(vm_size) or vm_size.endswith("Promo")):
-                    continue
-                all_vms[vm_size] = self.parse_vm_info(vm)
-                regionsPresent[vm_size].add(region)
+            price_info = self.get_pricing_info(VM_PRICING_URL_FORMAT.format(region))
+            common_vms = set(price_info.keys()) & set(all_vms.keys())
+            for vm_name in common_vms:
+                all_vms[vm_name]['prices'][region] = price_info[vm_name]
+            # Only return VMs that are present in all regions
+            all_vms = {k: all_vms[k] for k in common_vms}
 
-        num_regions = len(regions)
-        # Only return VMs that are present in all regions
-        return {vm: info for vm, info in all_vms.items() if len(regionsPresent[vm]) == num_regions}
+        return all_vms
+
+    def get_pricing_info(self, url):
+        price_info = requests.get(url).json()
+        vm_name_to_price_dict = {}
+        for info in price_info.get('Items'):
+            # Azure API doesn't support regex as of 2/05/2021, so manually parse out Windows.
+            if not info['productName'].endswith(' Windows'):
+                vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
+        next_url = price_info.get('NextPageLink')
+        if next_url:
+            vm_name_to_price_dict.update(self.get_pricing_info(next_url))
+        return vm_name_to_price_dict
 
     def ultra_ssd_available(self, capabilities):
         if not capabilities:
@@ -604,9 +624,9 @@ class AzureCloudAdmin():
         for region in regions:
             vms = {}
             payload = {"api-version": "2019-04-01", "$filter": "location eq '{}'".format(region)}
-            listOfResourcces = requests.get(RESOURCE_SKU_URL, params=payload,
-                                            headers=headers).json().get("value", [])
-            for resource in listOfResourcces:
+            listOfResources = requests.get(RESOURCE_SKU_URL, params=payload,
+                                           headers=headers).json().get("value", [])
+            for resource in listOfResources:
                 # We only care about virtual machines
                 if resource.get("resourceType") != "virtualMachines":
                     continue
