@@ -425,7 +425,7 @@ void YBInboundCall::LogTrace() const {
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
                    << header_.timeout_millis() << "ms).";
-      std::string s = trace_->DumpToString(true);
+      std::string s = trace_->DumpToString("==>", true);
       if (!s.empty()) {
         LOG(WARNING) << "Trace:\n" << s;
       }
@@ -434,6 +434,7 @@ void YBInboundCall::LogTrace() const {
   }
 
   if (PREDICT_FALSE(
+          trace_->must_print() ||
           FLAGS_rpc_dump_all_traces ||
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";

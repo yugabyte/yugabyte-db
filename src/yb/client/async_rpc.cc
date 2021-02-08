@@ -152,11 +152,16 @@ AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
 
 AsyncRpc::~AsyncRpc() {
   const auto end_time = CoarseMonoClock::Now();
-  const auto kPrintTraceEveryN = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
-  YB_LOG_IF_EVERY_N(INFO, kPrintTraceEveryN > 0, kPrintTraceEveryN)
-      << ToString() << " took "
-      << ToMicroseconds(end_time - start_)
-      << "us. Trace:\n" << trace_->DumpToString(true);
+  if (trace_->must_print()) {
+    LOG(INFO) << ToString() << " took " << ToMicroseconds(end_time - start_)
+              << "us. Trace:\n" << trace_->DumpToString(true);
+  } else {
+    const auto kPrintTraceEveryN = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
+    YB_LOG_IF_EVERY_N(INFO, kPrintTraceEveryN > 0, kPrintTraceEveryN)
+        << ToString() << " took "
+        << ToMicroseconds(end_time - start_)
+        << "us. Trace:\n" << trace_->DumpToString(true);
+  }
 }
 
 void AsyncRpc::SendRpc() {
@@ -606,7 +611,7 @@ void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
 void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+    TRACE_TO(trace_, "Received from server: \n$0", resp_.trace_buffer());
   }
   batcher_->ProcessWriteResponse(*this, status);
   if (!CommonResponseCheck(status)) {

@@ -112,6 +112,19 @@ DECLARE_int32(tracing_level);
     } \
   } while (0)
 
+// Useful for debugging, where the collected trace will be printed
+// regardless of the time it takes, or other print related flags.
+#define PRINT_THIS_TRACE() \
+  TRACE("Requesting to print this trace"); \
+  do { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
+      yb::Trace* _trace = Trace::CurrentTrace(); \
+      if (_trace) { \
+        _trace->set_must_print(true); \
+      } \
+    } \
+  } while (0)
+
 namespace yb {
 
 struct TraceEntry;
@@ -188,6 +201,16 @@ class Trace : public RefCountedThreadSafe<Trace> {
   size_t ObjectSize() const { return sizeof(*this); }
   size_t DynamicMemoryUsage() const;
 
+  bool must_print() const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return must_print_;
+  }
+
+  void set_must_print(bool flag) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    must_print_ = flag;
+  }
+
  private:
   friend class ScopedAdoptTrace;
   friend class RefCountedThreadSafe<Trace>;
@@ -217,6 +240,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
   TraceEntry* entries_tail_ = nullptr;
 
   int64_t trace_start_time_usec_ = 0;
+
+  // A hint to request that the collected trace be printed.
+  bool must_print_ = false;
 
   std::vector<scoped_refptr<Trace> > child_traces_;
 
