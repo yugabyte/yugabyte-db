@@ -125,7 +125,7 @@ public class CertificateHelper {
       X509Certificate x509 = converter.getCertificate(holder);
       String certPath = String.format(CERT_PATH + "/ca.%s", storagePath,
         customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
-      saveCertContent(x509, certPath);
+      writeCertContentToCertPath(x509, certPath);
       String keyPath = String.format(CERT_PATH + "/ca.key.pem", storagePath,
         customerUUID.toString(), rootCA_UUID.toString());
       writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
@@ -273,8 +273,7 @@ public class CertificateHelper {
     String certPath = String.format("%s/certs/%s/%s/ca.%s", storagePath,
       customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
 
-
-    saveCertContent(getX509CertificateCertObject(certContent), certPath);
+    writeCertContentToCertPath(getX509CertificateCertObject(certContent), certPath);
     LOG.info(
       "Uploaded cert label {} (uuid {}) of type {} at paths {}, {}",
       label, rootCA_UUID, certType,
@@ -413,7 +412,7 @@ public class CertificateHelper {
     }
   }
 
-  public static void saveCertContent(X509Certificate cert, String certPath) {
+  public static void writeCertContentToCertPath(X509Certificate cert, String certPath) {
     File certfile = new File(certPath);
     // Create directory to store the certFile.
     certfile.getParentFile().mkdirs();
