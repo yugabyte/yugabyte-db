@@ -36,6 +36,7 @@ class AddRegionList extends Component {
         {
           zoneLabel: '',
           storageClasses: '',
+          namespace: '',
           zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: ''
         }
@@ -117,6 +118,7 @@ class AddRegionList extends Component {
               zoneArrayHelpers.replace(rowIdx, {
                 zoneLabel: '',
                 storageClasses: '',
+                namespace: '',
                 zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: ''
               });
@@ -137,6 +139,7 @@ class AddRegionList extends Component {
     arrayPush({
       zoneLabel: '',
       storageClasses: '',
+      namespace: '',
       zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: ''
     });
@@ -263,6 +266,13 @@ class AddRegionList extends Component {
                                     STORAGE CLASS
                                   </TableHeaderColumn>
                                   <TableHeaderColumn
+                                    dataField="namespace"
+                                    columnClassName="no-border name-column"
+                                    className="no-border"
+                                  >
+                                    NAMESPACE
+                                  </TableHeaderColumn>
+                                  <TableHeaderColumn
                                     dataField="zoneKubeConfig.name"
                                     dataFormat={this.zoneConfigFormatter}
                                     columnClassName="no-border name-column"
@@ -318,6 +328,27 @@ class AddRegionList extends Component {
                                         title="Storage Classes"
                                         content={
                                           "Default is 'standard'. This field is accepts comma-delimited values."
+                                        }
+                                      />
+                                    </Col>
+                                  </Row>
+                                  <Row className="config-provider-row">
+                                    <Col lg={3}>
+                                      <div className="form-item-custom-label">Namespace</div>
+                                    </Col>
+                                    <Col lg={7}>
+                                      <Field
+                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].namespace`}
+                                        placeholder="Namespace for this Zone"
+                                        component={YBFormInput}
+                                        className={'kube-provider-input-field'}
+                                      />
+                                    </Col>
+                                    <Col lg={1} className="config-zone-tooltip">
+                                      <YBInfoTip
+                                        title="Namespace"
+                                        content={
+                                          "An existing namespace into which pods in this zone will be deployed."
                                         }
                                       />
                                     </Col>
