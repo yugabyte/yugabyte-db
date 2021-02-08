@@ -1592,26 +1592,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
 // Override the base test to start a cluster that kicks out unresponsive tservers faster.
 class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
  public:
-  PgLibPqTestSmallTSTimeout() {
-    more_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
-    more_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    more_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
+    options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
@@ -1622,6 +1607,7 @@ TEST_F_EX(PgLibPqTest,
   const std::string kDatabaseName = "co";
   const auto kTimeout = 60s;
   const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -1649,8 +1635,9 @@ TEST_F_EX(PgLibPqTest,
   }
 
   // Add a tablet server.
+  UpdateMiniClusterOptions(&opts);
   ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                                      more_tserver_flags));
+                                      opts.extra_tserver_flags));
   ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
 
   // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablet,
@@ -1776,24 +1763,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
 // disabled.
 class PgLibPqTestNoRetry : public PgLibPqTest {
  public:
-  PgLibPqTestNoRetry() {
-    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_tserver_flags.push_back(
+        "--TEST_ysql_disable_transparent_cache_refresh_retry=true");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // This test is like "TestPgCacheConsistency#testVersionMismatchWithFailedRetry".  That one gets
