@@ -133,10 +133,8 @@ static int MasterMain(int argc, char** argv) {
   LOG(INFO) << "Master server successfully started.";
 
   std::unique_ptr<CallHome> call_home;
-  if (FLAGS_callhome_enabled) {
-    call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
-    call_home->ScheduleCallHome();
-  }
+  call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
+  call_home->ScheduleCallHome();
 
   auto total_mem_watcher = server::TotalMemWatcher::Create();
   total_mem_watcher->MemoryMonitoringLoop(
