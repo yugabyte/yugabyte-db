@@ -462,7 +462,7 @@ ExecInsert(ModifyTableState *mtstate,
 		 * if there's no BR trigger defined on the partition.
 		 */
 		if (resultRelInfo->ri_PartitionCheck &&
-				(resultRelInfo->ri_PartitionRoot == NULL ||
+				(resultRelInfo->ri_RootResultRelInfo == NULL ||
 				 (resultRelInfo->ri_TrigDesc &&
 					resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
 			ExecPartitionCheck(resultRelInfo, slot, estate, true);
@@ -2876,7 +2876,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	estate->es_result_relation_info = saved_resultRelInfo;
 
 	/* Get the target relation */
-	rel = (getTargetResultRelInfo(mtstate))->ri_RelationDesc;
+	resultRelInfo = getTargetResultRelInfo(mtstate);
+	rel = resultRelInfo->ri_RelationDesc;
 
 	/*
 	 * If it's not a partitioned table after all, UPDATE tuple routing should
@@ -2892,7 +2893,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
 		(operation == CMD_INSERT || update_tuple_routing_needed))
 		mtstate->mt_partition_tuple_routing =
-			ExecSetupPartitionTupleRouting(mtstate, rel);
+			ExecSetupPartitionTupleRouting(mtstate, resultRelInfo);
 
 	/*
 	 * Build state for collecting transition tuples.  This requires having a
