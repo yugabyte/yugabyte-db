@@ -32,9 +32,11 @@
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
+#include <gmock/internal/gmock-internal-utils.h>
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
@@ -53,14 +55,19 @@
 #include "yb/server/rpc_server.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/util/capabilities.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
+DECLARE_bool(callhome_enabled);
+DECLARE_int32(callhome_interval_secs);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(TEST_return_error_if_namespace_not_found);
@@ -178,6 +185,65 @@ TEST_F(MasterTest, TestCallHome) {
     ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));
     latch.Reset(1);
   }
+}
+
+// This tests whether the enabling/disabling of callhome is happening dynamically
+// during runtime.
+TEST_F(MasterTest, TestCallHomeFlag) {
+  CountDownLatch latch(1);
+  const char* tag_value = "callhome-test";
+  bool disabled = false;
+
+  // Set up the webserver.
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+
+  WebserverOptions opts;
+  opts.port = 0;
+  opts.doc_root = webserver_dir;
+  Webserver webserver(opts, "WebserverTest");
+  ASSERT_OK(webserver.Start());
+
+  std::vector<Endpoint> addrs;
+  ASSERT_OK(webserver.GetBoundAddresses(&addrs));
+  ASSERT_EQ(addrs.size(), 1);
+  auto addr = addrs[0];
+
+  // By default callhome is enabled. This handler is expected to be called
+  // before disabling the flag. Once the flag is disabled, there shouldn't be any http posts.
+  auto handler = [&latch, &disabled] (const Webserver::WebRequest& req,
+                                        Webserver::WebResponse* resp) {
+    ASSERT_EQ(req.request_method, "POST");
+    // After callhome is disabled, assert if we get any more POST.
+    ASSERT_FALSE(disabled);
+    LOG(INFO) << "Received callhome data\n" << req.post_data;
+    latch.CountDown();
+  };
+
+  webserver.RegisterPathHandler("/callhome", "callhome", handler);
+  LOG(INFO) << "Started webserver to listen for callhome post requests.";
+
+  FLAGS_callhome_tag = tag_value;
+  FLAGS_callhome_url = strings::Substitute("http://$0/callhome", ToString(addr));
+  // Set the interval to 3 secs.
+  FLAGS_callhome_interval_secs = 3 * kTimeMultiplier;
+  // Start with the default value i.e. callhome enabled.
+  disabled = false;
+
+  CallHome call_home(mini_master_->master(), ServerType::MASTER);
+  call_home.ScheduleCallHome(1 * kTimeMultiplier);
+
+  // Wait for at least one non-empty response.
+  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+
+  // Disable the callhome flag now.
+  disabled = true;
+  FLAGS_callhome_enabled = false;
+  LOG(INFO) << "Callhome disabled. No more traffic";
+
+  // Wait for 3 cycles for no callhome posts. The handler is expected to assert
+  // if it gets any new HTTP POST now.
+  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_callhome_interval_secs * kTimeMultiplier));
 }
 
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
