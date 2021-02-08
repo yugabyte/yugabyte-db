@@ -99,7 +99,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private void setup() {
     ShellResponse responseEmpty = new ShellResponse();
     ShellResponse responsePod = new ShellResponse();
-    when(mockKubernetesManager.helmUpgrade(any(), any(), any())).thenReturn(responseEmpty);
+    when(mockKubernetesManager.helmUpgrade(any(), any(), any(), any())).thenReturn(responseEmpty);
     responsePod.message =
         "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
     when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
@@ -302,6 +302,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseSingleAZ(/* Create Masters */ true);
 
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
@@ -311,18 +312,24 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
+            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}," +
+            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}," +
+            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-tserver-3\"}}," +
+            "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-tserver-3\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-4\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(responsePods);
+            "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-4\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -336,12 +343,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
 
     verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
-        expectedNodePrefix.capture(), expectedOverrideFile.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture(), expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(3)).getPodInfos(expectedConfig.capture(),
-        expectedNodePrefix.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture());
 
     assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(nodePrefix, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -358,6 +366,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
@@ -366,12 +375,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
+            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(responsePods);
+            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -385,12 +397,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
 
     verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
-        expectedNodePrefix.capture(), expectedOverrideFile.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture(), expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(),
-                                                        expectedNodePrefix.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture());
 
     assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(nodePrefix, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -407,6 +420,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
@@ -415,14 +429,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
+            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}," +
+            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(responsePods);
+            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}," +
+            " \"metadata\": {\"namespace\": \"" + nodePrefix + "\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -437,14 +455,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
 
     verify(mockKubernetesManager, times(3)).helmUpgrade(expectedConfig.capture(),
-        expectedNodePrefix.capture(), expectedOverrideFile.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture(), expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(3)).getPodStatus(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1)).getPodInfos(expectedConfig.capture(),
-                                                        expectedNodePrefix.capture());
+        expectedNodePrefix.capture(), expectedNamespace.capture());
 
     assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(nodePrefix, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
