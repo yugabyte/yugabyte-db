@@ -123,10 +123,10 @@ Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-chec
 ```
 with
   recursive paths(path) as (
-    select array[seed, node_2]
+    select array[start_node, node_2]
     from edges
     where
-    node_1 = seed
+    node_1 = start_node
 
     union all
 
@@ -138,7 +138,7 @@ with
     )
 ```
 
-Using node "_n001"_ as the seed for the six-node example maximally connected graph, the result of the non-recursive term will be _five_ paths. Then, the result of the first repeat of the recursive term will be _four_ longer paths for each of the input five paths because the cycle prevention logic will exclude, for each input path in turn, the node that can be reached from its terminal that has already been found. And so it goes on: the result of the next repeat of the recursive term will be _three_ longer paths for each input path; the next result will be _two_ longer paths for each input path; the next result will be _one_ longer path for each input path; and the next repeat will find no paths so that the repetition will end. The number of paths that each repetition finds will therefore grow like this:
+Using node "_n001"_ as the start node for the six-node example maximally connected graph, the result of the non-recursive term will be _five_ paths. Then, the result of the first repeat of the recursive term will be _four_ longer paths for each of the input five paths because the cycle prevention logic will exclude, for each input path in turn, the node that can be reached from its terminal that has already been found. And so it goes on: the result of the next repeat of the recursive term will be _three_ longer paths for each input path; the next result will be _two_ longer paths for each input path; the next result will be _one_ longer path for each input path; and the next repeat will find no paths so that the repetition will end. The number of paths that each repetition finds will therefore grow like this:
 
 ```
 Repeat number    Number of paths Found
@@ -154,7 +154,7 @@ Final total number of paths:       325
 You can see this in action by re-creating the _"find_paths()"_ implementation shown in [`cr-find-paths-with-pruning.sql`](../undirected-cyclic-graph/#cr-find-paths-with-pruning-sql) and invoking it like this:
 
 ```plpgsql
-call find_paths(seed => 'n001', prune => false);
+call find_paths(start_node => 'n001', prune => false);
 ```
 
 Now inspect the repetition history:
@@ -180,7 +180,7 @@ This is the result:
 
 This agrees with what the analysis presented above predicts.
 
-The following function implements the rule described above to compute, for a maximally connected graph, the total number of paths from an arbitrary starting node versus the number of nodes in the graph. It follows from the definition that the number of paths for a particular graph is the same for every possible starting node.
+The following function implements the rule described above to compute, for a maximally connected graph, the total number of paths from an arbitrary start node versus the number of nodes in the graph. It follows from the definition that the number of paths for a particular graph is the same for every possible start node.
 
 ##### `cr-total-paths-versus-number-of-nodes.sql`
 
@@ -266,7 +266,7 @@ insert into edges(node_1, node_2)
 select node_2 as node_1, node_1 as node_2
 from edges;
 
-call find_paths(seed => 'n001', prune => false);
+call find_paths(start_node => 'n001', prune => false);
 ```
 
 Even if you did create a single-node YugabyteDB cluster so that it used your 1 TB SSD for its data files, you doubtless wouldn't have the capacity for the paths for even a 14-node maximally connected graph because the hypothetical dedicated highly compressive path representation scheme isn't in use. This can only mean that the _"find_paths()"_ execution would crash for some run with fewer nodes than 14.
@@ -295,9 +295,9 @@ create procedure invoke_find_paths(method in text)
 as $body$
 begin
   case method
-    when 'pure-with'   then call find_paths(seed => 'n001');
-    when 'prune-false' then call find_paths(seed => 'n001', prune => false);
-    when 'prune-true'  then call find_paths(seed => 'n001', prune => true);
+    when 'pure-with'   then call find_paths(start_node => 'n001');
+    when 'prune-false' then call find_paths(start_node => 'n001', prune => false);
+    when 'prune-true'  then call find_paths(start_node => 'n001', prune => true);
   end case;
 end;
 $body$;
@@ -468,11 +468,11 @@ The experiment also shows that the _"prune-true"_ approach is viable and quick e
 
 This leads to two conclusions:
 
-- It simply isn't feasible to use the native features of YugabyteDB, those of PostgreSQL, or indeed those of _any_ SQL database, to discover _all_ the paths in any typically highly connected graph that's likely to be interesting in practice—especially, for example, the IMDb data.
+- It simply isn't feasible to use the native recursive CTE features of YugabyteDB, those of PostgreSQL, or indeed those of _any_ SQL database, to discover _all_ the paths in any typically highly connected graph that's likely to be interesting in practice—especially, for example, the IMDb data.
 
-- It _is_ straightforward to use ordinary SQL features to discover the _shortest_ paths in even very large and highly connected graphs. However, you cannot use the recursive CTE for this purpose because it doesn't let you implement early pruning. Rather, you must use a table-based approach that implements the recursive CTE's algorithm explicitly by hand.
+- It _is_ straightforward to use ordinary SQL and stored procedure features to discover the _shortest_ paths in even very large and highly connected graphs. As noted, you cannot use the recursive CTE for this purpose because it doesn't let you implement early pruning. Rather, you must use a table-based approach that implements the recursive CTE's algorithm explicitly by hand.
 
-## Implication of the stress-test experiment for the implementation of the computation of of Bacon Numbers
+## Implication of the stress-test experiment for the implementation of the computation of Bacon Numbers
 
 The introduction to the section [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../../bacon-numbers/) mentions this data set:
 

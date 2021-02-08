@@ -317,7 +317,7 @@ This is the results:
 
 ## Semantics
 
-You can find various formulations of the following explanation by Internet search. In particular, here is a version in the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4).
+You can find various formulations of the following explanation by Internet search. In particular, here is a version from the [PostgreSQL Version 11 documentation](https://www.postgresql.org/docs/11/queries-with.html#id-1.5.6.12.5.4).
 
 In informal prose:
 
@@ -328,13 +328,13 @@ In informal prose:
 
 ### Pseudocode definition of the semantics
 
-A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_WITH_RESULTS"_ table, the _"WORKING_RESULTS"_ table, and the _"TEMP_RESULTS"_ table are transient, statement-duration, structures.
+A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_CTE_RESULTS"_ table, the _"WORKING_RESULTS"_ table, and the _"TEMP_RESULTS"_ table are transient, statement-duration, structures.
 
-> - **Purge the RECURSIVE_WITH_RESULTS table and the WORKING_RESULTS table.**
+> - **Purge the RECURSIVE_CTE_RESULTS table and the WORKING_RESULTS table.**
 >
 > - **Evaluate the non-recursive term, inserting the resulting rows into the WORKING_RESULTS table.**
 >
-> - **Insert the contents of the WORKING_RESULTS table into the RECURSIVE_WITH_RESULTS table.**
+> - **Insert the contents of the WORKING_RESULTS table into the RECURSIVE_CTE_RESULTS table.**
 >
 > - **while the WORKING_RESULTS table is not empty loop**
 >
@@ -344,11 +344,11 @@ A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_
 >   
 >   - **Purge the WORKING_RESULTS table and insert the contents of the TEMP_RESULTS table.**
 >   
->   - **Append the contents of the TEMP_RESULTS table into the RECURSIVE_WITH_RESULTS table.**
+>   - **Append the contents of the TEMP_RESULTS table into the RECURSIVE_CTE_RESULTS table.**
 >   
 >- **end loop**
 > 
->- **Deliver the present contents of the RECURSIVE_WITH_RESULTS table as the final result.**
+>- **Deliver the present contents of the RECURSIVE_CTE_RESULTS table as the final result.**
 
 ### PL/pgSQL procedure implementation of the pseudocode : example 1
 
@@ -358,11 +358,11 @@ This pseudocode can be easily implemented, as a PL/pgSQL procedure, for the mini
 set client_min_messages = warning;
 
 drop procedure if exists recursive_with_semantics_1 cascade;
-drop table if exists recursive_with_results cascade;
+drop table if exists recursive_cte_results cascade;
 drop table if exists working_results cascade;
 drop table if exists temp_results cascade;
 
-create table recursive_with_results(n int primary key);
+create table recursive_cte_results(n int primary key);
 create table working_results(n int primary key);
 create table temp_results(n int primary key);
 ```
@@ -374,10 +374,10 @@ create procedure recursive_with_semantics_1(max_n in int)
 as $body$
 begin
   -- Emulate the non-recursive term.
-  delete from recursive_with_results;
+  delete from recursive_cte_results;
   delete from working_results;
   insert into working_results(n) values(1);
-  insert into recursive_with_results(n) select n from working_results;
+  insert into recursive_cte_results(n) select n from working_results;
 
   -- Emulate the recursive term.
   while ((select count(*) from working_results) > 0) loop
@@ -388,7 +388,7 @@ begin
 
     delete from working_results;
     insert into working_results(n) select n from temp_results;
-    insert into recursive_with_results(n) select n from temp_results;
+    insert into recursive_cte_results(n) select n from temp_results;
   end loop;
 end;
 $body$;
@@ -400,11 +400,11 @@ Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org
 
 This is a somewhat dubious claim because, in any language, recursion is implemented at a lower level in the hierarchy of abstractions, as iteration. The code of the PL/pgSQL procedure, because it uses a `WHILE` loop, makes this point explicitly.
 
-Now invoke the procedure and observe the contents of the _"RECURSIVE_WITH_RESULTS"_ table:
+Now invoke the procedure and observe the contents of the _"RECURSIVE_CTE_RESULTS"_ table:
 
 ```plpgsql
 call recursive_with_semantics_1(5);
-select n from recursive_with_results order by 1;
+select n from recursive_cte_results order by 1;
 ```
 
 The result is identical to that produced by the SQL implementation that it emulates (shown in the [Syntax](#syntax) section above).
@@ -467,14 +467,14 @@ The procedural implementation that emulates the pseudocode is a natural extensio
 set client_min_messages = warning;
 
 drop procedure if exists recursive_with_semantics_2 cascade;
-drop table if exists recursive_with_results cascade;
+drop table if exists recursive_cte_results cascade;
 drop table if exists working_results cascade;
 drop table if exists temp_results cascade;
 
-create table recursive_with_results(
+create table recursive_cte_results(
   c1 int not null,
   c2 int not null,
-  constraint recursive_with_results_pk primary key(c1, c2));
+  constraint recursive_cte_results_pk primary key(c1, c2));
 
 create table working_results(
   c1 int not null,
@@ -494,10 +494,10 @@ create procedure recursive_with_semantics_2(max_c1 in int)
 as $body$
 begin
   -- Emulate the non-recursive term.
-  delete from recursive_with_results;
+  delete from recursive_cte_results;
   delete from working_results;
   insert into working_results(c1, c2) values (0, 1), (0, 2), (0, 3);
-  insert into recursive_with_results(c1, c2) select c1, c2 from working_results;
+  insert into recursive_cte_results(c1, c2) select c1, c2 from working_results;
 
   -- Emulate the recursive term.
   while ((select count(*) from working_results) > 0) loop
@@ -508,7 +508,7 @@ begin
 
     delete from working_results;
     insert into working_results(c1, c2) select c1, c2 from temp_results;
-    insert into recursive_with_results(c1, c2) select c1, c2 from temp_results;
+    insert into recursive_cte_results(c1, c2) select c1, c2 from temp_results;
   end loop;
 end;
 $body$;
@@ -516,11 +516,11 @@ $body$;
 
 Notice that, here, each iteration accumulates _three_ rows.
 
-Now invoke the procedure and observe the contents of the _"RECURSIVE_WITH_RESULTS"_ table:
+Now invoke the procedure and observe the contents of the _"RECURSIVE_CTE_RESULTS"_ table:
 
 ```plpgsql
 call recursive_with_semantics_2(4);
-select c1, c2 from recursive_with_results order by c1, c2;
+select c1, c2 from recursive_cte_results order by c1, c2;
 ```
 
 The result is identical to that produced by the SQL implementation that it emulates.
@@ -529,10 +529,11 @@ The section [Using a recursive CTE to traverse graphs of all kinds](../traversin
 
 ## Case studies
 
-The following two sections describe how to use a recursive CTE to implement two practical cases:
+The remaining sections (in the overall main [WITH clause](../../with-clause/) parent section) describe how to use a recursive CTE to implement path finding for the special case of a hierarchy, for the general case of an undirected cyclic graph (and other more restricted kinds of graph), and for a specific application of the approach for the general graph.
 
 - [Case study—Using a recursive CTE to traverse an employee hierarchy](../emps-hierarchy) describes the use case (traversing an employee hierarchy) that is most commonly used to illustrate a practical application of the recursive CTE. Different SQL databases with different variants of SQL use importantly different approaches. PostgreSQL, and therefore YSQL, have only standard SQL features here (and not, therefore, the `CONNECT BY PRIOR` feature that is typically used with Oracle Database). Neither do they have dedicated syntax to ask for breadth-first or depth-first traversal. Rather, these two kinds of traversal must be programmed explicitly. The explicit solutions use array functionality and are straightforward. Moreover, using this approach allows various second-order display choices easily to be implemented.
-- [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the recursive CTE implements using explicit SQL. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
+
+- [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the recursive CTE implements using explicit SQL issued from a PL/pgSQL stored procedure. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
 
 
 

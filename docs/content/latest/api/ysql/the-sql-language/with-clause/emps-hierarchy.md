@@ -33,7 +33,7 @@ After unzipping it on a convenient new directory, you'll see a `README.txt`.  It
 
 ## Create and populate the "emps" table
 
-The following code creates a table of employees that records each employee's manager this way. This is a stylized example where _"name"_ serves as the primary key column, _"mgr_name"_ serves as the foreign key column, and there are no other columns.
+The following code creates a table of employees that records each employee's manager using a self-referential foreign key as explained above. This is a stylized example where _"name"_ serves as the primary key column, _"mgr_name"_ serves as the self-referential foreign key column, and there are no other columns.
 
 ##### `cr-table.sql`
 
@@ -126,7 +126,7 @@ It cases this error:
 Key (name)=(fred) is still referenced from table "emps".
 ```
 
-This constraint, together with the fact that the "_mgr_name"_ column is nullable, guarantees the invariant that there is exactly one ultimate manager—in other words that the employee graph is a tree (a.k.a. hierarchy). Check it thus:
+This constraint, together with the fact that the "_mgr_name"_ column is nullable, guarantees the invariant that there is exactly one ultimate manager—in other words that the employee graph is a rooted tree (a.k.a. hierarchy). Check it thus:
 
 ##### `do-assert-is-hierarchy.sql`
 
@@ -236,7 +236,7 @@ The blank lines were added by hand to make the results easier to read.
 
 ## List the path top-down from the ultimate manager to each employee in breadth first order
 
-The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in the [The&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section. Yet again, "array" functionality comes to the rescue.
+The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in [the&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section. Yet again, "array" functionality comes to the rescue.
 
 ##### `cr-view-top-down-paths.sql`
 
@@ -621,8 +621,8 @@ with
     union all
 
     -- Recursive term.
-    -- Treat the emps from the previous iteration as reports.
-    -- Join these with their managers.
+    -- Treat the employee from the previous iteration as a report.
+    -- Join this with its manager.
     -- Increase the depth with each step upwards.
     -- Stop when the current putative report has no manager, i.e. is
     -- the ultimate manager.
