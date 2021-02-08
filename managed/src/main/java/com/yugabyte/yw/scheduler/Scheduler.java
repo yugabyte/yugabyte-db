@@ -5,70 +5,49 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1
+ * .0.0.txt
  */
 
 package com.yugabyte.yw.scheduler;
 
-import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
-
-import java.time.ZonedDateTime;
-import java.time.LocalDateTime;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.text.SimpleDateFormat;
-
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
-import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.ScheduleTask;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.forms.ITaskParams;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-
-import play.api.Play;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.TaskType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import com.fasterxml.jackson.databind.JsonNode;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.duration.Duration;
+
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.cronutils.model.CronType.UNIX;
 
 @Singleton
 public class Scheduler {
 
-  public static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
 
   // Minimum number of scheduled threads.
   private static final int SCHEDULE_THREADS = 1;
@@ -78,17 +57,17 @@ public class Scheduler {
   private final ActorSystem actorSystem;
   private final ExecutionContext executionContext;
 
-  private AtomicBoolean running = new AtomicBoolean(false);
+  private final AtomicBoolean running = new AtomicBoolean(false);
 
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
-  @Inject
-  Commissioner commissioner;
+  private final Commissioner commissioner;
 
   @Inject
-  public Scheduler(ActorSystem actorSystem, ExecutionContext executionContext) {
+  Scheduler(ActorSystem actorSystem, ExecutionContext executionContext, Commissioner commissioner) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
+    this.commissioner = commissioner;
     this.initialize();
 
     LOG.info("Starting scheduling service");
@@ -96,21 +75,21 @@ public class Scheduler {
 
   private void initialize() {
     this.actorSystem.scheduler().schedule(
-        Duration.create(0, TimeUnit.MINUTES), // initialDelay
-        Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
-        () -> scheduleRunner(),
-        this.executionContext
+      Duration.create(0, TimeUnit.MINUTES), // initialDelay
+      Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
+      () -> scheduleRunner(),
+      this.executionContext
     );
   }
 
   /**
-  * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
-  */
-  public void scheduleRunner() {
+   * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
+   */
+  private void scheduleRunner() {
     // Check if last scheduled thread is still running.
     if (running.get()) {
-       LOG.info("Previous scheduler still running");
-       return;
+      LOG.info("Previous scheduler still running");
+      return;
     }
 
     LOG.info("Running scheduler");
@@ -122,11 +101,12 @@ public class Scheduler {
         String cronExpression = schedule.getCronExpression();
         if (cronExpression == null && frequency == 0) {
           LOG.error("Scheduled task does not have a recurrence specified {}",
-                    schedule.getScheduleUUID());
+            schedule.getScheduleUUID());
           continue;
         }
         TaskType taskType = schedule.getTaskType();
-        // TODO: Come back and maybe address if using relations between schedule and schedule_task is
+        // TODO: Come back and maybe address if using relations between schedule and
+        //  schedule_task is
         // a better approach.
         ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
         Date lastScheduledTime = null;
@@ -156,13 +136,14 @@ public class Scheduler {
         // scheduler interval, we run the task.
         else if (cronExpression != null) {
           CronParser unixCronParser =
-              new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
+            new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
           Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
           Instant now = Instant.now();
           // LocalDateTime now = LocalDateTime.ofInstant(Instant.now(), ZoneId.of("UTC"));
           ZonedDateTime utcNow = now.atZone(ZoneId.of("UTC"));
           ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
-          long timeFromLastExecution = executionTime.timeFromLastExecution(utcNow).get().getSeconds();
+          long timeFromLastExecution =
+            executionTime.timeFromLastExecution(utcNow).get().getSeconds();
           if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
             // In case the last task was completed, or the last task was never even scheduled,
             // we run the task. If the task was scheduled, but didn't complete, we skip this
@@ -171,7 +152,7 @@ public class Scheduler {
               runTask = true;
             } else if (lastScheduledTime != null) {
               LOG.warn("Previous scheduled task still running, skipping this iteration's task. " +
-                       "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
+                "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
             }
           }
         }
@@ -190,13 +171,13 @@ public class Scheduler {
         }
       }
     } catch (Exception e) {
-      LOG.error("Error Running scheduler thread" + e);
+      LOG.error("Error Running scheduler thread", e);
     } finally {
       running.set(false);
     }
   }
 
-  public void runBackupTask(Schedule schedule) {
+  private void runBackupTask(Schedule schedule) {
     UUID customerUUID = schedule.getCustomerUUID();
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
@@ -210,33 +191,33 @@ public class Scheduler {
       return;
     }
     if (universe.getUniverseDetails().updateInProgress ||
-        universe.getUniverseDetails().backupInProgress) {
+      universe.getUniverseDetails().backupInProgress) {
       LOG.warn("Cannot run Backup task since the universe {} is currently {}",
-               taskParams.universeUUID.toString(), "in a locked state");
+        taskParams.universeUUID.toString(), "in a locked state");
       return;
     }
     Backup backup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-        taskParams.tableUUID, taskParams.tableName, taskUUID);
+      taskParams.tableUUID, taskParams.tableName, taskUUID);
     backup.setTaskUUID(taskUUID);
     CustomerTask.create(customer,
-        taskParams.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Create,
-        taskParams.tableName);
+      taskParams.universeUUID,
+      taskUUID,
+      CustomerTask.TargetType.Backup,
+      CustomerTask.TaskType.Create,
+      taskParams.tableName);
     LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-        taskParams.tableUUID, taskParams.keyspace, taskParams.tableName);
+      taskParams.tableUUID, taskParams.keyspace, taskParams.tableName);
   }
 
-  public void runMultiTableBackupsTask(Schedule schedule) {
+  private void runMultiTableBackupsTask(Schedule schedule) {
     UUID customerUUID = schedule.getCustomerUUID();
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     MultiTableBackup.Params taskParams = Json.fromJson(params,
-        MultiTableBackup.Params.class);
+      MultiTableBackup.Params.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
     Universe universe;
     try {
@@ -247,31 +228,31 @@ public class Scheduler {
     }
     Map<String, String> config = universe.getConfig();
     if (universe.getUniverseDetails().updateInProgress || config.isEmpty() ||
-        config.get(Universe.TAKE_BACKUPS).equals("false") ||
-        universe.getUniverseDetails().backupInProgress) {
+      config.get(Universe.TAKE_BACKUPS).equals("false") ||
+      universe.getUniverseDetails().backupInProgress) {
       LOG.warn("Cannot run MultiTableBackup task since the universe {} is currently {}",
-               taskParams.universeUUID.toString(), "in a locked state");
+        taskParams.universeUUID.toString(), "in a locked state");
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted backup for universe: {}, task uuid = {}.",
-        taskParams.universeUUID, taskUUID);
+      taskParams.universeUUID, taskUUID);
     CustomerTask.create(customer,
-        taskParams.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Create,
-        universe.name
-        );
+      taskParams.universeUUID,
+      taskUUID,
+      CustomerTask.TargetType.Backup,
+      CustomerTask.TaskType.Create,
+      universe.name
+    );
     LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}", taskUUID,
-        taskParams.universeUUID, universe.name);
+      taskParams.universeUUID, universe.name);
   }
 
-  public void runDeleteBackupTask(Backup backup, Schedule schedule) {
+  private void runDeleteBackupTask(Backup backup, Schedule schedule) {
     if (backup.state != Backup.BackupState.Completed) {
       LOG.warn("Cannot delete backup {} since it is not in completed state.",
-                backup.backupUUID);
+        backup.backupUUID);
       return;
     }
     BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
@@ -291,12 +272,12 @@ public class Scheduler {
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted task to delete backup {}, task uuid = {}.",
-        backup.backupUUID, taskUUID);
+      backup.backupUUID, taskUUID);
     CustomerTask.create(customer,
-        backup.backupUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Delete,
-        "Backup");
+      backup.backupUUID,
+      taskUUID,
+      CustomerTask.TargetType.Backup,
+      CustomerTask.TaskType.Delete,
+      "Backup");
   }
 }
