@@ -8708,7 +8708,10 @@ Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletI
     *num_replicas = master_consensus.config().peers().size();
     return Status::OK();
   }
-  return GetReplicationFactor(num_replicas);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  GetExpectedNumberOfReplicas(&num_live_replicas, &num_read_replicas);
+  *num_replicas = num_live_replicas + num_read_replicas;
+  return Status::OK();
 }
 
 void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
@@ -8716,7 +8719,7 @@ void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* nu
   const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
   *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
-    *num_read_replicas = read_replica_placement_info.num_replicas();
+    *num_read_replicas += read_replica_placement_info.num_replicas();
   }
 }
 
