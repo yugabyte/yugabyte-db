@@ -1850,6 +1850,7 @@ void Tablet::KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> op
 //--------------------------------------------------------------------------------------------------
 
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
+  TRACE(__func__);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     operation->state()->CompleteWithStatus(
         STATUS(NotSupported, "Transaction status table does not support write"));
@@ -2838,9 +2839,11 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           [self = shared_from_this(), now](const Result<HybridTime>& result) {
             if (!result.ok()) {
               self->InvokeCallback(result.status());
+              TRACE("self->InvokeCallback");
               return;
             }
             self->NonTransactionalConflictsResolved(now, *result);
+            TRACE("self->NonTransactionalConflictsResolved");
           });
       return Status::OK();
     }
@@ -2872,9 +2875,11 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
         [self = shared_from_this()](const Result<HybridTime>& result) {
           if (!result.ok()) {
             self->InvokeCallback(result.status());
+            TRACE("self->InvokeCallback");
             return;
           }
           self->TransactionalConflictsResolved();
+          TRACE("self->NonTransactionalConflictsResolved");
         });
 
     return Status::OK();
