@@ -21,12 +21,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
 import org.yb.pgsql.cleaners.ClusterCleaner;
 import org.yb.pgsql.cleaners.DatabaseCleaner;
 import org.yb.pgsql.cleaners.RoleCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.io.File;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -261,8 +264,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
           "SELECT type, database, user_name, address, netmask, auth_method" +
               " FROM pg_hba_file_rules ORDER BY line_number",
           new Row("host", Arrays.asList("all"), Arrays.asList("all"), "0.0.0.0", "0.0.0.0", "md5"),
-          new Row("host", Arrays.asList("all"), Arrays.asList("all"), "::", "::", "md5")
-      );
+          new Row("host", Arrays.asList("all"), Arrays.asList("all"), "::", "::", "md5"));
     }
   }
 
@@ -273,6 +275,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
       statement.execute("CREATE ROLE no_pass_role LOGIN");
     }
 
+    // hba_conf rules should override ysql_enable_auth auto-generated rules.
     int tserver = spawnTServerWithFlags(
         "--ysql_enable_auth",
         "--ysql_hba_conf=host all all 0.0.0.0/0 trust, host all all ::0/0 trust"
@@ -284,25 +287,18 @@ public class TestPgConfiguration extends BasePgSQLTest {
       // No-op.
     }
 
-    // Cannot connect as user with incorrect password.
+    // Can connect as user with incorrect password.
     try (Connection ignored = tsConnBldr.withUser("pass_role")
                                         .withPassword("wrong pass").connect()) {
-      fail("Expected login attempt to fail");
-    } catch (SQLException sqle) {
-      assertThat(
-          sqle.getMessage(),
-          CoreMatchers.containsString("password authentication failed for user")
-      );
+      // No-op.
     }
 
-    // Cannot connect as user without password.
+    // Can connect as user without password.
+    try (Connection ignored = tsConnBldr.withUser("pass_role").connect()) {
+      // No-op.
+    }
     try (Connection ignored = tsConnBldr.withUser("no_pass_role").connect()) {
-      fail("Expected login attempt to fail");
-    } catch (SQLException sqle) {
-      assertThat(
-          sqle.getMessage(),
-          CoreMatchers.containsString("no password was provided")
-      );
+      // No-op.
     }
   }
 
