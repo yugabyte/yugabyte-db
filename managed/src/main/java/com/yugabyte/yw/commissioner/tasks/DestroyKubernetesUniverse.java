@@ -69,6 +69,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
+      SubTaskGroup volumeDeletes = new SubTaskGroup(
+          KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+      volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
       SubTaskGroup namespaceDeletes = new SubTaskGroup(
           KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
@@ -79,7 +83,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         Map<String, String> config = entry.getValue();
 
-        if (runHelmDelete) {
+        String namespace = config.get("KUBENAMESPACE");
+
+        if (runHelmDelete || namespace != null) {
           // Delete the helm deployments.
           helmDeletes.addTask(createDestroyKubernetesTask(
               universe.getUniverseDetails().nodePrefix, azName, config,
@@ -87,15 +93,34 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
               providerUUID));
         }
 
-        // Delete the namespaces of the deployments.
-        namespaceDeletes.addTask(createDestroyKubernetesTask(
+        // Delete the PVCs created for this AZ.
+        volumeDeletes.addTask(createDestroyKubernetesTask(
             universe.getUniverseDetails().nodePrefix, azName, config,
-            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
             providerUUID));
 
+        // TODO(bhavin192): delete the pull secret as well? As of now,
+        // we depend on the fact that, deleting the namespace will
+        // delete the pull secret. That won't be the case with
+        // providers which have KUBENAMESPACE paramter in the AZ
+        // config. How to find the pull secret name? Should we delete
+        // it when we have multiple releases in one namespace?. It is
+        // possible that same provider is creating multiple releases
+        // in one namespace. Tracked here:
+        // https://github.com/yugabyte/yugabyte-db/issues/7012
+
+        // Delete the namespaces of the deployments only if those were
+        // created by us.
+        if (namespace == null) {
+          namespaceDeletes.addTask(createDestroyKubernetesTask(
+              universe.getUniverseDetails().nodePrefix, azName, config,
+              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+              providerUUID));
+        }
       }
 
       subTaskGroupQueue.add(helmDeletes);
+      subTaskGroupQueue.add(volumeDeletes);
       subTaskGroupQueue.add(namespaceDeletes);
 
       // Create tasks to remove the universe entry from the Universe table.
@@ -133,6 +158,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     }
     if (config != null) {
       params.config = config;
+      // This assumes that the config is az config. It is true in this
+      // particular case, all callers just pass az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace = PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config);
     }
     params.universeUUID = taskParams().universeUUID;
     KubernetesCommandExecutor task = new KubernetesCommandExecutor();

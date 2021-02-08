@@ -168,6 +168,11 @@ class KubernetesDetails():
         self.pod_name = node_fqdn.split('.')[0]
         # The pod names are yb-master-n/yb-tserver-n where n is the pod number
         # and yb-master/yb-tserver are the container names.
+
+        # TODO(bhavin192): need to change in case of multiple releases
+        # in one namespace. Something like find the word 'master' in
+        # the name.
+
         self.container = self.pod_name.rsplit('-', 1)[0]
         self.config = config_map[self.namespace]
 
