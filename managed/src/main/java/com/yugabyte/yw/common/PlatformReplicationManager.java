@@ -14,6 +14,7 @@ import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -29,7 +30,6 @@ import scala.concurrent.ExecutionContext;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -54,8 +54,7 @@ public class PlatformReplicationManager extends DevopsBase {
   static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
   static final String REPLICATION_SCHEDULE_ENABLED_KEY = "yb.ha.replication_schedule_enabled";
   public static final String STORAGE_PATH_KEY = "yb.storage.path";
-  public static final String RETAIN_DATA_FROM_INVALID_SRC_KEY =
-    "yb.ha.retain_data_from_invalid_src";
+  public static final String BACKUP_FILE_PATTERN = "backup_*.tgz";
 
   private final AtomicReference<Cancellable> schedule;
 
@@ -189,14 +188,7 @@ public class PlatformReplicationManager extends DevopsBase {
       return new ArrayList<>();
     }
 
-    return listFiles(backupDir, "backup_*.tgz");
-  }
-
-  private static List<File> listFiles(Path backupDir, String pattern) throws IOException {
-    return StreamSupport.stream(
-      Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
-      .map(Path::toFile)
-      .collect(Collectors.toList());
+    return Util.listFiles(backupDir, BACKUP_FILE_PATTERN);
   }
 
   public JsonNode getBackupInfo() {
@@ -309,14 +301,39 @@ public class PlatformReplicationManager extends DevopsBase {
     }
   }
 
-  // TODO: (Shashank) - Implement https://github.com/yugabyte/yugabyte-db/issues/6503.
-  //  You'll want to run "updateLastBackup()" on each remote instance the backup has
-  //  successfully been sent to (You'll probably want to do this on the leader instance so that
-  //  the backup times get picked up by the followers through syncPlatformInstances).
-  //  If you update the last backup timestamp directly on the followers, it will be overwritten
-  //  on there by the leader platform.
-  private boolean sendBackup(PlatformInstance remoteInstance) {
-    return true;
+  @VisibleForTesting
+  boolean sendBackup(PlatformInstance remoteInstance) {
+    HighAvailabilityConfig config = remoteInstance.getConfig();
+    String clusterKey = config.getClusterKey();
+    File recentBackup;
+    recentBackup = getMostRecentBackup();
+    return recentBackup != null &&
+      exportBackups(config, clusterKey, remoteInstance.getAddress(), recentBackup) &&
+      remoteInstance.updateLastBackup();
+  }
+
+  private boolean exportBackups(HighAvailabilityConfig config, String clusterKey,
+                                String remoteInstanceAddr, File backupFile) {
+    try {
+      remoteClientFactory.getClient(clusterKey, remoteInstanceAddr).syncBackups(
+        config.getLeader().getAddress(),
+        config.getLocal().getAddress(), // sender is same as leader for now
+        backupFile);
+      return true;
+    } catch (Exception exception) {
+      LOG.error(String.format("Error exporting backup instances to remote instance %s",
+        remoteInstanceAddr), exception);
+      return false;
+    }
+  }
+
+  private File getMostRecentBackup() {
+    try {
+      return Util.listFiles(getBackupDir(), BACKUP_FILE_PATTERN).get(0);
+    } catch (Exception exception) {
+      LOG.error("Could not locate recent backup", exception);
+    }
+    return null;
   }
 
   private void syncToRemoteInstance(PlatformInstance remoteInstance) {
@@ -364,7 +381,17 @@ public class PlatformReplicationManager extends DevopsBase {
 
       // Sync data to remote address.
       remoteInstances.forEach(this::syncToRemoteInstance);
+
+      cleanupBackups();
     });
+  }
+
+  private void cleanupBackups() {
+    try {
+      Util.listFiles(getBackupDir(), BACKUP_FILE_PATTERN).forEach(File::delete);
+    } catch (IOException ioException) {
+      LOG.warn("Failed to list or delete backups");
+    }
   }
 
   public boolean saveReplicationData(String fileName, File uploadedFile, String leader,
@@ -503,7 +530,8 @@ public class PlatformReplicationManager extends DevopsBase {
    *
    * @return the output/results of running the script
    */
-  public boolean createBackup() {
+  @VisibleForTesting
+  boolean createBackup() {
     LOG.info("Creating platform backup...");
 
     ShellResponse response = runCommand(new CreatePlatformBackupParams());

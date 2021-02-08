@@ -2,18 +2,23 @@
 
 package com.yugabyte.yw.common;
 
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
+import play.mvc.Http;
 
-import java.net.URL;
 import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
@@ -148,5 +153,17 @@ public class ApiHelper {
       .replaceAll("href=\"/", String.format("href=\"%s", prefix))
       .replaceAll("href='/", String.format("href='%s", prefix))
       .replaceAll("http://", String.format("/universes/%s/proxy/", universeUUID.toString()));
+  }
+
+  public JsonNode multipartRequest(
+    String url,
+    Map<String, String> headers,
+    List<Http.MultipartFormData.Part<Source<ByteString, ?>>> partsList) {
+    WSRequest request = wsClient.url(url);
+    headers.forEach(request::addHeader);
+    CompletionStage<JsonNode> post = request
+      .post(Source.from(partsList))
+      .thenApply(WSResponse::asJson);
+    return handleJSONPromise(post);
   }
 }
