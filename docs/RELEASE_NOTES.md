@@ -4,19 +4,19 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 ## REL0_7_2
 
-PG-165(https://jira.percona.com/browse/PG-164): Recycle expired buckets.
+[PG-165](https://jira.percona.com/browse/PG-165): Recycle expired buckets.
 
-PG-164(https://jira.percona.com/browse/PG-165): Query timing will be four decimal places instead of two.
+[PG-164](https://jira.percona.com/browse/PG-164): Query timing will be four decimal places instead of two.
 
-PG-161(https://jira.percona.com/browse/PG-166): Miscellaneous small issues.
+[PG-161](https://jira.percona.com/browse/PG-161): Miscellaneous small issues.
 
 ## REL0_7_1
 
-PG-158(https://jira.percona.com/browse/PG-158): Segmentation fault while using pgbench with clients > 1.
+[PG-158](https://jira.percona.com/browse/PG-158): Segmentation fault while using pgbench with clients > 1.
 
-PG-159(https://jira.percona.com/browse/PG-159): Bucket start time (bucket_start_time) should be aligned with bucket_time.
+[PG-159](https://jira.percona.com/browse/PG-159): Bucket start time (bucket_start_time) should be aligned with bucket_time.
 
-PG-160(https://jira.percona.com/browse/PG-160): Integration with PGXN.
+[PG-160](https://jira.percona.com/browse/PG-160): Integration with PGXN.
 
 
 
