@@ -407,6 +407,7 @@ public class CertificateHelper {
     File keyFile = new File(keyPath);
     try (JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyFile))) {
       keyWriter.writeObject(keyContent);
+      keyWriter.flush();
     } catch (Exception e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Save privateKey failed.");
@@ -419,6 +420,7 @@ public class CertificateHelper {
     certfile.getParentFile().mkdirs();
     try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certfile))) {
       certWriter.writeObject(cert);
+      certWriter.flush();
     } catch (Exception e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Save certContent failed.");
