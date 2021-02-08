@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -77,6 +78,9 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   GCPInitializer gcpInitializer;
+
+  @Inject
+  AZUInitializer azuInitializer;
 
   @Inject
   Commissioner commissioner;
@@ -464,6 +468,8 @@ public class CloudProviderController extends AuthenticatedController {
     }
     if (provider.code.equals("gcp")) {
       return gcpInitializer.initialize(customerUUID, providerUUID);
+    } else if (provider.code.equals("azu")) {
+      return azuInitializer.initialize(customerUUID, providerUUID);
     }
     return awsInitializer.initialize(customerUUID, providerUUID);
   }
