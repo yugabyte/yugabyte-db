@@ -35,10 +35,8 @@ import org.postgresql.util.PGobject;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.AsyncYBClient;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
-import org.yb.client.YBClient;
 import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.pgsql.cleaners.ClusterCleaner;
@@ -1538,6 +1536,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     private String user = TEST_PG_USER;
     private String password = null;
     private String preferQueryMode = null;
+    private String sslmode = null;
+    private String sslcert = null;
+    private String sslkey = null;
+    private String sslrootcert = null;
     private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
     private AutoCommit autoCommit = AutoCommit.DEFAULT;
 
@@ -1587,6 +1589,30 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return copy;
     }
 
+    ConnectionBuilder withSslMode(String sslmode) {
+      ConnectionBuilder copy = clone();
+      copy.sslmode = sslmode;
+      return copy;
+    }
+
+    ConnectionBuilder withSslCert(String sslcert) {
+      ConnectionBuilder copy = clone();
+      copy.sslcert = sslcert;
+      return copy;
+    }
+
+    ConnectionBuilder withSslKey(String sslkey) {
+      ConnectionBuilder copy = clone();
+      copy.sslkey = sslkey;
+      return copy;
+    }
+
+    ConnectionBuilder withSslRootCert(String sslrootcert) {
+      ConnectionBuilder copy = clone();
+      copy.sslrootcert = sslrootcert;
+      return copy;
+    }
+
     @Override
     protected ConnectionBuilder clone() {
       try {
@@ -1613,6 +1639,18 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       if (preferQueryMode != null) {
         props.setProperty("preferQueryMode", preferQueryMode);
+      }
+      if (sslmode != null) {
+        props.setProperty("sslmode", sslmode);
+      }
+      if (sslcert != null) {
+        props.setProperty("sslcert", sslcert);
+      }
+      if (sslkey != null) {
+        props.setProperty("sslkey", sslkey);
+      }
+      if (sslrootcert != null) {
+        props.setProperty("sslrootcert", sslrootcert);
       }
       if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
         props.setProperty("loggerLevel", "TRACE");
