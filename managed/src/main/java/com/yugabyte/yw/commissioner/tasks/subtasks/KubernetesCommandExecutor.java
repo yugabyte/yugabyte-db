@@ -129,6 +129,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
+    public String namespace;
     public String ybSoftwareVersion = null;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
@@ -164,42 +165,48 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
+    if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
+      throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
+    }
+
     // TODO: add checks for the shell process handler return values.
     ShellResponse response = null;
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
-        response = kubernetesManager.createNamespace(config, taskParams().nodePrefix);
+        response = kubernetesManager.createNamespace(config, taskParams().namespace);
         break;
       case APPLY_SECRET:
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
-          response = kubernetesManager.applySecret(config, taskParams().nodePrefix, pullSecret);
+          response = kubernetesManager.applySecret(config, taskParams().namespace, pullSecret);
         }
         break;
       case HELM_INSTALL:
         overridesFile = this.generateHelmOverride();
-        response = kubernetesManager.helmInstall(config, taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        response = kubernetesManager.helmInstall(config, taskParams().providerUUID, taskParams().nodePrefix,taskParams().namespace,  overridesFile);
         flag = true;
         break;
       case HELM_UPGRADE:
         overridesFile = this.generateHelmOverride();
-        response = kubernetesManager.helmUpgrade(config, taskParams().nodePrefix, overridesFile);
+        response = kubernetesManager.helmUpgrade(config, taskParams().nodePrefix, taskParams().namespace,  overridesFile);
         flag = true;
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          response = kubernetesManager.updateNumNodes(config, taskParams().nodePrefix, numNodes);
+          // TODO(bhavin192): we might also need nodePrefix later, so
+          // that we can have multiple releases in one namespace.
+          response = kubernetesManager.updateNumNodes(config, taskParams().namespace, numNodes);
         }
         break;
       case HELM_DELETE:
-        kubernetesManager.helmDelete(config, taskParams().nodePrefix);
+        kubernetesManager.helmDelete(config, taskParams().nodePrefix, taskParams().namespace);
         break;
       case VOLUME_DELETE:
-        kubernetesManager.deleteStorage(config, taskParams().nodePrefix);
+        kubernetesManager.deleteStorage(config, taskParams().nodePrefix, taskParams().namespace);
         break;
       case NAMESPACE_DELETE:
-        kubernetesManager.deleteNamespace(config, taskParams().nodePrefix);
+        kubernetesManager.deleteNamespace(config, taskParams().namespace);
         break;
       case POD_INFO:
         processNodeInfo();
@@ -216,7 +223,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private ShellResponse getPodError(Map<String, String> config) {
     ShellResponse response = new ShellResponse();
     response.code = -1;
-    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
+    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     boolean flag = false;
     for (JsonNode podInfo: podInfos.path("items")) {
@@ -263,16 +270,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       String regionName = AvailabilityZone.get(azUUID).region.code;
       Map<String, String> config = entry.getValue();
 
-      String namespace = taskParams().nodePrefix;
-
+      // TODO(bhavin192): we seem to be iterating over all the AZs
+      // here, and still selecting services for only one AZ governed
+      // by the taskParams().nodePrefix. Is it even required to
+      // iterate in that case?
       ShellResponse svcResponse =
-          kubernetesManager.getServices(config, namespace);
+        kubernetesManager.getServices(config, taskParams().nodePrefix, taskParams().namespace);
       JsonNode svcInfos = parseShellResponseAsJson(svcResponse);
 
       for (JsonNode svcInfo: svcInfos.path("items")) {
         JsonNode serviceMetadata =  svcInfo.path("metadata");
         JsonNode serviceSpec = svcInfo.path("spec");
         String serviceType = serviceSpec.path("type").asText();
+        // TODO(bhavin192): this will need an update when we have
+        // multiple releases in one namespace, the generated service
+        // name will be different and not just yb-masters, yb-tservers
+        // etc. Values file will still have yb-masters, yb-tservers
+        // etc.
         serviceToIP.put(serviceMetadata.path("name").asText(),
                         serviceSpec.path("clusterIP").asText());
       }
@@ -296,11 +310,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       String regionName = AvailabilityZone.get(azUUID).region.code;
       Map<String, String> config = entry.getValue();
 
-      String namespace = isMultiAz ?
+      String nodePrefix = isMultiAz ?
           String.format("%s-%s", taskParams().nodePrefix, azName) : taskParams().nodePrefix;
+      String namespace = PlacementInfoUtil.getKubernetesNamespace(isMultiAz, taskParams().nodePrefix, azName, config);
 
       ShellResponse podResponse =
-          kubernetesManager.getPodInfos(config, namespace);
+          kubernetesManager.getPodInfos(config, nodePrefix, namespace);
       JsonNode podInfos = parseShellResponseAsJson(podResponse);
 
       for (JsonNode podInfo: podInfos.path("items")) {
@@ -317,6 +332,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         String podName = isMultiAz ?
             String.format("%s_%s", podSpec.path("hostname").asText(), azName) :
             podSpec.path("hostname").asText();
+        String podNamespace = podInfo.path("metadata").path("namespace").asText();
+        if (podNamespace.isEmpty() || podNamespace == null) {
+          throw new IllegalArgumentException("metadata.namespace of pod " + podName
+                                             + " is empty. This shouldn't happen");
+        }
+        pod.put("namespace", podNamespace);
         pods.set(podName, pod);
       }
     }
@@ -331,13 +352,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         NodeDetails nodeDetail = defaultNode.clone();
         Map.Entry<String, JsonNode> pod = iter.next();
         String hostname = pod.getKey();
-
-        // The namespace of the deployment in multi-az is constructed by appending
-        // the zone to the universe name.
-        String namespace = isMultiAz ?
-            PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, hostname.split("_")[1]) :
-            taskParams().nodePrefix;
         JsonNode podVals = pod.getValue();
+        String namespace = podVals.get("namespace").asText();
         UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
         String domain = azToDomain.get(azUUID);
         if (hostname.contains("master")) {
