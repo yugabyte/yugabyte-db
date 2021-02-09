@@ -847,7 +847,7 @@ employee_no | name            | manager_id  | department
 
 Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](https://docs.yugabyte.com/latest/api/ysql/extensions/#tablefunc).
 
-## Recognizing Patterns in Queries
+## Matching Patterns in Queries
 
 There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition. 
 
