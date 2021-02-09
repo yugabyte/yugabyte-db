@@ -36,9 +36,9 @@ This section walks through some of the features in YSQL. If you have worked with
 |------------------------------|-----------------------------------------------------------|
 | <span style="font-size:16px">[Basics](databases-schemas-tables/)</span>  | SQL shell with `ysqlsh`, users, databases, tables and schemas |
 | <span style="font-size:16px">[Data types](data-types/)</span>            | String / numeric / temporal types, `SERIAL` pseudo type, `ENUM`, arrays, and composite types |
-| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT` and `RETURNING` clauses, etc. |
+| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT` and `RETURNING` clauses |
+| <span style="font-size:16px">[Queries and Joins](queries/)</span>           | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries|
 <!--
-| <span style="font-size:16px">[Queries and Joins](queries/)</span>           | Joins, `FROM` / `GROUP BY` / `HAVING` clauses, common table expressions, recursive queries, etc. |
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
 | <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for the various stored procedures |
 | <span style="font-size:16px">[Triggers](triggers/)</span>                   | Triggers (on data modification) and event triggers (on schema changes) |
