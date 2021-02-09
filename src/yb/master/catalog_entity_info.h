@@ -59,9 +59,10 @@ struct TabletReplica {
   consensus::RaftPeerPB::MemberType member_type;
   MonoTime time_updated;
 
-  // Replica is processing a parent data after a tablet splits, rocksdb sst files will have
-  // metadata saying that either the first half, or the second half is irrelevant.
-  bool processing_parent_data = false;
+  // Replica is reporting that load balancer moves should be disabled. This could happen in the case
+  // where a tablet has just been split and still refers to data from its parent which is no longer
+  // relevant, for example.
+  bool should_disable_lb_move = false;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
