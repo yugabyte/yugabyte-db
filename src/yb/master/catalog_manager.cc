@@ -7044,8 +7044,8 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
-  if (report.has_processing_parent_data()) {
-      new_replica->processing_parent_data = report.processing_parent_data();
+  if (report.has_should_disable_lb_move()) {
+      new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
