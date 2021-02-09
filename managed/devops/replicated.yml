@@ -357,7 +357,7 @@ config:
           display_name: Check TLS version list is valid
           command: regex_match
           args:
-            - "^((TLSv(1|1\.[1-3]))(?: ){1}){0,3}(TLSv(1|1\.[1-3])){1}$"
+            - '^((TLSv(1|1\.[1-3]))(?: ){1}){0,3}(TLSv(1|1\.[1-3])){1}$'
             - "The argument provided to TLS Versions isn't valid"
 
   - name: metrics
