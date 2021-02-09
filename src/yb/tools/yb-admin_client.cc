@@ -1678,16 +1678,21 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     }
     std::vector<std::string> replica_block = strings::Split(block[2], ":",
                                                             strings::SkipEmpty());
-    if (replica_block.size() != 2) {
+    if (replica_block.size() > 2) {
       return STATUS(InvalidCommand, "The number of replicas need to be specified alongside the"
-          "placement info following a colon. Block: " + placement_info_split[iter] + " is invalid");
+        "placement info following a single colon. Block: " + placement_info_split[iter] + " is invalid");
     }
-    int num_replicas = std::stoi(replica_block[1]);
     auto pb = live_replicas->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(block[0]);
     pb->mutable_cloud_info()->set_placement_region(block[1]);
     pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    pb->set_min_num_replicas(num_replicas);
+    if (replica_block.size() == 1) {
+      // by default the number of replicas is set 1
+      pb->set_min_num_replicas(1);
+    } else {
+      int num_replicas = std::stoi(replica_block[1]);
+      pb->set_min_num_replicas(num_replicas);
+    }
   }
 
   if (!optional_uuid.empty()) {
