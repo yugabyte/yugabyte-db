@@ -54,12 +54,12 @@ namespace master {
 
 string TabletReplica::ToString() const {
   return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 "
-                "processing_parent_data: $4 time since update: $5ms }",
+                "should_disable_lb_move: $4 time since update: $5ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 consensus::RaftPeerPB_Role_Name(role),
                 consensus::RaftPeerPB::MemberType_Name(member_type),
-                processing_parent_data,
+                should_disable_lb_move,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
 }
 
@@ -67,7 +67,7 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   state = source.state;
   role = source.role;
   member_type = source.member_type;
-  processing_parent_data = source.processing_parent_data;
+  should_disable_lb_move = source.should_disable_lb_move;
   time_updated = MonoTime::Now();
 }
 

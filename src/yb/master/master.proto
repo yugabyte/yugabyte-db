@@ -656,8 +656,8 @@ message ReportedTabletPB {
   optional AppStatusPB error = 4;
   optional uint32 schema_version = 5;
 
-  // Replica is processing a parent data after a tablet splits
-  optional bool processing_parent_data = 7;
+  // Replica is reporting that load balancer moves should be disabled
+  optional bool should_disable_lb_move = 7;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
