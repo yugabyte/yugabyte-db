@@ -525,7 +525,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
-  bool StillHasParentDataAfterSplit();
+  Result<bool> StillHasParentDataAfterSplit();
+
+  // Wrapper for StillHasParentDataAfterSplit. Conservatively returns true if
+  // StillHasParentDataAfterSplit failed, otherwise returns the result value.
+  bool MightStillHaveParentDataAfterSplit();
+
+  // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
+  // disabled. We do so, for example, when StillHasParentDataAfterSplit() returns true.
+  bool ShouldDisableLbMove();
 
   void ForceRocksDBCompactInTest();
 
