@@ -177,6 +177,9 @@ DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
              "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
+DEFINE_test_flag(bool, disable_tablet_deletion, false,
+                 "Whether catalog manager should disable tablet deletion.");
+
 DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "Whether the catalog manager should wait for a newly created tablet to "
             "elect a leader before considering it successfully created. "
@@ -7356,6 +7359,9 @@ void CatalogManager::SendDeleteTabletRequest(
     const scoped_refptr<TableInfo>& table,
     TSDescriptor* ts_desc,
     const string& reason) {
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << "Deleting tablet " << tablet_id << " on peer "
                         << ts_desc->permanent_uuid() << " with delete type "
                         << TabletDataState_Name(delete_type) << " (" << reason << ")";
