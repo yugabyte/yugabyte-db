@@ -710,6 +710,11 @@ class YBClient {
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
 
+  std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
+      const std::shared_ptr<const YBTable>& table,
+      const std::string& partition_key,
+      CoarseTimePoint deadline);
+
   std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
       const std::shared_ptr<const YBTable>& table,
       CoarseTimePoint deadline);

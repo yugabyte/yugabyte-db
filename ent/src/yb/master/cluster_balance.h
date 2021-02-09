@@ -59,7 +59,7 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   PerTableLoadState* GetEntState() const;
 
   // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
-  void PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
+  Status PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
 
   // Returns the read only placement info from placement_uuid_.
   const PlacementInfoPB& GetReadOnlyPlacementFromUuid(

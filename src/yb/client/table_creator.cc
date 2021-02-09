@@ -95,6 +95,11 @@ YBTableCreator& YBTableCreator::tablegroup_id(const std::string& tablegroup_id) 
   return *this;
 }
 
+YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) {
+  tablespace_id_ = tablespace_id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -103,6 +108,11 @@ YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
 YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* txn) {
   txn_ = txn;
   return *this;
+}
+
+YBTableCreator &YBTableCreator::add_partition(const Partition& partition) {
+    partitions_.push_back(partition);
+    return *this;
 }
 
 YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
@@ -232,6 +242,10 @@ Status YBTableCreator::Create() {
     req.set_tablegroup_id(tablegroup_id_);
   }
 
+  if (!tablespace_id_.empty()) {
+    req.set_tablespace_id(tablespace_id_);
+  }
+
   // Note that the check that the sum of min_num_replicas for each placement block being less or
   // equal than the overall placement info num_replicas is done on the master side and an error is
   // naturally returned if you try to create a table and the numbers mismatch. As such, it is the
@@ -263,6 +277,13 @@ Status YBTableCreator::Create() {
   req.set_num_tablets(num_tablets_);
 
   req.mutable_partition_schema()->CopyFrom(partition_schema_);
+
+  if (!partitions_.empty()) {
+    for (const auto& p : partitions_) {
+      auto * np = req.add_partitions();
+      p.ToPB(np);
+    }
+  }
 
   // Index mapping with data-table being indexed.
   if (index_info_.has_indexed_table_id()) {

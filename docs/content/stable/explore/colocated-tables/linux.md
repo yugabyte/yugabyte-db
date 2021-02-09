@@ -3,7 +3,6 @@ title: Explore colocated tables on Linux
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster on Linux.
-block_indexing: true
 menu:
   stable:
     identifier: colocated-tables-2-linux
@@ -16,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/colocated-tables/macos" class="nav-link">
+    <a href="/latest/explore/colocated-tables/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/colocated-tables/linux" class="nav-link active">
+    <a href="/latest/explore/colocated-tables/linux" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

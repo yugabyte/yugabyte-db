@@ -6,13 +6,10 @@ description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: benchmark
     weight: 685
-aliases:
-  - /stable/benchmark/performance/
 
 ---
 
@@ -98,6 +95,18 @@ aliases:
       </div>
       <div class="body">
         Test resilience under failure conditions created by the Jepsen test suite.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="performance-troubleshooting/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <div class="title">Performance Troubleshooting</div>
+      </div>
+      <div class="body">
+        Troubleshooting performance issues in YugabyteDB.
       </div>
     </a>
   </div>

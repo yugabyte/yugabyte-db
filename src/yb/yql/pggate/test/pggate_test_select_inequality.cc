@@ -35,7 +35,9 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
-                                       kInvalidOid /*tablegroup_id*/, &pg_stmt));
+                                       kInvalidOid /* tablegroup_id */,
+                                       kInvalidOid /* tablespace_id */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "h", ++col_count,
                                                DataType::STRING, true, false));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "r1", ++col_count,

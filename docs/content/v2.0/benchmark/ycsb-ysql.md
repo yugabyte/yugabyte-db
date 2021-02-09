@@ -53,7 +53,7 @@ $ cd YCSB
 
 ## Step 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
+Start your YugabyteDB cluster by following the steps in [Quick start](/latest/quick-start/explore-ysql/).
 
 ## Step 3. Configure your database
 

@@ -3,10 +3,6 @@ title: Install YugabyteDB on macOS
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on macOS in less than five minutes.
-aliases:
-  - /quick-start/install/
-  - /stable/quick-start/install/
-block_indexing: true
 menu:
   stable:
     parent: quick-start
@@ -21,28 +17,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/install/macos" class="nav-link active">
+    <a href="/latest/quick-start/install/macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/linux" class="nav-link">
+    <a href="/latest/quick-start/install/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/docker" class="nav-link">
+    <a href="/latest/quick-start/install/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/kubernetes" class="nav-link">
+    <a href="/latest/quick-start/install/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -57,7 +53,7 @@ showAsideToc: true
 2. Verify that you have Python 2 or 3 installed. 
 
     ```sh
-    $ python --version
+    python --version
     ```
 
     ```
@@ -71,13 +67,13 @@ showAsideToc: true
     To install `wget` on your Mac, you can run the following command if you use Homebrew:
 
     ```sh
-    $ brew install wget
+    brew install wget
     ```
 
 4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
-    $ launchctl limit maxfiles
+    launchctl limit maxfiles
     ```
 
     We recommend setting the soft and hard limits to 1048576.
@@ -119,7 +115,7 @@ showAsideToc: true
     Enure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
 
     ```sh
-    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
     ```
 
     You might have to `unload` the service before loading it.
@@ -129,13 +125,13 @@ showAsideToc: true
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.3.0.0-darwin.tar.gz
+wget https://downloads.yugabyte.com/yugabyte-2.4.0.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.3.0.0-darwin.tar.gz && cd yugabyte-2.3.0.0/
+tar xvfz yugabyte-2.4.0.0-darwin.tar.gz && cd yugabyte-2.4.0.0/
 ```
 
 ## Configure
@@ -158,7 +154,7 @@ sudo ifconfig lo0 alias 127.0.0.7
 To verify that the extra loopback addresses exist, run the following command.
 
 ```sh
-$ ifconfig lo0
+ifconfig lo0
 ```
 
 You should see some output like the following:

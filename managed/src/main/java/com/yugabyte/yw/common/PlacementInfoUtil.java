@@ -1718,6 +1718,11 @@ public class PlacementInfoUtil {
       ));
   }
 
+  // TODO(bhavin192): there should be proper merging of the
+  // configuration from all the levels. Something like storage class
+  // from AZ level, kubeconfig from global level, namespace from
+  // region level and so on.
+
   // Get the zones with the kubeconfig for that zone.
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
@@ -1743,10 +1748,33 @@ public class PlacementInfoUtil {
     return azToConfig;
   }
 
-  public static String getKubernetesNamespace(String nodePrefix, String azName) {
-    return String.format("%s-%s", nodePrefix, azName);
+  // This function decides the value of isMultiAZ based on the value
+  // of azName. In case of single AZ providers, the azName is passed
+  // as null.
+  public static String getKubernetesNamespace(String nodePrefix,
+                                              String azName, Map<String, String> azConfig) {
+    boolean isMultiAZ = (azName != null);
+    return getKubernetesNamespace(isMultiAZ, nodePrefix, azName, azConfig);
   }
 
+  /**
+   * This function returns the namespace for the given AZ. If the AZ
+   * config has KUBENAMESPACE defined, then it is used
+   * directly. Otherwise, the namespace is constructed with nodePrefix
+   * & azName params.
+   */
+  public static String getKubernetesNamespace(boolean isMultiAZ, String nodePrefix,
+                                              String azName, Map<String, String> azConfig) {
+    String defaultNamespace = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
+    return azConfig.getOrDefault("KUBENAMESPACE", defaultNamespace);
+  }
+
+  // TODO(bhavin192): what if the same namespace is being used for
+  // different AZs (can be possible when we allow multiple releases in
+  // one namespace)? We need to have something like ns_az to make sure
+  // that the configuration is correct. This is eventually used by
+  // bin/yb_backup.py and bin/cluster_health.py. Those will need an
+  // update as well.
   public static Map<String, String> getConfigPerNamespace(
     PlacementInfo pi,
     String nodePrefix,
@@ -1754,18 +1782,18 @@ public class PlacementInfoUtil {
   ) {
     Map<String, String> namespaceToConfig = new HashMap<>();
     Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       String kubeconfig = entry.getValue().get("KUBECONFIG");
       if (kubeconfig == null) {
         throw new NullPointerException("Couldn't find a kubeconfig");
       }
-      if (!isMultiAZ(provider)) {
-        namespaceToConfig.put(nodePrefix, kubeconfig);
+
+      String azName = AvailabilityZone.get(entry.getKey()).code;
+      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, azName, entry.getValue());
+      namespaceToConfig.put(namespace, kubeconfig);
+      if (!isMultiAZ) {
         break;
-      } else {
-        String azName = AvailabilityZone.get(entry.getKey()).code;
-        String namespace = getKubernetesNamespace(nodePrefix, azName);
-        namespaceToConfig.put(namespace, kubeconfig);
       }
     }
 
@@ -1779,15 +1807,19 @@ public class PlacementInfoUtil {
                                               int masterRpcPort) {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
-    if (!isMultiAZ(provider)) {
+    boolean isMultiAZ = isMultiAZ(provider);
+    if (!isMultiAZ) {
       return null;
     }
 
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
+      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getConfig());
       String domain = azToDomain.get(entry.getKey());
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        String master = String.format("yb-master-%d.yb-masters.%s-%s.%s:%d", idx, nodePrefix, az.code,
+        // TODO(bhavin192): might need to change when we have multiple
+        // releases in one namespace.
+        String master = String.format("yb-master-%d.yb-masters.%s.%s:%d", idx, namespace,
             domain, masterRpcPort);
         masters.add(master);
       }

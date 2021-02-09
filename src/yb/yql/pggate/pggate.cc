@@ -46,6 +46,7 @@
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 
 namespace yb {
 namespace pggate {
@@ -79,7 +80,9 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
   if (FLAGS_use_node_to_node_encryption) {
-    secure_context = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir));
+    secure_context = VERIFY_RESULT(server::CreateSecureContext(
+        FLAGS_certs_dir,
+        server::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
   }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
@@ -504,10 +507,12 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool add_primary_key,
                                  const bool colocated,
                                  const PgObjectId& tablegroup_oid,
+                                 const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid);
+      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
+      tablespace_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
   }
@@ -729,10 +734,12 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
                                  const PgObjectId& tablegroup_oid,
+                                 const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid);
+      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid,
+      tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -1049,6 +1056,15 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDelete*>(handle)->Exec();
+}
+
+Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDelete*>(handle)->SetIsPersistNeeded(is_persist_needed);
+  return Status::OK();
 }
 
 // Colocated Truncate ------------------------------------------------------------------------------
