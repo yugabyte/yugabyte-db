@@ -23,7 +23,7 @@ import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { LiveQueries } from '../../queries';
 import { isDefinedNotNull, isEmptyObject, isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isOnpremUniverse, isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { isOnpremUniverse, isKubernetesUniverse, isAWSUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
@@ -194,20 +194,7 @@ class UniverseDetail extends Component {
       params: { tab }
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
-    const clusters = universe?.currentUniverse?.data?.universeDetails?.clusters;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
-
-    // This variable will store the universe provider type which helps to enable
-    // Pause Universe functionality.
-    // TODO: For now, we're enabling the Pause Universe for providerType==='aws'
-    // only. This functionality needs to be enabled for all the cloud providers and
-    // once that's done this needs to be removed.
-    const providerType = isNonEmptyArray(clusters)
-      ? clusters.map((cluster) => {
-        return cluster?.userIntent?.providerType;
-      })
-      : null;
-
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -436,6 +423,28 @@ class UniverseDetail extends Component {
       </div>
     );
 
+    const toggleUniverseBody = (
+      <>
+        <span>Are you sure you want to {!universePaused ? 'pause' : 'resume'} the universe?</span>
+        <br />
+        <br />
+        {!universePaused &&
+          <>
+            <h5>Active: $??/hr → Paused: $??/hr</h5>
+            <br />
+            <span>When your universe is paused:</span>
+            <ul className="toggle-universe-list">
+              <li>Reads and writes will be disabled.</li>
+              <li>Any configured alerts and health checks will not be triggered.</li>
+              <li>Scheduled backups will be stopped.</li>
+              <li>Any changes to universe configuration are not allowed.</li>
+              <li>All data in the cluster will be saved and the cluster can be unpaused at any time.</li>
+            </ul>
+          </>
+        }
+      </>
+    );
+
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (
@@ -534,14 +543,19 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       }
 
-                      <YBMenuItem onClick={() => showSubmenu('universeControls')}>
-                        <YBLabelWithIcon icon="fa fa-pencil">
-                          Modify Universe
-                        </YBLabelWithIcon>
-                        <span className="pull-right">
-                          <i className="fa fa-chevron-right submenu-icon" />
-                        </span>
-                      </YBMenuItem>
+                      {!universePaused &&
+                        <YBMenuItem
+                          onClick={showRollingRestartModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.restartUniverse'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-refresh fa-fw">
+                            Initiate Rolling Restart
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      }
 
                       {!isReadOnlyUniverse &&
                         !universePaused && (
@@ -570,6 +584,34 @@ class UniverseDetail extends Component {
                           }
                         />
                       }
+
+                      <MenuItem divider />
+
+                      {/* TODO:
+                      1. For now, we're enabling the Pause Universe for providerType==='aws'
+                      only. This functionality needs to be enabled for all the cloud
+                      providers and once that's done this condition needs to be removed.
+                      2. One more condition needs to be added which specifies the
+                      current status of the universe. */}
+                      {isAWSUniverse(currentUniverse?.data) &&
+                        <YBMenuItem onClick={showToggleUniverseStateModal}>
+                          <YBLabelWithIcon icon="fa fa-pause-circle-o">
+                            {!universePaused ? 'Pause Universe' : 'Resume Universe'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      }
+
+                      <YBMenuItem
+                        onClick={showDeleteUniverseModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.deleteUniverse'
+                        )}
+                      >
+                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                          Delete Universe
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
                     </>
                   )}
                   subMenus={{
@@ -593,45 +635,6 @@ class UniverseDetail extends Component {
                           )}
                         >
                           Encryption at-Rest
-                        </YBMenuItem>
-                      </>
-                    ),
-                    universeControls: (backToMainMenu) => (
-                      <>
-                        <MenuItem onClick={backToMainMenu}>
-                          <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
-                        </MenuItem>
-                        <MenuItem divider />
-
-                        {!universePaused &&
-                          <YBMenuItem
-                            onClick={showRollingRestartModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.restartUniverse'
-                            )}
-                          >
-                            Initiate Rolling Restart
-                          </YBMenuItem>
-                        }
-
-                        {/* TODO: 1 more condition needs to be added which specifies the
-                        current status of the universe. */}
-                        {isDefinedNotNull(providerType)
-                          && providerType.toString() === 'aws' &&
-                          <YBMenuItem onClick={showToggleUniverseStateModal}>
-                            {!universePaused ? 'Pause Universe' : 'Resume Universe'}
-                          </YBMenuItem>
-                        }
-
-                        <YBMenuItem
-                          onClick={showDeleteUniverseModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.deleteUniverse'
-                          )}
-                        >
-                          Delete Universe
                         </YBMenuItem>
                       </>
                     )
@@ -663,7 +666,7 @@ class UniverseDetail extends Component {
           visible={showModal && visibleModal === 'toggleUniverseStateForm'}
           onHide={closeModal}
           title={`${!universePaused ? 'Pause' : 'Resume'} Universe: `}
-          body={`Are you sure you want to ${!universePaused ? 'pause' : 'resume'} the universe?`}
+          body={toggleUniverseBody}
           type="primary"
           universePaused={universePaused}
         />

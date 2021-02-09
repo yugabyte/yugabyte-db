@@ -141,6 +141,11 @@ export const isOnpremUniverse = (universe) => {
   return cluster?.userIntent?.providerType === 'onprem';
 };
 
+export const isAWSUniverse = (universe) => {
+  const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
+  return cluster?.userIntent?.providerType === 'aws';
+};
+
 // Reads file and passes content into Promise.resolve
 export const readUploadedFile = (inputFile, isRequired) => {
   const fileReader = new FileReader();

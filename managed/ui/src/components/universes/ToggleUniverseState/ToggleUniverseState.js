@@ -4,11 +4,10 @@
 
 import React, { Component } from 'react';
 import { YBModal, YBTextInput } from '../../common/forms/fields';
-import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { browserHistory } from 'react-router';
 
-export default class ToggleUniverseState extends Component {
+class ToggleUniverseState extends Component {
   constructor(props) {
     super(props);
     this.state = {
@@ -24,30 +23,6 @@ export default class ToggleUniverseState extends Component {
     this.props.onHide();
   };
 
-  getModalInfo = () => {
-    const {
-      body,
-      universe: {
-        currentUniverse: {
-          data: { name }
-        }
-      }
-    } = this.props;
-    return (
-      <div>
-        {body}
-        <br />
-        <br />
-        <label>Enter universe name to confirm:</label>
-        <YBTextInput
-          label="Confirm universe name:"
-          placeHolder={name}
-          input={{ onChange: this.onChangeUniverseName, onBlur: () => {} }}
-        />
-      </div>
-    );
-  }
-
   toggleUniverseStateConfirmation = () => {
     const {
       universePaused,
@@ -57,8 +32,8 @@ export default class ToggleUniverseState extends Component {
     } = this.props;
     this.props.onHide();
     universePaused
-    ? this.props.submitRestartUniverse(data.universeUUID)
-    : this.props.submitPauseUniverse(data.universeUUID);
+      ? this.props.submitRestartUniverse(data.universeUUID)
+      : this.props.submitPauseUniverse(data.universeUUID);
   }
 
   componentDidUpdate(prevProps) {
@@ -75,6 +50,7 @@ export default class ToggleUniverseState extends Component {
 
   render() {
     const {
+      body,
       visible,
       title,
       error,
@@ -88,18 +64,27 @@ export default class ToggleUniverseState extends Component {
     return (
       <YBModal
         visible={visible}
-        formName={'toggleUniverseStateForm'}
+        formName='toggleUniverseStateForm'
         onHide={onHide}
-        submitLabel={'Yes'}
-        cancelLabel={'No'}
+        submitLabel='Yes'
+        cancelLabel='No'
         showCancelButton={true}
         title={title + name}
         onFormSubmit={this.toggleUniverseStateConfirmation}
         error={error}
         asyncValidating={this.state.universeName !== name}
       >
-        {this.getModalInfo()}
+        <div>
+          {body}
+          <label>Enter universe name to confirm:</label>
+          <YBTextInput
+            label="Confirm universe name:"
+            placeHolder={name}
+            input={{ onChange: this.onChangeUniverseName }}
+          />
+        </div>
       </YBModal>
     );
   }
 }
+export { ToggleUniverseState };
