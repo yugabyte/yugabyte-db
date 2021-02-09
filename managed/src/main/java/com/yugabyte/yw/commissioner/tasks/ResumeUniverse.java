@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,6 +73,17 @@ public class ResumeUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
+      
+      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+        @Override
+        public void run(Universe universe) {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.universePaused = false;
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
+      saveUniverseDetails(updater);
+
       unlockUniverseForUpdate();
     } catch (Throwable t) {
       try {
