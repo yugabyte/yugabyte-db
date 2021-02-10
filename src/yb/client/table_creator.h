@@ -56,12 +56,18 @@ class YBTableCreator {
   // Tablegroup ID - will be ignored by catalog manager if the table is not in a tablegroup.
   YBTableCreator& tablegroup_id(const std::string& tablegroup_id);
 
+  // Tablespace ID.
+  YBTableCreator& tablespace_id(const std::string& tablespace_id);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
 
   // The creation of this table is dependent upon the success of this higher-level transaction.
   YBTableCreator& part_of_transaction(const TransactionMetadata* txn);
+
+  // Adds a partitions to the table.
+  YBTableCreator& add_partition(const Partition& partition);
 
   // Adds a set of hash partitions to the table.
   //
@@ -168,6 +174,8 @@ class YBTableCreator {
 
   PartitionSchemaPB partition_schema_;
 
+  std::vector<Partition> partitions_;
+
   int num_replicas_ = 0;
 
   master::ReplicationInfoPB replication_info_;
@@ -190,6 +198,9 @@ class YBTableCreator {
 
   // The tablegroup id to assign (if a table is in a tablegroup).
   std::string tablegroup_id_;
+
+  // The id of the tablespace to which this table is to be associated with.
+  std::string tablespace_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

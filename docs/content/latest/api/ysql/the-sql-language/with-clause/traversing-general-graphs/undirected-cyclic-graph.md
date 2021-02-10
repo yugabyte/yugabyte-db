@@ -16,7 +16,7 @@ Before trying any of the code in this section, make sure that you have created t
 
 ## Graph traversal using the denormalized "edges" table design
 
-Start by populating the _"edges"_ table with the data that represents the data that defines the graph shown in the section [Undirected cyclic graph](../../traversing-general-graphs/#undirected-cyclic-graph) using the scheme that represents each undirected edge twice—once in each direction.
+Start by populating the _"edges"_ table with the data that defines the graph shown in the section [Undirected cyclic graph](../../traversing-general-graphs/#undirected-cyclic-graph) using the scheme that represents each undirected edge twice—once in each direction.
 
 ```plpgsql
 delete from edges;
@@ -41,10 +41,10 @@ from edges;
 Look back at the SQL for traversing an employee hierarchy (see the section [List the path top-down from the ultimate manager to each employee in breadth first order](../../emps-hierarchy/#list-the-path-top-down-from-the-ultimate-manager-to-each-employee-in-breadth-first-order)). The snippet here is the core algorithm. But it's re-written to transform it into a use-case agnostic form by making these substitutions:
 
 ```
-emps                         >  nodes
-[the alias] e                >  n
-emps.name                    >  nodes.node_id
-emps.mgr_name                >  nodes.parent_node_id
+emps           >  nodes
+[the alias] e  >  n
+emps.name      >  nodes.node_id
+emps.mgr_name  >  nodes.parent_node_id
 ```
 
 This is the code that results:
@@ -65,7 +65,7 @@ with
 select path from paths
 ```
 
-The first attempt at the SQL for traversing the present undirected cyclic graph is easily written down just as obvious paraphrase:
+The first attempt at the SQL for traversing the present undirected cyclic graph is easily written down just as an obvious paraphrase:
 
 ```plpgql
 deallocate all;
@@ -92,9 +92,9 @@ Notice what the changes are.
 
 - The hierarchy's _"parent_node_id"_ column is replaced by the general graph's _"node_1"_ column. Similarly, the hierarchy's _"node_id"_, is replaced by the general graph's _"node_2"_.
 
-- The fixed starting condition for the hierarchy in the non-recursive term (`parent_node_id is null`) is replaced by the parameterized choice of starting node for the general graph (`node_1 = $1`). And this implies replacing the `SELECT` list's [`array[]` value constructor](../../../../datatypes/type_array/array-constructor/) (`array[node_id]`) with `array[$1, node_2]`.
+- The fixed starting condition for the hierarchy in the non-recursive term (`parent_node_id is null`) is replaced by the parameterized choice of start node for the general graph (`node_1 = $1`). And this implies replacing the `SELECT` list's [`array[]` value constructor](../../../../datatypes/type_array/array-constructor/) (`array[node_id]`) with `array[$1, node_2]`.
 
-- The stopping condition in the hierarchy's recursive term (`n.parent_node_id = p.path[cardinality(path)]`) is replaced with `node_1 = terminal(p.path)` -- but this is just a cosmetic change because the function "_terminal()"_ is just a wrapper for the final element in the path.
+- The stopping condition in the hierarchy's recursive term (`n.parent_node_id = p.path[cardinality(path)]`) is replaced with `node_1 = terminal(p.path)` -- but this is only a cosmetic change because the function "_terminal()"_ is just a wrapper for the final element in the path.
 
 - And the `SELECT` list's `array[]` value constructor in the non-recursive term gets changed appropriately.
 
@@ -109,7 +109,7 @@ Though the statement compiled without error, and seems to be executing, it will 
 Notice that the next node along the path that is so-far defined by the row that the `WHERE` predicate tests for accumulation into the growing results set under the present repetition of the _recursive term_, and that would begin the unending cycle, might be anywhere along the present path, according to the graph's topology. The [`ANY`](../../../../datatypes/type_array/functions-operators/any-all/) test comes to the rescue. Try this:
 
 ```plpgsql
-select ('n2' = any (array['n1', 'n2', 'n3', 'n5', 'n4']::text[]))::text as "cycle starting";
+select ('n3' = any (array['n1', 'n2', 'n3', 'n5', 'n4']::text[]))::text as "cycle starting";
 ```
 
 This is the result:
@@ -120,14 +120,14 @@ This is the result:
  true
 ```
 
-It's easy to add this predicate to the recursive CTE (in its _recursive term_). It's convenient to encapsulate the cycle-proof SQL in a _"language plpgsql"_ procedure so that the identity of the node chosen to seed the traversal can be named usefully. It's also useful to record the result in a table to allow trying various _ad hoc_ analysis queries after the fact.
+It's easy to add this predicate to the recursive CTE (in its _recursive term_). It's convenient to encapsulate the cycle-proof SQL in a _"language plpgsql"_ procedure so that the identity of the start node can be named usefully. It's also useful to record the result in a table to allow trying various _ad hoc_ analysis queries after the fact.
 
 ##### `cr-find-paths-with-nocycle-check.sql`
 
 ```plpgsql
 drop procedure if exists find_paths(text) cascade;
 
-create procedure find_paths(seed in text)
+create procedure find_paths(start_node in text)
   language plpgsql
 as $body$
 begin
@@ -139,9 +139,9 @@ begin
 
   with
     recursive paths(path) as (
-      select array[seed, node_2]
+      select array[start_node, node_2]
       from edges
-      where node_1 = seed
+      where node_1 = start_node
 
       union all
 
@@ -160,7 +160,7 @@ $body$;
 Invoke it and the use the _["list_paths()"](../common-code/#cr-list-paths-sql)_ table function show the result thus:
 
 ```plpgsql
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 \t on
 select t from list_paths('raw_paths');
 \t off
@@ -195,9 +195,9 @@ The whitespace was added manually to separate the paths into groups of the same 
 
 ![undirected-cyclic-graph-all-paths](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/undirected-cyclic-graph-all-paths.jpg)
 
-### Restrict down to a single shortest path to each non-seed node
+### Restrict down to a single shortest path to each distinct node reached from the start node
 
-As explained in the section [Create a procedure to filter the paths from "raw_paths" to leave only a shortest path to each distinct terminal node](../common-code/#cr-restrict-to-shortest-paths-sql), the [Bacon Numbers](../../bacon-numbers) problem requires only that (one of the) the shortest path(s) from one node to every other node is found. The following approach produces the required numbers _after the fact_ on the table of _all_ paths.
+As explained in the section [Create a procedure to filter the paths from "raw_paths" to leave only a shortest path to each distinct terminal node](../common-code/#cr-restrict-to-shortest-paths-sql), the [Bacon Numbers](../../bacon-numbers) problem requires only that (one of the) the shortest path(s) from one node to every other node is found. The following approach produces the required paths _after the fact_ on the table of _all_ paths.
 
 Use the _["restrict_to_shortest_paths()"](../common-code/#cr-restrict-to-shortest-paths-sql)_ procedure to derive these paths and then show them:
 
@@ -208,7 +208,7 @@ select t from list_paths('shortest_paths');
 \t off
 ```
 
-**Note:** As will be shown in the section [Produce the sets of shortest paths starting from every node](#produce-the-sets-of-shortest-paths-starting-from-every-node), it is interesting to accumulate the sets of shortest paths from each of many nodes into the _"shortest_paths"_ table. This is why the choice to purge the table before calling _"restrict_to_shortest_paths()"_ is left to the user. In contrast, the _"find_paths()"_ procedure starts by deleting all rows that the target _"raw_paths"_ table might contain. This is a design choice. If it simply accumulated paths from each successive call (invoking each of these with a different actual value for the _"seed"_ formal parameter) there'd be no errors. But the logic of the _"restrict_to_shortest_paths()"_ procedure would need to be more elaborate than the version that's presented here that expects to find only paths all of which have the same starting note. This would have made the essential core logic harder to understand.
+**Note:** As will be shown in the section [Produce the sets of shortest paths starting from every node](#produce-the-sets-of-shortest-paths-starting-from-every-node), it is interesting to accumulate the sets of shortest paths from each of many nodes into the _"shortest_paths"_ table. This is why the choice to purge the table before calling _"restrict_to_shortest_paths()"_ is left to the user. In contrast, the _"find_paths()"_ procedure starts by deleting all rows that the target _"raw_paths"_ table might contain. This is a design choice. If it simply accumulated paths from each successive call (invoking each of these with a different actual value for the _"start_node"_ formal parameter), then there'd be no errors. But the logic of the _"restrict_to_shortest_paths()"_ procedure would need to be more elaborate than the version that's presented here that expects to find only paths all of which have the same starting note. This would have made the essential core logic harder for you to understand.
 
 Here is the result:
 
@@ -224,7 +224,7 @@ Here is the result:
 
 ![undirected-cyclic-graph-shortest-paths](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/undirected-cyclic-graph-shortest-paths.jpg)
 
-Pruning after the fact in this way is a useful pedagogic device in that it clearly shows what information is sufficient to solve the [Bacon Numbers](../../bacon-numbers) problem. However, pairs of actor nodes that are defined by the real IMDb data have huge numbers of connecting paths with a wide range of lengths because so many movies share the same subsets of many actors. This means that  when the approach that this section has explained is run on this kind of data, it takes a very long time to run and consumes a huge amount of memory for the ever-growing representation of the eventual result set. (There is no mechanism for spilling to disk.) The outcome is _either_ that the query fails to finish in reasonable time _or_ that it simply crashes with an "out of memory" error.
+Pruning after the fact in this way is a useful pedagogic device in that it clearly shows what information is sufficient to solve the [Bacon Numbers](../../bacon-numbers) problem. However, pairs of actor nodes that are defined by the real IMDb data have huge numbers of connecting paths with a wide range of lengths because so many movies share the same subsets of many actors. This means that  when the approach that this section has explained is run on this kind of data, it takes a very long time to run and consumes a huge amount of memory for the ever-growing representation of the eventual result set. (There is no mechanism for spilling to disk.) The outcome is _either_ that the query fails to finish in reasonable time _or_ that it simply crashes with an "out of resources" error of some kind.
 
 The remedy is obvious: at each repeat of the _recursive term_, compare the new about-to-be-accumulated rows with the entire set of already-accumulated rows and discard all new rows whose end node is the same as that of an already-found shorter path. It turns out that the constructs available to the SQL programmer of a recursive CTE don't support this early pruning and so an approach must be designed that does allow this. This is the focus of the section [How to implement early path pruning](#how-to-implement-early-path-pruning).
 
@@ -241,7 +241,7 @@ begin
     select distinct node_1 from edges
     where node_1 <> 'n1')
   loop
-    call find_paths(seed => node);
+    call find_paths(start_node => node);
     call restrict_to_shortest_paths('raw_paths', 'shortest_paths', append=>true);
   end loop;
 end;
@@ -302,7 +302,7 @@ The whitespace was added manually to separate the paths into groups that start, 
 
 ## Graph traversal using the normalized "edges" table design
 
-Start by populating the _"edges"_ table with the data that represents the data that defines the graph shown in the section [Undirected cyclic graph](../../traversing-general-graphs/#undirected-cyclic-graph) (just as above) but this time using the scheme that represents each undirected edge only in the arbitrarily chosen direction of how the node names (or numeric surrogate keys) sort.
+Start by populating the _"edges"_ table with the data that defines the graph shown in the section [Undirected cyclic graph](../../traversing-general-graphs/#undirected-cyclic-graph) (just as above) but this time using the scheme that represents each undirected edge in only one direction.
 
 ```plpgsql
 delete from edges;
@@ -320,10 +320,10 @@ insert into edges(node_1, node_2) values
 ```
 The choice of the definition of the constraint, _"node_1 < node_2"_ is arbitrary; _"node_2 < node_1"_ would work just as well as long as rows are populated appropriately. The inequality ensures _both_ that the same node isn't recorded in both columns _and_ that when a particular edge is recorded as, say, _('a', 'b')_, it cannot also be recorded in the other direction as _('b', 'a')_.
 
-The `WHERE` clause predicate in the _non-recursive term_ that, in the SQL above, is written simply as `node_1 = seed`, must now be written thus:
+The `WHERE` clause predicate in the _non-recursive term_ that, in the SQL above, is written simply as `node_1 = start_node`, must now be written thus:
 
 ```
-node_1 = seed or node_2 = seed
+node_1 = start_node or node_2 = start_node
 ```
 
 And the `WHERE` clause predicate in the _recursive term_ that, in the SQL above, is written simply as `e.node_1 = terminal(p.path)`, must now be written thus:
@@ -331,14 +331,14 @@ And the `WHERE` clause predicate in the _recursive term_ that, in the SQL above,
 ```
 e.node_1 = terminal(p.path) or e.node_2 = terminal(p.path)
 ```
-Further, the `SELECT` list item in the _non-recursive term_ that, in the SQL above, is written simply as `array[seed, node_2]`, must now be written thus:
+Further, the `SELECT` list item in the _non-recursive term_ that, in the SQL above, is written simply as `array[start_node, node_2]`, must now be written thus:
 
 ```
 array[
-  seed,
+  start_node,
   case
-    when seed = node_1 then node_2
-    when seed = node_2 then node_1
+    when start_node = node_1 then node_2
+    when start_node = node_2 then node_1
   end case]
 ```
 
@@ -381,7 +381,7 @@ And now recreate the _"find_paths"_ procedure:
 ```plpgsql
 drop procedure if exists find_paths(text) cascade;
 
-create procedure find_paths(seed in text)
+create procedure find_paths(start_node in text)
   language plpgsql
 as $body$
 begin
@@ -393,8 +393,8 @@ begin
 
   with
     recursive paths(path) as (
-      select array[seed, other_node(seed, node_1, node_2)]
-      from edges where node_1 = seed or node_2 = seed
+      select array[start_node, other_node(start_node, node_1, node_2)]
+      from edges where node_1 = start_node or node_2 = start_node
 
       union all
 
@@ -413,7 +413,7 @@ $body$;
 Invoke it and observe the results just as was shown above:
 
 ```plpgsql
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 \t on
 select t from list_paths('raw_paths');
 \t off
@@ -448,9 +448,9 @@ In contrast, the identity predicate on _"node_2"_ will have no index support, Of
 
 The design concept here is to implement the pseudocode (as specified in the [section that specifies the semantics of the recursive CTE](../../recursive-cte/#semantics)) for the SQL for the approach that uses the denormalized _"edges"_ table approach.
 
-Then, because the intermediate data that is normally inaccessible to user-SQL is now exposed in ordinary tables, the pruning code can be added.
+Then, because the intermediate data that is inaccessible to user-SQL when you use a recursive CTE is now exposed in ordinary tables, the pruning code can be added.
 
-First re-define the _"edges_chk"_ constraint re-populate the _"edges"_ table as specified in the section [Graph traversal using the denormalized "edges" table design](#graph-traversal-using-the-denormalized-edges-table-design).
+First re-define the _"edges_chk"_ constraint and re-populate the _"edges"_ table as specified in the section [Graph traversal using the denormalized "edges" table design](#graph-traversal-using-the-denormalized-edges-table-design).
 
 Next, drop and re-create the _"find_paths()"_ procedure like this:
 
@@ -459,7 +459,7 @@ Next, drop and re-create the _"find_paths()"_ procedure like this:
 ```plpgsql
 drop procedure if exists find_paths(text, boolean) cascade;
 
-create procedure find_paths(seed in text, prune in boolean)
+create procedure find_paths(start_node in text, prune in boolean)
   language plpgsql
 as $body$
 <<b>>declare
@@ -474,9 +474,9 @@ begin
   delete from working_paths;
 
   insert into working_paths(path)
-  select array[seed, e.node_2]
+  select array[start_node, e.node_2]
   from edges e
-  where e.node_1 = seed;
+  where e.node_1 = start_node;
 
   insert into raw_paths(path)
   select r.path from working_paths r;
@@ -542,7 +542,7 @@ Notice that the early pruning logic is guarded by an `IF` test that does, or omi
 First invoke this version of _"find_paths()"_ without pruning:
 
 ```plpgsql
-call find_paths(seed => 'n1', prune => false);
+call find_paths(start_node => 'n1', prune => false);
 ```
 
 and confirm, using  _["list_paths()"](../common-code/#cr-list-paths-sql)_ that it produces the same set of paths as does the version of _"find_paths()"_ that the section [Graph traversal using the denormalized "edges" table design](#graph-traversal-using-the-denormalized-edges-table-design) described.
@@ -602,14 +602,14 @@ It's better to do this by executing a programmatic assertion than simply by eyeb
 First, recreate the basic _"find_paths()"_ procedure by executing the code shown at [`cr-find-paths-with-nocycle-check.sql`](#cr-find-paths-with-nocycle-check-sql). (This is the version that uses the `WITH` clause recursive statement straightforwardly and that cannot, therefore, implement early pruning). Then invoke it.
 
 ```plpgsql
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 call restrict_to_shortest_paths('raw_paths', 'shortest_paths');
 ```
 
 Now reinstate the version that implements early pruning by executing the code shown at [`cr-find-paths-with-pruning.sql`](#cr-find-paths-with-pruning-sql) and invoke this.
 
 ```plpgsql
-call find_paths(seed => 'n1', prune => true);
+call find_paths(start_node => 'n1', prune => true);
 ```
 At this stage, the _"shortest_paths"_ table contains the set of shortest paths from node _"n1"_ produced by _post factum_ filtering of the set of all paths from _"n1"_. And the _"raw_paths"_ table contains the set of shortest paths from node _"n1"_ produced by early pruning. These two sets ought to be identical. Test this assertion with the procedure "[_assert_shortest_paths_same_as_raw_paths()_](../common-code/#cr-assert-shortest-paths-same-as-raw-paths-sql)":
 
@@ -618,3 +618,4 @@ call assert_shortest_paths_same_as_raw_paths();
 ```
 
 The assertion holds.
+

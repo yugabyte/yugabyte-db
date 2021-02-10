@@ -716,7 +716,9 @@ Sets the preferred availability zones (AZs) and regions.
 
 {{< note title="Note" >}}
 
-- When nodes in the the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions.
+- Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
+
+- When nodes in the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions.
 By default, all nodes are eligible to have tablet leaders. Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and lowering latency.
 
 - By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.

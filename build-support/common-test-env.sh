@@ -340,7 +340,6 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
   fi
 
   local test_list_item
-  local test
   local IFS=$'\n'  # so that we can iterate through lines in $gtest_list_tests_result
   for test_list_item in $gtest_list_tests_result; do
     if [[ "$test_list_item" =~ ^\ \  ]]; then
@@ -1296,16 +1295,16 @@ find_spark_submit_cmd() {
   fi
 
   if is_mac; then
-    spark_submit_cmd_path=$YB_MACOS_PY3_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=${YB_MACOS_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
 
   if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
-    spark_submit_cmd_path=$YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD
+    spark_submit_cmd_path=${YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
 
-  spark_submit_cmd_path=$YB_LINUX_PY3_SPARK_SUBMIT_CMD
+  spark_submit_cmd_path=${YB_LINUX_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
 }
 
 spark_available() {

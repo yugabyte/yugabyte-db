@@ -62,6 +62,9 @@ public class TestTserverHealthChecks extends BaseYBClientTest {
   public void setUpBefore() throws Exception {
     tserverArgs.add("--TEST_force_single_tablet_failure=true");
     tserverArgs.add("--TEST_delay_removing_peer_with_failed_tablet_secs=120");
+    // Without this flag, we'll end up deleting the failed tablet, and the count of failed_tablets
+    // will be 0.
+    masterArgs.add("--TEST_disable_tablet_deletion=true");
     super.setUpBefore();
   }
 
