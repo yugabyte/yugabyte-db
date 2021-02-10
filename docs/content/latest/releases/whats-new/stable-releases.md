@@ -62,7 +62,7 @@ docker pull yugabytedb/yugabyte:2.4.1.0-b20
     * Backup: Fix restore of colocated table with `table_oid` already set [6678](https://github.com/yugabyte/yugabyte-db/issues/6678)
 * Metrics thread now start after the first replication stream is created [5251](https://github.com/yugabyte/yugabyte-db/issues/5251)
 * Enabled a sanity check to ensure that the tablet lookup result matches the partition key [7016](https://github.com/yugabyte/yugabyte-db/issues/7016)
-* Read Table Partitions from Snapshot
+* Restore now preserves the exact partitioning of the source tablets [6628](https://github.com/yugabyte/yugabyte-db/issues/)
 
 ### Bug Fixes
 
