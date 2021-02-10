@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { fetchLiveQueries } from '../../actions/universe';
-import { dropdownColKeys } from './LiveQueries';
+import { useQuery } from 'react-query';
+import { fetchLiveQueries, fetchSlowQueries } from '../../actions/universe';
 
-export const useApiQueriesFetch = ({ universeUUID }) => {
+export const useLiveQueriesApi = ({ universeUUID }) => {
   const [ycqlQueries, setYCQLQueryRowData] = useState([]);
   const [ysqlQueries, setYSQLQueryRowData] = useState([]);
-  const [loading, setLoadingState] = useState(false);
   const [errors, setErrors] = useState({});
-
+  
   const handleQueryResponse = (response) => {
-    const { error, data } = response;
+    const { error, data } = response;    
     if (!error) {
       const allErrors = {};
       if ('ysql' in data) {
@@ -21,45 +20,76 @@ export const useApiQueriesFetch = ({ universeUUID }) => {
         allErrors.ycql = data.ycql.errorCount;
       }
       setErrors(allErrors);
+    } else {
+      console.error(error);
+      setErrors({ message: error });
     }
-    setLoadingState(false);
   };
 
-  const getLiveQueries = () => {
-    setLoadingState(true);
-    fetchLiveQueries(universeUUID).then(handleQueryResponse);
-  };
-
-  useEffect(() => {
-    let cancel;
-    setLoadingState(true);
-    fetchLiveQueries(universeUUID, (c) => {
-      cancel = c;
-    }).then(handleQueryResponse);
-
-    return () => {
-      cancel();
-    };
-  }, [universeUUID]);
+  const { refetch, isFetching } = useQuery(
+    ['getLiveQueries', universeUUID],
+    () => fetchLiveQueries(universeUUID),
+    {
+      retry: false,
+      refetchOnWindowFocus: true,
+      onSuccess: handleQueryResponse
+    }
+  );
 
   return {
     ycqlQueries,
-    ysqlQueries,
-    loading,
+    ysqlQueries,    
     errors,
-    getLiveQueries
+    loading: isFetching,
+    getLiveQueries: refetch
+  };
+};
+
+export const useSlowQueriesApi = ({ universeUUID }) => {
+  const [ysqlQueries, setYSQLQueryRowData] = useState([]);
+  const [errors, setErrors] = useState({});
+
+  const handleQueryResponse = (response) => {
+    const { data } = response;
+    if (!data.error) {
+      const allErrors = {};
+      if ('ysql' in data) {
+        setYSQLQueryRowData(data.ysql.queries);
+        allErrors.ysql = data.ysql.errorCount;
+      }      
+      setErrors(allErrors);
+    } else {
+      setErrors({ message: data.error });
+    }
+  };
+
+  const { refetch, isFetching } = useQuery(
+    ['getSlowQueries', universeUUID],
+    () => fetchSlowQueries(universeUUID),
+    {
+      retry: false,
+      refetchOnWindowFocus: true,
+      onSuccess: handleQueryResponse
+    }
+  );
+
+  return {
+    ysqlQueries,    
+    errors,
+    loading: isFetching,
+    getSlowQueries: refetch
   };
 };
 
 const comparisonRegex = /(^([><]=?)(\d+))|(^(\d+|\*)\.\.(\d+|\*))/;
 const timestampRegex = /(^([><]=?)((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?))|^((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)\.\.((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)/;
 
-export const filterBySearchTokens = (arr, searchTokens) => {
+export const filterBySearchTokens = (arr, searchTokens, keyMap) => {
   return arr.filter((query) => {
     if (searchTokens.length) {
       return searchTokens.every((token) => {
         if (token.key) {
-          const column = dropdownColKeys[token.label];
+          const column = keyMap[token.label];
           if (column.type === 'number') {
             /**
              *  Test for comparison or range operator syntax similar to Github.
@@ -86,21 +116,21 @@ export const filterBySearchTokens = (arr, searchTokens) => {
               }
               const lowerRange = match[5];
               const upperRange = match[6];
-              if (lowerRange === '*' && !Number.isNaN(parseInt(upperRange))) {
-                return query[column.value] <= parseInt(upperRange);
-              } else if (upperRange === '*' && !Number.isNaN(parseInt(lowerRange))) {
-                return query[column.value] <= parseInt(upperRange);
+              if (lowerRange === '*' && !Number.isNaN(parseFloat(upperRange))) {
+                return query[column.value] <= parseFloat(upperRange);
+              } else if (upperRange === '*' && !Number.isNaN(parseFloat(lowerRange))) {
+                return query[column.value] <= parseFloat(upperRange);
               } else if (
-                !Number.isNaN(parseInt(lowerRange)) &&
-                !Number.isNaN(parseInt(upperRange))
+                !Number.isNaN(parseFloat(lowerRange)) &&
+                !Number.isNaN(parseFloat(upperRange))
               ) {
                 return (
-                  query[column.value] >= parseInt(lowerRange) &&
-                  query[column.value] <= parseInt(upperRange)
+                  query[column.value] >= parseFloat(lowerRange) &&
+                  query[column.value] <= parseFloat(upperRange)
                 );
               }
             }
-            return query[column.value] === parseInt(token.value.trim());
+            return query[column.value] === parseFloat(token.value.trim());
           } else if (column.type === 'timestamp') {
             /**
              * Test for date-time comparisons similar to Github search syntax above.
