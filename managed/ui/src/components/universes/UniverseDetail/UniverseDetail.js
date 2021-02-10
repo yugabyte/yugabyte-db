@@ -20,7 +20,7 @@ import {
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
-import { LiveQueries } from '../../queries';
+import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isOnpremUniverse, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -341,7 +341,7 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <LiveQueries />
+            <QueriesViewer />
           </Tab.Pane>
         ),
 

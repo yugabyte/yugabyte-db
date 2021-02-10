@@ -9,13 +9,13 @@ import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
-import { useApiQueriesFetch, filterBySearchTokens } from './queriesHelper';
+import { useLiveQueriesApi, filterBySearchTokens } from './queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
 
 import './LiveQueries.scss';
 
-export const dropdownColKeys = {
+const dropdownColKeys = {
   'Node Name': {
     value: 'nodeName',
     type: 'string'
@@ -74,7 +74,7 @@ const LiveQueriesComponent = ({ location }) => {
   const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
-  const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useApiQueriesFetch({
+  const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useLiveQueriesApi({
     universeUUID
   });
   const [searchText, setSearchText] = useState('');
@@ -98,9 +98,16 @@ const LiveQueriesComponent = ({ location }) => {
     }
   }, [location.search, location.query]);
 
+  // Need to close the details side panel if refetching
+  useEffect(() => {
+    if (loading && selectedRow.length) {
+      setSelectedRow([]);
+    }
+  }, [loading]);
+
   useEffect(() => {
     const searchDropdownHandler = (ev) => {
-      const searchBarEl = document.getElementById('query-search-bar');
+      const searchBarEl = document.getElementById('live-query-search-bar');
       if (searchBarEl && !searchBarEl.contains(ev.target)) {
         setShowAutoComplete(false);
       }
@@ -125,10 +132,10 @@ const LiveQueriesComponent = ({ location }) => {
 
   // Gets the location of searchInput element and sets left pixels
   useLayoutEffect(() => {
-    if (searchInput && document.getElementById('query-search-bar')) {
+    if (searchInput && document.getElementById('live-query-search-bar') && searchInput.current.getBoundingClientRect().left > 0) {
       setSearchDropdownLeft(
         searchInput.current.getBoundingClientRect().left -
-          document.getElementById('query-search-bar').getBoundingClientRect().left -
+          document.getElementById('live-query-search-bar').getBoundingClientRect().left -
           15
       );
     } else {
@@ -187,7 +194,7 @@ const LiveQueriesComponent = ({ location }) => {
 
   const renderCustomSearchPanel = ({ placeholder, search, clearBtnClick }) => {
     return (
-      <div id="query-search-bar" className="search-bar-container">
+      <div id="live-query-search-bar" className="search-bar-container">
         <div className="search-bar">
           {searchTokens.map((token, idx) => (
             <span className="chip" key={`token-${token.key}-${idx}`}>
@@ -275,7 +282,7 @@ const LiveQueriesComponent = ({ location }) => {
     );
   };
 
-  const handleRowSelect = (row, isSelected, e) => {
+  const handleRowSelect = (row, isSelected) => {
     if (isSelected) {
       setSelectedRow([row.id]);
     } else if (!isSelected && row.id === selectedRow[0].id) {
@@ -285,9 +292,10 @@ const LiveQueriesComponent = ({ location }) => {
   };
 
   const displayedQueries = isYSQL ?
-    filterBySearchTokens(ysqlQueries, searchTokens) :
-    filterBySearchTokens(ycqlQueries, searchTokens);
+    filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys) :
+    filterBySearchTokens(ycqlQueries, searchTokens, dropdownColKeys);
 
+  const hasQueryData = !!(ysqlQueries.length || ycqlQueries.length);
   let failedQueries = null;
   if (isYSQL) {
     if (errors.ysql > 0) {
@@ -325,30 +333,32 @@ const LiveQueriesComponent = ({ location }) => {
               </h2>
             </div>
             {failedQueries}
-            <div className="pull-right">
-              <YBButtonLink
-                btnIcon="fa fa-refresh"
-                btnClass="btn btn-default refresh-btn"
-                onClick={getLiveQueries}
-              />
-              <div>
-                <div className="live-queries__dropdown-label">Show live queries</div>
-                <Dropdown id="queries-filter-dropdown" pullRight={true}>
-                  <Dropdown.Toggle>
-                    <i className="fa fa-database"></i>&nbsp;
-                    {type}
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
-                      YCQL
-                    </MenuItem>
-                    <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
-                      YSQL
-                    </MenuItem>
-                  </Dropdown.Menu>
-                </Dropdown>
+            {hasQueryData && (
+              <div className="pull-right">
+                <YBButtonLink
+                  btnIcon="fa fa-refresh"
+                  btnClass="btn btn-default refresh-btn"
+                  onClick={getLiveQueries}
+                />
+                <div>
+                  <div className="live-queries__dropdown-label">Show live queries</div>
+                  <Dropdown id="queries-filter-dropdown" pullRight={true}>
+                    <Dropdown.Toggle>
+                      <i className="fa fa-database"></i>&nbsp;
+                      {type}
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>
+                      <MenuItem key="YCQL" active={!isYSQL} onClick={() => setType('YCQL')}>
+                        YCQL
+                      </MenuItem>
+                      <MenuItem key="YSQL" active={isYSQL} onClick={() => setType('YSQL')}>
+                        YSQL
+                      </MenuItem>
+                    </Dropdown.Menu>
+                  </Dropdown>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         }
         body={
