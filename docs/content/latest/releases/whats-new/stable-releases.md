@@ -15,14 +15,37 @@ isTocNested: true
 showAsideToc: false  
 ---
 
+Included here are the release notes for all releases in the v2.4 stable release series.
 
+{{< note title="New release versioning" >}}
 
+Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
 
-# Release Notes
+{{< /note >}}
 
-# v2.4.0 - Jan 22, 2021
+{{< note title="Upgrading from 1.3" >}}
 
-### New Features
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+
+{{< /note >}}
+
+## Notable features and changes (cumulative for the v2.4 stable release series)
+
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series. For the latest v2.4 release notes, see [Release notes](#release-notes) below.
+
+## Release Notes
+
+### v2.4.1 - Feb 10, 2021
+
+#### Improvements
+
+#### Bug Fixes
+
+#### Known Issues
+
+### v2.4.0 - Jan 22, 2021
+
+#### New Features
 
 ##### Yugabyte Platform
 
@@ -47,7 +70,7 @@ showAsideToc: false
 - Ability to log slow running queries in YSQL ([#4817](https://github.com/YugaByte/yugabyte-db/issues/4817))
 - Introducing support for LDAP integration in YSQL API ([#6088](https://github.com/yugabyte/yugabyte-db/issues/6088))
 
-### Improvements
+#### Improvements
 
 ##### Yugabyte Platform
 
@@ -133,7 +156,7 @@ showAsideToc: false
 
 - Skip loading deleted table metadata into master memory ([#5122](https://github.com/yugabyte/yugabyte-db/issues/5122))
 
-### Bug Fixes
+#### Bug Fixes
 
 ##### Yugabyte Platform
 
@@ -178,7 +201,7 @@ showAsideToc: false
 
 - Retry on SSL_ERROR_WANT_WRITE ([#6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
 
-### Known Issues
+#### Known Issues
 
 ##### Yugabyte Platform
 
@@ -192,19 +215,3 @@ showAsideToc: false
 - Automatic Tablet Splitting:
 
   - While a tablet split is occurring, in-flight operations for both YCQL and YSQL APIs would currently receive errors. These would currently have to be retried at the application level currently. In the future, these will be transparently handled underneath the hood. The immediate impact for this would be that certain tools like TPCC or sysbench would fail while tablet splitting is happening.
-
-
-### Notes
-
-{{< note title="Release versioning" >}}
-
-Starting with release 2.2.0, Yugabyte follows a [new release versioning convention](../../versioning). Stable release series are denoted by `MAJOR.EVEN`, introduce new features and changes added since the previous stable release series; these releases are supported for production deployments. Patch releases are denoted by `MAJOR.EVEN.PATCH`, include bug fixes and revisions that do not break backwards compatibility.
-For more information, see [Releases overview](../../releases-overview).
-
-{{< /note >}}
-
-{{< note title="Upgrading from release 1.3" >}}
-
-Prior to release 2.0, YSQL was in beta. Since release 2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to release 2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (2.0 or later).
-
-{{< /note >}}

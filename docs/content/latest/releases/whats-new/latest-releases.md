@@ -254,7 +254,7 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 #### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.5.0.0-b2
+docker pull yugabytedb/yugabyte:2.5.1.0-b153
 ```
 
 ### **New features**
