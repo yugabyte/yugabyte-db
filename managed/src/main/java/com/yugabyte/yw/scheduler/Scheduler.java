@@ -276,7 +276,7 @@ public class Scheduler {
     }
     BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
     Universe universe = null;
-    boolean isScheduled =  (backup.getScheduleUUID()!=null) ? true: false;
+    boolean isScheduled = (backup.getScheduleUUID() != null) ? true : false;
     try {
       universe = Universe.get(backupParams.universeUUID);
     } catch (Exception e) {

@@ -193,10 +193,14 @@ public class Backup extends Model {
   public static List<Backup> getExpiredBackups() {
     // Get current timestamp.
     Date now = new Date();
-    return Backup.find.query().where()
+    List<Backup> backupList =  Backup.find.query().where()
       .lt("expiry", now)
       .eq("state", BackupState.Completed)
       .findList();
+    return backupList.stream().filter(
+        backup -> Universe.find.query().select("universeUUID").where()
+        .eq("universeUUID", backup.getBackupInfo().universeUUID).findCount() > 0)
+        .collect(Collectors.toList());
   }
 
   public void transitionState(BackupState newState) {
