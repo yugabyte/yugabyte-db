@@ -156,11 +156,9 @@ public class CertificateController extends AuthenticatedController {
     }
     if (!certificate.getInUse()) {
       if (certificate.delete()) {
-        ObjectNode responseJson = Json.newObject();
-        responseJson.put("Successfully deleted the certificate", true);
         Audit.createAuditEntry(ctx(), request());
         LOG.info("Successfully deleted the certificate:" + reqCertUUID);
-        return ApiResponse.success(responseJson);
+        return ApiResponse.success();
       } else {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }
