@@ -34,7 +34,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT query               text,
 	OUT application_name	text,
 	OUT relations			text,
-	OUT cmd_type			text,
+	OUT cmd_type			int,
 	OUT elevel              int,
     OUT sqlcode             TEXT,
     OUT message             text,
@@ -79,6 +79,21 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
+CREATE or REPLACE FUNCTION get_cmd_type (cmd_type INTEGER) RETURNS TEXT AS
+$$
+SELECT
+	CASE
+		WHEN cmd_type = 0 THEN ''
+		WHEN cmd_type = 1 THEN 'SELECT'
+		WHEN cmd_type = 2 THEN 'UPDATE'
+		WHEN cmd_type = 3 THEN 'INSERT'
+		WHEN cmd_type = 4 THEN 'DELETE'
+		WHEN cmd_type = 5 THEN 'UTILITY'
+		WHEN cmd_type = 6 THEN 'NOTHING'
+	END
+$$
+LANGUAGE SQL PARALLEL SAFE;
+
 CREATE FUNCTION pg_stat_monitor_settings(
     OUT name  text,
     OUT value INTEGER,
@@ -113,11 +128,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
     query,
 	application_name,
 	(string_to_array(relations, ','))::oid[]::regclass[] AS relations,
-	CASE
-			WHEN query like 'BEGIN' THEN  ''
-            WHEN query like 'END' THEN ''
-            ELSE (string_to_array(cmd_type, ','))[1]
-    END AS cmd_type,
+	cmd_type, 
+	get_cmd_type(cmd_type) AS cmd_type_text,
 	elevel,
 	sqlcode,
 	message,
@@ -152,7 +164,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes
-FROM pg_stat_monitor(TRUE), pg_database WHERE dbid = oid
+FROM pg_stat_monitor(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 
 CREATE FUNCTION decode_error_level(elevel int)

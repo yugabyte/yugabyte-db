@@ -80,6 +80,8 @@
 #define APPLICATIONNAME_LEN	100
 #define PGSM_OVER_FLOW_MAX	10
 
+/* the assumption of query max nested level */
+#define DEFAULT_MAX_NESTED_LEVEL	10
 
 #define MAX_QUERY_BUF						(PGSM_QUERY_BUF_SIZE * 1024 * 1024)
 #define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
@@ -160,8 +162,8 @@ typedef struct QueryInfo
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
-	int32		relations[REL_LST];
-	char		cmd_type[CMD_LST][CMD_LEN];	/* query command type SELECT/UPDATE/DELETE/INSERT */
+	int32		relations[REL_LST];         /* List of relation involved in the query */
+	CmdType		cmd_type;                   /* query command type SELECT/UPDATE/DELETE/INSERT */
 } QueryInfo;
 
 typedef struct ErrorInfo
@@ -260,7 +262,6 @@ typedef struct pgssSharedState
 	uint64			bucket_entry[MAX_BUCKETS];
 	int64			query_buf_size_bucket;
 	int32			relations[REL_LST];
-	char			cmdTag[CMD_LST][CMD_LEN];
 	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 

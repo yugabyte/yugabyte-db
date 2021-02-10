@@ -132,7 +132,7 @@ hash_memsize(void)
 	Size	size;
 
 	size = MAXALIGN(sizeof(pgssSharedState));
-	size = MAXALIGN(MAX_QUERY_BUF);
+	size += MAXALIGN(MAX_QUERY_BUF);
 	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssEntry)));
 	size = add_size(size, hash_estimate_size(500000, sizeof(pgssQueryEntry)));
 
