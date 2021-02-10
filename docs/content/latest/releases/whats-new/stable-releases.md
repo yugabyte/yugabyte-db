@@ -1,7 +1,7 @@
 ---
-title: 2.4.0 Stable Release Series
-headerTitle: 2.4.0 Stable Release Series
-linkTitle: v2.4.0 (stable)
+title: What's new in the v2.4 stable release series
+headerTitle: What's new in the v2.4 stable release series
+linkTitle: v2.4 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series recommended for production deployments.
 headcontent: Features, enhancements, and resolved issues in the current stable release series recommended for production deployments.
 aliases:
@@ -12,42 +12,109 @@ menu:
     parent: whats-new
     weight: 2586
 isTocNested: true
-showAsideToc: false  
+showAsideToc: true  
 ---
 
 Included here are the release notes for all releases in the v2.4 stable release series.
 
-{{< note title="New release versioning" >}}
-
-Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
-
-{{< /note >}}
-
-{{< note title="Upgrading from 1.3" >}}
-
-Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
-
-{{< /note >}}
-
 ## Notable features and changes (cumulative for the v2.4 stable release series)
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series. For the latest v2.4 release notes, see [Release notes](#release-notes) below.
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series.
 
-## Release Notes
+## v2.4.1 - Feb 10, 2021
 
-### v2.4.1 - Feb 10, 2021
+### Downloads
 
-#### Improvements
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
 
-#### Bug Fixes
+### Docker
 
-#### Known Issues
+```sh
+docker pull yugabytedb/yugabyte:2.4.1.0-b20
+```
 
-### v2.4.0 - Jan 22, 2021
+### Improvements
 
-#### New Features
+#### Yugabyte Platform
 
-##### Yugabyte Platform
+* Health Check generates alerts if it isn't running [6581](https://github.com/yugabyte/yugabyte-db/issues/6581)
+* Preflight checks for manual provisioning do not match regular provisioning [6819](https://github.com/yugabyte/yugabyte-db/issues/6819)
+* Need ability for platform to check for actual clock synchronization [6017](https://github.com/yugabyte/yugabyte-db/issues/6017)
+* Retrying a task should redirect to a different page or add visual feedback [6820](https://github.com/yugabyte/yugabyte-db/issues/6820)
+* Removed “Transactions” plot line from YSQL Ops and Latency graphs due to incorrect data [6839](https://github.com/yugabyte/yugabyte-db/issues/6839)
+* Allow enforcing minimum TLS version [6893](https://github.com/yugabyte/yugabyte-db/issues/6893), [7140](https://github.com/yugabyte/yugabyte-db/issues/7140)
+
+#### Core Database
+
+* YSQL: Apply empty deletes for index backfill [6811](https://github.com/yugabyte/yugabyte-db/issues/6811)
+* YSQL: Backup for colocated databases [4874](https://github.com/yugabyte/yugabyte-db/issues/4874)
+    * Backup: Fix restore of colocated table with `table_oid` already set [6678](https://github.com/yugabyte/yugabyte-db/issues/6678)
+* Metrics thread now start after the first replication stream is created [5251](https://github.com/yugabyte/yugabyte-db/issues/5251)
+* Enabled a sanity check to ensure that the tablet lookup result matches the partition key [7016](https://github.com/yugabyte/yugabyte-db/issues/7016)
+* Read Table Partitions from Snapshot
+
+### Bug Fixes
+
+#### Yugabyte Platform
+
+* Fixes to YSQL backups with node-to-node TLS encryption enabled [6965](https://github.com/yugabyte/yugabyte-db/issues/6965)
+    * Add certs flags to `ysql_dump` when backing up a node-to-node TLS-enabled universe
+* Release instance was not an option for a node if an install failed because of SSH access [5942](https://github.com/yugabyte/yugabyte-db/issues/5942)
+* VPC cross-linking failed during creation of an AWS provider [6748](https://github.com/yugabyte/yugabyte-db/issues/6748)
+* Backup-related tasks (schedules, restores, deletes) failed when the storage config was deleted [6680](https://github.com/yugabyte/yugabyte-db/issues/6680)
+
+#### Core Database
+
+* ybase: blacklisted TS' initial load not replicated during master failover [6397](https://github.com/yugabyte/yugabyte-db/issues/6397)
+* ycql - Treat overwritten docdb collection entries as expired [6735](https://github.com/yugabyte/yugabyte-db/issues/6735)
+* YCQL: Fixed various issues for literals of collection datatypes [6829](https://github.com/yugabyte/yugabyte-db/issues/6829), [6879](https://github.com/yugabyte/yugabyte-db/issues/6879)
+* yql: PermissionsManager::AlterRole() should always rebuild permissions [7008](https://github.com/yugabyte/yugabyte-db/issues/7008)
+* CREATE INDEX statement generated by ysql_dump now uses SPLIT INTO syntax [6537](https://github.com/yugabyte/yugabyte-db/issues/6537)
+* 2dc configuration: Fix Race Condition On Consumer With Smaller Batch Sizes [7040](https://github.com/yugabyte/yugabyte-db/issues/7040)
+
+### Known Issues
+
+#### Yugabyte Platform
+
+#### Core Database
+
+## v2.4.0 - Jan 22, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.0.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.0.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.0.0-b60
+```
+
+### New Features
+
+#### Yugabyte Platform
 
 - Data encryption in-transit enhancements:
 
@@ -64,15 +131,15 @@ Note: Content will be added as new notable features and changes are available in
 
 - Alerts for backup tasks ([#5556](https://github.com/yugabyte/yugabyte-db/issues/5556))
 
-##### Core Database
+#### Core Database
 
 - Introducing support for audit logging in YCQL and YSQL API ([#1331](https://github.com/yugabyte/yugabyte-db/issues/1331),[ #5887](https://github.com/yugabyte/yugabyte-db/issues/5887), [#6199](https://github.com/yugabyte/yugabyte-db/issues/6199))
 - Ability to log slow running queries in YSQL ([#4817](https://github.com/YugaByte/yugabyte-db/issues/4817))
 - Introducing support for LDAP integration in YSQL API ([#6088](https://github.com/yugabyte/yugabyte-db/issues/6088))
 
-#### Improvements
+### Improvements
 
-##### Yugabyte Platform
+#### Yugabyte Platform
 
 - Support for Transactional tables and Cross Cluster Async Replication topology ([#5779](https://github.com/yugabyte/yugabyte-db/issues/5779))
 - Support for very large transactions and stability improvements ([#1923](https://github.com/yugabyte/yugabyte-db/issues/1923))
@@ -93,7 +160,7 @@ Note: Content will be added as new notable features and changes are available in
 
 - Deleting backups for TLS-enabled universes ([#5980](https://github.com/yugabyte/yugabyte-db/issues/5980))
 
-##### Core Database
+#### Core Database
 
 - DDL consistency ([#4710](https://github.com/yugabyte/yugabyte-db/issues/4710),[ #3979](https://github.com/yugabyte/yugabyte-db/issues/3979),[ #4360](https://github.com/yugabyte/yugabyte-db/issues/4360))
 
@@ -156,9 +223,9 @@ Note: Content will be added as new notable features and changes are available in
 
 - Skip loading deleted table metadata into master memory ([#5122](https://github.com/yugabyte/yugabyte-db/issues/5122))
 
-#### Bug Fixes
+### Bug Fixes
 
-##### Yugabyte Platform
+#### Yugabyte Platform
 
 - Edit Universe did not display the TLS certificate used
 - Multi-zone K8s universe creation failed ([#5882](https://github.com/yugabyte/yugabyte-db/issues/5882))
@@ -171,7 +238,7 @@ Note: Content will be added as new notable features and changes are available in
 - Failure to create a TLS-enabled universe with a custom home directory setting with on-premise provider ([#6602](https://github.com/yugabyte/yugabyte-db/issues/6602))
 - Database node health liveliness check was blocked indefinitely ([#6301](https://github.com/yugabyte/yugabyte-db/issues/6301))
 
-##### Core Database
+#### Core Database
 
 - Critical fixes for transaction cleanup applicable to aborted transactions (observed frequently as servers reaching soft memory limit)
 
@@ -201,17 +268,31 @@ Note: Content will be added as new notable features and changes are available in
 
 - Retry on SSL_ERROR_WANT_WRITE ([#6266](https://github.com/yugabyte/yugabyte-db/issues/6266))
 
-#### Known Issues
+### Known Issues
 
-##### Yugabyte Platform
+#### Yugabyte Platform
 
 - Azure IaaS orchestration (in beta status):
 
   - No pricing information ([#5624](https://github.com/yugabyte/yugabyte-db/issues/5624))
   - No support for regions with zero availability zones (AZs) ([#5628](https://github.com/yugabyte/yugabyte-db/issues/5628))
 
-##### Core Database
+#### Core Database
 
 - Automatic Tablet Splitting:
 
   - While a tablet split is occurring, in-flight operations for both YCQL and YSQL APIs would currently receive errors. These would currently have to be retried at the application level currently. In the future, these will be transparently handled underneath the hood. The immediate impact for this would be that certain tools like TPCC or sysbench would fail while tablet splitting is happening.
+
+## Notes
+
+{{< note title="New release versioning" >}}
+
+Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+
+{{< /note >}}
+
+{{< note title="Upgrading from 1.3" >}}
+
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+
+{{< /note >}}
