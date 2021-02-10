@@ -91,7 +91,8 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+	if (baserel->tuples == 0)
+		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
 	/*
 	 * Initialize the estimate for the number of rows returned by this query.
