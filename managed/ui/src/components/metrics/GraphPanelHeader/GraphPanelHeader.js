@@ -358,7 +358,7 @@ class GraphPanelHeader extends Component {
                   />
                   {liveQueriesLink && 
                     <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
-                      <i className="fa fa-search" /> See Live Queries
+                      <i className="fa fa-search" /> See Queries
                     </Link>
                   }
                 </div>

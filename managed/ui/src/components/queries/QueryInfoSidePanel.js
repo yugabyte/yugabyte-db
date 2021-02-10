@@ -16,7 +16,18 @@ const statsTextMap = {
   clientHost: 'Client Host',
   clientPort: 'Client Port',
   queryStartTime: 'Query Start',
-  appName: 'Client Name'
+  appName: 'Client Name',
+  calls: 'Count',
+  datname: 'DB',
+  local_blks_hit: 'Tmp tables RAM',
+  local_blks_written: 'Tmp tables On Disk',
+  max_time: 'Max Exec Time',
+  mean_time: 'Avg Exec Time',
+  min_time: 'Min Exec Time',
+  rows: 'Rows',
+  stddev_time: 'Stdev Exec Time',
+  total_time: 'Total Time',
+  rolname: 'User'
 };
 
 export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
@@ -30,42 +41,42 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
     }, 2000);
   };
   return (
-    <div className={`side-panel ${!visible ? ' hidden' : ''}`}>
+    <div className={`side-panel ${!visible ? 'panel-hidden' : ''}`}>
       <div className="side-panel__header">
         <span className="side-panel__icon--close" onClick={onHide}>
           <i className="fa fa-chevron-right" />
         </span>
         <div className="side-panel__title">DETAILS</div>
       </div>
-      {data && (
-        <div className="side-panel__content">
+      <div className="side-panel__content">
+        {data && (
           <div className="side-panel__query">
             <Highlighter type="sql" text={data.query} element="pre" />
           </div>
-          <div className="copy-btn-container">
-            <YBButton
-              btnText={copied ? 'Copied!' : 'Copy Statement'}
-              btnIcon="fa fa-copy"
-              onClick={handleCopy}
-            />
-          </div>
-          <ul className="side-panel__details">
-            {Object.keys(data).map((key) => {
-              if (key !== 'id' && key !== 'query') {
-                return (
-                  <li key={`details-${key}`}>
-                    <label>
-                      <strong>{statsTextMap[key]}</strong>
-                    </label>
-                    <span>{data[key]}</span>
-                  </li>
-                );
-              }
-              return null;
-            })}
-          </ul>
+        )}
+        <div className="copy-btn-container">
+          <YBButton
+            btnText={copied ? 'Copied!' : 'Copy Statement'}
+            btnIcon="fa fa-copy"
+            onClick={handleCopy}
+          />
         </div>
-      )}
+        <ul className="side-panel__details">
+          {data && Object.keys(data).map((key) => {
+            if (key !== 'id' && key !== 'queryid' && key !== 'query') {
+              return (
+                <li key={`details-${key}`}>
+                  <label>
+                    <strong>{statsTextMap[key]}</strong>
+                  </label>
+                  <span>{data[key]}</span>
+                </li>
+              );
+            }
+            return null;
+          })}
+        </ul>
+      </div>
     </div>
   );
 };

@@ -133,6 +133,7 @@ POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             c
 PUT     /customers/:cUUID/universes/:uniUUID/mark_helm3_compatible             com.yugabyte.yw.controllers.UniverseController.setHelm3Compatible(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/live_queries                      com.yugabyte.yw.controllers.UniverseController.getLiveQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/reset_version                     com.yugabyte.yw.controllers.UniverseController.resetVersion(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
