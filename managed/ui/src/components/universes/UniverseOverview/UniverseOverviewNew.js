@@ -11,7 +11,8 @@ import {
   OverviewMetricsContainer,
   StandaloneMetricsPanelContainer,
   DiskUsagePanel,
-  CpuUsagePanel
+  CpuUsagePanel,
+  QueryDisplayPanel
 } from '../../metrics';
 import {
   YBResourceCount,
@@ -789,6 +790,11 @@ export default class UniverseOverviewNew extends Component {
           <Col lg={4} md={6} sm={6} xs={12}>
             {this.getDiskUsageWidget(universeInfo)}
             {this.getTablesWidget(universeInfo)}
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12} md={12} sm={12} xs={12}>
+            <QueryDisplayPanel universeUUID={universeInfo.universeUUID} />
           </Col>
         </Row>
       </Fragment>

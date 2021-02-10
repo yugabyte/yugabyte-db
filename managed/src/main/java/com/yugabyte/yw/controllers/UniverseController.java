@@ -37,7 +37,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
-import com.yugabyte.yw.queries.LiveQueryHelper;
+import com.yugabyte.yw.queries.QueryHelper;
 
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -95,7 +95,7 @@ public class UniverseController extends AuthenticatedController {
   MetricQueryHelper metricQueryHelper;
 
   @Inject
-  LiveQueryHelper liveQueryHelper;
+  QueryHelper queryHelper;
 
   @Inject
   play.Configuration appConfig;
@@ -1602,11 +1602,33 @@ public class UniverseController extends AuthenticatedController {
     }
 
     try {
-      JsonNode resultNode = liveQueryHelper.query(universe);
+      JsonNode resultNode = queryHelper.liveQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
       LOG.error("Universe does not have a private IP or DNS", e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
+    } catch (Throwable t) {
+      LOG.error("Error retrieving queries for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = queryHelper.slowQueries(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      LOG.error("Universe does not have a private IP or DNS", e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
       LOG.error("Error retrieving queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
