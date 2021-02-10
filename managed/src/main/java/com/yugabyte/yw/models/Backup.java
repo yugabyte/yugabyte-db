@@ -196,10 +196,12 @@ public class Backup extends Model {
     List<Backup> backupList =  Backup.find.query().where()
       .lt("expiry", now)
       .eq("state", BackupState.Completed)
-      .findList();
+      .findList(); 
+    List<UUID> universeUUIDs  = Universe.getAllUuids().stream()
+        .map(universe -> universe.universeUUID)
+        .collect(Collectors.toList());
     return backupList.stream().filter(
-        backup -> Universe.find.query().select("universeUUID").where()
-        .eq("universeUUID", backup.getBackupInfo().universeUUID).findCount() > 0)
+        backup -> universeUUIDs.contains(backup.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
   }
 
