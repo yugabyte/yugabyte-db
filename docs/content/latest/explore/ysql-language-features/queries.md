@@ -270,6 +270,14 @@ Jean Harlow
 Bette Davis
 ```
 
+### Case Sensitivity
+
+Since YSQL is case-sensitive (that is, it treats the same characters differently depending on whether they are uppercase and lowercase), it is important to use correct cases when forming queries. For example, a table called `Employees` would not be recognized as an `employees` table, even if that is what you mean. That is, if your database contains an `employees` table and you want to query it using the following statement, the query execution will result in an error:
+
+```sql
+SELECT name FROM Employees;
+```
+
 ## Filtering Data
 
 The `WHERE` clause allows you to filter data returned by the `SELECT` statement. Only the rows that satisfy a specified condition are included in the result set.
@@ -763,14 +771,6 @@ The `fulltime_employees` table has 4 rows and the `permanent_employees` table ha
 ```sql
 SELECT * FROM fulltime_employees 
   CROSS JOIN permanent_employees;
-```
-
-## Case Sensitivity in Queries
-
-Since YSQL is case-sensitive (that is, it treats the same characters differently depending on whether they are uppercase and lowercase), it is important to use correct cases when forming queries. For example, a table called `Employees` would not be recognized as a table called `employees`, even if that is what you mean: if your database contains an `employees` table and you want to query it with using following statement, the query execution will result in an error:
-
-```sql
-SELECT name FROM Employees;
 ```
 
 ## Recursive Queries and CTEs
