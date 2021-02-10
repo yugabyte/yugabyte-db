@@ -16,7 +16,6 @@
       "$BUILD_ROOT/bin/yb-ts-cli",
       "$BUILD_ROOT/bin/yb-tserver",
       "$BUILD_ROOT/bin/yb-ysck",
-      "$BUILD_ROOT/bin/yb_load_test_tool",
       "$BUILD_ROOT/postgres/bin/*",
       "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
       "bin/bulk_load_cleanup.sh",
