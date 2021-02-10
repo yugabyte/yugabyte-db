@@ -103,15 +103,20 @@ public class ScheduleTest extends FakeDBApplication {
   @Test
   public void testGetAllCompletedBackupsWithExpiryForDelete() {
     UUID universeUUID = UUID.randomUUID();
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup backup1 = ModelFactory.createBackupWithExpiry(
-        defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+        defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
     Backup backup2 = ModelFactory.createBackupWithExpiry(
+        defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    Backup backup3 = ModelFactory.createBackupWithExpiry(
         defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
 
     backup1.transitionState(Backup.BackupState.Completed);
     backup2.transitionState(Backup.BackupState.Completed);
+    backup3.transitionState(Backup.BackupState.Completed);
 
     List<Backup> expiredBackups = Backup.getExpiredBackups(); 
+    // assert to 2 as backup3's universe is not found.
     assertEquals(2, expiredBackups.size());
   }
 }
