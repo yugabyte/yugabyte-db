@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.mvc.Result;
 import play.data.Form;
 import play.data.FormFactory;
@@ -145,9 +146,30 @@ public class CertificateController extends AuthenticatedController {
     }
   }
 
+  public Result delete(UUID customerUUID, UUID reqCertUUID) {
+    CertificateInfo certificate = CertificateInfo.get(reqCertUUID);
+    if (certificate == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
+    }
+    if (!certificate.customerUUID.equals(customerUUID)) {
+      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+    }
+    if (!certificate.getInUse()) {
+      if (certificate.delete()) {
+        Audit.createAuditEntry(ctx(), request());
+        LOG.info("Successfully deleted the certificate:" + reqCertUUID);
+        return ApiResponse.success();
+      } else {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
+      }
+    } else {
+      return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
+    }
+  }
+
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
+        .bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
