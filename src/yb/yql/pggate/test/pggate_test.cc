@@ -32,21 +32,30 @@ extern "C" void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t 
   CHECK(false) << "Not implemented";
 }
 
-} // namespace
+YBCPgMemctx global_test_memctx = nullptr;
 
-YBCPgMemctx test_memctx = nullptr;
-static YBCPgMemctx TestGetCurrentYbMemctx() {
-  if (!test_memctx) {
-    test_memctx = YBCPgCreateMemctx();
+YBCPgMemctx GetCurrentTestYbMemctx() {
+  if (!global_test_memctx) {
+    global_test_memctx = YBCPgCreateMemctx();
   }
-  return test_memctx;
+  return global_test_memctx;
 }
+
+void ClearCurrentTestYbMemctx() {
+  if (global_test_memctx != nullptr) {
+    CHECK_YBC_STATUS(YBCPgDestroyMemctx(global_test_memctx));
+
+    // We assume the memory context has actually already been deleted.
+    global_test_memctx = nullptr;
+  }
+}
+
+} // namespace
 
 PggateTest::PggateTest() {
 }
 
 PggateTest::~PggateTest() {
-  CHECK_YBC_STATUS(YBCPgDestroyMemctx(test_memctx));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -82,6 +91,9 @@ void PggateTest::SetUp() {
 }
 
 void PggateTest::TearDown() {
+  // It is important to destroy the memory context before destroying PgGate.
+  ClearCurrentTestYbMemctx();
+
   // Destroy the client before shutting down servers.
   YBCDestroyPgGate();
 
@@ -105,7 +117,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
   callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
-  callbacks.GetCurrentYbMemctx = &TestGetCurrentYbMemctx;
+  callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   YBCInitPgGate(type_table, count, callbacks);
 
   // Don't try to connect to tserver shared memory in pggate tests.

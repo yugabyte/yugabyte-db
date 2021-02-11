@@ -98,6 +98,8 @@ class PgMemctx {
   DISALLOW_COPY_AND_ASSIGN(PgMemctx);
 };
 
+void ClearGlobalPgMemctxMap();
+
 }  // namespace pggate
 }  // namespace yb
 
