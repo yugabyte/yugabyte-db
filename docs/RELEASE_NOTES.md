@@ -2,6 +2,36 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## REL0_8_0_STABLE
+### Improvements
+
+[PG-176](https://jira.percona.com/browse/PG-176): Extract fully qualified relations name.
+
+[PG-175](https://jira.percona.com/browse/PG-175): Only Superuser / Privileged user can view IP address.
+
+[PG-174](https://jira.percona.com/browse/PG-174): Code cleanup.
+
+[PG-173](https://jira.percona.com/browse/PG-173): Added new WAL usage statistics.
+
+[PG-172](https://jira.percona.com/browse/PG-172): Exponential histogram for time buckets.
+
+[PG-164](https://jira.percona.com/browse/PG-164): Query timing will be four decimal places instead of two.
+
+[PG-167](https://jira.percona.com/browse/PG-167): SQLERRCODE must be in readable format.
+
+### Bugs Fixed
+
+[PG-169](https://jira.percona.com/browse/PG-169): Fixing message buffer overrun and incorrect index access to fix the server crash.
+
+[PG-168](https://jira.percona.com/browse/PG-168): "calls" and histogram parameter does not match.
+
+[PG-166](https://jira.percona.com/browse/PG-166): Display actual system time instead of null.
+
+[PG-165](https://jira.percona.com/browse/PG-165): Recycle expired buckets.
+
+[PG-150](https://jira.percona.com/browse/PG-150): Error while logging CMD Type like SELECT, UPDATE, INSERT, DELETE.
+
+
 ## REL0_7_2
 
 [PG-165](https://jira.percona.com/browse/PG-165): Recycle expired buckets.
