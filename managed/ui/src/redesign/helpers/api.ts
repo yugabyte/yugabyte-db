@@ -23,7 +23,8 @@ export enum QUERY_KEY {
   getDBVersions = 'getDBVersions',
   getAccessKeys = 'getAccessKeys',
   getCertificates = 'getCertificates',
-  getKMSConfigs = 'getKMSConfigs'
+  getKMSConfigs = 'getKMSConfigs',
+  deleteCertificate = 'deleteCertificate'
 }
 
 class ApiService {
@@ -111,6 +112,16 @@ class ApiService {
   // check if exception was caused by canceling previous request
   isRequestCancelError(error: unknown): boolean {
     return axios.isCancel(error);
+  }
+
+  /**
+   * Delete certificate which is not attched to any universe.
+   * 
+   * @param certUUID - certificate UUID
+   */
+  deleteCertificate = (certUUID: string, customerUUID: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${customerUUID}/certificates/${certUUID}`
+    return axios.delete<any>(requestUrl).then((res) => res.data);
   }
 }
 

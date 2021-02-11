@@ -13,6 +13,7 @@ import { isNotHidden, isDisabled } from '../../../../utils/LayoutUtils';
 import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
+import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
 
 const validationSchema = Yup.object().shape({
@@ -116,8 +117,27 @@ class Certificates extends Component {
       .finally(() => this.setState({ showSubmitting: false }));
   };
 
+  /**
+   * Delete the root certificate if certificate is safe to remove,
+   * i.e - Certificate is not attached to any universe for current user.
+   * 
+   * @param certificateUUID Unique id of certificate.
+   */
+  deleteCertificate = (certificateUUID) => {
+    const {
+      customer: { currentCustomer}
+    } = this.props;
+    
+    api.deleteCertificate(certificateUUID, currentCustomer?.data?.uuid).then(
+      () => this.props.fetchCustomerCertificates()
+    ).catch(
+      err => console.error(`Failed to delete certificate ${certificateUUID}`, err)
+    )
+  };
+
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
+    const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
       uuid: row.uuid,
@@ -155,6 +175,14 @@ class Certificates extends Component {
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
+        <MenuItem
+          onClick={() => { 
+            this.deleteCertificate(payload?.uuid)
+          }}
+          disabled={deleteDisabled}
+        >
+          <i className="fa fa-trash"></i> Delete Cert
+        </MenuItem>
       </DropdownButton>
     );
   };
@@ -165,22 +193,24 @@ class Certificates extends Component {
       modal: { showModal, visibleModal },
       showAddCertificateModal
     } = this.props;
+
     const { showSubmitting } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-      ? userCertificates.data.map((cert) => {
-        return {
-          type: cert.certType,
-          uuid: cert.uuid,
-          name: cert.label,
-          expiryDate: cert.expiryDate,
-          certificate: cert.certificate,
-          creationTime: cert.startDate,
-          privateKey: cert.privateKey,
-          customCertInfo: cert.customCertInfo
-        };
-      })
-      : [];
+    ? userCertificates.data.map((cert) => {
+      return {
+        type: cert.certType,
+        uuid: cert.uuid,
+        name: cert.label,
+        expiryDate: cert.expiryDate,
+        certificate: cert.certificate,
+        creationTime: cert.startDate,
+        privateKey: cert.privateKey,
+        customCertInfo: cert.customCertInfo,
+        inUse: cert.inUse
+      };
+    })
+    : [];
 
     return (
       <div id="page-wrapper">
