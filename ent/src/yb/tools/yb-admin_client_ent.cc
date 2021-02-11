@@ -27,12 +27,14 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
+#include "yb/util/date_time.h"
 #include "yb/util/env.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_case.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/encryption_util.h"
 
@@ -247,13 +249,36 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
   return CreateSnapshot(tables, /* add_indexes */ false);
 }
 
-Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id) {
+Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id,
+                                           const string& timestamp) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
 
   RestoreSnapshotRequestPB req;
   RestoreSnapshotResponsePB resp;
   req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+  if (!timestamp.empty()) {
+    // Acceptable system time formats:
+    //  1. HybridTime Timestamp (in Microseconds)
+    //  2. -Interval
+    //  3. CQL Timestamp String
+    auto ts = yb::util::TrimStr(timestamp);
+
+    HybridTime ht;
+    // The HybridTime is given in milliseconds and will contain 16 chars.
+    static const std::regex int_regex("[0-9]{16}");
+    if (std::regex_match(ts, int_regex)) {
+      HybridTime ht = HybridTime::FromMicros(std::stoul(ts));
+      req.set_restore_ht(ht.ToUint64());
+    } else if (!ts.empty() && ts[0] == '-') {
+      req.set_restore_interval(
+          VERIFY_RESULT(yb::DateTime::IntervalFromString(yb::util::LeftTrimStr(ts, "-"))));
+    } else {
+      HybridTime ht = HybridTime::FromMicros(
+          VERIFY_RESULT(yb::DateTime::TimestampFromString(ts)).ToInt64());
+      req.set_restore_ht(ht.ToUint64());
+    }
+  }
   RETURN_NOT_OK(master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc));
 
   if (resp.has_error()) {
