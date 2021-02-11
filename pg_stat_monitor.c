@@ -103,7 +103,6 @@ PG_FUNCTION_INFO_V1(get_histogram_timings);
 static uint pg_get_client_addr(void);
 static int pg_get_application_name(char* application_name);
 static PgBackendStatus *pg_get_backend_status(void);
-static Datum textarray_get_datum(char **arr, int arr_len, int str_len);
 static Datum intarray_get_datum(int32 arr[], int len);
 
 #if PG_VERSION_NUM >= 130000
@@ -2265,35 +2264,6 @@ comp_location(const void *a, const void *b)
 #define MAX_STRING_LEN	1024
 /* Convert array into Text dataum */
 static Datum
-textarray_get_datum(char **arr, int arr_len, int str_len)
-{
-	int     j;
-	char    *text_str = palloc0(MAX_STRING_LEN);
-	bool    first = true;
-
-	/* Sanity check */
-	if (arr == NULL || str_len >= MAX_STRING_LEN)
-		return 0;
-
-	/* Need to calculate the actual size, and avoid unnessary memory usage */
-	for (j = 0; j < arr_len; j++)
-	{
-		if (arr[j] == NULL || strlen(arr[j]) == 0)
-			continue;
-		if (first)
-		{
-			snprintf(text_str, MAX_STRING_LEN, "%s", arr[j]);
-			first = false;
-			continue;
-		}
-		snprintf(text_str, MAX_STRING_LEN, "%s,%s", text_str, arr[j]);
-	}
-	return CStringGetTextDatum(text_str);
-
-}
-
-/* Convert array into Text dataum */
-static Datum
 intarray_get_datum(int32 arr[], int len)
 {
 	int     j;
@@ -2759,7 +2729,8 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	double b_max;
 	double b_min;
 	double bucket_size;
-	char   range[50][1024] = {0};
+	bool	first = true;
+	char    *text_str = palloc0(MAX_STRING_LEN);
 
 	b_max = log(q_max - q_min);
 	b_min = 0;
@@ -2768,8 +2739,16 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	{
 		int64 b_start = (index == 1)? 0 : exp(bucket_size * (index - 1));
 		int64 b_end = exp(bucket_size * index);
-		sprintf(range[index-1], "(%ld - %ld)}", b_start, b_end);
+		if (first)
+		{
+			sprintf(text_str, "(%ld - %ld)}", b_start, b_end);
+			first = false;
+		}
+		else
+		{
+			sprintf(text_str, "%s, (%ld - %ld)}", text_str, b_start, b_end);
+		}
 	}
-	return TextArrayGetTextDatum((char**)range, b_count, 1023);
+	return CStringGetTextDatum(text_str);
 }
 

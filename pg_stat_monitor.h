@@ -54,7 +54,6 @@
 #include "utils/guc.h"
 
 #define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
-#define  TextArrayGetTextDatum(x,y,z) textarray_get_datum(x,y,z)
 #define  IntArrayGetTextDatum(x,y) intarray_get_datum(x,y)
 
 /* XXX: Should USAGE_EXEC reflect execution time and/or buffer usage? */
