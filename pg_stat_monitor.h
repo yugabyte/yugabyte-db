@@ -83,10 +83,9 @@
 /* the assumption of query max nested level */
 #define DEFAULT_MAX_NESTED_LEVEL	10
 
-#define MAX_QUERY_BUF						(PGSM_QUERY_BUF_SIZE * 1024 * 1024)
+#define MAX_QUERY_BUF						(PGSM_QUERY_SHARED_BUFFER * 1024 * 1024)
 #define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
 #define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgss_hash) * sizeof(pgssEntry)) >= MAX_BUCKETS_MEM)
-//#define MAX_QUERY_BUFFER_BUCKET				200
 #define MAX_QUERY_BUFFER_BUCKET			MAX_QUERY_BUF / PGSM_MAX_BUCKETS
 #define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgssEntry))
 #define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUFFER_BUCKET)
@@ -101,6 +100,8 @@ typedef struct GucVariables
 	int		guc_default;
 	int		guc_min;
 	int		guc_max;
+	int		guc_unit;
+	int		*guc_value;
 	bool 	guc_restart;
 } GucVariable;
 
@@ -275,9 +276,6 @@ do { \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
-
-
-
 /*
  * Struct for tracking locations/lengths of constants during normalization
  */
@@ -352,7 +350,7 @@ void pgss_startup(void);
 #define PGSM_HISTOGRAM_MIN get_conf(7)->guc_variable
 #define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
 #define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
-#define PGSM_QUERY_BUF_SIZE get_conf(10)->guc_variable
+#define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
 #define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
 
 #endif

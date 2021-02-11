@@ -11,7 +11,7 @@ PGFILEDESC = "pg_stat_monitor - execution statistics of SQL statements"
 LDFLAGS_SL += $(filter -lm, $(LIBS)) 
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_stat_monitor/pg_stat_monitor.conf
-REGRESS = basic pg_stat_monitor
+REGRESS = guc basic pg_stat_monitor
 
 # Disabled because these tests require "shared_preload_libraries=pg_stat_statements",
 # which typical installcheck users do not have (e.g. buildfarm clients).

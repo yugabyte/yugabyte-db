@@ -21,7 +21,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.7.0"
-#define PG_STAT_STATEMENTS_COLS         45  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         46  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
@@ -303,22 +303,23 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	if (query->queryId == UINT64CONST(0))
 		query->queryId = UINT64CONST(1);
 
-	if (PGSM_ENABLED == 1)
-		if (jstate.clocations_count > 0)
-			pgss_store(query->queryId,
-						pstate->p_sourcetext,
-						query->commandType,
-						0, 						/* error elevel */
-						"", 						/* error sqlcode */
-						NULL, 					/* error message */
-						query->stmt_location,
-						query->stmt_len,
-						PGSS_INVALID,
-						0,
-						0,
-						NULL,
+	if (jstate.clocations_count <= 0)
+		return;
+
+	pgss_store(query->queryId,
+				pstate->p_sourcetext,
+				query->commandType,
+				0,						/* error elevel */
+				"",					/* error sqlcode */
+				NULL,					/* error message */
+				query->stmt_location,
+				query->stmt_len,
+				PGSS_INVALID,
+				0,
+				0,
+				NULL,
 #if PG_VERSION_NUM >= 130000
-					NULL,
+				NULL,
 #endif
 					&jstate,
 					0.0,
@@ -333,7 +334,7 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	if(getrusage(RUSAGE_SELF, &rusage_start) != 0)
 		elog(WARNING, "pg_stat_monitor: failed to execute getrusage");
-	
+
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
 	else
@@ -415,13 +416,13 @@ pgss_ExecutorFinish(QueryDesc *queryDesc)
 static void
 pgss_ExecutorEnd(QueryDesc *queryDesc)
 {
-	float   utime;
-	float   stime;
 	uint64	queryId = queryDesc->plannedstmt->queryId;
 	pgssSharedState *pgss = pgsm_get_ss();
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
 	{
+		float   utime;
+		float   stime;
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
@@ -432,25 +433,24 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
 		stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
 
-		if (PGSM_ENABLED == 1)
-			pgss_store(queryId,
-						queryDesc->sourceText,
-						queryDesc->operation,
-						0, 						/* error elevel */
-						"", 						/* error sqlcode */
-						NULL, 					/* error message */
-						queryDesc->plannedstmt->stmt_location,
-						queryDesc->plannedstmt->stmt_len,
-						PGSS_EXEC,
-						queryDesc->totaltime->total * 1000.0,	/* convert to msec */
-						queryDesc->estate->es_processed,
-						&queryDesc->totaltime->bufusage,
+		pgss_store(queryId,
+					queryDesc->sourceText,
+					queryDesc->operation,
+					0, 						/* error elevel */
+					"", 						/* error sqlcode */
+					NULL, 					/* error message */
+					queryDesc->plannedstmt->stmt_location,
+					queryDesc->plannedstmt->stmt_len,
+					PGSS_EXEC,
+					queryDesc->totaltime->total * 1000.0,	/* convert to msec */
+					queryDesc->estate->es_processed,
+					&queryDesc->totaltime->bufusage,
 #if PG_VERSION_NUM >= 130000
-						&queryDesc->totaltime->walusage,
+					&queryDesc->totaltime->walusage,
 #endif
-						NULL,
-						utime,
-						stime);
+					NULL,
+					utime,
+					stime);
 	}
 
 	if (prev_ExecutorEnd)
@@ -463,7 +463,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 static bool
 pgss_ExecutorCheckPerms(List *rt, bool abort)
 {
-	ListCell		*lr;
+	ListCell		*lr = NULL;
 	pgssSharedState *pgss = pgsm_get_ss();
 	int				i = 0;
 	int				j = 0;
@@ -473,13 +473,13 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 
 	foreach(lr, rt)
     {
-		bool found = false;
         RangeTblEntry *rte = lfirst(lr);
         if (rte->rtekind != RTE_RELATION)
             continue;
 
 		if (i < REL_LST)
 		{
+			bool found = false;
 			for(j = 0; j < i; j++)
 			{
 				if (pgss->relations[j] == rte->relid)
@@ -609,25 +609,24 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		/* calc differences of buffer counters. */
 		memset(&bufusage, 0, sizeof(BufferUsage));
 		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
-		if (PGSM_ENABLED == 1)
-			pgss_store(0,						/* query id, passing 0 to signal that it's a utility stmt */
-						queryString,			/* query text */
-						0,
-						0, 						/* error elevel */
-						"", 						/* error sqlcode */
-						NULL, 					/* error message */
-						pstmt->stmt_location,
-						pstmt->stmt_len,
-						PGSS_EXEC,
-						INSTR_TIME_GET_MILLISEC(duration),
-						rows,
-						&bufusage,
+		pgss_store(0,						/* query id, passing 0 to signal that it's a utility stmt */
+					queryString,			/* query text */
+					0,
+					0, 						/* error elevel */
+					"", 						/* error sqlcode */
+					NULL, 					/* error message */
+					pstmt->stmt_location,
+					pstmt->stmt_len,
+					PGSS_EXEC,
+					INSTR_TIME_GET_MILLISEC(duration),
+					rows,
+					&bufusage,
 #if PG_VERSION_NUM >= 130000
-						&walusage,
+					&walusage,
 #endif
-						NULL,
-						0,
-						0);
+					NULL,
+					0,
+					0);
 	}
 	else
 	{
@@ -791,15 +790,16 @@ static void pgss_store(uint64 queryId,
 	int				application_name_len;
 	int				sqlcode_len = strlen(sqlcode);
 
-	Assert(query != NULL);
-	Assert(PGSM_ENABLED);
+	/*  Monitoring is disabled */
+	if (!PGSM_ENABLED)
+		return;
 
+	Assert(query != NULL);
 	application_name_len = pg_get_application_name(application_name);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
 		return;
-	
 
 	/*
 	 * Confine our attention to the relevant part of the string, if the query
@@ -995,6 +995,10 @@ static void pgss_store(uint64 queryId,
 			e->counters.walusage.wal_fpi = 0;
 			e->counters.walusage.wal_bytes  = 0;
 		}
+#else
+		e->counters.walusage.wal_records = 0;
+		e->counters.walusage.wal_fpi = 0;
+		e->counters.walusage.wal_bytes  = 0;
 #endif
 		SpinLockRelease(&e->mutex);
 		}
@@ -1044,7 +1048,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	MemoryContext	     per_query_ctx;
 	MemoryContext	     oldcontext;
 	Oid				     userid = GetUserId();
-	bool			     is_allowed_role = false;
+	bool			     is_allowed_role;
 	HASH_SEQ_STATUS      hash_seq;
 	pgssEntry		     *entry;
 	char			     *query_txt;
@@ -1096,7 +1100,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	{
 		Datum       values[PG_STAT_STATEMENTS_COLS];
 		bool        nulls[PG_STAT_STATEMENTS_COLS];
-		int		    i = 0,j;
+		int		    i = 0;
+		int			j = 0;
 		int         len = 0;
 		int		    kind;
 		Counters    tmp;
@@ -1154,9 +1159,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum(queryid_txt);
 			if (showtext)
 			{
-					char	*enc;
 					if (query_txt)
 					{
+						char	*enc;
 						enc = pg_any_to_server(query_txt, strlen(query_txt), entry->encoding);
 						values[i++] = CStringGetTextDatum(enc);
 						if (enc != query_txt)
@@ -1184,7 +1189,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
-		if (strlen(tmp.info.application_name) <= 0)
+		if (strlen(tmp.info.application_name) == 0)
 			nulls[i++] = true;
 		else
 			values[i++] = CStringGetTextDatum(tmp.info.application_name);
@@ -1201,7 +1206,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 
 		values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
-		if (strlen(tmp.error.sqlcode) <= 0)
+		if (strlen(tmp.error.sqlcode) == 0)
 			values[i++] = CStringGetTextDatum("0");
 		else
 			values[i++] = CStringGetTextDatum(tmp.error.sqlcode);
@@ -1247,7 +1252,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
-#if PG_VERSION_NUM >= 130000
 		{
 			char		buf[256];
 			Datum		wal_bytes;
@@ -1264,11 +1268,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 											Int32GetDatum(-1));
 			values[i++] = wal_bytes;
 		}
-#else
-		nulls[i++] = true;
-		nulls[i++] = true;
-		nulls[i++] = true;
-#endif
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	free(query_txt);
@@ -1285,19 +1284,18 @@ get_next_wbucket(pgssSharedState *pgss)
 	struct timeval	tv;
 	uint64          current_usec;
 	uint64          bucket_id;
-	char            file_name[1024];
 	struct tm       *lt;
-	int             sec = 0;
 
 	gettimeofday(&tv,NULL);
-	current_usec = tv.tv_usec;
-
 	current_usec = (TimestampTz) tv.tv_sec - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
 	current_usec = (current_usec * USECS_PER_SEC) + tv.tv_usec;
 
 	if ((current_usec - pgss->prev_bucket_usec) > (PGSM_BUCKET_TIME * 1000 * 1000))
 	{
 		unsigned char *buf;
+		char          file_name[1024];
+		int            sec = 0;
+
 		bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 		buf = pgss_qbuf[bucket_id];
@@ -1408,7 +1406,7 @@ JumbleQuery(pgssJumbleState *jstate, Query *query)
 static void
 JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 {
-	ListCell   *lc;
+	ListCell   *lc = NULL;
 
 	foreach(lc, rtable)
 	{
@@ -2242,7 +2240,7 @@ textarray_get_datum(char **arr, int arr_len, int str_len)
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
 	for (j = 0; j < arr_len; j++)
 	{
-		if (arr[j] == NULL || strlen(arr[j]) <= 0)
+		if (arr[j] == NULL || strlen(arr[j]) == 0)
 			continue;
 		if (first)
 		{
@@ -2421,23 +2419,22 @@ static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param
 		/* calc differences of WAL counters. */
 		memset(&walusage, 0, sizeof(WalUsage));
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
-		if (PGSM_ENABLED == 1)
-			pgss_store(parse->queryId,				/* query id */
-						query_string,				/* query text */
-						parse->commandType,
-						0, 							/* error elevel */
-						"", 							/* error sqlcode */
-						NULL, 						/* error message */
-						parse->stmt_location,
-						parse->stmt_len,
-						PGSS_PLAN,
-						INSTR_TIME_GET_MILLISEC(duration),
-						0,
-						&bufusage,
-						&walusage,
-						NULL,
-						0,
-						0);
+		pgss_store(parse->queryId,				/* query id */
+					query_string,				/* query text */
+					parse->commandType,
+					0, 							/* error elevel */
+					"", 							/* error sqlcode */
+					NULL, 						/* error message */
+					parse->stmt_location,
+					parse->stmt_len,
+					PGSS_PLAN,
+					INSTR_TIME_GET_MILLISEC(duration),
+					0,
+					&bufusage,
+					&walusage,
+					NULL,
+					0,
+					0);
 	}
 	else
 	{
@@ -2545,8 +2542,7 @@ pgsm_emit_log_hook(ErrorData *edata)
 	WalUsage walusage;
 #endif
 
-	if (PGSM_ENABLED == 1 &&
-		IsSystemInitialized() &&
+	if (IsSystemInitialized() &&
 		(edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1) )
 	{
 		uint64 queryid = 0;
@@ -2671,19 +2667,19 @@ char *
 unpack_sql_state(int sql_state)
 {
     static char buf[12];
-    int         i;   
+    int         i;
 
-    for (i = 0; i < 5; i++) 
-    {    
+    for (i = 0; i < 5; i++)
+    {
         buf[i] = PGUNSIXBIT(sql_state);
         sql_state >>= 6;
-    }    
+    }
 
     buf[i] = '\0';
     return buf;
 }
 
-static int 
+static int
 get_histogram_bucket(double q_time)
 {
 	double q_min = PGSM_HISTOGRAM_MIN;
@@ -2726,7 +2722,7 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	double b_min;
 	double bucket_size;
 	char   range[50][1024] = {0};
-	
+
 	b_max = log(q_max - q_min);
 	b_min = 0;
 	bucket_size = (b_max - b_min) / (double)b_count;

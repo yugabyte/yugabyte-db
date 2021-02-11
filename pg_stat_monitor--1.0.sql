@@ -71,9 +71,9 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT resp_calls          text,
     OUT cpu_user_time       float8,
     OUT cpu_sys_time        float8,
-    OUT wal_records int8,
-    OUT wal_fpi int8,
-    OUT wal_bytes numeric
+    OUT wal_records 		int8,
+    OUT wal_fpi 			int8,
+    OUT wal_bytes 			numeric
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'

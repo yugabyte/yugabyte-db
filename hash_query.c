@@ -83,12 +83,6 @@ pgss_startup(void)
 	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
 }
 
-int
-pgsm_get_bucket_size(void)
-{
-	return pgss->query_buf_size_bucket;
-}
-
 pgssSharedState*
 pgsm_get_ss(void)
 {
@@ -99,12 +93,6 @@ HTAB*
 pgsm_get_hash(void)
 {
 	return pgss_hash;
-}
-
-HTAB*
-pgsm_get_query_hash(void)
-{
-	return pgss_query_hash;
 }
 
 /*
@@ -234,7 +222,7 @@ bool
 hash_create_query_entry(uint64 bucket_id, uint64 queryid)
 {
     pgssQueryHashKey    key;
-	pgssQueryEntry      *entry =  NULL;
+	pgssQueryEntry      *entry;
 	bool                found;
 
     key.queryid = queryid;
@@ -249,7 +237,7 @@ bool
 hash_find_query_entry(uint64 bucket_id, uint64 queryid)
 {
     pgssQueryHashKey    key;
-	pgssQueryEntry      *entry =  NULL;
+	pgssQueryEntry      *entry;
 	bool                found;
 
     key.queryid = queryid;
