@@ -1,7 +1,5 @@
 # Contributing to the YugabyteDB Documentation
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/c4c5aff9-0fc2-4db0-8c8d-ec4f7488d0f4/deploy-status)](https://app.netlify.com/sites/infallible-bardeen-164bc9/deploys)
-
 This account has three sections:
 
 &nbsp;&nbsp;&nbsp;[0. The art and craft of writing technical documentation](#0-the-art-and-craft-of-writing-technical-documentation)<br>
@@ -47,14 +45,34 @@ Follow these steps if this is the first time you are setting up to work on the d
    No receipt for 'com.apple.pkg.DeveloperToolsCLI' ...
    ```
 
-> Some Internet search leads to a consensus that the fix is to (re)install an Apple component called "Xcode" from [this Apple site for downloading tools for Apple Developers](https://developer.apple.com/download/more/). Look for "Xcode" in the list, choose the latest production version, download the `.dmg` file (or `.xip` for Big Sur), double-click on it, and follow the on-screen instructions. It is recommended that you check periodically to make sure that you stay on the current version. (The usual paradigm that alerts you when a new version of installed software becomes available seems to be unreliable for "Xcode".)
+> And `git` commands cause this:
+
+   ```
+   xcrun: error: invalid active developer path
+   (/Library/Developer/CommandLineTools),
+   missing xcrun at:
+   /Library/Developer/CommandLineTools/usr/bin/xcrun
+   ```
+
+> Some Internet search leads to a consensus that the brute-force fix is to (re)install an Apple component called "Xcode" from [this Apple site for downloading tools for Apple Developers](https://developer.apple.com/download/more/). Look for "Xcode" in the list, choose the latest production version, download the `.dmg` file (or `.xip` for Big Sur), double-click on it, and follow the on-screen instructions. It is recommended that you check periodically to make sure that you stay on the current version. (The usual paradigm that alerts you when a new version of installed software becomes available seems to be unreliable for "Xcode".)
 >
 > This business is yet more tedious after upgrading to MacOS Big Sur. Look at the Stack Exchange article [Git is not working after macOS Update...](https://stackoverflow.com/questions/52522565/git-is-not-working-after-macos-update-xcrun-error-invalid-active-developer-pa) and look for this:
 >
 > _"With any major or semi-major [MacOS] update you'll need to update the command line tools in order to get them functioning properly again. Check Xcode with any update."_
 >
-> The (re)installation of Xcode from the referenced  [tools for Apple Developers](https://developer.apple.com/download/more/) site is a bit different for Big Sur than it is for Catalina. The downloaded file is a `.xip` — an Apple proprietary compressed file, digitally signed for integrity. `Xcode_12.2.xip` is 11.43 GB and took ~ 30 minutes to download with a 175 MBPS download speed. Then it must be expanded—and that takes time too. This simply leaves you with `Xcode.app` in your "downloads" folder. It's about 30 MB (so who knows why the `.xip` is so ginormous). Anyway, drop it into the `/applications` folder. But even this is not enough. Then you need to do `xcode-select --install` at the command line prompt. It responds with "xcode-select: note: install requested for command line developer tools". You will then be prompted in an alert window to update Xcode Command Line tools—and this takes a long time too (maybe as much as 30 minutes). Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
+> The (re)installation of Xcode from the referenced  [tools for Apple Developers](https://developer.apple.com/download/more/) site is a bit different for Big Sur than it is for Catalina. The downloaded file is a `.xip` — an Apple proprietary compressed file, digitally signed for integrity. `Xcode_12.2.xip` is 11.43 GB and can take quite long to download. (Your mileage might vary.)  Then it must be expanded—and that takes time too. This simply leaves you with `Xcode.app` in your "downloads" folder. It's about 30 MB (so who knows why the `.xip` is so ginormous). Anyway, drop it into the `/applications` folder. But even this is not enough.
+> 
+> Then you need to do this:
 
+   ```
+   xcode-select --install
+   ```
+
+> at the command line prompt. It responds with "xcode-select: note: install requested for command line developer tools". You will then be prompted in an alert window to update Xcode Command Line tools—and this takes a long time too.
+>
+> Notice that, after having done all this once, it's usually sufficient to do just the `xcode-select --install` step after subsequent macOS upgrades.
+>
+> Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
 
 Then:
 
