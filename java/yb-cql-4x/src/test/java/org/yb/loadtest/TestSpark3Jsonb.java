@@ -40,6 +40,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.spark.connector.cql.CassandraConnector;
+import com.datastax.spark.connector.CassandraSparkExtensions;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestSpark3Jsonb extends BaseMiniClusterTest {
@@ -50,13 +51,17 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
   private String phones[] = {
     "{\"code\":\"+42\",\"phone\":1000}",
     "{\"code\":\"+43\",\"phone\":1200}",
-    "{\"code\":\"+44\",\"phone\":1400}"
+    "{\"code\":\"+44\",\"phone\":1400}",
+    "{\"code\":\"+45\",\"phone\":1500,\"key\":[0,{\"m\":[12, -1, {\"b\":400}, 500]}]}",
+    "{\"code\":\"+46\",\"phone\":1600}",
   };
   private String phoneOut[] = {
-    "+42",
-    "+43",
-    "+44"
+    "\"+42\"",
+    "\"+43\"",
+    "\"+44\"",
+    "\"+45\""
   };
+  String tableWithKeysapce = KEYSPACE + "." + INPUT_TABLE;
 
   @Test
   public void testJsonb() throws Exception {
@@ -73,7 +78,50 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
 
       CqlSession session = createTestSchemaIfNotExist(conf);
 
-      SparkSession spark = SparkSession.builder().config(conf).getOrCreate();
+      SparkSession spark = SparkSession.builder().config(conf)
+        .withExtensions(new CassandraSparkExtensions()).getOrCreate();
+
+      Map<Integer, String> expectedValues = new HashMap<>();
+      expectedValues.put(1, "Hammersmith London, UK");
+      expectedValues.put(2, "Acton London, UK");
+      expectedValues.put(3, "11 Acton London, UK");
+      expectedValues.put(4, "4 Act London, UK");
+
+      String query = "SELECT id, address, get_json_object(phone, '$.key[1].m[2].b') as key " +
+                    "FROM mycatalog.test.person " +
+                    "WHERE get_json_object(phone, '$.phone') >= '1500' order by id";
+
+      Dataset<Row> explain_rows = spark.sql("EXPLAIN " + query);
+      Iterator<Row> iterator = explain_rows.toLocalIterator();
+      StringBuilder explain_sb = new StringBuilder();
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          explain_sb.append(row.getString(0));
+      }
+      String explain_text = explain_sb.toString();
+      logger.info("plan is " + explain_text);
+      // check that column pruning works
+      assertTrue(explain_text.contains("id,address,phone->'phone',phone->'key'->1->'m'->2->'b'"));
+
+      Dataset<Row> rows = spark.sql(query);
+
+      iterator = rows.toLocalIterator();
+      int rows_count = 1;
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          Integer id = row.getInt(0);
+          String addr = row.getString(1);
+          String jsonb = row.getString(2);
+          assertEquals(jsonb, "400");
+          assertTrue(expectedValues.containsKey(id));
+          assertEquals(expectedValues.get(id), addr);
+          rows_count++;
+      }
+      // TODO to update a JSONB sub-object only using Spark SQL --
+      // for now requires using the Cassandra session directly.
+      String update = "update " + tableWithKeysapce +
+          " set phone->'key'->1->'m'->2->'b'='320' where id=4";
+      session.execute(update);
 
       Dataset<org.apache.spark.sql.Row> df = spark.sqlContext().read()
           .format("org.apache.spark.sql.cassandra")
@@ -85,30 +133,6 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
 
       spark.sqlContext().sql("select * from temp").show(false);
       logger.info("Data READ SuccessFully");
-
-      Map<Integer, String> expectedValues = new HashMap<>();
-      expectedValues.put(1, "Hammersmith London, UK");
-      expectedValues.put(2, "Acton London, UK");
-      expectedValues.put(3, "11 Acton London, UK");
-
-      Dataset<Row> rows =
-        spark.sql("SELECT id, address, phone, get_json_object(phone, '$.code') as phone " +
-                    "FROM mycatalog.test.person " +
-                    "WHERE get_json_object(phone, '$.phone') > 1000 order by id");
-
-      Iterator<Row> iterator = rows.toLocalIterator();
-      int rows_count = 1;
-      while (iterator.hasNext()) {
-          Row row = iterator.next();
-          Integer id = row.getInt(0);
-          String addr = row.getString(1);
-          String jsonb = row.getString(3);
-          assertEquals(jsonb, phoneOut[rows_count]);
-          assertTrue(expectedValues.containsKey(id));
-          assertEquals(expectedValues.get(id), addr);
-          rows_count++;
-      }
-      assertEquals(3, rows_count);
 
       session.close();
       spark.close();
@@ -126,8 +150,6 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       logger.info("Created keyspace name: {}", KEYSPACE);
 
       // Create table 'employee' if it does not exist.
-      String tableWithKeysapce = KEYSPACE + "." + INPUT_TABLE;
-
       String createTable = "CREATE TABLE IF NOT EXISTS " + tableWithKeysapce
           + "(id int PRIMARY KEY,"
           +"name text,"
@@ -150,6 +172,11 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       insert = "INSERT INTO "+tableWithKeysapce
         + "(id, name, address,  phone) VALUES (3, 'Smith', '11 Acton London, UK','"
         + phones[2] + "');";
+      session.execute(insert);
+
+      insert = "INSERT INTO "+tableWithKeysapce
+        + "(id, name, address,  phone) VALUES (4, 'Kumar', '4 Act London, UK','"
+        + phones[3] + "');";
       session.execute(insert);
 
       logger.info("Inserted data: {}" , insert);
