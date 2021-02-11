@@ -180,13 +180,15 @@ class KubernetesDetails():
 class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
-                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client):
+                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
+                 ssl_protocol):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
         self.enable_tls_client = enable_tls_client
+        self.ssl_protocol = ssl_protocol
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
         self.k8s_details = None
@@ -381,6 +383,16 @@ class NodeChecker():
             cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
 
             remote_cmd = 'SSL_CERTFILE={} {} {}'.format(cert_file, remote_cmd, '--ssl')
+            if self.ssl_protocol is not None:
+                SSL_PROTOCOL_TO_SSL_VERSION = {
+                    "ssl2": "SSLv23",
+                    "ssl3": "SSLv23",
+                    "tls10": "TLSv1",
+                    "tls11": "TLSv1_1",
+                    "tls12": "TLSv1_2"
+                }
+                protocol = SSL_PROTOCOL_TO_SSL_VERSION.get(self.ssl_protocol)
+                remote_cmd = 'SSL_VERSION={} {}'.format(protocol, remote_cmd)
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -526,6 +538,7 @@ class Cluster():
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
         self.namespace_to_config = data["namespaceToConfig"]
+        self.ssl_protocol = data["sslProtocol"]
         self.enable_ysql = data["enableYSQL"]
         self.ysql_port = data["ysqlPort"]
         self.ycql_port = data["ycqlPort"]
@@ -569,7 +582,7 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client)
+                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(
