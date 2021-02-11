@@ -75,6 +75,7 @@
 #define TEXT_LEN			255
 #define ERROR_MESSAGE_LEN	100
 #define REL_LST				10
+#define REL_LEN				1000
 #define CMD_LST				10
 #define CMD_LEN				20
 #define APPLICATIONNAME_LEN	100
@@ -163,7 +164,8 @@ typedef struct QueryInfo
 	uint		host;						/* client IP */
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
-	int32		relations[REL_LST];         /* List of relation involved in the query */
+	char		relations[REL_LST][REL_LEN];         /* List of relation involved in the query */
+	int			num_relations;				/*  Number of relation in the query */
 	CmdType		cmd_type;                   /* query command type SELECT/UPDATE/DELETE/INSERT */
 } QueryInfo;
 
@@ -262,7 +264,8 @@ typedef struct pgssSharedState
 	uint64			prev_bucket_usec;
 	uint64			bucket_entry[MAX_BUCKETS];
 	int64			query_buf_size_bucket;
-	int32			relations[REL_LST];
+	char			relations[REL_LST][REL_LEN];
+	int				num_relations;							/*  Number of relation in the query */
 	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 

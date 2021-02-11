@@ -1,0 +1,34 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+CREATE TABLE foo1(a int);
+CREATE TABLE foo2(a int);
+CREATE TABLE foo3(a int);
+CREATE TABLE foo4(a int);
+SELECT * FROM foo1, foo2, foo3, foo4;
+ a | a | a | a 
+---+---+---+---
+(0 rows)
+
+SELECT query, relations from pg_stat_monitor;
+                query                 |                     relations                     
+--------------------------------------+---------------------------------------------------
+ SELECT * FROM foo1, foo2, foo3, foo4 | {public.foo1,public.foo2,public.foo3,public.foo4}
+ SELECT pg_stat_monitor_reset()       | 
+(2 rows)
+
+DROP TABLE foo1;
+DROP TABLE foo2;
+DROP TABLE foo3;
+DROP TABLE foo4;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

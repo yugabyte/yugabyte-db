@@ -32,7 +32,20 @@ do                                                   \
 {                                                    \
 	int i;                                           \
 	for(i = 0; i < _len && i < _max_len; i++)        \
+	{\
 		_str_dst[i] = _str_src[i];                   \
+	}\
+}while(0)
+
+#define _snprintf2(_str_dst, _str_src, _len1, _len2)\
+do                                                      \
+{                                                       \
+	int i,j;                                            \
+	for(i = 0; i < _len1; i++)                        \
+		for(j = 0; j < _len2; j++)        \
+		{                                               \
+			_str_dst[i][j] = _str_src[i][j];                  \
+		}                                               \
 }while(0)
 
 /*---- Initicalization Function Declarations ----*/
@@ -40,6 +53,11 @@ void _PG_init(void);
 void _PG_fini(void);
 
 int64 v = 5631;
+
+/*---- Initicalization Function Declarations ----*/
+void _PG_init(void);
+void _PG_fini(void);
+
 /*---- Local variables ----*/
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
@@ -459,7 +477,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		prev_ExecutorEnd(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
-	memset(pgss->relations, 0x0, sizeof(pgss->relations));
+	pgss->num_relations = 0;
 }
 
 static bool
@@ -469,9 +487,10 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 	pgssSharedState *pgss = pgsm_get_ss();
 	int				i = 0;
 	int				j = 0;
+	Oid				list_oid[20];
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-	memset(pgss->relations, 0x0, sizeof(pgss->relations));
+	pgss->num_relations = 0;
 
 	foreach(lr, rt)
     {
@@ -484,13 +503,22 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 			bool found = false;
 			for(j = 0; j < i; j++)
 			{
-				if (pgss->relations[j] == rte->relid)
+				if (list_oid[j] == rte->relid)
 					found = true;
 			}
+
 			if (!found)
-				pgss->relations[i++] = rte->relid;
+			{
+				char *namespace_name;
+				char *relation_name;
+				list_oid[j] = rte->relid;
+				namespace_name = get_namespace_name(get_rel_namespace(rte->relid));
+				relation_name = get_rel_name(rte->relid);
+				snprintf(pgss->relations[i++], REL_LEN, "%s.%s", namespace_name, relation_name);
+			}
 		}
 	}
+	pgss->num_relations = i;
 	LWLockRelease(pgss->lock);
 
     if (prev_ExecutorCheckPerms_hook)
@@ -783,8 +811,6 @@ static void pgss_store(uint64 queryId,
 	char			*norm_query = NULL;
 	int				encoding = GetDatabaseEncoding();
 	bool			reset = false;
-	bool			found = false;
-	int             i;
 	pgssSharedState *pgss = pgsm_get_ss();
 	HTAB            *pgss_hash = pgsm_get_hash();
 	int				message_len = message ? strlen(message) : 0;
@@ -951,13 +977,8 @@ static void pgss_store(uint64 queryId,
 		}
 		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
 
-		found = false;
-		for (i = 0; i < REL_LST; i++)
-			if (e->counters.info.relations[i] != 0)
-				found = true;
-
-		if (!found)
-			_snprintf(e->counters.info.relations, pgss->relations, REL_LST, REL_LST);
+		e->counters.info.num_relations = pgss->num_relations;
+		_snprintf2(e->counters.info.relations, pgss->relations, pgss->num_relations,  REL_LEN);
 
 		e->counters.info.cmd_type = cmd_type;
 		e->counters.error.elevel = elevel;
@@ -1103,7 +1124,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		Datum       values[PG_STAT_STATEMENTS_COLS];
 		bool        nulls[PG_STAT_STATEMENTS_COLS];
 		int		    i = 0;
-		int			j = 0;
 		int         len = 0;
 		int		    kind;
 		Counters    tmp;
@@ -1200,15 +1220,27 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		else
 			values[i++] = CStringGetTextDatum(tmp.info.application_name);
 
-		len = 0;
-		for (j = 0; j < REL_LST; j++)
-			if (tmp.info.relations[j] != 0)
-				len++;
+		if (tmp.info.num_relations > 0)
+		{
+			int     j;
+			char    *text_str = palloc0(1024);
+			bool    first = true;
 
-		if (len == 0)
-			nulls[i++] = true;
+			/* Need to calculate the actual size, and avoid unnessary memory usage */
+			for (j = 0; j < tmp.info.num_relations; j++)
+			{
+				if (first)
+				{
+					snprintf(text_str, 1024, "%s", tmp.info.relations[j]);
+					first = false;
+					continue;
+				}
+				snprintf(text_str, 1024, "%s,%s", text_str, tmp.info.relations[j]);
+			}
+			values[i++] = CStringGetTextDatum(text_str);
+		}
 		else
-			values[i++] = IntArrayGetTextDatum(tmp.info.relations, len);
+			nulls[i++] = true;
 
 		values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);

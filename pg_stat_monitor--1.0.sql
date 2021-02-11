@@ -127,7 +127,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     queryid,
     query,
 	application_name,
-	(string_to_array(relations, ','))::oid[]::regclass[] AS relations,
+	string_to_array(relations, ',') AS relations,
 	cmd_type, 
 	get_cmd_type(cmd_type) AS cmd_type_text,
 	elevel,

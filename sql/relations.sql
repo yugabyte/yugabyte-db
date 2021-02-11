@@ -1,0 +1,14 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+CREATE TABLE foo1(a int);
+CREATE TABLE foo2(a int);
+CREATE TABLE foo3(a int);
+CREATE TABLE foo4(a int);
+SELECT * FROM foo1, foo2, foo3, foo4;
+SELECT query, relations from pg_stat_monitor;
+DROP TABLE foo1;
+DROP TABLE foo2;
+DROP TABLE foo3;
+DROP TABLE foo4;
+SELECT pg_stat_monitor_reset();
+DROP EXTENSION pg_stat_monitor;
