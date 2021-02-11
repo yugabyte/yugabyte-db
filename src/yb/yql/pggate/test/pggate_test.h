@@ -38,7 +38,8 @@ namespace pggate {
 //--------------------------------------------------------------------------------------------------
 // Test base class.
 //--------------------------------------------------------------------------------------------------
-#define CHECK_YBC_STATUS(s) CheckYBCStatus((s), __FILE__, __LINE__)
+#define CHECK_YBC_STATUS(s) \
+    ::yb::pggate::PggateTest::CheckYBCStatus((s), __FILE__, __LINE__)
 
 class PggateTest : public YBTest {
  public:
@@ -51,7 +52,7 @@ class PggateTest : public YBTest {
   virtual ~PggateTest();
 
   //------------------------------------------------------------------------------------------------
-  void CheckYBCStatus(YBCStatus status, const char* file_name, int line_number);
+  static void CheckYBCStatus(YBCStatus status, const char* file_name, int line_number);
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
