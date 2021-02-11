@@ -589,6 +589,37 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testK8sUniverseCreateOneClusterPerNamespacedProviderFailure() {
+    Provider p = ModelFactory.kubernetesProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    az1.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
+    InstanceType i = InstanceType.upsert(p.code, "small", 10, 5.5,
+                                         new InstanceType.InstanceTypeDetails());
+
+    ModelFactory.createUniverse("K8sUniverse1", customer.getCustomerId(), CloudType.kubernetes);
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", "K8sUniverse2")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString());
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Only one universe can be created with providers having "
+                     + "KUBENAMESPACE set in the AZ config.");
+  }
+
+  @Test
   public void testUniverseUpdateWithInvalidParams() {
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
