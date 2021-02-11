@@ -85,6 +85,12 @@ class DateTime {
   static int64_t TimeNow();
 
   //----------------------------------------------------------------------------------------------
+  // Interval represents a relative span of time, in microseconds.
+  // This is normally utilized relative to the current HybridTime.
+
+  static Result<int64_t> IntervalFromString(const std::string& str);
+
+  //----------------------------------------------------------------------------------------------
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
   static constexpr int64_t kInternalPrecision = 6; // microseconds
   static constexpr int64_t kMillisecondPrecision = 3; // milliseconds
