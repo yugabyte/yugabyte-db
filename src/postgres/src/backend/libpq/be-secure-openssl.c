@@ -1009,13 +1009,14 @@ initialize_dh(SSL_CTX *context, bool isServerStart)
 
 	if (SSL_CTX_set_tmp_dh(context, dh) != 1)
 	{
-		DH_free(dh);
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 (errmsg("DH: could not set DH parameters: %s",
 						 SSLerrmessage(ERR_get_error())))));
+		DH_free(dh);
 		return false;
 	}
+
 	DH_free(dh);
 	return true;
 }
