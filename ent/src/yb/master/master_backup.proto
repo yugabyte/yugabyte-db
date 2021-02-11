@@ -95,7 +95,8 @@ message ListSnapshotsResponsePB {
 
 message RestoreSnapshotRequestPB {
   optional bytes snapshot_id = 2;
-  optional fixed64 restore_ht = 3;
+  optional fixed64 restore_ht = 3; // Absolute Timing Option: Max HybridTime, in Micros.
+  optional fixed64 restore_interval = 4; // Relative Timing Option: Micros before Now to rewind.
 }
 
 message RestoreSnapshotResponsePB {

@@ -40,7 +40,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
-  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
+  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,
+                                 const std::string& timestamp);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,

@@ -101,14 +101,17 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
   }
 
   Result<TxnSnapshotRestorationId> StartRestoration(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime()) {
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
+      int64_t interval = 0) {
     master::RestoreSnapshotRequestPB req;
     master::RestoreSnapshotResponsePB resp;
 
     rpc::RpcController controller;
     controller.set_timeout(60s);
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-    if (restore_at) {
+    if (interval != 0) {
+      req.set_restore_interval(interval);
+    } else if (restore_at) {
       req.set_restore_ht(restore_at.ToUint64());
     }
     RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
@@ -135,8 +138,9 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
   }
 
   CHECKED_STATUS RestoreSnapshot(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime()) {
-    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at));
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
+      int64_t interval = 0) {
+    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at, interval));
 
     return WaitFor([this, &restoration_id] {
       return IsRestorationDone(restoration_id);
@@ -352,6 +356,30 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
   ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
 
   ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
+
+  ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
+}
+
+TEST_F(BackupTxnTest, PointInTimeRestoreInterval) {
+  ASSERT_NO_FATALS(WriteData());
+  auto pre_sleep_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  auto write_wait = 5s;
+  std::this_thread::sleep_for(write_wait);
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(WaitFor([this, &pre_sleep_ht, &snapshot_id, &write_wait]() -> Result<bool> {
+    LOG(INFO) << "Running RestoreSnapshot";
+    auto restore_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+    auto interval = restore_ht.GetPhysicalValueMicros() - pre_sleep_ht.GetPhysicalValueMicros();
+    RETURN_NOT_OK(RestoreSnapshot(snapshot_id, restore_ht, interval));
+
+    // Ensure the snapshot was restored before Now() - interval passed our sleep_for window.
+    auto finish_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+    return finish_ht.PhysicalDiff(restore_ht) <  std::chrono::microseconds(write_wait).count();
+  }, kWaitTimeout * kTimeMultiplier, "Snapshot restored in time."));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }

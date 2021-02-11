@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <regex>
 #include <set>
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
@@ -52,10 +53,12 @@
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/cast.h"
+#include "yb/util/date_time.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/status.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -460,8 +463,14 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
-    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(
-        txn_snapshot_id, HybridTime::FromPB(req->restore_ht())));
+    HybridTime ht;
+    if (req->has_restore_ht()) {
+      ht = HybridTime(req->restore_ht());
+    } else if (req->has_restore_interval()) {
+      ht = HybridTime::FromMicros(
+          master_->clock()->Now().GetPhysicalValueMicros() - req->restore_interval());
+    }
+    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht));
     resp->set_restoration_id(id.data(), id.size());
     return Status::OK();
   }
