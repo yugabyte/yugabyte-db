@@ -12,11 +12,15 @@ export const useLiveQueriesApi = ({ universeUUID }) => {
     if (!error) {
       const allErrors = {};
       if ('ysql' in data) {
-        setYSQLQueryRowData(data.ysql.queries);
+        if (Array.isArray(data.ysql.queries)) {
+          setYSQLQueryRowData(data.ysql.queries);
+        }
         allErrors.ysql = data.ysql.errorCount;
       }
       if ('ycql' in data) {
-        setYCQLQueryRowData(data.ycql.queries);
+        if (Array.isArray(data.ycql.queries)) {
+          setYCQLQueryRowData(data.ycql.queries);
+        }
         allErrors.ycql = data.ycql.errorCount;
       }
       setErrors(allErrors);
@@ -54,9 +58,11 @@ export const useSlowQueriesApi = ({ universeUUID }) => {
     if (!data.error) {
       const allErrors = {};
       if ('ysql' in data) {
-        setYSQLQueryRowData(data.ysql.queries);
+        if (Array.isArray(data.ysql.queries)) {
+          setYSQLQueryRowData(data.ysql.queries);
+        }
         allErrors.ysql = data.ysql.errorCount;
-      }      
+      }
       setErrors(allErrors);
     } else {
       setErrors({ message: data.error });
