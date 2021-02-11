@@ -987,7 +987,8 @@ index_create(Relation heapRelation,
 					   heapRelation,
 					   split_options,
 					   skip_index_backfill,
-					   tablegroupId);
+					   tablegroupId,
+					   tableSpaceId);
 	}
 
 	/*

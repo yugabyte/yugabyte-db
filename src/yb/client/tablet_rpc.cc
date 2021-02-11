@@ -144,6 +144,7 @@ void TabletInvoker::SelectTabletServer()  {
   } else {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
   }
+  VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
 }
 
 void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {

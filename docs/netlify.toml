@@ -22,7 +22,8 @@
 #
 # validator: https://play.netlify.com/redirects
 
-# Legal and FAQ pages should always point to the latest
+# Legal, FAQ, and release notes should always point to the latest,
+# even if we have content in the older version's folder.
 
 [[redirects]]
   from = "/:version/legal/*"
@@ -33,6 +34,26 @@
   from = "/:version/faq/*"
   to = "/latest/faq/:splat"
   force = true
+
+[[redirects]]
+  from = "/:version/releases/*"
+  to = "/latest/releases/:splat"
+  force = true
+
+# Stable quick-starts need defaults,
+# since archiving from /latest removes aliases
+
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/create-local-cluster/"
+  to="/stable/quick-start/create-local-cluster/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/explore/"
+  to="/stable/quick-start/explore/ysql/"
 
 # Docs prior to v1.3 are not online
 

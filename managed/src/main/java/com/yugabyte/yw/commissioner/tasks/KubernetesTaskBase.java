@@ -154,9 +154,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS, azCode, config,
             podsToWaitFor));
       } else {
-        // Create the namespaces of the deployment.
-        createNamespaces.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
+        // Don't create the namespace if user has provided
+        // KUBENAMESPACE value, as we might not have access to list or
+        // create namespaces in such cases.
+        if (config.get("KUBENAMESPACE") == null) {
+          // Create the namespaces of the deployment.
+          createNamespaces.addTask(createKubernetesExecutorTask(
+              KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azCode, config));
+        }
 
         // Apply the necessary pull secret to each namespace.
         applySecrets.addTask(createKubernetesExecutorTask(
@@ -241,6 +246,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
             tempPI, azCode, masterAddresses, softwareVersion, serverType, config,
             masterPartition, tserverPartition);
+        // TODO(bhavin192): might need to account for multiple
+        // releases in one namespace.
         String podName = String.format("%s-%d", sType, partition);
         createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
             podName, azCode, config);
@@ -318,9 +325,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         volumeDeletes.addTask(createKubernetesExecutorTask(
             KubernetesCommandExecutor.CommandType.VOLUME_DELETE, azCode, config));
 
-        // Delete the namespaces of the deployments.
-        namespaceDeletes.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config));
+        // If the namespace is configured at the AZ, we don't delete
+        // it, as it is not created by us.
+        if (config.get("KUBENAMESPACE") == null) {
+          // Delete the namespaces of the deployments.
+          namespaceDeletes.addTask(createKubernetesExecutorTask(
+              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config));
+        }
       }
     }
     subTaskGroupQueue.add(helmDeletes);
@@ -431,6 +442,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (config != null) {
       params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
+                                                                  az, config);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -486,6 +501,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (config != null) {
       params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
+                                                                  az, config);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -509,11 +528,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.providerUUID = UUID.fromString(primary.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
+
     if (az != null) {
       params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
     }
     if (config != null) {
       params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
+                                                                  az, config);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
@@ -537,6 +561,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     if (config != null) {
       params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace = PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix,
+                                                                  az, config);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podNum = numPods;

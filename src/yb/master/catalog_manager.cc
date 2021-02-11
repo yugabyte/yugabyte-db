@@ -177,6 +177,9 @@ DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
              "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
+DEFINE_test_flag(bool, disable_tablet_deletion, false,
+                 "Whether catalog manager should disable tablet deletion.");
+
 DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "Whether the catalog manager should wait for a newly created tablet to "
             "elect a leader before considering it successfully created. "
@@ -270,8 +273,8 @@ TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
 DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
-    "A kill switch to disable multi-stage backfill for user encorced YCQL indexes. "
-    "Note that setting this to true may cause the create index flow to be slow. "
+    "A kill switch to disable multi-stage backfill for user enforced YCQL indexes. "
+    "Note that enabling this feature may cause the create index flow to be slow. "
     "This is needed to ensure the safety of the index backfill process. See also "
     "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
@@ -4377,6 +4380,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
           "Placement policy cannot be altered for a colocated table");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
     }
+    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+      const Status s = STATUS(InvalidArgument,
+            "Placement policy cannot be altered for YSQL tables, use Tablespaces");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
     // Validate table replication info.
     RETURN_NOT_OK(ValidateTableReplicationInfo(req->replication_info()));
     table_pb.mutable_replication_info()->CopyFrom(req->replication_info());
@@ -7039,8 +7047,8 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
-  if (report.has_processing_parent_data()) {
-      new_replica->processing_parent_data = report.processing_parent_data();
+  if (report.has_should_disable_lb_move()) {
+      new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
@@ -7351,6 +7359,9 @@ void CatalogManager::SendDeleteTabletRequest(
     const scoped_refptr<TableInfo>& table,
     TSDescriptor* ts_desc,
     const string& reason) {
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << "Deleting tablet " << tablet_id << " on peer "
                         << ts_desc->permanent_uuid() << " with delete type "
                         << TabletDataState_Name(delete_type) << " (" << reason << ")";

@@ -81,30 +81,26 @@ public class QueryAlerts {
   }
 
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
-      String query =
-        new ConfigSubstitutor(configFactory.forCustomer(customer)).replace(definition.query);
-      if (!queryHelper.queryDirect(query).isEmpty()) {
+      try {
         Universe universe = Universe.get(definition.universeUUID);
-        Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
-        // Create an alert to activate if it doesn't exist already
-        if (existingAlert == null) {
-          Alert.create(
-            customerUUID,
-            definition.universeUUID,
-            Alert.TargetType.UniverseType,
-            "CUSTOMER_ALERT",
-            "Error",
-            String.format("%s for %s is firing", definition.name, universe.name),
-            definition.isActive,
-            definition.uuid
-          );
-        } else {
-          alertsStillActive.add(existingAlert);
+        String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
+            .replace(definition.query);
+        if (!queryHelper.queryDirect(query).isEmpty()) {
+          Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
+          // Create an alert to activate if it doesn't exist already
+          if (existingAlert == null) {
+            Alert.create(customerUUID, definition.universeUUID, Alert.TargetType.UniverseType,
+                "CUSTOMER_ALERT", "Error",
+                String.format("%s for %s is firing", definition.name, universe.name),
+                definition.isActive, definition.uuid);
+          } else {
+            alertsStillActive.add(existingAlert);
+          }
         }
+      } catch (Exception e) {
+        LOG.error("Error processing alert definition '{}'", definition.name, e);
       }
     });
 

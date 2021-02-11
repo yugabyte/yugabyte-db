@@ -151,7 +151,8 @@ class PgCreateTable : public PgDdl {
                 bool if_not_exist,
                 bool add_primary_key,
                 const bool colocated,
-                const PgObjectId& tablegroup_oid);
+                const PgObjectId& tablegroup_oid,
+                const PgObjectId& tablespace_oid);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
 
@@ -214,6 +215,7 @@ class PgCreateTable : public PgDdl {
   bool if_not_exist_;
   bool colocated_ = true;
   const PgObjectId tablegroup_oid_;
+  const PgObjectId tablespace_oid_;
   boost::optional<YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
   std::vector<std::vector<QLValuePB>> split_rows_; // Split rows for range tables
@@ -266,7 +268,8 @@ class PgCreateIndex : public PgCreateTable {
                 bool is_unique_index,
                 const bool skip_index_backfill,
                 bool if_not_exist,
-                const PgObjectId& tablegroup_oid);
+                const PgObjectId& tablegroup_oid,
+                const PgObjectId& tablespace_oid);
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
 
