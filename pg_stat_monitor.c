@@ -1,3 +1,4 @@
+
 /*-------------------------------------------------------------------------
  *
  * pg_stat_monitor.c
@@ -38,6 +39,7 @@ do                                                   \
 void _PG_init(void);
 void _PG_fini(void);
 
+int64 v = 5631;
 /*---- Local variables ----*/
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
@@ -1145,7 +1147,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = ObjectIdGetDatum(entry->key.bucket_id);
 		values[i++] = ObjectIdGetDatum(entry->key.userid);
 		values[i++] = ObjectIdGetDatum(entry->key.dbid);
-		values[i++] = Int64GetDatumFast(entry->key.ip);
+		/* Superusers or members of pg_read_all_stats members are allowed */
+		if (is_allowed_role || entry->key.userid == userid)
+			values[i++] = Int64GetDatumFast(entry->key.ip);
+		else
+			values[i++] = Int64GetDatumFast(0);
 
 		/* copy counters to a local variable to keep locking time short */
 		{
@@ -1154,9 +1160,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			tmp = e->counters;
 			SpinLockRelease(&e->mutex);
 		}
+		values[i++] = CStringGetTextDatum(queryid_txt);
 		if (is_allowed_role || entry->key.userid == userid)
 		{
-			values[i++] = CStringGetTextDatum(queryid_txt);
 			if (showtext)
 			{
 					if (query_txt)

@@ -28,7 +28,7 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT bucket              int,
     OUT userid              oid,
     OUT dbid                oid,
-    OUT client_ip           bigint,
+    OUT client_ip           int8,
 
     OUT queryid             text,
     OUT query               text,
@@ -202,6 +202,7 @@ end loop;
 END
 $$ language plpgsql;
 
+GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;
