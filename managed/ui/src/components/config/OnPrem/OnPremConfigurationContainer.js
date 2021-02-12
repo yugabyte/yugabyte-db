@@ -26,7 +26,7 @@ import {
 } from '../../../actions/cloud';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { destroy } from 'redux-form';
-import { addToast } from '../../../actions/toaster';
+import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -94,12 +94,7 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               if (response.error) {
                 const errorMessage = response.payload?.response?.data?.error;
-                dispatch(addToast({
-                  toast: {
-                    type: 'error',
-                    description: errorMessage,
-                  }
-                }))
+                toast.error(errorMessage);
               }
               dispatch(createRegionResponse(response.payload));
             });

@@ -8,7 +8,6 @@ import ModalReducer from './reducer_modal';
 import GraphReducer from './reducer_graph';
 import TasksReducer from './reducer_tasks';
 import TablesReducer from './reducer_tables';
-import ToastReducer from './reducer_toaster';
 import { reducer as formReducer } from 'redux-form';
 
 const rootReducer = combineReducers({
@@ -19,8 +18,7 @@ const rootReducer = combineReducers({
   modal: ModalReducer,
   graph: GraphReducer,
   tasks: TasksReducer,
-  tables: TablesReducer,
-  toast: ToastReducer
+  tables: TablesReducer
 });
 
 export default rootReducer;

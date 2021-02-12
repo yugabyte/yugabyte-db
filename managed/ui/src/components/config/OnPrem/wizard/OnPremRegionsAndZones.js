@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
-import Toasters from '../../../../pages/Toasters';
+import { ToastContainer } from 'react-toastify';
 
 class OnPremListRegionsAndZones extends Component {
   UNSAFE_componentWillMount() {
@@ -158,50 +158,52 @@ export default class OnPremRegionsAndZones extends Component {
   render() {
     const { handleSubmit, switchToJsonEntry, isEditProvider } = this.props;
     return (
-      <div id="onprem-region-form" className="on-prem-provider-form-container">
-        <form name="onPremConfigForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
-          <div className="on-prem-form-text">
-            Add one or more regions, each with one or more availability zones.
-          </div>
-          <div className="form-field-grid">
-            <Row>
-              <Col lg={3} lgOffset={1}>
-                Region Name
-              </Col>
-              <Col lg={3}>Location</Col>
-              <Col lg={5}>
-                Zone Names <span className="row-head-subscript">Comma Separated</span>
-              </Col>
-            </Row>
-            <div className="on-prem-form-grid-container">
-              <FieldArray
-                name="regionsZonesList"
-                component={OnPremListRegionsAndZones}
-                isEditProvider={this.props.isEditProvider}
+      <>
+        <div id="onprem-region-form" className="on-prem-provider-form-container">
+          <form name="onPremConfigForm" onSubmit={handleSubmit(this.createOnPremRegionsAndZones)}>
+            <div className="on-prem-form-text">
+              Add one or more regions, each with one or more availability zones.
+            </div>
+            <div className="form-field-grid">
+              <Row>
+                <Col lg={3} lgOffset={1}>
+                  Region Name
+                </Col>
+                <Col lg={3}>Location</Col>
+                <Col lg={5}>
+                  Zone Names <span className="row-head-subscript">Comma Separated</span>
+                </Col>
+              </Row>
+              <div className="on-prem-form-grid-container">
+                <FieldArray
+                  name="regionsZonesList"
+                  component={OnPremListRegionsAndZones}
+                  isEditProvider={this.props.isEditProvider}
+                />
+              </div>
+            </div>
+            <div className="form-action-button-container">
+              {isEditProvider ? (
+                <YBButton
+                  btnText={'Cancel'}
+                  btnClass={'btn btn-default save-btn cancel-btn'}
+                  onClick={this.props.cancelEdit}
+                />
+              ) : (
+                <span />
+              )}
+              {switchToJsonEntry}
+              <YBButton btnText={'Finish'} btnType={'submit'} btnClass={'btn btn-default save-btn'} />
+              <YBButton
+                btnText={'Previous'}
+                btnClass={'btn btn-default back-btn'}
+                onClick={this.props.prevPage}
               />
             </div>
-          </div>
-          <div className="form-action-button-container">
-            {isEditProvider ? (
-              <YBButton
-                btnText={'Cancel'}
-                btnClass={'btn btn-default save-btn cancel-btn'}
-                onClick={this.props.cancelEdit}
-              />
-            ) : (
-              <span />
-            )}
-            {switchToJsonEntry}
-            <YBButton btnText={'Finish'} btnType={'submit'} btnClass={'btn btn-default save-btn'} />
-            <YBButton
-              btnText={'Previous'}
-              btnClass={'btn btn-default back-btn'}
-              onClick={this.props.prevPage}
-            />
-          </div>
-        </form>
-        <Toasters/>
-      </div>
+          </form>
+        </div>
+        <ToastContainer/>
+      </>
     );
   }
 }

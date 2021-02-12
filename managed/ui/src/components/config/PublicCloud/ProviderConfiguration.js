@@ -16,7 +16,7 @@ import AWSProviderInitView from './views/AWSProviderInitView';
 import GCPProviderInitView from './views/GCPProviderInitView';
 import { AzureProviderInitView } from './views/AzureProviderInitView';
 import { YBLoading } from '../../common/indicators';
-import Toasters from '../../../pages/Toasters';
+import { ToastContainer } from 'react-toastify';
 
 class ProviderConfiguration extends Component {
   constructor(props) {
@@ -332,7 +332,10 @@ class ProviderConfiguration extends Component {
     } else if (this.state.currentView === 'result') {
       currentProviderView = this.getResultView();
     }
-    return <div className="provider-config-container">{currentProviderView} <Toasters/></div>;
+    return <>
+      <div className="provider-config-container">{currentProviderView}</div>
+      <ToastContainer />
+    </>;
   }
 }
 

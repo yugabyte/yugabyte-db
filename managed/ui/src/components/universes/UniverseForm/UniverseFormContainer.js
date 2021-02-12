@@ -56,7 +56,6 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
-import { addToast } from '../../../actions/toaster';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -121,15 +120,6 @@ const mapDispatchToProps = (dispatch) => {
 
     submitEditUniverse: (values, universeUUID) => {
       dispatch(editUniverse(values, universeUUID)).then((response) => {
-        if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error;
-          dispatch(addToast({
-            toast: {
-              type: 'error',
-              description: errorMessage,
-            }
-          }))
-        }
         dispatch(editUniverseResponse(response.payload));
       });
     },

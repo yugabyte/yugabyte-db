@@ -821,6 +821,8 @@ export default class ClusterFields extends Component {
       clusterType
     } = this.props;
 
+    console.log("Univers config -- ", universeTaskParams)
+
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function () {

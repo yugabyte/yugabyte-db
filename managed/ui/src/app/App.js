@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import 'bootstrap/dist/css/bootstrap.css';
+import 'react-toastify/dist/ReactToastify.css';
 import './stylesheets/App.scss';
 import './../_style/fonts.css';
 

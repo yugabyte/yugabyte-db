@@ -11,7 +11,7 @@ import {
   deleteKMSProviderConfig,
   deleteKMSProviderConfigResponse
 } from '../../../actions/cloud';
-import { addToast } from '../../../actions/toaster';
+import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -35,48 +35,29 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchAuthConfigListResponse(response.payload))
       )
       .catch((err) => {
-        dispatch(addToast({
-          toast: {
-            type: 'error',
-            description: 'Error occured while fetching config.'
-          }
-        }))
+        toast.error("Error occured while fetching config.")
       })
     },
 
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then((response) => {
-          dispatch(addToast({
-            toast: {
-              type: 'success',
-              description: 'Success added configuration!!',
-            }
-          }))
-          return dispatch(createKMSProviderConfigResponse(response.payload));
+          return dispatch(createKMSProviderConfigResponse(response.payload)).then(
+            response => {debugger
+               toast.success("Successfully added the configuration") }
+          );
         })
-        .catch((err) => console.err('Error submitting KMS configuration: ', err));
+        .catch((err) => console.error('Error submitting KMS configuration: ', err));
     },
 
     deleteKMSConfig: (configUUID) => {
       dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
-            dispatch(addToast({
-              toast: {
-                type: 'success',
-                description: 'Successfully deleted KMS configuration',
-              }
-            }))
+            toast.success("Successfully deleted KMS configuration")
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
-          dispatch(addToast({
-            toast: {
-              type: 'error',
-              description: 'Warning: Deleting configuration returned unsuccessful response.',
-            }
-          }))
-          console.warn('Warning: Deleting configuration returned unsuccessful response.');
+          toast.warn("Warning: Deleting configuration returned unsuccessful response.")
         })
         .catch((err) => {
           console.error(err)
