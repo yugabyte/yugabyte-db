@@ -19,7 +19,7 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 ## Notable features and changes (cumulative for the v2.4 stable release series)
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series.
+**Note**: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series.
 
 ## v2.4.1 - Feb 10, 2021
 
@@ -41,7 +41,7 @@ Note: Content will be added as new notable features and changes are available in
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.1.0-b20
+docker pull yugabytedb/yugabyte:2.4.1.0-b22
 ```
 
 ### Improvements
@@ -58,10 +58,12 @@ docker pull yugabytedb/yugabyte:2.4.1.0-b20
 
 #### Core Database
 
+* The YB-TServer metrics output (for example, on [localhost](http://127.0.0.1:13000/metrics)) now shows the total affected rows for each operation. [4600](https://github.com/yugabyte/yugabyte-db/issues/4600)
 * YSQL: Backup for colocated databases [4874](https://github.com/yugabyte/yugabyte-db/issues/4874)
     * Backup: Fix restore of colocated table with `table_oid` already set [6678](https://github.com/yugabyte/yugabyte-db/issues/6678)
 * Metrics thread now start after the first replication stream is created [5251](https://github.com/yugabyte/yugabyte-db/issues/5251)
-* Restore now preserves the exact partitioning of the source tablets [6628](https://github.com/yugabyte/yugabyte-db/issues/)
+* The YB-TServer metrics output (for example, on [localhost](http://127.0.0.1:13000/metrics)) now shows transaction BEGIN, COMMIT, and ROLLBACK statements. [6486](https://github.com/yugabyte/yugabyte-db/issues/6486)
+* Restore now preserves the exact partitioning of the source tablets [6628](https://github.com/yugabyte/yugabyte-db/issues/6628)
 * Enabled a sanity check to ensure that the tablet lookup result matches the partition key [7016](https://github.com/yugabyte/yugabyte-db/issues/7016)
 
 ### Bug Fixes
@@ -73,6 +75,9 @@ docker pull yugabytedb/yugabyte:2.4.1.0-b20
 * VPC cross-linking failed during creation of an AWS provider [6748](https://github.com/yugabyte/yugabyte-db/issues/6748)
 * Fixes to YSQL backups with node-to-node TLS encryption enabled [6965](https://github.com/yugabyte/yugabyte-db/issues/6965)
     * Add certs flags to `ysql_dump` when backing up a node-to-node TLS-enabled universe
+* Corrected an error when backing up multiple YSQL namespaces in a universe that is encrypted at rest [7114](https://github.com/yugabyte/yugabyte-db/issues/7114)
+* Fixed a syntax error in replicated.yml [7180](https://github.com/yugabyte/yugabyte-db/issues/7180)
+* Fixed an issue preventing health checks from using an appropriate TLS version [7196](https://github.com/yugabyte/yugabyte-db/issues/7196)
 
 #### Core Database
 
