@@ -17,7 +17,7 @@ SELECT 1;
         1
 (1 row)
 
-SELECT query FROM pg_stat_monitor ORDER BY query;
+SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
              query              
 --------------------------------
  SELECT $1

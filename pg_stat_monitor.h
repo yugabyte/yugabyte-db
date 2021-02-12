@@ -120,6 +120,8 @@ typedef enum pgssStoreKind
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
 
+/* the assumption of query max nested level */
+#define DEFAULT_MAX_NESTED_LEVEL	10
 
 /*
  * Type of aggregate keys
@@ -161,6 +163,7 @@ typedef struct QueryInfo
 	Oid			userid;						/* user OID */
 	Oid			dbid;						/* database OID */
 	uint		host;						/* client IP */
+	uint64		parentid;					/* parent queryid of current query*/
 	int64       type; 						/* type of query, options are query, info, warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
 	char		relations[REL_LST][REL_LEN];         /* List of relation involved in the query */

@@ -104,7 +104,7 @@ init_guc(void)
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_bucket_time",
 		.guc_desc = "Sets the time in seconds per bucket.",
-		.guc_default = 60,
+		.guc_default = 300,
 		.guc_min = 1,
 		.guc_max = INT_MAX,
 		.guc_restart = true,
@@ -128,7 +128,7 @@ init_guc(void)
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_histogram_max",
 		.guc_desc = "Sets the time in millisecond.",
-		.guc_default = 10,
+		.guc_default = 100000,
 		.guc_min = 10,
 		.guc_max = INT_MAX,
 		.guc_restart = true,

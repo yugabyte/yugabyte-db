@@ -22,7 +22,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.7.0"
-#define PG_STAT_STATEMENTS_COLS         46  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         47  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
@@ -62,6 +62,11 @@ void _PG_fini(void);
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
+
+/* the current max level a query can nested */
+int  cur_max_nested_level;
+/* The array to store outer layer query id*/
+uint64 *nested_queryids;
 
 #if PG_VERSION_NUM >= 130000
 static int	plan_nested_level = 0;
@@ -240,6 +245,9 @@ _PG_init(void)
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
 	ExecutorCheckPerms_hook			= pgss_ExecutorCheckPerms;
 
+	cur_max_nested_level = max_stack_depth;
+	nested_queryids = (uint64*)malloc(sizeof(uint64)*cur_max_nested_level);
+
 	system_init = true;
 }
 
@@ -257,6 +265,9 @@ _PG_fini(void)
 	ExecutorFinish_hook 	= prev_ExecutorFinish;
 	ExecutorEnd_hook 		= prev_ExecutorEnd;
 	ProcessUtility_hook 	= prev_ProcessUtility;
+
+	free(nested_queryids);
+
 	hash_entry_reset();
 }
 
@@ -389,6 +400,12 @@ static void
 pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 				 bool execute_once)
 {
+	nested_queryids[nested_level] = queryDesc->plannedstmt->queryId;
+	if(nested_level + 1 >= cur_max_nested_level)
+	{
+		cur_max_nested_level *= 2;
+		nested_queryids = realloc(nested_queryids, cur_max_nested_level);
+	}
 	nested_level++;
 	PG_TRY();
 	{
@@ -397,10 +414,12 @@ pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 		else
 			standard_ExecutorRun(queryDesc, direction, count, execute_once);
 		nested_level--;
+		nested_queryids[nested_level] = UINT64CONST(0);
 	}
 	PG_CATCH();
 	{
 		nested_level--;
+		nested_queryids[nested_level] = UINT64CONST(0);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -985,6 +1004,11 @@ static void pgss_store(uint64 queryId,
 		_snprintf(e->counters.error.sqlcode, sqlcode, sqlcode_len, SQLCODE_LEN);
 		_snprintf(e->counters.error.message, message, message_len, ERROR_MESSAGE_LEN);
 
+		if(nested_level > 0)
+			e->counters.info.parentid = nested_queryids[nested_level - 1];
+		else
+			e->counters.info.parentid = UINT64CONST(0);
+		
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
 		e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
@@ -1075,6 +1099,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	pgssEntry		     *entry;
 	char			     *query_txt;
 	char			     queryid_txt[64];
+	char			     parentid_txt[64];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
 
@@ -1179,7 +1204,19 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			tmp = e->counters;
 			SpinLockRelease(&e->mutex);
 		}
+
 		values[i++] = CStringGetTextDatum(queryid_txt);
+
+        if (tmp.info.parentid != UINT64CONST(0))
+        {    
+            sprintf(parentid_txt,"%08lX",tmp.info.parentid);
+            values[i++] = CStringGetTextDatum(parentid_txt);
+        }    
+        else 
+        {    
+            nulls[i++] = true;
+        }    
+
 		if (is_allowed_role || entry->key.userid == userid)
 		{
 			if (showtext)
@@ -1205,6 +1242,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		}
 		else
 		{
+			/*skip the query id and parent id*/
+			nulls[i++] = true;
+			nulls[i++] = true;
 			/*
 			 * Don't show query text, but hint as to the reason for not doing
 			 *	so if it was requested
