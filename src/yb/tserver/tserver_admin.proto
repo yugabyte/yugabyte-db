@@ -123,6 +123,9 @@ message BackfillIndexRequestPB {
 
   // Currently only used for YSQL.
   optional string namespace_name = 9;
+
+  // Indexed table ID so we can properly address a colocated table.
+  optional bytes indexed_table_id = 10;
 }
 
 message BackfillIndexResponsePB {
