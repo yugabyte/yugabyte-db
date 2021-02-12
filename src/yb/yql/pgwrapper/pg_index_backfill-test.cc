@@ -31,8 +31,9 @@ namespace pgwrapper {
 
 namespace {
 
-constexpr auto kIndexName = "iii";
+constexpr auto kColoDbName = "colodb";
 constexpr auto kDatabaseName = "yugabyte";
+constexpr auto kIndexName = "iii";
 constexpr auto kTableName = "ttt";
 
 } // namespace
@@ -54,6 +55,8 @@ class PgIndexBackfillTest : public LibPqTestBase {
   }
 
  protected:
+  void TestSimpleBackfill(const std::string& table_create_suffix = "");
+
   std::unique_ptr<PGConn> conn_;
 };
 
@@ -74,9 +77,11 @@ Result<string> GetTableIdByTableName(
 
 } // namespace
 
-// Make sure that backfill works.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (c char, i int, p point)", kTableName));
+void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suffix) {
+  ASSERT_OK(conn_->ExecuteFormat(
+    "CREATE TABLE $0 (c char, i int, p point) $1",
+    kTableName,
+    table_create_suffix));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
@@ -96,6 +101,11 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   ASSERT_EQ(values[0], 0);
   ASSERT_EQ(values[1], 100);
   ASSERT_EQ(values[2], -5);
+}
+
+// Make sure that backfill works.
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+  TestSimpleBackfill();
 }
 
 // Make sure that partial indexes work for index backfill.
@@ -477,6 +487,14 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
     ASSERT_EQ(value, 7);
   }
+}
+
+// Make sure that backfill works in a tablegroup.
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Tablegroup)) {
+  const std::string kTablegroupName = "test_tgroup";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
+
+  TestSimpleBackfill(Format("TABLEGROUP $0", kTablegroupName));
 }
 
 // Override the index backfill test to do alter slowly.
@@ -1355,6 +1373,48 @@ TEST_F_EX(PgIndexBackfillTest,
         kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
   });
   thread_holder_.JoinAll();
+}
+
+// Override the index backfill test class to use colocated tables.
+class PgIndexBackfillColocated : public PgIndexBackfillTest {
+ public:
+  void SetUp() override {
+    LibPqTestBase::SetUp();
+
+    PGConn conn_init = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn_init.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kColoDbName));
+
+    conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kColoDbName)));
+  }
+};
+
+// Make sure that backfill works when colocation is on.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(ColocatedSimple),
+          PgIndexBackfillColocated) {
+  TestSimpleBackfill();
+}
+
+// Make sure that backfill works when there are multiple colocated tables.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(ColocatedMultipleTables),
+          PgIndexBackfillColocated) {
+  // Create two tables with the index on the second table.
+  const std::string kOtherTable = "yyy";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kOtherTable));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100)", kOtherTable));
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (200)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (300)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
+
+  // Index scan to verify contents of index table.
+  const std::string query = Format("SELECT COUNT(*) FROM $0 WHERE i > 0", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
+  int count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  ASSERT_EQ(count, 2);
 }
 
 } // namespace pgwrapper
