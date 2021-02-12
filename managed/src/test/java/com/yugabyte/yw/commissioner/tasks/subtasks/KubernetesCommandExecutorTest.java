@@ -390,19 +390,23 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
-        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+                       /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(expectedConfig.capture(), expectedProviderUUID.capture(),
-                     expectedNodePrefix.capture(), expectedOverrideFile.capture());
+                     expectedNodePrefix.capture(), expectedNamespace.capture(),
+                     expectedOverrideFile.capture());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(namespace, expectedNamespace.getValue());
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
     Yaml yaml = new Yaml();
