@@ -378,6 +378,9 @@ public class HealthChecker {
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
       info.enableYSQL = cluster.userIntent.enableYSQL;
       info.enableYEDIS = cluster.userIntent.enableYEDIS;
+      if (cluster.userIntent.tserverGFlags.containsKey("ssl_protocols")) {
+        info.sslProtocol = cluster.userIntent.tserverGFlags.get("ssl_protocols");
+      }
       // Since health checker only uses CQLSH, we only care about the
       // client to node encryption flag.
       info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;

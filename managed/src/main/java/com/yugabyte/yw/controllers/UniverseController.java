@@ -37,7 +37,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 
-import com.yugabyte.yw.queries.LiveQueryHelper;
+import com.yugabyte.yw.queries.QueryHelper;
 
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -59,11 +59,13 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -95,7 +97,7 @@ public class UniverseController extends AuthenticatedController {
   MetricQueryHelper metricQueryHelper;
 
   @Inject
-  LiveQueryHelper liveQueryHelper;
+  QueryHelper queryHelper;
 
   @Inject
   play.Configuration appConfig;
@@ -514,6 +516,14 @@ public class UniverseController extends AuthenticatedController {
           if (provider.getConfig().containsKey("USE_HOSTNAME")) {
             c.userIntent.useHostname =
               Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+          }
+        }
+
+        if (c.userIntent.providerType.equals(CloudType.kubernetes)) {
+          try {
+            checkK8sProviderAvailability(provider);
+          } catch (IllegalArgumentException e) {
+            return ApiResponse.error(BAD_REQUEST, e.getMessage());
           }
         }
 
@@ -1139,6 +1149,15 @@ public class UniverseController extends AuthenticatedController {
       Cluster c = taskParams.clusters.get(0);
       Provider provider = Provider.find.byId(UUID.fromString(c.userIntent.provider));
       c.userIntent.providerType = CloudType.valueOf(provider.code);
+
+      if (c.userIntent.providerType.equals(CloudType.kubernetes)) {
+        try {
+          checkK8sProviderAvailability(provider);
+        } catch (IllegalArgumentException e) {
+          return ApiResponse.error(BAD_REQUEST, e.getMessage());
+        }
+      }
+
       updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
 
       // Submit the task to create the cluster.
@@ -1602,11 +1621,33 @@ public class UniverseController extends AuthenticatedController {
     }
 
     try {
-      JsonNode resultNode = liveQueryHelper.query(universe);
+      JsonNode resultNode = queryHelper.liveQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
       LOG.error("Universe does not have a private IP or DNS", e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
+    } catch (Throwable t) {
+      LOG.error("Error retrieving queries for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = queryHelper.slowQueries(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      LOG.error("Universe does not have a private IP or DNS", e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
       LOG.error("Error retrieving queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1761,5 +1802,43 @@ public class UniverseController extends AuthenticatedController {
     }
     formNode.remove(listType);
     return gflagMap;
+  }
+
+  /**
+   * Throw an exception if the given provider has an AZ with
+   * KUBENAMESPACE in the config and the provdier has a cluster
+   * associated with it. Providers with namespace setting don't
+   * support multiple clusters.
+   * @param providerToCheck Provider object
+   */
+  private void checkK8sProviderAvailability(Provider providerToCheck) {
+    boolean isNamespaceSet = false;
+    for (Region r : Region.getByProvider(providerToCheck.uuid)) {
+      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+        if (az.getConfig().containsKey("KUBENAMESPACE")) {
+          isNamespaceSet = true;
+        }
+      }
+    }
+
+    if (isNamespaceSet) {
+      for (Universe allUniverseUUIDs : Universe.getAllUuids()) {
+        Universe u = Universe.get(allUniverseUUIDs.universeUUID);
+        List<Cluster> clusters = u.getUniverseDetails().getReadOnlyClusters();
+        clusters.add(u.getUniverseDetails().getPrimaryCluster());
+        for (Cluster c : clusters) {
+          UUID providerUUID = UUID.fromString(c.userIntent.provider);
+          if (providerUUID.equals(providerToCheck.uuid)) {
+            String msg = "Universe " + u.name + " (" + u.universeUUID
+              + ") already exists with provider "
+              + providerToCheck.name + " (" + providerToCheck.uuid
+              + "). Only one universe can be created with providers having KUBENAMESPACE set "
+              + "in the AZ config.";
+            LOG.error(msg);
+            throw new IllegalArgumentException(msg);
+          }
+        }
+      }
+    }
   }
 }

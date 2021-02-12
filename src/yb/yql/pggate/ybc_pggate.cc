@@ -24,6 +24,7 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/pg_memctx.h"
 
 DECLARE_bool(client_suppress_created_logs);
 
@@ -93,6 +94,7 @@ void YBCDestroyPgGate() {
     pggate::PgApiImpl* local_pgapi = pgapi;
     pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
     delete local_pgapi;
+    ClearGlobalPgMemctxMap();
     VLOG(1) << __PRETTY_FUNCTION__ << " finished";
   }
 }
