@@ -76,7 +76,7 @@ class TabletSnapshots : public TabletComponent {
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
   CHECKED_STATUS RestoreCheckpoint(
-      const std::string& dir, const docdb::ConsensusFrontier& frontier);
+      const std::string& dir, HybridTime restore_at, const docdb::ConsensusFrontier& frontier);
 
   // Applies specified snapshot operation.
   CHECKED_STATUS Apply(SnapshotOperationState* tx_state);

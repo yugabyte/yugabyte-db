@@ -22,6 +22,8 @@ import org.junit.runner.RunWith;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
@@ -32,6 +34,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+
 @RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
@@ -315,6 +318,58 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=2", new Row(2, 4, (Integer) null));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=3");
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE id=9999");
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testYSQLIndexBackup() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
+      stmt.execute("CREATE INDEX test_idx ON test_tbl (a)");
+
+      for (int i = 1; i <= 1000; ++i) {
+        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
+          " (" + String.valueOf(i) +                     // h
+          ", " + String.valueOf(100 + i) +               // a
+          ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+      }
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (9999, 8888, 8.9)");
+
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1000", new Row(1000, 1100, 1002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999", new Row(9999, 8888, 8.9));
+
+      // Select via the index.
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=101", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=1100", new Row(1000, 1100, 1002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=8888", new Row(9999, 8888, 8.9));
+    }
+
+    // Add a new node.
+    miniCluster.startTServer(this.tserverArgs);
+    // Wait for node list refresh.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1000", new Row(1000, 1100, 1002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");
+
+      // Select via the index.
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=101", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=1100", new Row(1000, 1100, 1002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=8888");
     }
 
     // Cleanup.

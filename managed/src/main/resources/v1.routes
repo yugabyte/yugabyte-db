@@ -82,10 +82,12 @@ PUT     /customers/:cUUID/releases/:name                                       c
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.delete(cUUID: java.util.UUID, rUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name                                   com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
 GET     /customers/:cUUID/certificates/:rUUID/download                         com.yugabyte.yw.controllers.CertificateController.getRootCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.getClientCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                com.yugabyte.yw.controllers.CertificateController.updateEmptyCustomCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
+
 
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
@@ -133,6 +135,7 @@ POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             c
 PUT     /customers/:cUUID/universes/:uniUUID/mark_helm3_compatible             com.yugabyte.yw.controllers.UniverseController.setHelm3Compatible(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/live_queries                      com.yugabyte.yw.controllers.UniverseController.getLiveQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/reset_version                     com.yugabyte.yw.controllers.UniverseController.resetVersion(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -201,7 +204,7 @@ GET    /third_party_logout                                                     @
 PUT    /settings/ha/config/:cUUID/replication_schedule/start                   com.yugabyte.yw.controllers.PlatformReplicationController.startPeriodicBackup(cUUID: java.util.UUID)
 PUT    /settings/ha/config/:cUUID/replication_schedule/stop                    com.yugabyte.yw.controllers.PlatformReplicationController.stopPeriodicBackup(cUUID: java.util.UUID)
 GET    /settings/ha/config/:cUUID/replication_schedule                         com.yugabyte.yw.controllers.PlatformReplicationController.getBackupInfo(cUUID: java.util.UUID)
-GET    /settings/ha/backup/list                                                com.yugabyte.yw.controllers.PlatformReplicationController.listBackups
+GET    /settings/ha/config/:cUUID/backup/list                                  com.yugabyte.yw.controllers.PlatformReplicationController.listBackups(cUUID: java.util.UUID, leader: String ?= null)
 
 # HA Configuration API
 GET    /settings/ha/generate_key                                               com.yugabyte.yw.controllers.HAController.generateClusterKey
@@ -213,10 +216,11 @@ DELETE /settings/ha/config/:cUUID                                              c
 # HA Platform Instance API
 POST   /settings/ha/config/:cUUID/instance                                     com.yugabyte.yw.controllers.PlatformInstanceController.createInstance(cUUID: java.util.UUID)
 DELETE /settings/ha/config/:cUUID/instance/:iUUID                              com.yugabyte.yw.controllers.PlatformInstanceController.deleteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID)
-POST   /settings/ha/config/:cUUID/instance/:iUUID/promote                      com.yugabyte.yw.controllers.PlatformInstanceController.promoteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID)
-GET    /settings/ha/config/:cUUID/instance/leader                              com.yugabyte.yw.controllers.PlatformInstanceController.getLeader(cUUID: java.util.UUID)
+POST   /settings/ha/config/:cUUID/instance/:iUUID/promote                      com.yugabyte.yw.controllers.PlatformInstanceController.promoteInstance(cUUID: java.util.UUID, iUUID: java.util.UUID, curLeader: String ?= null)
 GET    /settings/ha/config/:cUUID/instance/local                               com.yugabyte.yw.controllers.PlatformInstanceController.getLocal(cUUID: java.util.UUID)
 
 # HA API for inter-node communication
 GET    /settings/ha/internal/config                                            com.yugabyte.yw.controllers.InternalHAController.getHAConfigByClusterKey
-PUT    /settings/ha/internal/config/:cUUID                                     com.yugabyte.yw.controllers.InternalHAController.syncInstances(cUUID: java.util.UUID)
+PUT    /settings/ha/internal/config/demote_leader/:timestamp                   com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: java.lang.Long)
+PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: java.lang.Long)
+POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()

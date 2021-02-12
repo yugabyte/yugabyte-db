@@ -23,7 +23,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressTablespaces extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    return 500;
   }
 
   @Test

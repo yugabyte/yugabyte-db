@@ -3,9 +3,6 @@ title: FAQs about the Yugabyte Platform and YugaWare
 headerTitle: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about the Yugabyte Platform and YugaWare.
-aliases:
-  - /stable/faq/enterprise-edition/
-block_indexing: true
 menu:
   stable:
     identifier: faq-yugabyte-platform

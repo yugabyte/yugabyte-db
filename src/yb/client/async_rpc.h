@@ -86,6 +86,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
+  Trace *trace() { return trace_.get(); }
 
  protected:
   void Finished(const Status& status) override;
@@ -119,7 +120,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   TabletInvoker tablet_invoker_;
 
-  MonoTime start_;
+  CoarseTimePoint start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
   rpc::RpcCommandPtr retained_self_;
 };

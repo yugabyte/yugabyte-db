@@ -14,7 +14,7 @@ showAsideToc: true
 
 Before trying the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/).
 
-Start by defining an example undirected cyclic graph and by computing all the paths from a selected starting node:
+Start by defining an example undirected cyclic graph and by computing all the paths from a selected start node:
 
 ```plpgsql
 delete from edges;
@@ -44,7 +44,7 @@ from edges;
 Re-create the simpler implementation of _"find_paths()"_ that implements the cycle prevention code, shown at [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql). Now generate the paths that start at the node _"n01"_, restrict these to just the shortest paths, and restrict these further to the set of longest unique containing paths:
 
 ```plpgsql
-call find_paths(seed => 'n01');
+call find_paths(start_node => 'n01');
 call restrict_to_shortest_paths('raw_paths', 'temp_paths');
 call restrict_to_unq_containing_paths('temp_paths', 'unq_containing_paths');
 \t on
@@ -90,5 +90,5 @@ These are longest paths from the unique containing paths of the raw paths. Here 
 
 ![unq-containing-paths-2](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/unq-containing-paths-2.jpg)
 
-These two pictures together provide a very compact way to understand the meaning of the set of twenty-six distinct raw paths produced by `call find_paths(seed=>'n01')`. 
+These two pictures together provide a very compact way to understand the meaning of the set of twenty-six distinct raw paths produced by `call find_paths(start_node=>'n01')`. 
 

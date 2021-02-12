@@ -3,8 +3,6 @@ title: Migrate from Helm 2 to Helm 3
 headerTitle: Migrate from Helm 2 to Helm 3
 linkTitle: Migrate to Helm 3
 description: Migrate your YugabyteDB universes and Yugabyte Platform from Helm 2 to Helm 3.
-aliases:
-  - /stable/manage/enterprise-edition/migrate-to-helm3/
 menu:
   stable:
     identifier: migrate-to-helm3
@@ -31,7 +29,7 @@ $ helm2 ls
 
 ```
 NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.3 2.2.3.0-b35 	yw-test  
+yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test  
 ```
 
 2. Migrate the chart to Helm 3 using the `2to3` plugin by running the following command.
@@ -61,7 +59,7 @@ $ helm ls -n yw-test
 
 ```
 NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
-yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.3	2.2.3.0-b35 
+yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80 
 ```
 
 ## Upgrade Yugabyte Platform and YugabyteDB using Helm 3

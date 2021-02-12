@@ -26,7 +26,7 @@ Before starting and running YugabyteDB with Hasura, you need to add the Yugabyte
 $ export YB_SUPPRESS_UNSUPPORTED_ERROR=1
 ```
 
-If you're new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+If you're new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/latest/quick-start/).
 
 ### Install and start Hasura
 

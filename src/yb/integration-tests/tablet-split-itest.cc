@@ -430,11 +430,20 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
 }
 
 void TabletSplitITest::WaitForTestTableTabletsCompactionFinish(MonoDelta timeout) {
-  for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
-    ASSERT_OK(WaitFor([&peer] {
-      return peer->tablet()->metadata()->has_been_fully_compacted();
+  ASSERT_OK(WaitFor([this] ()-> Result<bool> {
+    bool all_fully_compacted = true;
+    auto list = ListPostSplitChildrenTabletPeers();
+    if (!list.ok()) {
+      return false;
+    }
+    for (auto peer : list.get()) {
+      if (!peer->tablet_metadata()->has_been_fully_compacted()) {
+          all_fully_compacted = false;
+          break;
+      }
+    }
+    return all_fully_compacted;
     }, timeout * kTimeMultiplier, "Wait for post tablet split compaction to be completed"));
-  }
 }
 
 Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListSplitCompleteTabletPeers() {
@@ -754,7 +763,7 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
   ASSERT_OK(SplitTabletAndValidate(split_hash_code, kNumRows));
 
   auto test_table_id = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName)).table_id;
-  // Verify that heartbeat contains flag processing_parent_data for all tablets of the test
+  // Verify that heartbeat contains flag should_disable_lb_move for all tablets of the test
   // table on each tserver to have after split
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
@@ -775,11 +784,11 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
       if (tablets.find(reported_tablet.tablet_id()) == tablets.end()) {
         continue;
       }
-      EXPECT_TRUE(reported_tablet.processing_parent_data());
+      EXPECT_TRUE(reported_tablet.should_disable_lb_move());
     }
   }
 
-  // Wait for the flag processing_parent_data to be propagated to master through heartbeat
+  // Wait for the flag should_disable_lb_move to be propagated to master through heartbeat
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
 
   // Add new tserver in to force load balancer moves.

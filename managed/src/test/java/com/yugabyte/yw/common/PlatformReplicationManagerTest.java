@@ -32,6 +32,8 @@ import java.util.Map;
 
 import static org.mockito.Mockito.*;
 
+// TODO: (Daniel) - Add unit tests!!!!!!
+
 @RunWith(JUnitParamsRunner.class)
 public class PlatformReplicationManagerTest extends TestCase {
   @Mock
@@ -104,6 +106,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     expectedCommandArgs.add("--prometheus_host");
     expectedCommandArgs.add(prometheusHost);
     expectedCommandArgs.add("--verbose");
+    expectedCommandArgs.add("--skip_restart");
 
     return expectedCommandArgs;
   }

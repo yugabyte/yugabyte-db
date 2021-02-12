@@ -407,7 +407,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 
 void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
-							 Oid relationId, Oid namespaceId, Oid tablegroupId)
+							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId)
 {
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE)
 	{
@@ -487,6 +487,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   primary_key == NULL /* add_primary_key */,
 									   colocated,
 									   tablegroupId,
+									   tablespaceId,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, colocated, tablegroupId);
@@ -694,7 +695,8 @@ YBCCreateIndex(const char *indexName,
 			   Relation rel,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
-			   Oid tablegroupId)
+			   Oid tablegroupId,
+			   Oid tablespaceId)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -718,6 +720,7 @@ YBCCreateIndex(const char *indexName,
 									   skip_index_backfill,
 									   false, /* if_not_exists */
 									   tablegroupId,
+									   tablespaceId,
 									   &handle));
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)

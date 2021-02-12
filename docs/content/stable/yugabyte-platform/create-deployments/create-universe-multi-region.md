@@ -3,8 +3,6 @@ title: Create a multi-region universe
 headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
-aliases:
-  - /stable/manage/enterprise-edition/create-universe-multi-region
 menu:
   stable:
     identifier: create-universe-multi-region
@@ -23,12 +21,12 @@ This section will describe how to create a universe spanning multiple geographic
 
 ## 1. Create the universe
 
-We are going to enter the following values to create a multi-region universe on [GCP](../../../deploy/enterprise-edition/configure-providers/gcp) cloud provider. Click **Create Universe** and enter the following intent.
+We are going to enter the following values to create a multi-region universe on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider. Click **Create Universe** and enter the following intent.
 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**
 - Change instance type: **n1-standard-8**
-- Add the following G-Flag for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
+- Add the following flag for Master and T-Server: `leader_failure_max_missed_heartbeat_periods = 10`. Because the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
 
 Click **Create**.
 
@@ -40,7 +38,7 @@ Wait for the universe to get created. Note that Yugabyte Platform can manage mul
 
 ![Multiple universes in Yugabyte Platform console](/images/ee/multi-region-multiple-universes.png)
 
-Once the universe is created, you should see something like the screenshot below in the unverse overview.
+Once the universe is created, you should see something like the screenshot below in the universe overview.
 
 ![Nodes for a Pending Universe](/images/ee/multi-region-universe-overview.png)
 
@@ -54,11 +52,11 @@ Browse to the cloud provider's instances page. In this example, since we are usi
 
 ![Instances for a Pending Universe](/images/ee/multi-region-universe-gcp-instances.png)
 
-## 3. Run a global app
+## 3. Run a global application
 
 In this section, we are going to connect to each node and perform the following:
 
-- Run the CassandraKeyValue workload
+- Run the `CassandraKeyValue` workload
 - Write data with global consistency (higher latencies because we chose nodes in far away regions)
 - Read data from the local data center (low latency, timeline-consistent reads)
 
@@ -86,9 +84,9 @@ $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 $ sudo su - yugabyte
 ```
 
-3. Export the `YCQL_ENDPOINTS` env variable.
+3. Export the `YCQL_ENDPOINTS` environment variable.
 
-Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in Yugabyte Platform console and click on the `YCQL Endpoints` link. This should open a new tab with a list of IP addresses. 
+Export an environment variable telling us the IP addresses for nodes in the cluster. Browse to the **Universe Overview** tab in Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
 
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
@@ -125,8 +123,8 @@ You can find the region codes for each of the nodes by browsing to the **Nodes**
 
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
-* Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-* Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
+- Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
+- Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
 Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 
@@ -137,4 +135,4 @@ Note the following:
 * Write latency is **139ms** because it has to replicate data to a quorum of nodes across multiple geographic regions.
 * Read latency is **0.23 ms** across all regions. Note that the app is performing **100K reads/sec** across the regions (about 33K reads/sec in each region).
 
-It is possible to repeat the same experiment with the RedisKeyValue app and get similar results.
+It is possible to repeat the same experiment with the `RedisKeyValue` app and get similar results.

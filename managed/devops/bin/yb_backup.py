@@ -516,6 +516,11 @@ class KubernetesDetails():
         self.pod_name = server_fqdn.split('.')[0]
         # The pod names are yb-master-n/yb-tserver-n where n is the pod number
         # and yb-master/yb-tserver are the container names.
+
+        # TODO(bhavin192): need to change in case of multiple releases
+        # in one namespace. Something like find the word 'master' in
+        # the name.
+
         self.container = self.pod_name.rsplit('-', 1)[0]
         self.env_config = os.environ.copy()
         self.env_config["KUBECONFIG"] = config_map[self.namespace]
@@ -1183,7 +1188,7 @@ class YBBackup:
                 'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
                 num_retry=num_retries)
         else:
-            return self.run_program(['bash', '-c', pipes.quote(cmd)])
+            return self.run_program(['bash', '-c', cmd])
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -1653,11 +1658,11 @@ class YBBackup:
         :param tserver_ip: tablet server ip
         """
         try:
-            self.run_ssh_cmd(['find', self.args.nfs_storage_path], tserver_ip)
+            self.run_ssh_cmd(['ls', self.args.nfs_storage_path], tserver_ip)
         except Exception as ex:
             raise BackupException(
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
-                % (self.args.nfs_storage_path, tserver_ip)))
+                 % (self.args.nfs_storage_path, tserver_ip)))
 
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """

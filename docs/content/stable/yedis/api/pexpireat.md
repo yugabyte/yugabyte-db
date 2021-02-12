@@ -2,14 +2,10 @@
 title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2234
-aliases:
-  - /stable/api/redis/pexpireat
-  - /stable/api/yedis/pexpireat
 isTocNested: true
 showAsideToc: true
 ---

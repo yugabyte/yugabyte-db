@@ -3,7 +3,6 @@ title: Build a Python application that uses YSQL and aiopg
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a sample Python application with aiopg that uses YSQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
