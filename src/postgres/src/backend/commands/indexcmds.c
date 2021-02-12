@@ -446,12 +446,6 @@ DefineIndex(Oid relationId,
 	 */
 	if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
 		stmt->concurrent = false;
-	/*
-	 * Backfilling indexes whose indexed table is colocated is currently not
-	 * supported.  See issue #6215.
-	 */
-	if (is_indexed_table_colocated)
-		stmt->concurrent = false;
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard

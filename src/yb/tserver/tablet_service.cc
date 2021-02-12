@@ -706,7 +706,8 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
+  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map(
+    req->indexed_table_id());
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
@@ -731,7 +732,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
-      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet matadata";
+      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet metadata";
       all_at_backfill = false;
       all_past_backfill = false;
     }
