@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import smtplib
+import re
 import subprocess
 import sys
 import time
@@ -50,6 +51,14 @@ EMAIL_USERNAME = os.environ.get("YB_ALERTS_USERNAME", None)
 EMAIL_PASSWORD = os.environ.get("YB_ALERTS_PASSWORD", None)
 SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "true")
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "false")
+DEFAULT_SSL_VERSION = "TLSv1_2"
+SSL_PROTOCOL_TO_SSL_VERSION = {
+    "ssl2": "SSLv23",
+    "ssl3": "SSLv23",
+    "tls10": "TLSv1",
+    "tls11": "TLSv1_1",
+    "tls12": "TLSv1_2"
+}
 
 ###################################################################################################
 # Reporting
@@ -373,18 +382,16 @@ class NodeChecker():
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
             cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
+            protocols = re.split('\\W+', self.ssl_protocol or "")
+            ssl_version = DEFAULT_SSL_VERSION
+            for protocol in protocols:
+                cur_version = SSL_PROTOCOL_TO_SSL_VERSION.get(protocol)
+                if cur_version is not None:
+                    ssl_version = cur_version
+                    break
 
-            remote_cmd = 'SSL_CERTFILE={} {} {}'.format(cert_file, remote_cmd, '--ssl')
-            if self.ssl_protocol is not None:
-                SSL_PROTOCOL_TO_SSL_VERSION = {
-                    "ssl2": "SSLv23",
-                    "ssl3": "SSLv23",
-                    "tls10": "TLSv1",
-                    "tls11": "TLSv1_1",
-                    "tls12": "TLSv1_2"
-                }
-                protocol = SSL_PROTOCOL_TO_SSL_VERSION.get(self.ssl_protocol)
-                remote_cmd = 'SSL_VERSION={} {}'.format(protocol, remote_cmd)
+            remote_cmd = 'SSL_VERSION={} SSL_CERTFILE={} {} {}'.format(
+                ssl_version, cert_file, remote_cmd, '--ssl')
 
         output = self._remote_check_output(remote_cmd).strip()
 
