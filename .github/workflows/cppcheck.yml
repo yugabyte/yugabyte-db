@@ -1,0 +1,15 @@
+name: cppcheck-action-test
+on: [push]
+
+jobs:
+  build:
+    name: cppcheck-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install cppcheck
+        run: sudo apt-get install cppcheck
+
+      - name: Prepare for install postgresql
+        run: sudo cppcheck --enable=all --error-exitcode=1 .
