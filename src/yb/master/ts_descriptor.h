@@ -194,7 +194,7 @@ class TSDescriptor {
     hybrid_time_ = hybrid_time;
   }
 
- HybridTime hybrid_time() const {
+  HybridTime hybrid_time() const {
     SharedLock<decltype(lock_)> l(lock_);
     return hybrid_time_;
   }
