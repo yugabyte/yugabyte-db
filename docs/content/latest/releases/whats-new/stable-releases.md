@@ -41,13 +41,15 @@ Included here are the release notes for all releases in the v2.4 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.1.0-b22
+docker pull yugabytedb/yugabyte:2.4.1.0-b24
 ```
 
 ### Improvements
 
 #### Yugabyte Platform
 
+* When creating/restoring backups, use the local UNIX socket to connect to YSQL instead of the hostname
+if authentication is enabled [5571](https://github.com/yugabyte/yugabyte-db/issues/5571)
 * Optimizations to theYSQL layer to apply empty deletes only when required [5686](https://github.com/yugabyte/yugabyte-db/issues/5686)
 * On universe creation, platform checks that clocks are synchronized [6017](https://github.com/yugabyte/yugabyte-db/issues/6017)
 * Health Check generates alerts if it isn't running [6581](https://github.com/yugabyte/yugabyte-db/issues/6581)
@@ -55,6 +57,7 @@ docker pull yugabytedb/yugabyte:2.4.1.0-b22
 * Retrying a failed task now provides visual feedback [6820](https://github.com/yugabyte/yugabyte-db/issues/6820)
 * Removed the “Transactions” plot line from YSQL Ops and Latency graphs  [6839](https://github.com/yugabyte/yugabyte-db/issues/6839)
 * You can now specify a minimum TLS version for Platform [6893](https://github.com/yugabyte/yugabyte-db/issues/6893), [7140](https://github.com/yugabyte/yugabyte-db/issues/7140)
+* Health checks now default to TLS 1.2 [7196](https://github.com/yugabyte/yugabyte-db/issues/7196)
 
 #### Core Database
 
