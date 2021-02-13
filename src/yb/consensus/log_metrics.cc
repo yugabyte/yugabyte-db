@@ -38,11 +38,9 @@ METRIC_DEFINE_counter(tablet, log_bytes_logged, "Bytes Written to WAL",
                       yb::MetricUnit::kBytes,
                       "Number of bytes logged since service start");
 
-METRIC_DEFINE_counter(tablet, log_num_of_wals, "Number of Wals",
+METRIC_DEFINE_counter(tablet, log_wal_files, "Number of Wal Files",
                       yb::MetricUnit::kUnits,
-                      "Number of wals");
-
-
+                      "Number of wal files");
 
 METRIC_DEFINE_histogram(tablet, log_sync_latency, "Log Sync Latency",
                         yb::MetricUnit::kMicroseconds,
@@ -75,6 +73,7 @@ namespace log {
 #define MINIT(x) x(METRIC_log_##x.Instantiate(metric_entity))
 LogMetrics::LogMetrics(const scoped_refptr<MetricEntity>& metric_entity)
     : MINIT(bytes_logged),
+      MINIT(wal_files),
       MINIT(sync_latency),
       MINIT(append_latency),
       MINIT(group_commit_latency),
