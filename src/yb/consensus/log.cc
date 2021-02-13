@@ -1372,6 +1372,10 @@ Status Log::SwitchToAllocatedSegment() {
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
   RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
 
+  if (metrics_) {
+    metrics_->wal_files->Increment();
+  }
+
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
       new WritableLogSegment(new_segment_path, next_segment_file_));

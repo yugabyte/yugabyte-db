@@ -38,6 +38,12 @@ METRIC_DEFINE_counter(tablet, log_bytes_logged, "Bytes Written to WAL",
                       yb::MetricUnit::kBytes,
                       "Number of bytes logged since service start");
 
+METRIC_DEFINE_counter(tablet, log_num_of_wals, "Number of Wals",
+                      yb::MetricUnit::kUnits,
+                      "Number of wals");
+
+
+
 METRIC_DEFINE_histogram(tablet, log_sync_latency, "Log Sync Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on synchronizing the log segment file",
