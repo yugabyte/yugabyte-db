@@ -66,8 +66,6 @@ class HeartbeatDataProvider {
 
  private:
   TabletServer& server_;
-  // Roundtrip time of previous heartbeat to yb-master.
-  MonoDelta heartbeat_rtt_ = MonoDelta::kZero;
 };
 
 // Component of the Tablet Server which is responsible for heartbeating to the
