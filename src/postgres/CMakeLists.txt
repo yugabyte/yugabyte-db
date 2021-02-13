@@ -23,6 +23,10 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER
          " -Wno-maybe-uninitialized"
          " -Wno-stringop-truncation")
 endif()
+if("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_LESS_EQUAL "5.5.0")
+  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+         " -Wno-error=attributes")
+endif()
 
 set(POSTGRES_EXTRA_LD_FLAGS "")
 if(NOT APPLE AND
