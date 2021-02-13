@@ -49,6 +49,7 @@ struct LogMetrics {
 
   // Global stats
   scoped_refptr<Counter> bytes_logged;
+  scoped_refptr<Counter> wal_files;
 
   // Per-group group commit stats
   scoped_refptr<Histogram> sync_latency;
