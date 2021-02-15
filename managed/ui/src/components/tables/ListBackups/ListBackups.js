@@ -355,7 +355,7 @@ export default class ListBackups extends Component {
       if (row.backupList && row.backupList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-globe" aria-hidden="true"></i> Universe backup
+            <i className="fa fa-globe" aria-hidden="true"></i> {item===YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
           </div>
         );
       } else if (row.tableUUIDList && row.tableUUIDList.length) {
