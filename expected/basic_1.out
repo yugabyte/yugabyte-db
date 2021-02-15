@@ -1,0 +1,35 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+select pg_sleep(.5);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                            query                             
+--------------------------------------------------------------
+ SELECT $1
+ SELECT pg_stat_monitor_reset()
+ SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C"
+ select pg_sleep($1)
+(4 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

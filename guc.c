@@ -68,7 +68,7 @@ init_guc(void)
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_track_utility",
 		.guc_desc = "Selects whether utility commands are tracked.",
-		.guc_default = 0,
+		.guc_default = 1,
 		.guc_min = 0,
 		.guc_max = 0,
 		.guc_restart = false,
