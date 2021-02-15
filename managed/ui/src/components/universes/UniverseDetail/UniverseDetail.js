@@ -195,6 +195,8 @@ class UniverseDetail extends Component {
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
+    const activePrice = universe?.currentUniverse?.data?.resources?.pricePerHour;
+    const pasuedPrice = universe?.currentUniverse?.data?.resources?.ebsPricePerHour;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -431,7 +433,7 @@ class UniverseDetail extends Component {
         <br />
         {!universePaused &&
           <>
-            <h5>Active: $??/hr → Paused: $??/hr</h5>
+            <h5>Active: ${activePrice}/hr → Paused: ${pasuedPrice}/hr</h5>
             <br />
             <span>When your universe is paused:</span>
             <ul className="toggle-universe-list">
