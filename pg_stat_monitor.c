@@ -246,7 +246,7 @@ _PG_init(void)
 	ExecutorCheckPerms_hook			= pgss_ExecutorCheckPerms;
 
 	cur_max_nested_level = max_stack_depth;
-	nested_queryids = (uint64*)malloc(sizeof(uint64)*cur_max_nested_level);
+	nested_queryids = (uint64*)palloc0(sizeof(uint64)*cur_max_nested_level);
 
 	system_init = true;
 }
@@ -1008,7 +1008,7 @@ static void pgss_store(uint64 queryId,
 			e->counters.info.parentid = nested_queryids[nested_level - 1];
 		else
 			e->counters.info.parentid = UINT64CONST(0);
-		
+
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
 		e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
@@ -1208,14 +1208,14 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = CStringGetTextDatum(queryid_txt);
 
         if (tmp.info.parentid != UINT64CONST(0))
-        {    
+		{
             sprintf(parentid_txt,"%08lX",tmp.info.parentid);
             values[i++] = CStringGetTextDatum(parentid_txt);
-        }    
-        else 
-        {    
+        }
+        else
+        {
             nulls[i++] = true;
-        }    
+        }
 
 		if (is_allowed_role || entry->key.userid == userid)
 		{
@@ -1263,6 +1263,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		{
 			int     j;
 			char    *text_str = palloc0(1024);
+			char    *tmp_str = palloc0(1024);
 			bool    first = true;
 
 			/* Need to calculate the actual size, and avoid unnessary memory usage */
@@ -1274,8 +1275,10 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 					first = false;
 					continue;
 				}
-				snprintf(text_str, 1024, "%s,%s", text_str, tmp.info.relations[j]);
+				snprintf(tmp_str, 1024, "%s,%s", text_str, tmp.info.relations[j]);
+				snprintf(text_str, 1024, "%s", tmp_str);
 			}
+			pfree(tmp_str);
 			values[i++] = CStringGetTextDatum(text_str);
 		}
 		else
