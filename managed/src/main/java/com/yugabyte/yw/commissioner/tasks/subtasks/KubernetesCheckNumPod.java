@@ -66,6 +66,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
+    public String namespace;
     public int podNum = 0;
     public Map<String, String> config = null;
   }
@@ -106,7 +107,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     if (taskParams().config == null) {
       config = Provider.get(taskParams().providerUUID).getConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix);
+    ShellResponse podResponse = kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     if (podInfos.path("items").size() == taskParams().podNum) {
       return true;

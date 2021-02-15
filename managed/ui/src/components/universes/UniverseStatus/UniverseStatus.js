@@ -48,6 +48,7 @@ export default class UniverseStatus extends Component {
     const updateInProgress = universeDetails.updateInProgress;
     const updateSucceeded = universeDetails.updateSucceeded;
     const universePaused = universeDetails.universePaused;
+    const errorString = universeDetails.errorString;
     let statusClassName = 'unknown';
     let statusText = '';
     const universePendingTask = isNonEmptyArray(customerTaskList)
@@ -123,9 +124,16 @@ export default class UniverseStatus extends Component {
         }
         statusClassName = 'pending';
       } else if (!updateInProgress && !updateSucceeded) {
-        statusClassName = 'bad';
-        if (showLabelText) {
-          statusText = 'Error';
+        if (errorString === 'Preflight checks failed.') {
+          statusClassName = 'warning';
+          if (showLabelText) {
+            statusText = 'Ready';
+          }
+        } else {
+          statusClassName = 'bad';
+          if (showLabelText) {
+            statusText = 'Error';
+          }
         }
         statusDisplay = (
           <div>

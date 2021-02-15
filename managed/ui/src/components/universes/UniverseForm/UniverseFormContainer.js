@@ -12,6 +12,7 @@ import {
   getInstanceTypeList,
   getRegionList,
   getRegionListResponse,
+  getInstanceTypeListLoading,
   getInstanceTypeListResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
@@ -123,8 +124,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider)).then((response) => {
+    getInstanceTypeListItems: (provider, zones) => {
+      dispatch(getInstanceTypeListLoading());
+      dispatch(getInstanceTypeList(provider, zones)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
@@ -300,7 +302,7 @@ function mapStateToProps(state, ownProps) {
       instanceType: 'c5.large',
       accessKeyCode: 'yugabyte-default',
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
       enableYEDIS: false,
@@ -315,7 +317,7 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
       enableYEDIS: false,

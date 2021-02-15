@@ -30,7 +30,9 @@
 // under the License.
 //
 
+#include <functional>
 #include <string>
+#include <system_error>
 #include <vector>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -43,11 +45,17 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/tablet_server.h"
 
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -56,6 +64,7 @@
 using namespace std::literals;
 
 DECLARE_int32(TEST_yb_num_total_tablets);
+DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
 
@@ -64,6 +73,7 @@ namespace yb {
 namespace client {
 
 const int kNumTabletServerReplicas = 3;
+const int kHeartbeatIntervalMs = 500;
 
 using std::shared_ptr;
 using std::string;
@@ -92,7 +102,9 @@ class MasterFailoverTest : public YBTest {
     opts_.extra_tserver_flags.push_back("--heartbeat_max_failures_before_backoff=1");
     // Wait for 500 ms after 'max_consecutive_failed_heartbeats'
     // before trying again (down from 1 second).
-    opts_.extra_tserver_flags.push_back("--heartbeat_interval_ms=500");
+    string heartbeat_interval_flag =
+                "--heartbeat_interval_ms="+std::to_string(kHeartbeatIntervalMs);
+    opts_.extra_tserver_flags.push_back(heartbeat_interval_flag);
   }
 
   void SetUp() override {
@@ -465,6 +477,66 @@ TEST_F(MasterFailoverTest, TestFailoverAfterTsFailure) {
   }, MonoDelta::FromSeconds(30), "Wait for LB idle"));
 
   cluster_->AssertNoCrashes();
+}
+
+TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
+  // Original cluster is RF3 so add a TS.
+  LOG(INFO) << "Adding a T-Server.";
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  // Create a table to introduce some workload.
+  YBTableName table_name(YQL_DATABASE_CQL, "test", "testLoadMoveCompletion");
+  ASSERT_OK(CreateTable(table_name, kWaitForCreate));
+
+  // Give some time for the cluster balancer to balance tablets.
+  std::function<Result<bool> ()> is_idle = [&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  };
+  ASSERT_OK(WaitFor(is_idle,
+                MonoDelta::FromSeconds(60),
+                "Load Balancer Idle check failed"));
+
+  // Delay TS Heartbeats by 40 times of original rate.
+  ASSERT_OK(cluster_->SetFlagOnTServers("heartbeat_interval_ms",
+                            std::to_string(kHeartbeatIntervalMs * 40)));
+
+  // Wait for the delay to take effect.
+  // Approximately let's give it 4 cycles.
+  SleepFor(MonoDelta::FromMilliseconds(4 * kHeartbeatIntervalMs));
+
+  // Blacklist a TS.
+  ExternalMaster *leader = cluster_->GetLeaderMaster();
+  ExternalTabletServer *ts = cluster_->tablet_server(3);
+  ASSERT_OK(cluster_->AddTServerToBlacklist(leader, ts));
+
+  // Get the initial load.
+  int idx = -1;
+  ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
+
+  std::shared_ptr<master::MasterServiceProxy> proxy = cluster_->master_proxy(idx);
+
+  rpc::RpcController rpc;
+  master::GetLoadMovePercentRequestPB req;
+  master::GetLoadMovePercentResponsePB resp;
+  ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+
+  int initial_total_load = resp.total();
+
+  // Failover the leader.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // Get the final load and validate.
+  req.Clear();
+  resp.Clear();
+  rpc.Reset();
+
+  ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
+
+  proxy = cluster_->master_proxy(idx);
+  ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+
+  EXPECT_EQ(resp.total(), initial_total_load) << "Expected the initial blacklisted load"
+                                  " to be propagated to new leader master.";
 }
 
 class MasterFailoverTestWithPlacement : public MasterFailoverTest {

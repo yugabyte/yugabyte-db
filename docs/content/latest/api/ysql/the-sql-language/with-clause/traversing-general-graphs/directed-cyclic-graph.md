@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a directed cyclic graph
+title: Using a recursive CTE to traverse a directed cyclic graph
 headerTitle: Finding the paths in a directed cyclic graph
 linkTitle: directed cyclic graph
-description: This section shows how to use a WITH clause recursive substatement to traverse a directed cyclic graph.
+description: This section shows how to use a recursive CTE to traverse a directed cyclic graph.
 menu:
   latest:
     identifier: directed-cyclic-graph
@@ -37,7 +37,7 @@ Now reinstate the implementation of _"find_paths()"_ shown at [cr-find-paths-wit
 Find all the paths from _"n2"_ and create the filtered subset of shortest paths to the distinct terminal nodes:
 
 ```plpgsql
-call find_paths(seed => 'n2');
+call find_paths(start_node => 'n2');
 call restrict_to_shortest_paths('raw_paths', 'shortest_paths');
 ```
 

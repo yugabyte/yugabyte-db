@@ -4,10 +4,7 @@ headerTitle: DocDB replication layer
 linkTitle: DocDB replication layer
 description: Learn how synchronous and asynchronous replication work in DocDB, including advanced features like xCluster replication and read replicas.
 image: /images/section_icons/architecture/concepts.png
-aliases:
-  - /stable/architecture/docdb/replication/
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
-block_indexing: true
 menu:
   stable:
     identifier: architecture-docdb-replication

@@ -3,14 +3,6 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
-aliases:
-  - /stable/faq/product/
-  - /stable/introduction/overview/
-  - /stable/introduction/benefits/
-  - /stable/introduction/core-features/
-  - /stable/introduction/
-  - /stable/faq/architecture/
-block_indexing: true
 menu:
   stable:
     identifier: faq-general
@@ -239,7 +231,7 @@ YugabyteDB has had 8 major releases.
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-The next major release is the v2.3 release in Fall 2020. Roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+The next major release is the v2.4 release in January 2021. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 

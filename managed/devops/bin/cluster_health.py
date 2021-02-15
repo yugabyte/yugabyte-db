@@ -147,7 +147,7 @@ def check_output(cmd, env):
             return 'Error executing command {}: timeout occurred'.format(cmd)
 
         output, stderr = command.communicate()
-        return output.decode('utf-8').encode("ascii", "ignore")
+        return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
@@ -168,6 +168,11 @@ class KubernetesDetails():
         self.pod_name = node_fqdn.split('.')[0]
         # The pod names are yb-master-n/yb-tserver-n where n is the pod number
         # and yb-master/yb-tserver are the container names.
+
+        # TODO(bhavin192): need to change in case of multiple releases
+        # in one namespace. Something like find the word 'master' in
+        # the name.
+
         self.container = self.pod_name.rsplit('-', 1)[0]
         self.config = config_map[self.namespace]
 
@@ -175,13 +180,15 @@ class KubernetesDetails():
 class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
-                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client):
+                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
+                 ssl_protocol):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
         self.enable_tls_client = enable_tls_client
+        self.ssl_protocol = ssl_protocol
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
         self.k8s_details = None
@@ -249,6 +256,9 @@ class NodeChecker():
 
         # Do not process the headers.
         lines = output.split('\n')
+        if len(lines) < 2:
+            return e.fill_and_return_entry([output], True)
+
         msgs.append(lines[0])
         for line in lines[1:]:
             msgs.append(line)
@@ -373,6 +383,16 @@ class NodeChecker():
             cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
 
             remote_cmd = 'SSL_CERTFILE={} {} {}'.format(cert_file, remote_cmd, '--ssl')
+            if self.ssl_protocol is not None:
+                SSL_PROTOCOL_TO_SSL_VERSION = {
+                    "ssl2": "SSLv23",
+                    "ssl3": "SSLv23",
+                    "tls10": "TLSv1",
+                    "tls11": "TLSv1_1",
+                    "tls12": "TLSv1_2"
+                }
+                protocol = SSL_PROTOCOL_TO_SSL_VERSION.get(self.ssl_protocol)
+                remote_cmd = 'SSL_VERSION={} {}'.format(protocol, remote_cmd)
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -430,7 +450,7 @@ def seconds_to_human_readable_time(seconds):
 
 
 def local_time():
-    return datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(tz.gettz('America/Los_Angeles'))
+    return datetime.utcnow().replace(tzinfo=tz.tzutc())
 
 
 ###################################################################################################
@@ -480,11 +500,11 @@ class CheckCoordinator:
                     checks_remaining += 1
                     sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
 
+                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.tries > 0:
                         logging.info("Retry # " + str(check.tries) +
-                                     " for check " + check.func_name)
+                                     " for check " + check_func_name)
 
-                    check_func_name = check.__name__ if PY3 else check.func_name
                     if check.yb_process is None:
                         check.result = self.pool.apply_async(
                                             multithreaded_caller,
@@ -518,6 +538,7 @@ class Cluster():
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
         self.namespace_to_config = data["namespaceToConfig"]
+        self.ssl_protocol = data["sslProtocol"]
         self.enable_ysql = data["enableYSQL"]
         self.ysql_port = data["ysqlPort"]
         self.ycql_port = data["ycqlPort"]
@@ -561,7 +582,7 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client)
+                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(

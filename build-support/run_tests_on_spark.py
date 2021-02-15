@@ -889,6 +889,16 @@ def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.
         for test_descriptor_str in test_descriptor_str_list]
     logging.info("Collected the list of %d gtest tests in %.2f sec" % (
         len(test_descriptor_strs), elapsed_time_sec))
+    for test_descriptor_str in test_descriptor_strs:
+        if 'YB_DISABLE_TEST_IN_' in test_descriptor_str:
+            raise RuntimeError(
+                f"For test descriptor '{test_descriptor_str}': " +
+                "YB_DISABLE_TEST_IN_... is not allowed in final C++ test names, i.e. test names " +
+                "reported using --gtest_list_test. This could happen when trying to use " +
+                "YB_DISABLE_TEST_IN_TSAN or YB_DISABLE_TEST_IN_SANITIZERS in a parameterized " +
+                "test with TEST_P. For parameterized tests, please use " +
+                "YB_SKIP_TEST_IN_TSAN() as the first line of the test instead."
+            )
 
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 

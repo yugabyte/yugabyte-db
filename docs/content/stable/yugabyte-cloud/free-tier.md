@@ -4,10 +4,7 @@ linkTitle: Free tier
 description: Free tier
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /stable/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /stable/deploy/yugabyte-cloud/free-tier/
-block_indexing: true
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     identifier: free-tier

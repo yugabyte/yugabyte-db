@@ -280,13 +280,15 @@ class GraphPanelHeader extends Component {
       datePicker = (
         <span className="graph-filter-custom">
           <DateTimePicker
-            value={this.state.startMoment.toDate()}
+            placeholder = 'MMM dd, yyyy, hh:mm a'
+            defaultValue={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()}
           />
           &ndash;
           <DateTimePicker
-            value={this.state.endMoment.toDate()}
+            placeholder = 'MMM dd, yyyy, hh:mm a'
+            defaultValue={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()}
             min={this.state.startMoment.toDate()}
@@ -360,7 +362,7 @@ class GraphPanelHeader extends Component {
                   />
                   {liveQueriesLink && !universePaused &&
                     <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
-                      <i className="fa fa-search" /> See Live Queries
+                      <i className="fa fa-search" /> See Queries
                     </Link>
                   }
                 </div>

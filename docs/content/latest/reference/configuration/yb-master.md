@@ -465,12 +465,6 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 #### --tablet_split_size_threshold_bytes
 
-{{< note title="Note" >}}
-
-Automatic tablet splitting is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
-
 Enables tablets to automatically split tablets while online, based on the specified tablet threshold size.
 
 **Syntax**

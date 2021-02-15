@@ -48,6 +48,7 @@ HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 SSH_RETRY_LIMIT = 20
 DEFAULT_SSH_PORT = 22
+# Timeout in seconds.
 SSH_TIMEOUT = 15
 
 RSA_KEY_LENGTH = 2048

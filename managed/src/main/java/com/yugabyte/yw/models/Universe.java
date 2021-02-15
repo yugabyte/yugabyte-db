@@ -217,6 +217,11 @@ public class Universe extends Model {
     }
   }
 
+  public void resetVersion() {
+    this.version = -1;
+    this.update();
+  }
+
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {
   };
 
@@ -822,5 +827,14 @@ public class Universe extends Model {
       public void run(Universe universe) {}
     };
     Universe.saveDetails(universeUUID, updater);
+  }
+
+  public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
+    Set<Universe> universeList = Customer.get(customerUUID).getUniverses();
+    universeList = universeList.stream()
+        .filter(s -> s.getUniverseDetails().rootCA != null
+             && s.getUniverseDetails().rootCA.equals(certUUID))
+                .collect(Collectors.toSet());
+    return universeList.size() != 0;
   }
 }

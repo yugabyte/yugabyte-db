@@ -32,6 +32,10 @@ class Timestamp {
 
   std::string ToFormattedString() const;
 
+  // Return date in human readable format (in local time zone).
+  // For example, 2021-Jan-10 22:29:35.776000.
+  std::string ToHumanReadableTime() const;
+
   val_type value() const { return value_; }
   void set_value(int64_t value) {value_ = value;}
 

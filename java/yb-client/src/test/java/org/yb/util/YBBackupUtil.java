@@ -95,6 +95,7 @@ public final class YBBackupUtil {
         "--remote_ysql_dump_binary=" + ysqlDumpPath,
         "--remote_ysql_shell_binary=" + ysqlShellPath,
         "--storage_type", "nfs",
+        "--nfs_storage_path", TestUtils.getBaseTmpDir(),
         "--no_ssh",
         "--no_auto_name"));
 

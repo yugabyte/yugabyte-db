@@ -127,6 +127,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
@@ -3047,8 +3048,44 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-bool Tablet::StillHasParentDataAfterSplit() {
+Result<bool> Tablet::StillHasParentDataAfterSplit() {
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_operation);
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
+}
+
+bool Tablet::MightStillHaveParentDataAfterSplit() {
+  auto res = StillHasParentDataAfterSplit();
+  if (!res.ok()) {
+    LOG(WARNING) << "Failed to call StillHasParentDataAfterSplit: " << res.ToString();
+    return true;
+  }
+  return res.get();
+}
+
+bool Tablet::ShouldDisableLbMove() {
+  auto still_has_parent_data_result = StillHasParentDataAfterSplit();
+  if (still_has_parent_data_result.ok()) {
+    return still_has_parent_data_result.get();
+  }
+  // If this call failed, one of three things may be true:
+  // 1. We are in the middle of a tablet shutdown.
+  //
+  // In this case, what we report is not of much consequence, as the load balancer shouldn't try to
+  // move us anyways. We choose to return false.
+  //
+  // 2. We are in the middle of a TRUNCATE.
+  //
+  // In this case, any concurrent attempted LB move should fail before trying to move data,
+  // since the RocksDB instances are destroyed. On top of that, we do want to allow the LB to move
+  // this tablet after the TRUNCATE completes, so we should return false.
+  //
+  // 3. We are in the middle of an AlterSchema operation. This is only true for tablets belonging to
+  //    colocated tables.
+  //
+  // In this case, we want to disable tablet moves. We conservatively return true for any failure
+  // if the tablet is part of a colocated table.
+  return metadata_->schema()->has_pgtable_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
@@ -3340,7 +3377,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (StillHasParentDataAfterSplit()) {
+  if (VERIFY_RESULT(StillHasParentDataAfterSplit())) {
     post_split_compaction_task_pool_token_ = get_token_for_compaction();
     return post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));

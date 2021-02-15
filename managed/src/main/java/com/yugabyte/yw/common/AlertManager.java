@@ -30,6 +30,20 @@ public class AlertManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(AlertManager.class);
 
+  /**
+   * Sends email notification with information about the alert. Doesn't send email
+   * if:<br>
+   * <ul>
+   * <li>The alert has no flag {@link Alert#sendEmail} set;</li>
+   * <li>Destinations list (with recipients) for this customer is empty;</li>
+   * <li>SmtpData for this customer is empty/incorrect
+   * {@link CustomerRegisterFormData.SmtpData};</li>
+   * <li>The alert is related to a deleted universe.</li>
+   * </ul>
+   *
+   * @param alert  The alert to be processed
+   * @param state  The new state of the alert
+   */
   public void sendEmail(Alert alert, String state) {
     LOG.debug("sendEmail {}, state: {}", alert, state);
     if (!alert.sendEmail) {
@@ -54,19 +68,23 @@ public class AlertManager {
         : AlertDefinition.get(alert.definitionUUID);
     String content;
     if (definition != null) {
+      // The universe should exist (otherwise the definition should not exist as
+      // well).
       Universe universe = Universe.get(definition.universeUUID);
       content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
           state);
     } else {
       Universe universe = alert.targetType == Alert.TargetType.UniverseType
-          ? Universe.get(alert.targetUUID)
+          ? Universe.find.byId(alert.targetUUID)
           : null;
       if (universe != null) {
-        content = String.format("Common failure for universe '%s':\n%s.", universe.name,
-            alert.message);
+        content = String.format(
+            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s.",
+            universe.name, state, alert.message);
       } else {
-        content = String.format("Common failure for customer '%s':\n%s.", customer.name,
-            alert.message);
+        content = String.format(
+            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s.",
+            customer.name, state, alert.message);
       }
     }
 
@@ -89,17 +107,17 @@ public class AlertManager {
       switch (alert.state) {
         case CREATED:
           LOG.info("Transitioning alert {} to active", alert.uuid);
-          sendEmail(alert, "firing");
-          alert.state = Alert.State.ACTIVE;
+          sendEmail(alert, "FIRING");
+          alert.setState(Alert.State.ACTIVE);
           break;
         case ACTIVE:
-          LOG.info("Transitioning alert {} to resolved", alert.uuid);
-          sendEmail(alert, "resolved");
-          alert.state = Alert.State.RESOLVED;
+          LOG.info("Transitioning alert {} to resolved (with email)", alert.uuid);
+          sendEmail(alert, "RESOLVED");
+          alert.setState(Alert.State.RESOLVED);
           break;
         case RESOLVED:
-          LOG.info("Transitioning alert {} to resolved", alert.uuid);
-          alert.state = Alert.State.RESOLVED;
+          LOG.info("Transitioning alert {} to resolved (no email)", alert.uuid);
+          alert.setState(Alert.State.RESOLVED);
           break;
       }
 

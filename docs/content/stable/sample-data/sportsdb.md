@@ -3,7 +3,6 @@ title: SportsDB sample database
 headerTitle: SportsDB sample database
 linkTitle: SportsDB
 description: Use the SportsDB to query sports statistics while learning YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: sportsdb
@@ -29,7 +28,7 @@ Follow the steps here to download and install the SportsDB sample database.
 
 ### Before you begin
 
-To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
+To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ### 1. Download the SportsDB scripts
 
