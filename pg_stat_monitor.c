@@ -404,7 +404,7 @@ pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 	if(nested_level + 1 >= cur_max_nested_level)
 	{
 		cur_max_nested_level *= 2;
-		nested_queryids = realloc(nested_queryids, cur_max_nested_level);
+		nested_queryids = repalloc(nested_queryids, cur_max_nested_level);
 	}
 	nested_level++;
 	PG_TRY();
