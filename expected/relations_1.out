@@ -14,13 +14,14 @@ SELECT * FROM foo1, foo2, foo3, foo4;
 ---+---+---+---
 (0 rows)
 
-SELECT query, relations from pg_stat_monitor;
-                query                 |                     relations                     
---------------------------------------+---------------------------------------------------
- SELECT pg_stat_monitor_reset()       | 
- SELECT * FROM foo1, foo2, foo3, foo4 | {public.foo1,public.foo2,public.foo3,public.foo4}
-(2 rows)
-
+SELECT query, relations from pg_stat_monitor ORDER BY query;
+                    query                     |                     relations                     
+----------------------------------------------+---------------------------------------------------
+ SELECT * FROM foo1, foo2, foo3, foo4         | {public.foo1,public.foo2,public.foo3,public.foo4}
+ SELECT pg_stat_monitor_reset()               | 
+ SELECT query, relations from pg_stat_monitor | 
+(3 rows)
+ 
 DROP TABLE foo1;
 DROP TABLE foo2;
 DROP TABLE foo3;

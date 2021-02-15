@@ -2551,9 +2551,9 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 #if PG_VERSION_NUM >= 130000
-	for(i = 0; i < 11; i++)
+	for(i = 0; i < 12; i++)
 #else
-	for(i = 0; i < 10; i++)
+	for(i = 0; i < 11; i++)
 #endif
 	{
 		Datum		values[7];

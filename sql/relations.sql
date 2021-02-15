@@ -5,7 +5,7 @@ CREATE TABLE foo2(a int);
 CREATE TABLE foo3(a int);
 CREATE TABLE foo4(a int);
 SELECT * FROM foo1, foo2, foo3, foo4;
-SELECT query, relations from pg_stat_monitor;
+SELECT query, relations from pg_stat_monitor ORDER BY query;
 DROP TABLE foo1;
 DROP TABLE foo2;
 DROP TABLE foo3;
