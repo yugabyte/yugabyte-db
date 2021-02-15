@@ -75,6 +75,12 @@ const DEFAULT_STORAGE_TYPES = {
   AZU: 'Premium_LRS'
 };
 
+export const EXPOSING_SERVICE_STATE_TYPES = {
+  None: 'NONE',
+  Exposed: 'EXPOSED',
+  Unexposed: 'UNEXPOSED'
+};
+
 const initialState = {
   universeName: '',
   instanceTypeSelected: '',
@@ -98,6 +104,8 @@ const initialState = {
   useTimeSync: true,
   enableYSQL: true,
   enableIPV6: false,
+  // By default, we don't want to expose the service.
+  enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
   enableYEDIS: false,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
@@ -124,6 +132,7 @@ export default class ClusterFields extends Component {
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
     this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
+    this.toggleEnableExposingService = this.toggleEnableExposingService.bind(this);
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
@@ -268,6 +277,7 @@ export default class ClusterFields extends Component {
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableIPV6: userIntent.enableIPV6,
+          enableExposingService: userIntent.enableExposingService,
           enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
@@ -316,6 +326,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableIPV6) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({ enableIPV6: formValues['primary'].enableIPV6 });
+          }
+          if (formValues[clusterType].enableExposingService) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableExposingService: formValues['primary'].enableExposingService });
           }
           if (formValues[clusterType].enableYEDIS) {
             // We would also default to whatever primary cluster's state for this one.
@@ -705,6 +719,20 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableIPV6', event.target.checked);
       updateFormField('async.enableIPV6', event.target.checked);
       this.setState({ enableIPV6: event.target.checked });
+    }
+  }
+
+  toggleEnableExposingService(event) {
+    const { updateFormField, clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      updateFormField('primary.enableExposingService', event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
+      updateFormField('async.enableExposingService', event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
+      this.setState({ enableExposingService: event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']});
     }
   }
 
@@ -1323,7 +1351,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
-          subLabel="Whether or not to enable YSQL."
+          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
       enableYEDIS = (
@@ -1335,7 +1363,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYEDIS}
           onToggle={this.toggleEnableYEDIS}
           label="Enable YEDIS"
-          subLabel="Whether or not to enable YEDIS."
+          subLabel="Enable the YEDIS API endpoint to run REDIS compatible workloads."
         />
       );
       enableNodeToNodeEncrypt = (
@@ -1347,7 +1375,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableNodeToNodeEncrypt}
           onToggle={this.toggleEnableNodeToNodeEncrypt}
           label="Enable Node-to-Node TLS"
-          subLabel="Whether or not to enable TLS Encryption for node to node communication."
+          subLabel="Enable encryption in transit for communication between the DB servers."
         />
       );
       enableClientToNodeEncrypt = (
@@ -1359,7 +1387,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
           label="Enable Client-to-Node TLS"
-          subLabel="Whether or not to enable TLS encryption for client to node communication."
+          subLabel="Enable encryption in transit for communication between clients and the DB servers."
         />
       );
       enableEncryptionAtRest = (
@@ -1372,7 +1400,7 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableEncryptionAtRest}
           label="Enable Encryption at Rest"
           title="Upload encryption key file"
-          subLabel="Enable encryption for data stored on tablet servers."
+          subLabel="Enable encryption for data stored on the tablet servers."
         />
       );
 
@@ -1454,7 +1482,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.assignPublicIP}
           onToggle={this.toggleAssignPublicIP}
           label="Assign Public IP"
-          subLabel="Whether or not to assign a public IP."
+          subLabel="Assign a public IP to the DB servers for connections over the internet."
         />
       );
     }
@@ -1468,7 +1496,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
           label="Use AWS Time Sync"
-          subLabel="Whether or not to use the Amazon Time Sync Service."
+          subLabel="Enable the AWS Time Sync functionality for the DB servers."
         />
       );
     }
@@ -1902,7 +1930,26 @@ export default class ClusterFields extends Component {
                     checkedVal={this.state.enableIPV6}
                     onToggle={this.toggleEnableIPV6}
                     label="Enable IPV6"
-                    subLabel="Whether or not to enable IPV6."
+                    subLabel="Use IPV6 networking for connections between the DB servers."
+                  />
+                </div>
+              </Col>
+            </Row>
+          )}
+          {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.enableExposingService`}
+                    component={YBToggle}
+                    isReadOnly={isFieldReadOnly}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.enableExposingService ===
+                        EXPOSING_SERVICE_STATE_TYPES['Exposed']}
+                    onToggle={this.toggleEnableExposingService}
+                    label="Enable Exposing Service"
+                    subLabel="Assign an exposing service (loadbalancer, nodeport) for connecting to the DB endpoints over the internet."
                   />
                 </div>
               </Col>
