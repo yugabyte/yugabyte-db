@@ -488,7 +488,6 @@ public class NodeManager extends DevopsBase {
         }
         break;
     }
-    System.out.println("hooooooooooooo           "+subcommand);
     return subcommand;
   }
 
