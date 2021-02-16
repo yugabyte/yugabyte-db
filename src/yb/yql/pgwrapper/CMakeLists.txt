@@ -61,6 +61,7 @@ set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TOOL_PATH ${LAST_ADDED_TEST_BINARY_PATH}
 set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME ${LAST_ADDED_TEST_BINARY_NAME})
 
 set(gen_initial_sys_catalog_snapshot_cmd
+    "${CMAKE_COMMAND}" -E env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
 
 if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
