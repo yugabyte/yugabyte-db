@@ -34,7 +34,7 @@ The following `SELECT` statement clauses provide flexiblity and allow you to fin
 - The `DISTINCT` operator allows you to select distinct rows. 
 - The `ORDER BY` clause lets you sort rows.
 - The `WHERE` clause allows you to apply filters to rows.
-- The `LIMIT` clauses allow you to select a subset of rows from a table. 
+- The `LIMIT` clause allows you to select a subset of rows from a table. 
 - The `GROUP BY` clause allows you to divide rows into groups. 
 - The `HAVING` clause lets you filter groups.
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
@@ -156,7 +156,7 @@ Column aliases may contain spaces. In this case, you enclose them in double quot
 SELECT name, department AS "section of the company" FROM employees;
 ```
 
-### Sort and Order
+### Sorting and Ordering Data
 
 The `SELECT` statement returns data in an unspecified order. You can use the the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
 
@@ -375,7 +375,7 @@ name
 John Smith
 ```
 
-### LIMIT Clause
+### The LIMIT Clause
 
 The `LIMIT` clause of the `SELECT` statement allows you to impose constrains on the number of rows that your query can return.
 
@@ -436,7 +436,7 @@ John Zimmerman      | Sales
 Lucille Ball        | Operations
 ```
 
-### LIKE Operator
+### The LIKE Operator
 
 There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition. 
 
@@ -510,7 +510,7 @@ The following example shows how to select the total amount that each employee ha
 SELECT employee_no SUM(amount) FROM employees GROUP BY employee_no;
 ```
 
-### HAVING Clause
+### The HAVING Clause
 
 To define search condition for a group or an aggregate, you can use the `HAVING` clause. If you use this clause in combination with the `GROUP BY` clause, you can filter groups and aggregates based on the condition.
 
