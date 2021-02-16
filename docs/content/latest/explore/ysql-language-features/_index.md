@@ -15,7 +15,7 @@ showAsideToc: true
 ---
 
 
-The YSQ API of YugabyteDB reuses a fork of the query layer of PostgreSQL as its starting point, and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architectural decision means that YSQL supports most PostgreSQL features (data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc).
+The YSQ API of YugabyteDB reuses a fork of the query layer of PostgreSQL as its starting point, and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architectural decision means that YSQL supports most PostgreSQL features (data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on).
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YugabyteDB.
@@ -24,20 +24,22 @@ A large portion of the documentation and examples written for PostgreSQL would w
 {{< /tip >}}
 
 
-The figure below diagrammatically shows how the query layer of PostgreSQL is reused - specifically components that receive the query (*postman*), the query *parser* / *rewriter* / *analyzer*, as well as *planning* and *executing* the query. Some of these components have been modified to work efficiently as a distributed SQL database.
+The following diagram shows how the query layer of PostgreSQL is reused - specifically components that receive the query (*postman*), the query *parser* / *rewriter* / *analyzer*, as well as *planning* and *executing* the query. Some of these components have been modified to work efficiently as a distributed SQL database.
 
 ![Reusing the PostgreSQL query layer in YSQL](/images/section_icons/architecture/Reusing-PostgreSQL-query-layer.png)
 
-## PostgreSQL features in YSQL
+## PostgreSQL Features in YSQL
 
 This section walks through some of the features in YSQL. If you have worked with PostgreSQL, you should find most of these features and how they function very familiar.
 
-|       Feature in YSQL        |              Description of feature                       |
-|------------------------------|-----------------------------------------------------------|
-| <span style="font-size:16px">[Basics](databases-schemas-tables/)</span>  | SQL shell with `ysqlsh`, users, databases, tables and schemas |
-| <span style="font-size:16px">[Data types](data-types/)</span>            | String / numeric / temporal types, `SERIAL` pseudo type, `ENUM`, arrays, and composite types |
-| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT` and `RETURNING` clauses |
-| <span style="font-size:16px">[Queries and Joins](queries/)</span>           | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries|
+| Feature in YSQL                                              | Description                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| <span style="font-size:16px">[Basics](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
+| <span style="font-size:16px">[Data types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
+| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
+| <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
+| <span style="font-size:16px">[Triggers](triggers/)</span>    | Triggers (on data modification) and event triggers (on schema changes) |
+
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
 | <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for the various stored procedures |
@@ -53,12 +55,12 @@ The following topics are covered in separate sections:
 * [Indexes and constraints]()
 -->
 
-## What's extra in YSQL?
+## What's Extra in YSQL?
 
-Since YugabyteDB is a distributed SQL database, there are some features that make more sense for YSQL and hence are not present in PostgreSQL. These are outlined below.
+Since YugabyteDB is a distributed SQL database, there are some features that make more sense for YSQL and hence are not present in PostgreSQL. These features are summarized in the following table.
 
-|     Feature in YSQL          |        Description of feature                             |
-|------------------------------|-----------------------------------------------------------|
+| Feature in YSQL                                              | Description                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
 | <span style="font-size:16px">Data distribution with `HASH`</span> | YSQL supports a `HASH` sort order in addition to `ASC` and `DESC` for indexes |
 | <span style="font-size:16px">`TABLESPACES` for geographic placement</span> | `TABLESPACES` can be used to pin data in tables and table partitions to different geographic locations. |
 | <span style="font-size:16px">`TABLEGROUPS` for colocating tables</span> | `TABLEGROUPS` enables colocating multiple smaller tables into one tablet for better performance. |
