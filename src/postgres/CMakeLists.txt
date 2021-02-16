@@ -35,6 +35,7 @@ endif()
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 
 set(build_postgres_args
+    "${CMAKE_COMMAND}" -E env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
     "${BUILD_SUPPORT_DIR}/build_postgres"
       --build_root          "${YB_BUILD_ROOT}"
       --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
@@ -59,8 +60,11 @@ endif()
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step configure)
-add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make
-                           BYPRODUCTS "${LIBPQ_SHARED_LIB}" "${YB_PGBACKEND_SHARED_LIB}")
+add_custom_target(
+    postgres ALL
+    COMMAND ${build_postgres_args} --step make
+    BYPRODUCTS "${LIBPQ_SHARED_LIB}" "${YB_PGBACKEND_SHARED_LIB}")
+
 add_dependencies(postgres configure_postgres)
 
 # ------------------------------------------------------------------------------------------------
