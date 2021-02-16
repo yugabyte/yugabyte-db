@@ -1,3 +1,7 @@
+![pg11-test](https://github.com/percona/pg_stat_monitor/workflows/pg11-test/badge.svg)
+![pg12-test](https://github.com/percona/pg_stat_monitor/workflows/pg12-test/badge.svg)
+![pg13-test](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
+
 ## What is pg_stat_monitor?
 The **pg_stat_monitor** is a **PostgreSQL Query Performance Monitoring** tool, based on PostgreSQL's contrib module ``pg_stat_statements``. PostgreSQL’s pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
 

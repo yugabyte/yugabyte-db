@@ -183,6 +183,7 @@ static uint64 get_query_id(pgssJumbleState *jstate, Query *query);
 /*
  * Module load callback
  */
+// cppcheck-suppress unusedFunction
 void
 _PG_init(void)
 {
@@ -251,6 +252,7 @@ _PG_init(void)
 /*
  * Module unload callback
  */
+// cppcheck-suppress unusedFunction
 void
 _PG_fini(void)
 {
@@ -1140,7 +1142,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		Datum       values[PG_STAT_STATEMENTS_COLS];
 		bool        nulls[PG_STAT_STATEMENTS_COLS];
 		int		    i = 0;
-		int         len = 0;
 		int		    kind;
 		Counters    tmp;
 		double      stddev;
@@ -1167,6 +1168,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		}
 		else
 		{
+			int           len  = 0;
 			unsigned char *buf = pgss_qbuf[entry->key.bucket_id];
 			if(read_query(buf, queryid, query_txt) == 0)
 			{

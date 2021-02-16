@@ -11,5 +11,6 @@ jobs:
       - name: install cppcheck
         run: sudo apt-get install cppcheck
 
-      - name: Prepare for install postgresql
-        run: sudo cppcheck --enable=all --error-exitcode=1 .
+      - name: Execute linter check with cppcheck
+        run: sudo cppcheck --enable=all --inline-suppr --template='{file}:{line},{severity},{id},{message}' --error-exitcode=1 --suppress=missingIncludeSystem --suppress=missingInclude --check-config .
+

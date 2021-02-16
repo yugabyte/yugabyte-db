@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    name: pg1-test
+    name: pg11-test
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
