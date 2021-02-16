@@ -8,7 +8,7 @@ import { useSlowQueriesApi } from '../../queries/queriesHelper';
 import { Highlighter } from '../../../helpers/Highlighter';
 import './MetricsPanel.scss';
 
-const GRAPH_COL_WIDTH = 200;
+const GRAPH_COL_WIDTH = 192;
 export const QueryDisplayPanel = ({ universeUUID }) => {
   const { ysqlQueries, loading, errors } = useSlowQueriesApi({
     universeUUID
@@ -22,9 +22,17 @@ export const QueryDisplayPanel = ({ universeUUID }) => {
   const highestMaxTime = maxBy(topQueries, 'max_time')?.max_time;
 
   const getTimeBarFormat = (num) => {
+    let timeStr = `${num.toFixed(1)} ms`;
+    if (num > 36000000000) { // Ten thousand hours
+      timeStr = `${(num / 3600000.0).toExponential(3)} h`;
+    } else if (num > 3600000) {
+      timeStr = `${(num / 3600000.0).toFixed(2)} h`;
+    } else if (num > 10000) {
+      timeStr = `${(num / 1000.0).toFixed(2)} s`;
+    }
     return (
       <div>
-        {num.toFixed(1)} ms
+        {timeStr}
         <span className="metric-bar" style={{ width: num / highestExecTime * GRAPH_COL_WIDTH }}></span>
       </div>
     );
@@ -33,9 +41,15 @@ export const QueryDisplayPanel = ({ universeUUID }) => {
   const getMeanBarWhiskersFormat = (num, row) => {
     const leftPixel = (row.min_time / highestMaxTime * GRAPH_COL_WIDTH) + 100;
     const widthPixel = (row.max_time - row.min_time) / highestMaxTime * GRAPH_COL_WIDTH;
+    let timeStr = `${num.toFixed(1)} ms`;
+    if (num > 3600000) {
+      timeStr = `${(num / 3600000.0).toFixed(2)} h`;
+    } else if (num > 10000) {
+      timeStr = `${(num / 1000.0).toFixed(2)} s`;
+    }
     return (
       <div>
-        {num.toFixed(1)} ms
+        {timeStr}
         <span className="metric-bar" style={{ width: num / highestMaxTime * GRAPH_COL_WIDTH }}></span>
         <div className="whiskers-plot" style={{ width: `${widthPixel}px`, left: `${leftPixel}px`}}><span className="line"></span></div>
       </div>
