@@ -399,7 +399,8 @@ static void
 pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 				 bool execute_once)
 {
-	nested_queryids[nested_level] = queryDesc->plannedstmt->queryId;
+	if (nested_level >=0 && nested_level < max_stack_depth)
+		nested_queryids[nested_level] = queryDesc->plannedstmt->queryId;
 	nested_level++;
 	PG_TRY();
 	{
@@ -408,12 +409,14 @@ pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 		else
 			standard_ExecutorRun(queryDesc, direction, count, execute_once);
 		nested_level--;
-		nested_queryids[nested_level] = UINT64CONST(0);
+		if (nested_level >=0 && nested_level < max_stack_depth)
+			nested_queryids[nested_level] = UINT64CONST(0);
 	}
 	PG_CATCH();
 	{
 		nested_level--;
-		nested_queryids[nested_level] = UINT64CONST(0);
+		if (nested_level >=0 && nested_level < max_stack_depth)
+			nested_queryids[nested_level] = UINT64CONST(0);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -999,10 +1002,14 @@ static void pgss_store(uint64 queryId,
 		_snprintf(e->counters.error.message, message, message_len, ERROR_MESSAGE_LEN);
 
 		if(nested_level > 0)
-			e->counters.info.parentid = nested_queryids[nested_level - 1];
+		{
+			if (nested_level >=0 && nested_level < max_stack_depth)
+				e->counters.info.parentid = nested_queryids[nested_level - 1];
+		}
 		else
+		{
 			e->counters.info.parentid = UINT64CONST(0);
-
+		}
 		e->counters.calls[kind].rows += rows;
 		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
 		e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
