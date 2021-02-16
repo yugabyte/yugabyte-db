@@ -272,10 +272,16 @@ Bette Davis
 
 ### Case Sensitivity
 
-Since YSQL is case-sensitive (that is, it treats the same characters differently depending on whether they are uppercase and lowercase), it is important to use correct cases when forming queries. For example, a table called `Employees` would not be recognized as an `employees` table, even if that is what you mean. That is, if your database contains an `employees` table and you want to query it using the following statement, the query execution will result in an error:
+YSQL converts identifiers to lowercase unless they are enclosed in quatation marks. That is, YSQL is not case-sensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as an `employees` table and the following query would be executed on the `employees` table without any problems:
 
 ```sql
 SELECT name FROM Employees;
+```
+
+The following example shows how to run a query specifically on a table called `Employees`:
+
+```sql
+SELECT name FROM "Employees";
 ```
 
 ## Filtering Data
