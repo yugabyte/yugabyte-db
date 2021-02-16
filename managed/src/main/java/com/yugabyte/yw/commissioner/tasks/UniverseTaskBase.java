@@ -404,9 +404,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   
   /**
-   * Creates a task list to pauses nodes and adds it to the task queue.
+   * Creates a task list to pause the nodes and adds to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be paused
+   * @param nodes : a collection of nodes that need to be paused.
    */
   public SubTaskGroup createPauseServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("PauseServer", executor);
@@ -429,9 +429,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
-      // Assign the node IP to ensure deletion of the correct node.
+      // Assign the node IP to pause the node.
       params.nodeIP = node.cloudInfo.private_ip;
-      // Create the Ansible task to destroy the server.
+      // Create the task to pause the server.
       PauseServer task = new PauseServer();
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
@@ -453,7 +453,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("ResumeServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to pause the node. Log it and skip the node.
+      // a clean state to resume the node. Log it and skip the node.
       if (node.cloudInfo.private_ip == null) {
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node resume.",
                                node.nodeName));
@@ -470,9 +470,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the instance type
       params.instanceType = node.cloudInfo.instance_type;
-      // Assign the node IP to ensure deletion of the correct node.
+      // Assign the node IP to resume the nodes.
       params.nodeIP = node.cloudInfo.private_ip;
-      // Create the Ansible task to destroy the server.
+      // Create the task to pause the server.
       ResumeServer task = new ResumeServer();
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
@@ -1311,7 +1311,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Whether to increment the universe/cluster config version. Skip incrementing version if the
-   * task updating the universe metadata is create/destroy universe
+   * task updating the universe metadata is create/destroy/pause/resume universe
    *
    * @return true if we should increment the version, false otherwise
    */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -39,7 +39,7 @@ public class PauseServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    LOG.debug("Pausing node " + nodeName + " from universe " + taskParams().universeUUID); 
+    LOG.info("Pausing node " + nodeName + " from universe " + taskParams().universeUUID); 
   }
 
   @Override

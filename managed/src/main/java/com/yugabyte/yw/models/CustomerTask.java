@@ -129,6 +129,10 @@ public class CustomerTask extends Model {
       switch (this) {
         case Create:
           return completed ? "Created " : "Creating ";
+        case Pause:
+          return completed ? "Paused " : "Pausing ";
+        case Resume:
+          return completed ? "Resumed " : "Resuming ";
         case Update:
           return completed ? "Updated " : "Updating ";
         case Delete:

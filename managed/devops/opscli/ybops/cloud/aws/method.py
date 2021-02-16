@@ -123,8 +123,6 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        region = args.region
-        search_pattern = args.search_pattern
         filters = [
                 {
                     "Name": "instance-state-name",
@@ -132,8 +130,8 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
                 }
             ]
         host_info = self.cloud.get_host_info_specific_args(
-            region,
-            search_pattern,
+            args.region,
+            args.search_pattern,
             get_all=False,
             private_ip=args.node_ip,
             filters=filters
@@ -162,15 +160,12 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
     def add_extra_args(self):
         super(AwsPauseInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
-                                 help="The ip of the instance to delete.")
+                                 help="The ip of the instance to pause.")
 
     def callback(self, args):
-        region = args.region
-        search_pattern = args.search_pattern
-    
         host_info = self.cloud.get_host_info_specific_args(
-            region,
-            search_pattern,
+            args.region,
+            args.search_pattern,
             get_all=False,
             private_ip=args.node_ip
         )
@@ -193,11 +188,9 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
     def add_extra_args(self):
         super(AwsResumeInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
-                                 help="The ip of the instance to delete.")
+                                 help="The ip of the instance to resume.")
 
     def callback(self, args):
-        region = args.region
-        search_pattern = args.search_pattern
         filters = [
                 {
                     "Name": "instance-state-name",
@@ -205,8 +198,8 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                 }
             ]
         host_info = self.cloud.get_host_info_specific_args(
-            region,
-            search_pattern,
+            args.region,
+            args.search_pattern,
             get_all=False,
             private_ip=args.node_ip,
             filters=filters

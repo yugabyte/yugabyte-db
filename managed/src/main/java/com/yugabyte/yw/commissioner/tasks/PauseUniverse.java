@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -41,15 +41,12 @@ public class PauseUniverse extends UniverseTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-      Universe universe = null;
       // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag
-      // to prevent other updates from happening.
-      universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
-      universe = Universe.get(params().universeUUID);
+      // 'updateInProgress' flagvto prevent other updates from happening.
+      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
 
-      Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
-      Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+      Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
+      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
       
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "stop").setSubTaskGroupType(
@@ -81,14 +78,10 @@ public class PauseUniverse extends UniverseTaskBase {
       
       unlockUniverseForUpdate();
     } catch (Throwable t) {
-      try {
-        // If for any reason pause universe fails we would just unlock the universe for update
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
-      }
-
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+      // errors out.
+      unlockUniverseForUpdate();
       throw t;
     }
     LOG.info("Finished {} task.", getName());

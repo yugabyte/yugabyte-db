@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -22,7 +22,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class ResumeServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
-    // IP of node to be deleted.
+    // IP of node to be resumed.
     public String nodeIP = null;
   }
 
@@ -39,7 +39,7 @@ public class ResumeServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    LOG.debug("Resuming node " + nodeName + " from universe " + taskParams().universeUUID); 
+    LOG.info("Resuming node " + nodeName + " from universe " + taskParams().universeUUID); 
   }
 
   @Override
