@@ -32,6 +32,8 @@ DEFINE_int32(ysql_num_shards_per_tserver, 8,
 DEFINE_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
+TAG_FLAG(ysql_disable_index_backfill, advanced);
+TAG_FLAG(ysql_disable_index_backfill, runtime);
 
 namespace yb {
 

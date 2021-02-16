@@ -177,6 +177,9 @@ DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
              "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
+DEFINE_test_flag(bool, disable_tablet_deletion, false,
+                 "Whether catalog manager should disable tablet deletion.");
+
 DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "Whether the catalog manager should wait for a newly created tablet to "
             "elect a leader before considering it successfully created. "
@@ -270,8 +273,8 @@ TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
 DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
-    "A kill switch to disable multi-stage backfill for user encorced YCQL indexes. "
-    "Note that setting this to true may cause the create index flow to be slow. "
+    "A kill switch to disable multi-stage backfill for user enforced YCQL indexes. "
+    "Note that enabling this feature may cause the create index flow to be slow. "
     "This is needed to ensure the safety of the index backfill process. See also "
     "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
@@ -320,8 +323,8 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
 
-DEFINE_bool(enable_register_ts_from_raft, false, "Whether to register a tserver from the consensus "
-                                                 "information of a reported tablet.");
+DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver from the consensus "
+                                                "information of a reported tablet.");
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
@@ -346,6 +349,19 @@ DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 30,
              "Amount of time to wait before refreshing the system.partitions cached vtable.");
+
+DEFINE_int32(txn_table_wait_min_ts_count, 1,
+             "Minimum Number of TS to wait for before creating the transaction status table."
+             " Default value is 1. We wait for atleast --replication_factor if this value"
+             " is smaller than that");
+TAG_FLAG(txn_table_wait_min_ts_count, advanced);
+
+DEFINE_bool(enable_ysql_tablespaces_for_placement, false,
+            "If set, tablespaces will be used for placement of YSQL tables.");
+
+DEFINE_int32(ysql_tablespace_info_refresh_secs, -1,
+             "Frequency at which the table to tablespace information will be updated in master "
+             "from pg catalog tables.");
 
 namespace yb {
 namespace master {
@@ -554,6 +570,8 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
+constexpr auto kDefaultYSQLTablespaceRefreshBgTaskSleepSecs = 10s;
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -588,7 +606,10 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      ysql_transaction_(this, master_) {
+      ysql_transaction_(this, master_),
+      tablespace_placement_map_(std::make_shared<TablespaceIdToReplicationInfoMap>()),
+      table_to_tablespace_map_(std::make_shared<TableToTablespaceIdMap>()),
+      tablespace_info_task_running_(false) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -861,12 +882,15 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   permissions_manager_->BuildRecursiveRolesUnlocked();
 
   if (FLAGS_enable_ysql) {
+    // Number of TS to wait for before creating the txn table.
+    auto wait_ts_count = std::max(FLAGS_txn_table_wait_min_ts_count, FLAGS_replication_factor);
+
     LOG_WITH_PREFIX(INFO)
         << "YSQL is enabled, will create the transaction status table when "
-        << FLAGS_replication_factor << " tablet servers are online";
-    master_->ts_manager()->SetTSCountCallback(FLAGS_replication_factor, [this] {
+        << wait_ts_count << " tablet servers are online";
+    master_->ts_manager()->SetTSCountCallback(wait_ts_count, [this, wait_ts_count] {
       LOG_WITH_PREFIX(INFO)
-          << FLAGS_replication_factor
+          << wait_ts_count
           << " tablet servers registered, creating the transaction status table";
       // Retry table creation until it succeedes. It might fail initially because placement UUID
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
@@ -1463,6 +1487,8 @@ bool CatalogManager::StartShutdown() {
 
   refresh_yql_partitions_task_.StartShutdown();
 
+  refresh_ysql_tablespace_info_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -1473,6 +1499,8 @@ bool CatalogManager::StartShutdown() {
 void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
+  refresh_ysql_tablespace_info_task_.CompleteShutdown();
+
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -1576,19 +1604,81 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
-Result<ReplicationInfoPB> CatalogManager::ResolveReplicationInfo(
-  const ReplicationInfoPB& table_replication_info) {
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
+  const ReplicationInfoPB& table_replication_info,
+  const TablespaceId& tablespace_id) {
 
   if (IsReplicationInfoSet(table_replication_info)) {
-      // The table has custom replication info set for it, return it if valid.
-      RETURN_NOT_OK(ValidateTableReplicationInfo(table_replication_info));
-      return table_replication_info;
+    // The table has custom replication info set for it, return it if valid.
+    RETURN_NOT_OK(ValidateTableReplicationInfo(table_replication_info));
+    return table_replication_info;
+  }
+  // Table level replication info not set. Check whether the table is
+  // associated with a tablespace and if so, return the tablespace
+  // replication info.
+  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    boost::optional<ReplicationInfoPB> tablespace_pb =
+      VERIFY_RESULT(GetTablespaceReplicationInfo(tablespace_id));
+    if (tablespace_pb) {
+      // Return the tablespace placement.
+      return tablespace_pb.value();
+    }
   }
 
-  // Table level replication info not set. Return cluster level
-  // replication info.
+  // Neither table nor tablespace info set. Return cluster level replication info.
   auto l = cluster_config_->LockForRead();
   return l->data().pb.replication_info();
+}
+
+void CatalogManager::GetTablespaceInfo(
+  shared_ptr<TablespaceIdToReplicationInfoMap> *const out_tablespace_placement_map,
+  shared_ptr<TableToTablespaceIdMap> *const out_table_to_tablespace_map) {
+
+  SharedLock<LockType> l(tablespace_lock_);
+  if (out_tablespace_placement_map) {
+    *out_tablespace_placement_map = tablespace_placement_map_;
+  }
+  if (out_table_to_tablespace_map) {
+    *out_table_to_tablespace_map = table_to_tablespace_map_;
+  }
+}
+
+Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfo(
+  const TablespaceId& tablespace_id) {
+
+  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+    // Tablespaces feature has been disabled.
+    return boost::none;
+  }
+
+  if (tablespace_id.empty()) {
+    // No tablespace id passed in. Return.
+    return boost::none;
+  }
+
+  // Lookup tablespace placement info in tablespace_placement_map_.
+  shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map;
+  {
+    SharedLock<LockType> l(tablespace_lock_);
+    tablespace_placement_map = tablespace_placement_map_;
+  }
+
+  auto iter = tablespace_placement_map->find(tablespace_id);
+  if (iter != tablespace_placement_map->end()) {
+    return iter->second;
+  }
+
+  // Given tablespace id was not found in the map.
+  // Read pg_tablespace table to see if this is a new tablespace.
+  auto tablespace_map = VERIFY_RESULT(GetAndUpdateYsqlTablespaceInfo());
+
+  // Now find the placement info from the updated map.
+  iter = tablespace_map->find(tablespace_id);
+  if (iter != tablespace_placement_map->end()) {
+    return iter->second;
+  }
+  return STATUS(InternalError, "pg_tablespace info for tablespace " +
+    tablespace_id + " not found");
 }
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1638,6 +1728,131 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
           "must match that of the cluster's live placement info.");
   }
   return Status::OK();
+}
+
+Result<shared_ptr<TablespaceIdToReplicationInfoMap>>
+CatalogManager::GetAndUpdateYsqlTablespaceInfo() {
+
+  auto table_info = GetTableInfo(kPgTablespaceTableId);
+  if (table_info == nullptr) {
+    return STATUS(InternalError, "pg_tablespace table info not found");
+  }
+
+  auto tablespace_map = VERIFY_RESULT(sys_catalog_->ReadPgTablespaceInfo());
+
+  // The tablespace options do not usually contain the placement uuid.
+  // Populate the current cluster placement uuid into the placement information for
+  // each tablespace.
+  string placement_uuid;
+  {
+    auto l = cluster_config_->LockForRead();
+    // TODO(deepthi.srinivasan): Read-replica placements are not supported as
+    // of now.
+    placement_uuid = l->data().pb.replication_info().live_replicas().placement_uuid();
+  }
+  if (!placement_uuid.empty()) {
+    for (auto& iter : *tablespace_map) {
+      if (iter.second) {
+        iter.second.value().mutable_live_replicas()->set_placement_uuid(placement_uuid);
+      }
+    }
+  }
+
+  // Before updating the tablespace placement map, validate the
+  // placement policies.
+  for (auto& iter : *tablespace_map) {
+    if (iter.second) {
+      RETURN_NOT_OK(ValidateTableReplicationInfo(iter.second.value()));
+    }
+  }
+  // Update tablespace_placement_map_.
+  {
+    std::lock_guard<LockType> l(tablespace_lock_);
+    tablespace_placement_map_ = tablespace_map;
+  }
+
+  return tablespace_map;
+}
+
+void CatalogManager::StartRefreshYSQLTablePlacementInfo() {
+  bool is_task_running = tablespace_info_task_running_.exchange(true);
+  if (!is_task_running) {
+    // The task is not already running. Start it.
+    RefreshYSQLTablePlacementInfo();
+  }
+}
+
+void CatalogManager::RefreshYSQLTablePlacementInfo() {
+  auto wait_time = GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) * 1s;
+  // If FLAGS_enable_ysql_tablespaces_for_placement is not set, refresh is disabled.
+  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) && wait_time > 0s) {
+    DoRefreshYSQLTablePlacementInfo();
+  }
+
+  if (wait_time <= 0s) {
+    wait_time = kDefaultYSQLTablespaceRefreshBgTaskSleepSecs;
+  }
+  refresh_ysql_tablespace_info_task_.Schedule([this](const Status& status) {
+    Status s = background_tasks_thread_pool_->SubmitFunc(
+      std::bind(&CatalogManager::RefreshYSQLTablePlacementInfo, this));
+    if (!s.IsOk()) {
+      LOG(WARNING) << "Failed to schedule: RefreshYSQLTablePlacementInfo";
+      tablespace_info_task_running_ = false;
+    }
+  }, wait_time);
+}
+
+void CatalogManager::DoRefreshYSQLTablePlacementInfo() {
+  // First refresh the tablespace info in memory.
+  auto table_info = GetTableInfo(kPgTablespaceTableId);
+  if (table_info == nullptr) {
+    LOG(WARNING) << "Table info not found for pg_tablespace catalog table";
+    return;
+  }
+
+  // Update tablespace_placement_map_.
+  auto&& s = GetAndUpdateYsqlTablespaceInfo();
+  if (!s.ok()) {
+    LOG(WARNING) << "Updating tablespace information failed with error "
+                 << StatusToString(s);
+  }
+
+  // Now the table->tablespace information has to be updated in memory. To do this, first,
+  // fetch all namespaces. This is because the table_to_tablespace information is only
+  // found in the pg_class catalog table. There exists a separate pg_class table in each
+  // namespace. To build in-memory state for all tables, process pg_class table for each
+  // namespace.
+  vector<NamespaceId> namespace_id_vec;
+  {
+    std::lock_guard<LockType> l(lock_);
+    for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+      // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
+      namespace_id_vec.emplace_back(ns.first);
+    }
+  }
+  // For each namespace, fetch the table->tablespace information by reading pg_class
+  // table for each namespace.
+  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
+  for (const NamespaceId& nsid : namespace_id_vec) {
+    const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
+    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
+                                             table_to_tablespace_map.get());
+    if (!s.ok()) {
+      LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
+                   << nsid << " with error: " << s.ToString();
+      continue;
+    }
+    VLOG(5) << "Successfully refreshed placement information for namespace "
+            << nsid;
+  }
+  // Update table_to_tablespace_map_ and update the last refreshed time.
+  {
+    std::lock_guard<LockType> l(tablespace_lock_);
+    table_to_tablespace_map_ = table_to_tablespace_map;
+  }
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -1998,17 +2213,6 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    // Verify that the table does not exist.
-    table = FindPtrOrNull(table_names_map_, {namespace_id, req->name()});
-    if (table != nullptr) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Object '$0.$1' already exists", ns->name(), table->name());
-      LOG(WARNING) << "Found table: " << table->ToStringWithState()
-                   << ". Failed creating PostgreSQL system table with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
-    }
-
     RETURN_NOT_OK(CreateTableInMemory(
         *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
@@ -2332,15 +2536,22 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // Verify that custom placement policy has not been specified for colocated table.
-  if (colocated && IsReplicationInfoSet(req.replication_info())) {
+  const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
+  if (is_replication_info_set && colocated) {
     Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
       "colocated tables");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
+  if (is_replication_info_set && req.table_type() == PGSQL_TABLE_TYPE) {
+    const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
+        "use Tablespaces instead");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
   // Get placement info.
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
-  ResolveReplicationInfo(req.replication_info()));
+    GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
 
   // Calculate number of tablets to be used.
   int num_tablets = req.schema().table_properties().num_tablets();
@@ -2371,7 +2582,26 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     req.set_num_tablets(1);
   } else {
     s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-    RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+    if (req.partitions_size() > 0) {
+      if (req.partitions_size() != num_tablets) {
+        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      }
+      string last;
+      for (const auto& p : req.partitions()) {
+        Partition np;
+        Partition::FromPB(p, &np);
+        if (np.partition_key_start() != last) {
+          Status s = STATUS(InvalidArgument,
+                            "Partitions does not cover the full partition keyspace");
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+        }
+        last = np.partition_key_end();
+        partitions.push_back(std::move(np));
+      }
+    } else {
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+    }
   }
 
   // For index table, populate the index info.
@@ -3157,6 +3387,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   TableId table_id
       = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntry::TABLE);
   scoped_refptr<TableInfo> table = NewTableInfo(table_id);
+  if (req.has_tablespace_id()) {
+    table->SetTablespaceIdForTableCreation(req.tablespace_id());
+  }
   table->mutable_metadata()->StartMutation();
   SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTablesEntryPB::PREPARING);
@@ -3267,6 +3500,12 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
           // The namespace was not found. This is a correct case. Just return NULL.
           *table_info = nullptr;
           return Status::OK();
+        }
+
+        // We can't lookup YSQL table by name because Postgres concept of "schemas"
+        // introduces ambiguity.
+        if (ns->database_type() == YQL_DATABASE_PGSQL) {
+          return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
         }
 
         namespace_id = ns->id();
@@ -4101,26 +4340,30 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
     }
 
-    std::lock_guard<LockType> catalog_lock(lock_);
-    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
+    // Postgres handles name uniqueness constraints in it's own layer.
+    if (l->data().table_type() != PGSQL_TABLE_TYPE) {
+      std::lock_guard<LockType> catalog_lock(lock_);
+      VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
-    TRACE("Acquired catalog manager lock");
+      TRACE("Acquired catalog manager lock");
 
-    // Verify that the table does not exist.
-    scoped_refptr<TableInfo> other_table = FindPtrOrNull(
-        table_names_map_, {new_namespace_id, new_table_name});
-    if (other_table != nullptr) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Object '$0.$1' already exists",
-          GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
-      LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
-                   << ". Failed alterring table with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+      // Verify that the table does not exist.
+      scoped_refptr<TableInfo> other_table = FindPtrOrNull(
+          table_names_map_, {new_namespace_id, new_table_name});
+      if (other_table != nullptr) {
+        Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+            "Object '$0.$1' already exists",
+            GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
+        LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
+                     << ". Failed alterring table with error: "
+                     << s.ToString() << " Request:\n" << req->DebugString();
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+      }
+
+      // Acquire the new table name (now we have 2 name for the same table).
+      table_names_map_[{new_namespace_id, new_table_name}] = table;
     }
 
-    // Acquire the new table name (now we have 2 name for the same table).
-    table_names_map_[{new_namespace_id, new_table_name}] = table;
     table_pb.set_namespace_id(new_namespace_id);
     table_pb.set_name(new_table_name);
 
@@ -4135,6 +4378,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     if (table->colocated()) {
       const Status s = STATUS(InvalidArgument,
           "Placement policy cannot be altered for a colocated table");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+      const Status s = STATUS(InvalidArgument,
+            "Placement policy cannot be altered for YSQL tables, use Tablespaces");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
     }
     // Validate table replication info.
@@ -4207,15 +4455,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  // Remove the old name.
-  if (req->has_new_namespace() || req->has_new_table_name()) {
+  // Remove the old name. Not present if PGSQL.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+      (req->has_new_namespace() || req->has_new_table_name())) {
     TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
-        namespace_id, table_name);
+          namespace_id, table_name);
     std::lock_guard<LockType> l_map(lock_);
-    if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-        table_names_map_.erase({namespace_id, table_name}) != 1) {
-      PANIC_RPC(rpc, "Could not remove table from map, name=" + l->data().name());
-    }
+    table_names_map_.erase({namespace_id, table_name});
   }
 
   // Update the in-memory state.
@@ -4573,6 +4819,8 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
     YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) {
+  if (db_type == YQL_DATABASE_PGSQL)
+    return nullptr;
   SharedLock<LockType> l(lock_);
   const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
   return ns
@@ -6799,8 +7047,8 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
-  if (report.has_processing_parent_data()) {
-      new_replica->processing_parent_data = report.processing_parent_data();
+  if (report.has_should_disable_lb_move()) {
+      new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
@@ -6875,10 +7123,17 @@ Status CatalogManager::EnableBgTasks() {
   background_tasks_.reset(new CatalogManagerBgTasks(this));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
-  // Add bg thread to rebuild the system partitions thread.
+
+  // Add bg thread to rebuild yql system partitions.
   refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
+
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)));
+      [this]() { RebuildYQLSystemPartitions(); }));
+
+  // Add bg thread to refresh tablespace information for ysql tables.
+  refresh_ysql_tablespace_info_task_.Bind(&master_->messenger()->scheduler());
+  RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+      [this]() { StartRefreshYSQLTablePlacementInfo(); }));
   return Status::OK();
 }
 
@@ -7104,6 +7359,9 @@ void CatalogManager::SendDeleteTabletRequest(
     const scoped_refptr<TableInfo>& table,
     TSDescriptor* ts_desc,
     const string& reason) {
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << "Deleting tablet " << tablet_id << " on peer "
                         << ts_desc->permanent_uuid() << " with delete type "
                         << TabletDataState_Name(delete_type) << " (" << reason << ")";
@@ -7534,8 +7792,9 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
         tablet->tablet_id());
   }
 
-  const ReplicationInfoPB& replication_info = VERIFY_RESULT(ResolveReplicationInfo(
-    table_guard->data().pb.replication_info()));
+  const auto& replication_info =
+    VERIFY_RESULT(GetTableReplicationInfo(table_guard->data().pb.replication_info(),
+          tablet->table()->TablespaceIdForTableCreation()));
 
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
@@ -8300,12 +8559,17 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
     blacklistState.Reset();
   }
 
-  LOG(INFO) << "Set blacklist size = " << blacklist.hosts_size() << " with load "
-            << blacklist.initial_replica_load();
-
   for (const auto& pb : blacklist.hosts()) {
     blacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial load.
+  if (blacklist.has_initial_replica_load()) {
+    blacklistState.initial_load_ = blacklist.initial_replica_load();
+  }
+
+  LOG(INFO) << "Set blacklist size = " << blacklistState.tservers_.size() << " with load "
+            << blacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8318,12 +8582,17 @@ Status CatalogManager::SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
     leaderBlacklistState.Reset();
   }
 
-  LOG(INFO) << "Set leader blacklist size = " << leader_blacklist.hosts_size() << " with load "
-            << leader_blacklist.initial_leader_load();
-
   for (const auto& pb : leader_blacklist.hosts()) {
     leaderBlacklistState.tservers_.insert(HostPortFromPB(pb));
   }
+
+  // Set the initial leader load.
+  if (leader_blacklist.has_initial_leader_load()) {
+    leaderBlacklistState.initial_load_ = leader_blacklist.initial_leader_load();
+  }
+
+  LOG(INFO) << "Set leader blacklist size = " << leaderBlacklistState.tservers_.size()
+            << " with load " << leaderBlacklistState.initial_load_;
 
   return Status::OK();
 }
@@ -8439,7 +8708,10 @@ Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletI
     *num_replicas = master_consensus.config().peers().size();
     return Status::OK();
   }
-  return GetReplicationFactor(num_replicas);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  GetExpectedNumberOfReplicas(&num_live_replicas, &num_read_replicas);
+  *num_replicas = num_live_replicas + num_read_replicas;
+  return Status::OK();
 }
 
 void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
@@ -8447,7 +8719,7 @@ void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* nu
   const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
   *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
-    *num_read_replicas = read_replica_placement_info.num_replicas();
+    *num_read_replicas += read_replica_placement_info.num_replicas();
   }
 }
 
@@ -8613,7 +8885,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   }
 
   LOG(INFO) << "Blacklisted count " << blacklist_replicas
-            << "across " << state.tservers_.size()
+            << " across " << state.tservers_.size()
             << " servers, with initial load " << state.initial_load_;
 
   // Case when a blacklisted servers did not have any starting load.
@@ -8754,8 +9026,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   }
   refresh_yql_partitions_task_.Schedule([this](const Status& status) {
     WARN_NOT_OK(
-        background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::RebuildYQLSystemPartitions, this)),
+        background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
   }, wait_time);
 }

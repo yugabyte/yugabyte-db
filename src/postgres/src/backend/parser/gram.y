@@ -4067,7 +4067,7 @@ ConstraintElem:
 				opt_c_include opt_definition OptConsTableSpace  ExclusionWhereClause
 				ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "EXCLUDE constraint", 1129);
+					parser_ybc_signal_unsupported(@1, "EXCLUDE constraint", 3944);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_EXCLUSION;
 					n->location = @1;
@@ -4314,7 +4314,7 @@ OptTableGroup:
 		;
 
 OptTableSpace:
-	     		TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
+	     		TABLESPACE name { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -11940,9 +11940,6 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->whereClause = $6;
 					n->returningList = $7;
 					n->withClause = $1;
-					if (n->withClause != NULL) {
-						parser_ybc_not_support(@1, "WITH clause");
-					}
 					$$ = (Node *)n;
 				}
 		;

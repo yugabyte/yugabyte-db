@@ -656,8 +656,8 @@ message ReportedTabletPB {
   optional AppStatusPB error = 4;
   optional uint32 schema_version = 5;
 
-  // Replica is processing a parent data after a tablet splits
-  optional bool processing_parent_data = 7;
+  // Replica is reporting that load balancer moves should be disabled
+  optional bool should_disable_lb_move = 7;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
@@ -749,6 +749,12 @@ message TSHeartbeatRequestPB {
 
   // List of candidate tablets for split based on tablet splitting strategy and settings.
   repeated TabletForSplitPB tablets_for_split = 9;
+
+  // Physical time on tablet server
+  optional fixed64 ts_physical_time = 10;
+
+  // Hybrid time on tablet server
+  optional fixed64 ts_hybrid_time = 11;
 }
 
 message TSHeartbeatResponsePB {
@@ -929,8 +935,14 @@ message CreateTableRequestPB {
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
 
- // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
   optional TransactionMetadataPB transaction = 20;
+
+  // For YSQL tables, this denotes the tablespace that this table is associated with.
+  optional bytes tablespace_id = 21;
+
+  // This field should be used to create or restore table with a fixed set of partitions.
+  repeated PartitionPB partitions = 22;
 }
 
 message CreateTableResponsePB {

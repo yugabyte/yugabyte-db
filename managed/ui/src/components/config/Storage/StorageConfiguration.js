@@ -11,6 +11,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
@@ -247,10 +248,20 @@ class StorageConfiguration extends Component {
           });
 
           const configControls = (
-            <div>
+            <div className="action-bar">
+              {config.inUse && (
+                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                  placement="top"
+                >
+                  <span className="disable-delete fa-stack fa-2x">
+                    <i className="fa fa-trash-o fa-stack-1x"></i>
+                    <i className="fa fa-ban fa-stack-2x"></i>
+                  </span>
+                </YBInfoTip>
+              )}
               <YBButton
                 btnText={'Delete Configuration'}
-                disabled={submitting || loading || isEmptyObject(config)}
+                disabled={config.inUse || submitting || loading || isEmptyObject(config)}
                 btnClass={'btn btn-default'}
                 onClick={
                   isDefinedNotNull(config)

@@ -992,13 +992,14 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
   }
         )#");
 
-  vector<int> indexes = {2, 4};
   ReadHybridTime read_ht;
   read_ht.read = HybridTime(460);
-  vector<SubDocument> values = {
-      SubDocument(PrimitiveValue::kTombstone), SubDocument(PrimitiveValue(17))};
-  ASSERT_OK(ReplaceInList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-    indexes, values, read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list2")), 1, SubDocument(PrimitiveValue::kTombstone),
+      read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list2")), 2, SubDocument(PrimitiveValue(17)),
+      read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
@@ -1020,7 +1021,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); \
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); \
     HT{ physical: 0 logical: 100 w: 1 }]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
-    HT{ physical: 0 logical: 500 w: 1 }]) -> 17
+    HT{ physical: 0 logical: 500 }]) -> 17
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
     HT{ physical: 0 logical: 100 w: 2 }]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); \
@@ -1077,7 +1078,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); \
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); \
     HT{ physical: 0 logical: 100 w: 1 }]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
-    HT{ physical: 0 logical: 500 w: 1 }]) -> 17
+    HT{ physical: 0 logical: 500 }]) -> 17
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
     HT{ physical: 0 logical: 100 w: 2 }]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); \
@@ -1114,6 +1115,78 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
       ArrayIndex(12): 32
     },
     "other": "other_value"
+  }
+        )#");
+}
+
+TEST_P(DocDBTestWrapper, ListOverwriteAndInsertTest) {
+  SubDocument parent;
+  DocKey doc_key(PrimitiveValues("list_test", 231));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), parent, HybridTime(100)));
+
+  auto write_list = [&](const std::vector<PrimitiveValue>& children, const int logical_time) {
+    SubDocument list;
+    int idx = 1;
+    for (const auto& child : children) {
+      list.SetChild(PrimitiveValue::ArrayIndex(idx++), SubDocument(child));
+    }
+    ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key, "list"), list, HybridTime(logical_time)));
+  };
+
+  write_list(PrimitiveValues(1, 2, 3, 4, 5), 200);
+  write_list(PrimitiveValues(6, 7, 8), 300);
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(350),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 7,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
+      R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT{ physical: 0 logical: 100 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 300 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 200 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 300 w: 1 }]) -> 6
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 200 w: 1 }]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 300 w: 2 }]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 200 w: 2 }]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 300 w: 3 }]) -> 8
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 200 w: 3 }]) -> 3
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(4); \
+    HT{ physical: 0 logical: 200 w: 4 }]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
+    HT{ physical: 0 logical: 200 w: 5 }]) -> 5
+        )#");
+
+  // Replacing cql index 1 with 17 should work as expected, ignoring overwritten DocDB entries
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list")), 1, SubDocument(PrimitiveValue(17)),
+      ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
+  // Replacing cql index 3 should fail, rather than overwrite an old overwritten index
+  ASSERT_NOK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list")), 3, SubDocument(PrimitiveValue(17)),
+      ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(500),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 17,
+      ArrayIndex(3): 8
+    }
   }
         )#");
 }

@@ -34,14 +34,14 @@ On that same completed task, click on the **Actions** dropdown and click **Resto
 You will see a modal where you can select the universe, keyspace, and table you want to restore to. Enter in
 values like this (making sure to change the table name you restore to) and click **OK**.
 
-To restore YugabyteDB universe YCQL data from a backup, follow these steps.
+To restore YugabyteDB universe YCQL data from a backup:
 
 1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
 2. Click **Restore Backup** to open the **Restore data to** dialog.
 
     ![Restore backup - YCQL](/images/yp/restore-backup-ycql.png)
 
-3. Complete the following fields:
+3. Enter the following information:
 
     - **Storage** Select the storage configuration type: `GCS Storage', 'S3 Storage', or 'NFS Storage'.
     - **Storage Location**: Specify the storage location.
@@ -49,7 +49,7 @@ To restore YugabyteDB universe YCQL data from a backup, follow these steps.
     - **Keyspace**: Specify the keyspace.
     - **Table**: Specify the table to be restored. Note: The table name must be different than the backed up table name.
     - **Parallel Threads**: Default is `8`. This value can be change to a value between `1` and `100`.
-    - **KMS Configuration**: (optional) If the backup was from a universe that was encrypted at rest, then select the KMS     configuration to use.
+    - **KMS Configuration**: (optional) If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../secure/enable-encryption-at-rest), then you must select the KMS configuration to use so that the universe keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the key registry on the restore universe with the required universe keys. The universe data files are restored as normal afterwards.
 
 4. Click **OK**. The restore begins immediately. When the restore is completed, a completed **Restore Backup** task will appear in the **Tasks** tab.
 5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you

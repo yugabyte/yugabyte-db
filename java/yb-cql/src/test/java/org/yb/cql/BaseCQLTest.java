@@ -72,7 +72,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   // CQL and Redis settings.
   protected static boolean startCqlProxy = true;
   protected static boolean startRedisProxy = false;
-  protected static int systemQueryCacheMsecs = 4000;
   protected static boolean systemQueryCacheEmptyResponses = false;
   protected static int cqlClientTimeoutMs = 120 * 1000;
 
@@ -110,12 +109,16 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
   }
 
+  protected int systemQueryCacheMsecs() {
+    return 4000;
+  }
+
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
-    flagMap.put("cql_update_system_query_cache_msecs", Integer.toString(systemQueryCacheMsecs));
+    flagMap.put("cql_update_system_query_cache_msecs", Integer.toString(systemQueryCacheMsecs()));
     flagMap.put("cql_system_query_cache_empty_responses",
         Boolean.toString(systemQueryCacheEmptyResponses));
 

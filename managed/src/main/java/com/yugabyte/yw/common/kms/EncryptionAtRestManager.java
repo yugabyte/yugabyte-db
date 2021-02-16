@@ -240,6 +240,11 @@ public class EncryptionAtRestManager {
             File backupKeysFile = EncryptionAtRestUtil.getUniverseBackupKeysFile(storageLocation);
             File backupKeysDir = backupKeysFile.getParentFile();
 
+            // Skip writing key content to file since it already exists and has been written to.
+            if (backupKeysFile.exists() && backupKeysFile.isFile()) {
+              return;
+            }
+
             if ((!backupKeysDir.isDirectory() && !backupKeysDir.mkdirs())
                 || !backupKeysFile.createNewFile()) {
                 throw new RuntimeException("Error creating backup encryption key file!");
@@ -287,7 +292,7 @@ public class EncryptionAtRestManager {
           result = RestoreKeyResult.RESTORE_SUCCEEDED;
         }
       } catch (Exception e) {
-        LOG.error("Error occured restoring universe key history", e);
+        LOG.error("Error occurred restoring universe key history", e);
       }
 
       return result;

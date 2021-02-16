@@ -35,18 +35,18 @@ Only Linux-based systems are supported by Replicated at this point. This Linux O
 
 The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
-- **Permissions necessary for Internet-connected host**
+**Permissions necessary for an Internet-connected host**
 
-- Connectivity to the Internet, either directly or via a http proxy
+- Connectivity to the Internet, either directly or via an HTTP proxy
 - Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
 - Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
 - Ability to pull Yugabyte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
 
-- **Permissions necessary for airgapped host**
+**Permissions necessary for an airgapped host**
 
-An “airgapped” host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
+An _airgapped_ host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
 
-- **Additional requirements**
+**Additional requirements**
 
 For airgapped hosts, a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
@@ -86,7 +86,7 @@ You would need:
 
 Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships some synthetic load-testers with the product, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
-## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
+## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up?
 
 Yes, you can control what Yugabyte Platform is spinning up. For example:
 
@@ -95,3 +95,7 @@ Yes, you can control what Yugabyte Platform is spinning up. For example:
 - You to choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.  
 
 In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, Yugabyte Platform allows creating these machines out of band and import these as "on-premise" install.  
+
+## How do I report a security vulnerability?
+
+Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.

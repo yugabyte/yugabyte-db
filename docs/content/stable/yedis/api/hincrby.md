@@ -2,14 +2,10 @@
 title: HINCRBY
 linkTitle: HINCRBY
 description: HINCRBY
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2135
-aliases:
-  - /stable/api/redis/hincrby
-  - /stable/api/yedis/hincrby
 isTocNested: true
 showAsideToc: true
 ---

@@ -37,8 +37,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -113,9 +113,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Writes the user intent to the universe.
-   * @param isReadOnlyCreate only readonly cluster being created info needs peristence.
    */
   public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
+    return writeUserIntentToUniverse(false, true);
+  }
+
+  /**
+   * Writes the user intent to the universe.
+   * @param isReadOnlyCreate only readonly cluster being created info needs peristence.
+   */
+  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate, boolean updateOnpremNodes) {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -154,7 +161,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Universe universe = saveUniverseDetails(updater);
     LOG.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
-    updateOnPremNodeUuids(universe);
+    if (updateOnpremNodes) {
+      updateOnPremNodeUuids(universe);
+    }
 
     // Return the universe object that we have already updated.
     return universe;
@@ -329,7 +338,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void updateOnPremNodeUuids(Universe universe) {
     LOG.info(
-      "Selecting prem nodes for universe {} ({}).",
+      "Selecting onprem nodes for universe {} ({}).",
       universe.name,
       taskParams().universeUUID
     );
@@ -340,26 +349,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
             .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
-      Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
-      for (NodeDetails node : universeDetails.getNodesInCluster(onPremCluster.uuid)) {
-        if (node.state == NodeDetails.NodeState.ToBeAdded) {
-          List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
-          nodeNames.add(node.nodeName);
-          onpremAzToNodes.put(node.azUuid, nodeNames);
-        }
-      }
-      // Update in-memory map.
-      String instanceType = onPremCluster.userIntent.instanceType;
-      Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-      for (NodeDetails node : taskParams().nodeDetailsSet) {
-        // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
-        // to more easily trickle down this uuid into all locations.
-        NodeInstance n = nodeMap.get(node.nodeName);
-        if (n != null) {
-          node.nodeUuid = n.nodeUuid;
-        }
+      setOnpremData(
+        universeDetails.getNodesInCluster(onPremCluster.uuid),
+        onPremCluster.userIntent.instanceType);
+    }
+  }
+
+  public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
+    Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+    for (NodeDetails node : nodes) {
+      if (node.state == NodeDetails.NodeState.ToBeAdded) {
+        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
+        nodeNames.add(node.nodeName);
+        onpremAzToNodes.put(node.azUuid, nodeNames);
       }
     }
+    // Update in-memory map.
+    Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+    for (NodeDetails node : taskParams().nodeDetailsSet) {
+      // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
+      // to more easily trickle down this uuid into all locations.
+      NodeInstance n = nodeMap.get(node.nodeName);
+      if (n != null) {
+        node.nodeUuid = n.nodeUuid;
+      }
+    }
+    return nodeMap;
   }
 
   public void selectMasters() {
@@ -552,40 +567,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates a task list to run preflight checks for the list of nodes passed in.
+   * Creates a task that will always fail. Utility task to display preflight error messages.
    *
-   * @param nodes : a collection of nodes that need to be checked
+   * @param failedNodes : map of nodeName to associated error message
    */
-  public SubTaskGroup createPrecheckTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
+  public SubTaskGroup createFailedPrecheckTask(Map<NodeInstance, String> failedNodes) {
+    return createFailedPrecheckTask(failedNodes, false);
+  }
 
-    for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      NodeTaskParams params = new NodeTaskParams();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Whether to install node_exporter on nodes or not.
-      params.extraDependencies.installNodeExporter =
-        taskParams().extraDependencies.installNodeExporter;
-      // Which user the node exporter service will run as
-      params.nodeExporterUser = taskParams().nodeExporterUser;
-
-      // Create the Ansible task to setup the server.
-      PrecheckNode precheckNode = new PrecheckNode();
-      precheckNode.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(precheckNode);
-    }
+  /**
+   * Creates a task that will always fail. Utility task to display preflight error messages.
+   *
+   * @param failedNodes : map of nodeName to associated error message
+   * @param reserveNodes : whether to reserve nodes for this universe for future use
+   */
+  public SubTaskGroup createFailedPrecheckTask(Map<NodeInstance, String> failedNodes,
+                                               boolean reserveNodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PrecheckNode", executor);
+    PrecheckNode.Params params = new PrecheckNode.Params();
+    params.failedNodes = failedNodes;
+    params.reserveNodes = reserveNodes;
+    PrecheckNode failedCheck = new PrecheckNode();
+    failedCheck.initialize(params);
+    subTaskGroup.addTask(failedCheck);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
-
 
   /**
    * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
@@ -825,5 +832,46 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
         null /* no gflag to update */, true /* updateMasterAddr */);
+  }
+
+  /**
+   * Reserves onprem nodes for an existing universe and performs preflight checks on them.
+   */
+  public boolean reserveAndCheckOnpremNodesToBeAdded() {
+    Map<NodeInstance, String> failedNodes = new HashMap<>();
+    for (Cluster cluster : taskParams().clusters) {
+      Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
+      Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+
+      // Reserves onprem nodes.
+      Map<String, NodeInstance> onpremInstances = new HashMap<>();
+      if (cluster.userIntent.providerType == CloudType.onprem) {
+        onpremInstances = setOnpremData(nodes, cluster.userIntent.instanceType);
+      }
+
+      if (!nodesToProvision.isEmpty()) {
+        for (NodeDetails currentNode : nodesToProvision) {
+          NodeTaskParams nodeParams = new NodeTaskParams();
+          UserIntent userIntent = taskParams()
+            .getClusterByUuid(currentNode.placementUuid).userIntent;
+          nodeParams.nodeName = currentNode.nodeName;
+          nodeParams.deviceInfo = userIntent.deviceInfo;
+          nodeParams.azUuid = currentNode.azUuid;
+          nodeParams.universeUUID = taskParams().universeUUID;
+          nodeParams.extraDependencies.installNodeExporter =
+            taskParams().extraDependencies.installNodeExporter;
+
+          String preflightStatus = performPreflightCheck(currentNode, nodeParams);
+          if (preflightStatus != null) {
+            failedNodes.put(onpremInstances.get(currentNode.nodeName), preflightStatus);
+          }
+        }
+      }
+    }
+    if (!failedNodes.isEmpty()) {
+      createFailedPrecheckTask(failedNodes)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    }
+    return failedNodes.isEmpty();
   }
 }

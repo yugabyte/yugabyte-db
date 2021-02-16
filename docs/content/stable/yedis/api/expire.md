@@ -2,14 +2,10 @@
 title: EXPIRE
 linkTitle: EXPIRE
 description: EXPIRE
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2061
-aliases:
-  - /stable/api/redis/expire
-  - /stable/api/yedis/expire
 isTocNested: true
 showAsideToc: true
 ---

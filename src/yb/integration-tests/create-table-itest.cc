@@ -40,12 +40,16 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 
@@ -522,6 +526,82 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
     }
   }
   ASSERT_EQ(kNumRaftLeaders, kExpectedRaftLeaders);
+}
+
+// In TSAN, currently, initdb isn't created during build but on first start.
+// As a result transaction table gets created without waiting for the requisite
+// number of TS.
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreation)) {
+  // Set up an RF 1.
+  // Tell the Master leader to wait for 3 TS to join before creating the
+  // transaction status table.
+  vector<string> master_flags = {
+        "--txn_table_wait_min_ts_count=3"
+  };
+  // We also need to enable ysql.
+  ASSERT_NO_FATALS(StartCluster({}, master_flags, 1, 1, true));
+
+  // Check that the transaction table hasn't been created yet.
+  YQLDatabase db = YQL_DATABASE_CQL;
+  YBTableName transaction_status_table(db, master::kSystemNamespaceId,
+                                  master::kSystemNamespaceName, kTransactionsTableName);
+  bool exists = ASSERT_RESULT(client_->TableExists(transaction_status_table));
+  ASSERT_FALSE(exists) << "Transaction table exists even though the "
+                          "requirement for the minimum number of TS not met";
+
+  // Add two tservers.
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  auto tbl_exists = [&]() -> Result<bool> {
+    return client_->TableExists(transaction_status_table);
+  };
+
+  ASSERT_OK(WaitFor(tbl_exists, 30s * kTimeMultiplier,
+                    "Transaction table doesn't exist even though the "
+                    "requirement for the minimum number of TS met"));
+}
+
+TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
+  const int kNumReplicas = 3;
+  const int kNumTablets = 2;
+
+  const int kNumPartitions = kNumTablets;
+
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  // Allocate the partitions.
+  Partition partitions[kNumPartitions];
+  const uint16_t interval = PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
+
+  partitions[0].set_partition_key_end(PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[1].set_partition_key_start(PartitionSchema::EncodeMultiColumnHashValue(interval));
+
+  // create a table
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .add_partition(partitions[0])
+                .add_partition(partitions[1])
+                .Create());
+
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(
+      kTableName, -1, &tablets, RequireTabletsRunning::kFalse));
+  for (int i = 0 ; i < kNumPartitions; ++i) {
+    Partition p;
+    Partition::FromPB(tablets[i].partition(), &p);
+    ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
+  }
 }
 
 }  // namespace yb

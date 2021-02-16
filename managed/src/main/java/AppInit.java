@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import java.lang.ReflectiveOperationException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +43,7 @@ public class AppInit {
                  ConfigHelper configHelper, ReleaseManager releaseManager,
                  AWSInitializer awsInitializer, CustomerTaskManager taskManager,
                  YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
-                 TaskGarbageCollector taskGC, PlatformBackupManager platformBackupManager
+                 TaskGarbageCollector taskGC, PlatformReplicationManager replicationManager
   ) throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -91,10 +90,10 @@ public class AppInit {
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+          for (InstanceType instanceType : InstanceType.findByProvider(provider,
+            application.config())) {
             if (instanceType.instanceTypeDetails != null &&
-                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -131,9 +130,8 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
 
-      // TODO: (Daniel) - Integrate this with runtime settings once #5975 has landed
       // Start periodic platform backups
-      platformBackupManager.start();
+      replicationManager.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

@@ -240,9 +240,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
-  CHECKED_STATUS FlushLogIndex();
-
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+  const scoped_refptr<log::Log>& log() { return log_; }
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
 

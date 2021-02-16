@@ -1,11 +1,8 @@
 ---
 title: Troubleshoot universe issues
 headerTitle: Troubleshoot universe issues
-linkTitle: Universe
+linkTitle: Universe issues
 description: Troubleshoot universe issues
-aliases:
-  - /troubleshoot/enterprise-edition/universes/
-  - /stable/troubleshoot/enterprise-edition/universes/
 menu:
   stable:
     identifier: universe-issues

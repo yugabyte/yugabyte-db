@@ -75,6 +75,12 @@ const DEFAULT_STORAGE_TYPES = {
   AZU: 'Premium_LRS'
 };
 
+export const EXPOSING_SERVICE_STATE_TYPES = {
+  None: 'NONE',
+  Exposed: 'EXPOSED',
+  Unexposed: 'UNEXPOSED'
+};
+
 const initialState = {
   universeName: '',
   instanceTypeSelected: '',
@@ -95,9 +101,11 @@ const initialState = {
   maxNumNodes: -1,
   assignPublicIP: true,
   hasInstanceTypeChanged: false,
-  useTimeSync: false,
+  useTimeSync: true,
   enableYSQL: true,
   enableIPV6: false,
+  // By default, we don't want to expose the service.
+  enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
   enableYEDIS: false,
   enableNodeToNodeEncrypt: false,
   enableClientToNodeEncrypt: false,
@@ -124,6 +132,7 @@ export default class ClusterFields extends Component {
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
     this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
+    this.toggleEnableExposingService = this.toggleEnableExposingService.bind(this);
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
@@ -268,6 +277,7 @@ export default class ClusterFields extends Component {
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableIPV6: userIntent.enableIPV6,
+          enableExposingService: userIntent.enableExposingService,
           enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
@@ -281,7 +291,6 @@ export default class ClusterFields extends Component {
       }
 
       this.props.getRegionListItems(providerUUID);
-      this.props.getInstanceTypeListItems(providerUUID);
       if (primaryCluster.userIntent.providerType === 'onprem') {
         this.props.fetchNodeInstanceList(providerUUID);
       }
@@ -299,7 +308,6 @@ export default class ClusterFields extends Component {
             : 3
         });
         if (isNonEmptyString(formValues[clusterType].provider)) {
-          this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
           this.setState({ instanceTypeSelected: formValues[clusterType].instanceType });
 
@@ -318,6 +326,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableIPV6) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({ enableIPV6: formValues['primary'].enableIPV6 });
+          }
+          if (formValues[clusterType].enableExposingService) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableExposingService: formValues['primary'].enableExposingService });
           }
           if (formValues[clusterType].enableYEDIS) {
             // We would also default to whatever primary cluster's state for this one.
@@ -521,6 +533,7 @@ export default class ClusterFields extends Component {
 
     // Fire Configure only if either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (configureIntentValid()) {
+      toggleDisableSubmit(false);
       if (isNonEmptyObject(currentUniverse.data)) {
         if (!this.hasFieldChanged()) {
           const placementStatusObject = {
@@ -581,7 +594,7 @@ export default class ClusterFields extends Component {
     if (type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists)) {
       this.props.handleHasFieldChanged(
         this.hasFieldChanged() ||
-          !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
+        !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
       );
     } else {
       this.props.handleHasFieldChanged(true);
@@ -706,6 +719,20 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableIPV6', event.target.checked);
       updateFormField('async.enableIPV6', event.target.checked);
       this.setState({ enableIPV6: event.target.checked });
+    }
+  }
+
+  toggleEnableExposingService(event) {
+    const { updateFormField, clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      updateFormField('primary.enableExposingService', event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
+      updateFormField('async.enableExposingService', event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
+      this.setState({ enableExposingService: event.target.checked ?
+          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']});
     }
   }
 
@@ -849,31 +876,62 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+            this.reloadInstanceTypes();
+          });
         }
       } else {
         // Create flow
         if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+            this.reloadInstanceTypes();
+          });
         } else {
           const currentClusterConfiguration = getClusterByType(
             universeConfigTemplate.data.clusters,
             clusterType
           );
           if (!isDefinedNotNull(currentClusterConfiguration)) {
-            this.props.submitConfigureUniverse(universeTaskParams);
+            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+              this.reloadInstanceTypes();
+            });
           } else if (
             !areIntentsEqual(
               getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
               currentClusterConfiguration.userIntent
             )
           ) {
-            this.props.submitConfigureUniverse(universeTaskParams);
+            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
+              this.reloadInstanceTypes();
+            });
           }
         }
       }
     }
   }
+
+  // fetch instance types with respect to selected availability zones (AZ)
+  reloadInstanceTypes = () => {
+    const {
+      universe: { universeConfigTemplate },
+      clusterType,
+      getInstanceTypeListItems
+    } = this.props;
+
+    const cluster = clusterType === 'async'
+      ? getReadOnlyCluster(universeConfigTemplate.data.clusters)
+      : getPrimaryCluster(universeConfigTemplate.data.clusters);
+
+    // AZs are available as part of universeConfigTemplate store record only
+    if (cluster) {
+      const provider = cluster.userIntent.provider;
+      const zones = cluster.placementInfo.cloudList[0].regionList
+        .flatMap(item => item.azList)
+        .map(item => item.name);
+
+      getInstanceTypeListItems(provider, zones);
+    }
+  };
 
   configureUniverseNodeList() {
     const {
@@ -1031,7 +1089,7 @@ export default class ClusterFields extends Component {
    * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
    * If ClientToNode TLS sets to enable and NodeToNode TLS sets to disable then
    * ClientToNode TLS will be disabled.
-   * 
+   *
    * @param isFieldReadOnly If true then readonly access.
    * @param enableNodeToNodeEncrypt NodeToNodeTLS state.
    */
@@ -1103,7 +1161,7 @@ export default class ClusterFields extends Component {
       });
 
     const kmsConfigList = [
-      <option value="0" key={`kms-option-0`}>
+      <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
       ...cloud.authConfig.data.map((config, index) => {
@@ -1154,7 +1212,7 @@ export default class ClusterFields extends Component {
       const currentProvider = this.getCurrentProvider(self.state.providerSelected);
       if (
         (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD'
-         || self.state.volumeType === 'NVME') &&
+          || self.state.volumeType === 'NVME') &&
         isDefinedNotNull(currentProvider)
       ) {
         const isInAws = currentProvider.code === 'aws';
@@ -1293,7 +1351,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
-          subLabel="Whether or not to enable YSQL."
+          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
       enableYEDIS = (
@@ -1305,7 +1363,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYEDIS}
           onToggle={this.toggleEnableYEDIS}
           label="Enable YEDIS"
-          subLabel="Whether or not to enable YEDIS."
+          subLabel="Enable the YEDIS API endpoint to run REDIS compatible workloads."
         />
       );
       enableNodeToNodeEncrypt = (
@@ -1317,7 +1375,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableNodeToNodeEncrypt}
           onToggle={this.toggleEnableNodeToNodeEncrypt}
           label="Enable Node-to-Node TLS"
-          subLabel="Whether or not to enable TLS Encryption for node to node communication."
+          subLabel="Enable encryption in transit for communication between the DB servers."
         />
       );
       enableClientToNodeEncrypt = (
@@ -1329,7 +1387,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
           label="Enable Client-to-Node TLS"
-          subLabel="Whether or not to enable TLS encryption for client to node communication."
+          subLabel="Enable encryption in transit for communication between clients and the DB servers."
         />
       );
       enableEncryptionAtRest = (
@@ -1342,7 +1400,7 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableEncryptionAtRest}
           label="Enable Encryption at Rest"
           title="Upload encryption key file"
-          subLabel="Enable encryption for data stored on tablet servers."
+          subLabel="Enable encryption for data stored on the tablet servers."
         />
       );
 
@@ -1424,7 +1482,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.assignPublicIP}
           onToggle={this.toggleAssignPublicIP}
           label="Assign Public IP"
-          subLabel="Whether or not to assign a public IP."
+          subLabel="Assign a public IP to the DB servers for connections over the internet."
         />
       );
     }
@@ -1438,7 +1496,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
           label="Use AWS Time Sync"
-          subLabel="Whether or not to use the Amazon Time Sync Service."
+          subLabel="Enable the AWS Time Sync functionality for the DB servers."
         />
       );
     }
@@ -1512,7 +1570,8 @@ export default class ClusterFields extends Component {
         });
     }
 
-    let placementStatus = <span />;
+    let placementStatus = null;
+    let placementStatusOnprem = null;
     const cluster =
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
@@ -1520,15 +1579,34 @@ export default class ClusterFields extends Component {
           _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
         );
     const placementCloud = getPlacementCloud(cluster);
-    if (self.props.universe.currentPlacementStatus && placementCloud) {
+    const regionAndProviderDefined = isNonEmptyArray(formValues[clusterType]?.regionList)
+      && isNonEmptyString(formValues[clusterType]?.provider);
+
+    // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
+    if (
+      self.props.universe.currentPlacementStatus && placementCloud
+      && regionAndProviderDefined
+    ) {
       placementStatus = (
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
           placementCloud={placementCloud}
+          providerCode={currentProvider.code}
+        />
+      );
+    } else if (currentProvider?.code === 'onprem'
+      && !(this.state.numNodes <= this.state.maxNumNodes)
+      && self.props.universe.currentPlacementStatus
+      && isNonEmptyArray(formValues[clusterType].regionList)
+      && isNonEmptyString(formValues[clusterType].provider)
+    ) {
+      placementStatusOnprem = (
+        <AZPlacementInfo
+          placementInfo={self.props.universe.currentPlacementStatus}
+          providerCode={currentProvider.code}
         />
       );
     }
-
     const configTemplate = self.props.universe.universeConfigTemplate;
     const clusters = _.get(configTemplate, 'data.clusters', []);
     const showPlacementStatus =
@@ -1547,6 +1625,7 @@ export default class ClusterFields extends Component {
           maxNumNodes={this.state.maxNumNodes}
           currentProvider={this.getCurrentProvider(currentProviderUUID)}
           isKubernetesUniverse={this.state.isKubernetesUniverse}
+          reloadInstanceTypes={this.reloadInstanceTypes}
         />
         {showPlacementStatus && placementStatus}
       </div>
@@ -1723,7 +1802,7 @@ export default class ClusterFields extends Component {
               )}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
-              {azSelectorTable}
+              {placementStatusOnprem  || regionAndProviderDefined && azSelectorTable}
             </Col>
           </Row>
         </div>
@@ -1742,6 +1821,7 @@ export default class ClusterFields extends Component {
                   label="Instance Type"
                   options={universeInstanceTypeList}
                   onInputChanged={this.instanceTypeChanged}
+                  readOnlySelect={getPromiseState(cloud.instanceTypes).isLoading()}
                 />
               </div>
             </Col>
@@ -1768,6 +1848,8 @@ export default class ClusterFields extends Component {
                 </div>
               )}
             </Col>
+          </Row>
+          <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 {selectTlsCert}
@@ -1848,7 +1930,26 @@ export default class ClusterFields extends Component {
                     checkedVal={this.state.enableIPV6}
                     onToggle={this.toggleEnableIPV6}
                     label="Enable IPV6"
-                    subLabel="Whether or not to enable IPV6."
+                    subLabel="Use IPV6 networking for connections between the DB servers."
+                  />
+                </div>
+              </Col>
+            </Row>
+          )}
+          {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.enableExposingService`}
+                    component={YBToggle}
+                    isReadOnly={isFieldReadOnly}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.enableExposingService ===
+                        EXPOSING_SERVICE_STATE_TYPES['Exposed']}
+                    onToggle={this.toggleEnableExposingService}
+                    label="Enable Exposing Service"
+                    subLabel="Assign an exposing service (loadbalancer, nodeport) for connecting to the DB endpoints over the internet."
                   />
                 </div>
               </Col>

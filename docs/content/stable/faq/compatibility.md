@@ -3,10 +3,6 @@ title: FAQs about YugabyteDB API compatibility
 headerTitle: API compatibility FAQ
 linkTitle: API compatibility FAQ
 description: Answers to common questions about YugabyteDB API compatibility.
-aliases:
-  - /faq/cassandra/
-  - /stable/faq/cassandra/
-block_indexing: true
 menu:
   stable:
     identifier: faq-api-compatibility

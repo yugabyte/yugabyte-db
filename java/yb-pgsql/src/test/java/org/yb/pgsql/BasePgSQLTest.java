@@ -23,6 +23,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -51,6 +52,7 @@ import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -82,7 +84,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
   protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
   protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
+  protected static final String BEGIN_STMT_METRIC = METRIC_PREFIX + "BeginStmt";
+  protected static final String COMMIT_STMT_METRIC = METRIC_PREFIX + "CommitStmt";
+  protected static final String ROLLBACK_STMT_METRIC = METRIC_PREFIX + "RollbackStmt";
   protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
+  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC =
+      METRIC_PREFIX + "Single_Shard_Transactions";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
@@ -398,7 +405,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return toPgConnection(connection).getBackendPID();
   }
 
-  protected static class AgregatedValue {
+  protected static class AggregatedValue {
     long count;
     double value;
     long rows;
@@ -414,8 +421,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected AgregatedValue getStatementStat(String statName) throws Exception {
-    AgregatedValue value = new AgregatedValue();
+  protected AggregatedValue getStatementStat(String statName) throws Exception {
+    AggregatedValue value = new AggregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       URL url = new URL(String.format("http://%s:%d/statements",
                                       ts.getLocalhostIP(),
@@ -504,8 +511,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getRawMetric((ts) -> ts.getPgsqlWebPort());
   }
 
-  protected AgregatedValue getMetric(String metricName) throws Exception {
-    AgregatedValue value = new AgregatedValue();
+  protected AggregatedValue getMetric(String metricName) throws Exception {
+    AggregatedValue value = new AggregatedValue();
     for (JsonArray rawMetric : getRawYSQLMetric()) {
       JsonObject obj = rawMetric.get(0).getAsJsonObject();
       assertEquals(obj.get("type").getAsString(), "server");
@@ -546,13 +553,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   private interface MetricFetcher {
-    AgregatedValue fetch(String name) throws Exception;
+    AggregatedValue fetch(String name) throws Exception;
   }
 
   private static abstract class QueryExecutionMetricChecker {
     private MetricFetcher fetcher;
     private String metricName;
-    private AgregatedValue oldValue;
+    private AggregatedValue oldValue;
 
     public QueryExecutionMetricChecker(String metricName, MetricFetcher fetcher) {
       this.fetcher = fetcher;
@@ -568,7 +575,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     protected abstract void check(
-      String query, String metricName, AgregatedValue oldValue, AgregatedValue newValue);
+      String query, String metricName, AggregatedValue oldValue, AggregatedValue newValue);
   }
 
   private class MetricCountChecker extends QueryExecutionMetricChecker {
@@ -581,7 +588,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     @Override
     public void check(
-      String query, String metric, AgregatedValue oldValue, AgregatedValue newValue) {
+      String query, String metric, AggregatedValue oldValue, AggregatedValue newValue) {
       assertEquals(
         String.format("'%s' count delta assertion failed for query '%s'", metric, query),
         countDelta, newValue.count - oldValue.count);
@@ -598,7 +605,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     @Override
     public void check(
-      String query, String metric, AgregatedValue oldValue, AgregatedValue newValue) {
+      String query, String metric, AggregatedValue oldValue, AggregatedValue newValue) {
       super.check(query, metric, oldValue, newValue);
       assertEquals(
         String.format("'%s' row count delta assertion failed for query '%s'", metric, query),
@@ -630,19 +637,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Time execution of a query. */
   protected long verifyStatementMetric(
-    Statement statement, String query, String metricName,
-    int queryMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
+    Statement statement, String query, String metricName, int queryMetricDelta,
+    int singleShardTxnMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
     return verifyQuery(
       statement, query, validStmt,
+      new MetricCountChecker(
+          SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta),
       new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
       new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
   }
 
   protected void verifyStatementTxnMetric(
-    Statement statement, String query, int txnMetricDelta) throws Exception {
+    Statement statement, String query, int singleShardTxnMetricDelta) throws Exception {
     verifyQuery(
       statement, query,true,
-      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta));
+      new MetricCountChecker(
+          SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta));
   }
 
   protected void verifyStatementMetricRows(
@@ -814,6 +824,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     String getString(int index) {
       return (String) elems.get(index);
+    }
+
+    public boolean elementEquals(int idx, Object value) {
+      return compare(elems.get(idx), value) == 0;
     }
 
     @Override
@@ -1023,13 +1037,53 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  /** Better alternative to assertEquals, which provides more mismatch details. */
+  protected void assertRows(List<Row> expected, List<Row> actual) {
+    assertEquals("Collection length mismatch: expected " + expected.size()
+        + ", but was ", expected.size(), actual.size());
+    for (int i = 0; i < expected.size(); ++i) {
+      assertRow("Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
+    }
+  }
+
+  /** Better alternative to assertEquals, which provides more mismatch details. */
+  protected void assertRow(String messagePrefix, Row expected, Row actual) {
+    assertEquals(messagePrefix
+        + "Expected row width mismatch: expected:<" + expected.elems.size()
+        + "> but was:<" + actual.elems.size() + ">"
+        + "\nExpected row: " + expected
+        + "\nActual row:   " + actual,
+        expected.elems.size(), actual.elems.size());
+    for (int i = 0; i < expected.elems.size(); ++i) {
+      assertTrue(messagePrefix
+          + "Column " + (i + 1) + " mismatch: expected:<" + expected.elems.get(i)
+          + "> but was:<" + actual.elems.get(i) + ">"
+          + "\nExpected row: " + expected
+          + "\nActual row:   " + actual,
+          expected.elementEquals(i, actual.elems.get(i)));
+    }
+  }
+
+  protected void assertRow(Row expected, Row actual) {
+    assertRow("", expected, actual);
+  }
+
   protected void assertQuery(Statement stmt, String query, Row... expectedRows)
       throws SQLException {
     List<Row> actualRows = getRowList(stmt.executeQuery(query));
     assertEquals(
         "Expected " + expectedRows.length + " rows, got " + actualRows.size() + ": " + actualRows,
         expectedRows.length, actualRows.size());
-    assertArrayEquals(expectedRows, actualRows.toArray(new Row[0]));
+    assertRows(Arrays.asList(expectedRows), actualRows);
+  }
+
+  protected void assertQuery(PreparedStatement stmt, Row... expectedRows)
+      throws SQLException {
+    List<Row> actualRows = getRowList(stmt.executeQuery());
+    assertEquals(
+        "Expected " + expectedRows.length + " rows, got " + actualRows.size() + ": " + actualRows,
+        expectedRows.length, actualRows.size());
+    assertRows(Arrays.asList(expectedRows), actualRows);
   }
 
   protected void assertNoRows(Statement stmt, String query) throws SQLException {
@@ -1041,7 +1095,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     assertTrue(rs.next());
     Row expected = new Row(values);
     Row actual = Row.fromResultSet(rs);
-    assertEquals(expected, actual);
+    assertRow(expected, actual);
   }
 
   protected void assertOneRow(Statement statement,
@@ -1065,7 +1119,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                String query,
                                List<Row> expectedRows) throws SQLException {
     try (ResultSet rs = statement.executeQuery(query)) {
-      assertEquals(expectedRows, getRowList(rs));
+      assertRows(expectedRows, getRowList(rs));
     }
   }
 
@@ -1442,9 +1496,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  /** Immutable connection builder */
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
+  /** Run a process, returning output lines. */
+  protected List<String> runProcess(String... args) throws Exception {
+    return runProcess(new ProcessBuilder(args));
+  }
+
+  /** Run a process, returning output lines. */
+  protected List<String> runProcess(ProcessBuilder procBuilder) throws Exception {
+    Process proc = procBuilder.start();
+    int code = proc.waitFor();
+    if (code != 0) {
+      String err = IOUtils.toString(proc.getErrorStream(), StandardCharsets.UTF_8);
+      fail("Process exited with code " + code + ", message: <" + err.trim() + ">");
+    }
+    String output = IOUtils.toString(proc.getInputStream(), StandardCharsets.UTF_8);
+    return Arrays.asList(output.split("\n"));
   }
 
   protected HostAndPort getMasterLeaderAddress() {

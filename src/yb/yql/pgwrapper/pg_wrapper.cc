@@ -232,10 +232,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";
     const auto auth_method = FLAGS_ysql_enable_auth ? (conf.enable_tls ? "md5 clientcert=1" : "md5")
                                                     : "cert";
-
-    for (const auto addr : {"0.0.0.0/0", "::0/0"}) {
-      lines.push_back(Format("$0 all all $1 $2", host_type, addr, auth_method));
-    }
+    lines.push_back(Format("$0 all all all $1", host_type, auth_method));
   }
 
   if (!FLAGS_ysql_hba_conf_csv.empty()) {
@@ -246,8 +243,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
 
   // Enforce a default hba configuration so users don't lock themselves out.
   if (lines.empty()) {
-    lines.push_back("host all all 0.0.0.0/0 trust");
-    lines.push_back("host all all ::0/0 trust");
+    lines.push_back("host all all all trust");
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
@@ -356,9 +352,10 @@ Status PgWrapper::Start() {
   // TODO: we should probably load the metrics library in a different way once we let
   // users change the shared_preload_libraries conf parameter.
   if (FLAGS_pg_stat_statements_enabled) {
-    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit");
+    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit,"
+      "pg_hint_plan");
   } else {
-    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit");
+    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit,pg_hint_plan");
   }
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);

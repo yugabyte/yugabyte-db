@@ -16,7 +16,7 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 
 ## Exporting an entire database
 
-The recommended way to dump an entire database from PostgreSQL is to use the YugabyteDB [`ysql_dump`](https://docs.yugabyte.com/latest/admin/ysql-dump) backup utility, which is in turn derived from PostgreSQL pg_dump.
+The recommended way to dump an entire database from PostgreSQL is to use the YugabyteDB [`ysql_dump`](/latest/admin/ysql-dump) backup utility, which is in turn derived from PostgreSQL pg_dump.
 
 ```
 $ ysql_dump -d mydatabase > mydatabase-dump.sql

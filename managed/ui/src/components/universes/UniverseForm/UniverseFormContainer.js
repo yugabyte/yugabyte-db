@@ -12,6 +12,7 @@ import {
   getInstanceTypeList,
   getRegionList,
   getRegionListResponse,
+  getInstanceTypeListLoading,
   getInstanceTypeListResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
@@ -55,6 +56,9 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
+import {
+  EXPOSING_SERVICE_STATE_TYPES
+} from './ClusterFields';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -123,8 +127,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider)).then((response) => {
+    getInstanceTypeListItems: (provider, zones) => {
+      dispatch(getInstanceTypeListLoading());
+      dispatch(getInstanceTypeList(provider, zones)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
@@ -203,6 +208,7 @@ const formFieldNames = [
   'primary.useTimeSync',
   'primary.enableYSQL',
   'primary.enableIPV6',
+  'primary.enableExposingService',
   'primary.enableYEDIS',
   'primary.enableNodeToNodeEncrypt',
   'primary.enableClientToNodeEncrypt',
@@ -223,6 +229,7 @@ const formFieldNames = [
   'async.useTimeSync',
   'async.enableYSQL',
   'async.enableIPV6',
+  'async.enableExposingService',
   'async.enableYEDIS',
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
@@ -248,6 +255,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].enableIPV6 = userIntent.enableIPV6;
+    data[clusterType].enableExposingService = userIntent.enableExposingService;
     data[clusterType].enableYEDIS = userIntent.enableYEDIS;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
@@ -300,9 +308,10 @@ function mapStateToProps(state, ownProps) {
       instanceType: 'c5.large',
       accessKeyCode: 'yugabyte-default',
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
+      enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
       enableNodeToNodeEncrypt: false,
       enableClientToNodeEncrypt: false,
@@ -315,9 +324,10 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
-      useTimeSync: false,
+      useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
+      enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
       enableNodeToNodeEncrypt: false,
       enableClientToNodeEncrypt: false
@@ -370,6 +380,7 @@ function mapStateToProps(state, ownProps) {
       'primary.useTimeSync',
       'primary.enableYSQL',
       'primary.enableIPV6',
+      'primary.enableExposingService',
       'primary.enableYEDIS',
       'primary.enableNodeToNodeEncrypt',
       'primary.enableClientToNodeEncrypt',
@@ -404,6 +415,7 @@ function mapStateToProps(state, ownProps) {
       'async.assignPublicIP',
       'async.enableYSQL',
       'async.enableIPV6',
+      'async.enableExposingService',
       'async.enableYEDIS',
       'async.enableNodeToNodeEncrypt',
       'async.enableClientToNodeEncrypt',

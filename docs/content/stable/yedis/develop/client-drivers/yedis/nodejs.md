@@ -3,9 +3,6 @@ title: Build a YugabyteDB application using NodeJS and YEDIS
 headerTitle: Build an application using NodeJS
 linkTitle: NodeJS
 description: Use NodeJS to build a YugabyteDB application that interacts with YEDIS
-aliases:
-  - /stable/yedis/develop/client-drivers/nodejs
-block_indexing: true
 menu:
   stable:
     identifier: client-drivers-yedis-nodejs
