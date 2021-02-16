@@ -1,30 +1,40 @@
-[![Build Status](https://travis-ci.com/bitnine-oss/agensgraph-ext.svg?branch=master)](https://travis-ci.com/bitnine-oss/agensgraph-ext)
+# [Apache AGE (incubating)](https://age.apache.org/#)
 
-What is Apache AGE(Incubating)?
---------------
-Apache AGE is a PostgreSQL extension that provides graph database functionality. AGE stands for AgensGraph Extension and is inspired by Bitnine's AgensGraph. The goal of this project is to create a single repository that can process both relational and graph model data so that users can use standard ANSI SQL with the graph query language [openCypher](https://www.opencypher.org/). This is PostgreSQL's first graph database extension, and will provide an environment that anyone can use easily.
-The project is in alpha stage now and it is currently being developed in the form of an extension for PostgreSQL 11.
+[![license badge](https://img.shields.io/badge/apache-license--v2.0-brightgreen)](https://github.com/apache/incubator-age/releases)
+[![release badge](https://img.shields.io/badge/release-v0.3.0-brightgreen)](https://github.com/apache/incubator-age/releases)
+[![issue badge](https://img.shields.io/github/issues/apache/incubator-age)](https://github.com/apache/incubator-age/issues)
+[![forks badge](https://img.shields.io/github/forks/apache/incubator-age)](https://github.com/apache/incubator-age/network/members)
+[![stars badge](https://img.shields.io/github/stars/apache/incubator-age)](https://github.com/apache/incubator-age/stargazers)
 
-How to contribute
---------------
-There are multiple ways you can contribute to the project. And help is always welcome!
-- Helping other users
-- Reviewing changes
-- Documentation changes
-- Bug reports
-- JIRA maintenance
+<img src="https://age.apache.org/docs/_static/age_BI.png" width="30%" height="30%">
 
-For more details, please refer to the "CONTRIBUTION" section of the [Apache AGE Website](https://age.apache.org/#).
+Apache AGE is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for AgensGraph Extension, and is inspired by Bitnine's fork of PostgreSQL 10, AgensGraph, which is a multi-model database. The goal of the project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language.
 
-Connecting
---------------
-- [Apache AGE Website](https://age.apache.org/#).
-- [Apache AGE Jira](https://issues.apache.org/jira/browse/age) for bugs, features and requests.
-- [Apache AGE Twitter](twitter.com/apache_age).
+## Features
 
-News and Updates
---------------
-- The next Apache AGE release (0.3.0-incubating) will be available around Jan 15, 2021.
-- User guide for version 0.3.0-incubating will be available by Feb 5, 2021.
-- Apache AGE at the Postgres Build 2020 (virtual) conference, Check out the [webinar](https://bitnine.net/blog-agens-solution/apache-age-postgres-build-2020-review/).
-- Apache AGE plans to incorporate another open-source project for graph visualization and analytics.
+- **Apache AGE is currently being developed for the PostgreSQL 11 release** and will support PostgreSQL 12 and 13 in 2021 and all the future releases of PostgreSQL.
+- Apache AGE supports the openCypher graph query language and label hierarchy.
+- Apache AGE enables querying multiple graphs at the same time. This will allow a user to query two or more graphs at once with cypher, decide how to merge them and get the desired query outputs.
+- Apache AGE will be enhanced with an aim to support all of the key features of AgensGraph (PostgreSQL fork extended with graph DB functionality).
+
+## Installation
+
+- [Use a docker image - official ver.](https://hub.docker.com/r/sorrell/agensgraph-extension)
+- [Use a docker image - alpine ver.](https://hub.docker.com/r/sorrell/agensgraph-extension-alpine)
+- [Installing from source](https://age.apache.org/#)
+
+## Documentation
+
+You can find Apache AGE documentation [on the website](https://age.apache.org/docs/).
+
+The documentation is divided into several sections:
+
+- [Cypher Query Language](https://age.apache.org/docs/cypher-query-language.html)
+- [Utility Functions](https://age.apache.org/docs/utility-functions.html)
+- [Tables](https://age.apache.org/docs/tables.html)
+- [Installation](https://age.apache.org/docs/installation.html)
+
+## Contribution
+
+You can improve it by sending pull requests to [this repository](https://github.com/apache/incubator-age).  
+Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation, by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/#codereview).
