@@ -2,7 +2,7 @@
 title: Compare Vitess with YugabyteDB
 headerTitle: Vitess
 linkTitle: Vitess
-description: Compare Vitess with YugabyteDB.
+description: Compare Vitess with YugabyteDB
 menu:
   stable:
     parent: comparisons
@@ -19,5 +19,4 @@ SQL features that access multiple rows of data spread across multiple shards are
 
 ## Lack of continuous availability
 
-Vitess does not make any enhancements to the asynchronous master-slave replication architecture of MySQL. For every shard in the Vitess cluster, another slave instance has to be created and replication has to be maintained. End result is that Vitess cannot guarantee cannot continuous availability during failures. Spanner-inspired distributed SQL databases like YugabyteDB solve this replication problem at the core using Raft distributed consensus at a per-shard level for both data replication and leader election.
-
+Vitess does not make any enhancements to the asynchronous master-slave replication architecture of MySQL. For every shard in the Vitess cluster, another slave instance has to be created and replication has to be maintained. The end result is that Vitess cannot guarantee continuous availability during failures. Spanner-inspired distributed SQL databases like YugabyteDB solve this replication problem at the core using Raft distributed consensus at a per-shard level for both data replication and leader election.
