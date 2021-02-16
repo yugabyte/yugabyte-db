@@ -1856,17 +1856,20 @@ handle_predefined_build_root() {
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
   fi
 
-  export YB_USE_NINJA=${YB_USE_NINJA:-}
-  if [[ $_dash_ninja == "-ninja" && -z ${YB_USE_NINJA:-} ]]; then
-    if ! "$handle_predefined_build_root_quietly"; then
-      log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
-    fi
-    export YB_USE_NINJA=1
-  elif [[ $_dash_ninja == "-ninja" && $YB_USE_NINJA != "1" || \
-          $_dash_ninja != "-ninja" && $YB_USE_NINJA == "1" ]]; then
+  local should_use_ninja
+  if [[ $_dash_ninja == "-ninja" ]]; then
+    should_use_ninja=1
+  else
+    should_use_ninja=0
+  fi
+  if ! "$handle_predefined_build_root_quietly"; then
+    log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
+  fi
+  if [[ -n ${YB_USE_NINJA:-} && $YB_USE_NINJA != "$should_use_ninja" ]]; then
     fatal "The use of ninja from build root ('$predefined_build_root') does not match that" \
           "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
+  export YB_USE_NINJA=$should_use_ninja
 
   decide_whether_to_use_ninja
 }
