@@ -63,8 +63,6 @@ void _PG_fini(void);
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
 
-/* the current max level a query can nested */
-int  cur_max_nested_level;
 /* The array to store outer layer query id*/
 uint64 *nested_queryids;
 
@@ -245,8 +243,7 @@ _PG_init(void)
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
 	ExecutorCheckPerms_hook			= pgss_ExecutorCheckPerms;
 
-	cur_max_nested_level = max_stack_depth;
-	nested_queryids = (uint64*)palloc0(sizeof(uint64)*cur_max_nested_level);
+	nested_queryids = (uint64*) malloc(sizeof(uint64) * max_stack_depth);
 
 	system_init = true;
 }
@@ -401,11 +398,6 @@ pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 				 bool execute_once)
 {
 	nested_queryids[nested_level] = queryDesc->plannedstmt->queryId;
-	if(nested_level + 1 >= cur_max_nested_level)
-	{
-		cur_max_nested_level *= 2;
-		nested_queryids = repalloc(nested_queryids, cur_max_nested_level);
-	}
 	nested_level++;
 	PG_TRY();
 	{
@@ -2773,6 +2765,7 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	double b_min;
 	double bucket_size;
 	bool	first = true;
+	char    *tmp_str = palloc0(MAX_STRING_LEN);
 	char    *text_str = palloc0(MAX_STRING_LEN);
 
 	b_max = log(q_max - q_min);
@@ -2789,9 +2782,11 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			sprintf(text_str, "%s, (%ld - %ld)}", text_str, b_start, b_end);
+			sprintf(tmp_str, "%s, (%ld - %ld)}", text_str, b_start, b_end);
+			sprintf(text_str, "%s", tmp_str);
 		}
 	}
+	pfree(tmp_str);
 	return CStringGetTextDatum(text_str);
 }
 
