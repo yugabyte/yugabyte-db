@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -330,10 +331,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to delete the node. Log it and skip the node.
-      if (node.cloudInfo.private_ip == null) {
+      // a clean state to delete the node. Log it, free up the onprem node
+      // so that the client can use the node instance to create another universe.
+      if (node.cloudInfo.private_ip == null){
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
                                node.nodeName));
+        if (node.cloudInfo.cloud.equals(
+            com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
+          try {
+            NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
+            providerNode.clearNodeDetails();
+          } catch (Exception ex) {
+            LOG.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
+          }
+        }
         continue;
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
