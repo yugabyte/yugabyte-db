@@ -1179,9 +1179,19 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			unsigned char *buf = pgss_qbuf[entry->key.bucket_id];
 			if(read_query(buf, queryid, query_txt) == 0)
 			{
-				len = read_query_buffer(entry->key.bucket_id, queryid, query_txt);
-				if (len != MAX_QUERY_BUFFER_BUCKET)
-					sprintf(query_txt, "%s", "pg_stat_monitor: query not found either in hash nor in temporay file");
+				switch(PGSM_OVERFLOW_TARGET)
+				{
+					case OVERFLOW_TARGET_NONE:
+						sprintf(query_txt, "%s", "query not found in query shared_buffer, no space left");
+						break;
+					case OVERFLOW_TARGET_DISK:
+					{
+						len = read_query_buffer(entry->key.bucket_id, queryid, query_txt);
+						if (len != MAX_QUERY_BUFFER_BUCKET)
+							sprintf(query_txt, "%s", "query not found either in hash nor in temporay file");
+					}
+					break;
+				}
 			}
 		}
 		if (query_txt)
@@ -2405,8 +2415,19 @@ store_query(int bucket_id, uint64 queryid, const char *query, uint64 query_len)
 
 	if (QUERY_BUFFER_OVERFLOW(buf_len, query_len))
 	{
-		dump_queries_buffer(bucket_id, buf, MAX_QUERY_BUFFER_BUCKET);
-		buf_len = sizeof (uint64);
+		switch(PGSM_OVERFLOW_TARGET)
+		{
+			case OVERFLOW_TARGET_NONE:
+				return;
+			case OVERFLOW_TARGET_DISK:
+			{
+				dump_queries_buffer(bucket_id, buf, MAX_QUERY_BUFFER_BUCKET);
+				buf_len = sizeof (uint64);
+			}
+			break;
+			default:
+				break;
+		}
 	}
 
 	memcpy(&buf[buf_len], &queryid, sizeof (uint64)); /* query id */
@@ -2554,11 +2575,7 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-#if PG_VERSION_NUM >= 130000
-	for(i = 0; i < 12; i++)
-#else
-	for(i = 0; i < 11; i++)
-#endif
+	for(i = 0; i < MAX_SETTINGS; i++)
 	{
 		Datum		values[7];
 		bool		nulls[7];

@@ -18,7 +18,7 @@
 
 #include "pg_stat_monitor.h"
 
-GucVariable conf[13];
+GucVariable conf[MAX_SETTINGS];
 static void DefineIntGUC(GucVariable *conf);
 static void DefineBoolGUC(GucVariable *conf);
 
@@ -158,6 +158,18 @@ init_guc(void)
 		.guc_restart = true,
 		.guc_unit = GUC_UNIT_MB,
 		.guc_value = &PGSM_QUERY_SHARED_BUFFER
+	};
+	DefineIntGUC(&conf[i++]);
+
+	conf[i] = (GucVariable) {
+		.guc_name = "pg_stat_monitor.pgsm_overflow_target",
+		.guc_desc = "Sets the overflow target for pg_stat_monitor",
+		.guc_default = 1,
+		.guc_min = 0,
+		.guc_max = 1,
+		.guc_restart = true,
+		.guc_unit = 0,
+		.guc_value = &PGSM_OVERFLOW_TARGET
 	};
 	DefineIntGUC(&conf[i++]);
 

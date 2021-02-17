@@ -86,12 +86,19 @@
 #define MAX_QUERY_BUF						(PGSM_QUERY_SHARED_BUFFER * 1024 * 1024)
 #define MAX_BUCKETS_MEM 					(PGSM_MAX * 1024 * 1024)
 #define BUCKETS_MEM_OVERFLOW() 				((hash_get_num_entries(pgss_hash) * sizeof(pgssEntry)) >= MAX_BUCKETS_MEM)
-#define MAX_QUERY_BUFFER_BUCKET			MAX_QUERY_BUF / PGSM_MAX_BUCKETS
+#define MAX_QUERY_BUFFER_BUCKET			    MAX_QUERY_BUF / PGSM_MAX_BUCKETS
 #define MAX_BUCKET_ENTRIES 					(MAX_BUCKETS_MEM / sizeof(pgssEntry))
 #define QUERY_BUFFER_OVERFLOW(x,y)  		((x + y + sizeof(uint64) + sizeof(uint64)) > MAX_QUERY_BUFFER_BUCKET)
 #define QUERY_MARGIN 						100
 #define MIN_QUERY_LEN						10
 #define SQLCODE_LEN                         20
+
+#if PG_VERSION_NUM >= 130000
+#define	MAX_SETTINGS                        13
+#else
+#define MAX_SETTINGS                        12
+#endif
+
 typedef struct GucVariables
 {
 	int		guc_variable;
@@ -104,6 +111,12 @@ typedef struct GucVariables
 	int		*guc_value;
 	bool 	guc_restart;
 } GucVariable;
+
+typedef enum OVERFLOW_TARGET
+{
+	OVERFLOW_TARGET_NONE = 0,
+	OVERFLOW_TARGET_DISK
+} OVERFLOW_TARGET;
 
 typedef enum pgssStoreKind
 {
@@ -357,5 +370,6 @@ void pgss_startup(void);
 #define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
 #define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
 #define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
+#define PGSM_OVERFLOW_TARGET get_conf(12)->guc_variable
 
 #endif
