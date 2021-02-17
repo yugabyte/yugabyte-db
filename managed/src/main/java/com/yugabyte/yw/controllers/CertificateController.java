@@ -75,7 +75,7 @@ public class CertificateController extends AuthenticatedController {
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
       LOG.error("Could not upload certs for customer {}", customerUUID, e);
-      return ApiResponse.error(BAD_REQUEST, "Couldn't upload certfiles");
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
   }
 

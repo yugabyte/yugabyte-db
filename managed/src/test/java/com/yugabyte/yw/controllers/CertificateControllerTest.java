@@ -160,9 +160,28 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCertificate() {
+    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
+      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
+      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
+      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
+      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
+      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
+      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
+      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
+      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
+      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
+      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
+      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
+      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
+      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
+      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
+      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
+      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
+      "jZPSP3OuL0IXk96wFHScay8S\n" +
+      "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
-    bodyJson.put("certContent", "cert_test");
+    bodyJson.put("certContent", cert_content);
     bodyJson.put("keyContent", "key_test");
     Date date = new Date();
     bodyJson.put("certStart", date.getTime());
@@ -170,13 +189,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certType", "SelfSigned");
     Result result = uploadCertificate(customer.uuid, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    UUID certUUID = UUID.fromString(json.asText());
-    CertificateInfo ci = CertificateInfo.get(certUUID);
-    assertEquals(ci.label, "test");
-    assertEquals(ci.certType, CertificateInfo.Type.SelfSigned);
-    assertTrue(ci.certificate.contains("/tmp"));
-    assertAuditEntry(1, customer.uuid);
+    assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -195,9 +209,28 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCustomCertificate() {
+    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
+      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
+      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
+      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
+      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
+      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
+      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
+      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
+      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
+      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
+      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
+      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
+      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
+      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
+      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
+      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
+      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
+      "jZPSP3OuL0IXk96wFHScay8S\n" +
+      "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
-    bodyJson.put("certContent", "cert_test");
+    bodyJson.put("certContent", cert_content);
     Date date = new Date();
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
@@ -278,11 +311,31 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateClientCertificate() {
+    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
+      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
+      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
+      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
+      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
+      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
+      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
+      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
+      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
+      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
+      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
+      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
+      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
+      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
+      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
+      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
+      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
+      "jZPSP3OuL0IXk96wFHScay8S\n" +
+      "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     Date date = new Date();
     bodyJson.put("username", "test");
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certContent", cert_content);
     UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
                                                  "/tmp");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
