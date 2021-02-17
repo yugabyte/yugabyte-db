@@ -393,10 +393,10 @@ SELECT add2(1,2);
 (1 row)
 
 postgres=# SELECT queryid, top_queryid, query, top_query FROM pg_stat_monitor;
-     queryid      |   top_queryid    |                                                       query                                                        |     top_query
-------------------+------------------+--------------------------------------------------------------------------------------------------------------------+-------------------
- 3408CA84B2353094 |                  | select add2($1,$2)                                                                                                 |
- 2BAB410CC448CE8D | 3408CA84B2353094 | SELECT add($1,$2)                                                                                                  | select add2($1,$2)
- 762B99349F6C7F31 | 3408CA84B2353094 | SELECT (select $1 + $2)                                                                                            | select add2($1,$2)
+     queryid      |   top_queryid    |                       query.                           |     top_query
+------------------+------------------+-------------------------------------------------------------------------+-------------------
+ 3408CA84B2353094 |                  | select add2($1,$2)                                     |
+ 2BAB410CC448CE8D | 3408CA84B2353094 | SELECT add($1,$2)                                      | select add2($1,$2)
+ 762B99349F6C7F31 | 3408CA84B2353094 | SELECT (select $1 + $2)                                | select add2($1,$2)
 (3 rows)
 ```
