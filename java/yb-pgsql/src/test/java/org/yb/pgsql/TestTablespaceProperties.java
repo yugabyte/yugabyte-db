@@ -91,10 +91,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute(
           " CREATE TABLESPACE testTablespace " +
           "  WITH (replica_placement=" +
-          "'[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_number_of_replicas\":1}," +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
           "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_number_of_replicas\":1}]')");
+          "\"min_num_replicas\":1}]}')");
 
       // Create tables in default and custom tablespaces.
       setupStatement.execute(
