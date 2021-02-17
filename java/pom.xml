@@ -59,7 +59,7 @@
 
     <!-- Maven plugin versions -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
-    <maven-assembly-plugin.version>3.0.0</maven-assembly-plugin.version>
+    <maven-assembly-plugin.version>3.3.0</maven-assembly-plugin.version>
     <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.0.0-M1</maven-enforcer-plugin.version>
     <protobuf-maven-plugin.version>0.5.1</protobuf-maven-plugin.version>
