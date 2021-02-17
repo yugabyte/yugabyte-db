@@ -1828,8 +1828,8 @@ public class UniverseController extends AuthenticatedController {
     }
 
     if (isNamespaceSet) {
-      for (Universe allUniverseUUIDs : Universe.getAllUuids()) {
-        Universe u = Universe.get(allUniverseUUIDs.universeUUID);
+      for (UUID universeUUID : Universe.getAllUuids()) {
+        Universe u = Universe.get(universeUUID);
         List<Cluster> clusters = u.getUniverseDetails().getReadOnlyClusters();
         clusters.add(u.getUniverseDetails().getPrimaryCluster());
         for (Cluster c : clusters) {

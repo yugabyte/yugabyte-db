@@ -275,8 +275,11 @@ public class Universe extends Model {
    * WARNING: Returns partially filled Universe objects!!
    * @return list of UUIDs of all universes
    */
-  public static List<Universe> getAllUuids() {
-    return find.query().select("universeUUID").findList();
+  public static Set<UUID> getAllUuids() {
+    Set<UUID> universeUUIDs = new HashSet<>();
+    find.query().select("universeUUID").findList().stream()
+      .forEach(n -> universeUUIDs.add(n.universeUUID));
+    return universeUUIDs;
   }
 
   /**
