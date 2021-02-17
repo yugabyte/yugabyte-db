@@ -5,6 +5,7 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 ## REL0_8_1
 
 [PG-147](https://jira.percona.com/browse/PG-147): Stored Procedure Support add parentid to track caller.
+
 [PG-177](https://jira.percona.com/browse/PG-177):  Error in Histogram ranges.
 
 ## REL0_8_0_STABLE
