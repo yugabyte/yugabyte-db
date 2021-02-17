@@ -34,30 +34,27 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(fetchAuthConfigList()).then((response) =>
         dispatch(fetchAuthConfigListResponse(response.payload))
       )
-      .catch((err) => {
-        toast.error("Error occured while fetching config.")
-      })
+      .catch(() => toast.error('Error occured while fetching config.'));
     },
 
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then((response) => {
           return dispatch(createKMSProviderConfigResponse(response.payload)).then(
-            response => {debugger
-               toast.success("Successfully added the configuration") }
+            () => toast.success('Successfully added the configuration')
           );
         })
-        .catch((err) => console.error('Error submitting KMS configuration: ', err));
+        .catch((err) => toast.error(`Error submitting KMS configuration: ${err}`));
     },
 
     deleteKMSConfig: (configUUID) => {
       dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
-            toast.success("Successfully deleted KMS configuration")
+            toast.success('Successfully deleted KMS configuration');
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
-          toast.warn("Warning: Deleting configuration returned unsuccessful response.")
+          toast.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
         .catch((err) => {
           console.error(err)

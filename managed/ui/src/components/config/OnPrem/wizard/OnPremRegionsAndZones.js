@@ -5,7 +5,6 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
-import { ToastContainer } from 'react-toastify';
 
 class OnPremListRegionsAndZones extends Component {
   UNSAFE_componentWillMount() {
@@ -202,7 +201,6 @@ export default class OnPremRegionsAndZones extends Component {
             </div>
           </form>
         </div>
-        <ToastContainer/>
       </>
     );
   }

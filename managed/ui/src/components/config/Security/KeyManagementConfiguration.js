@@ -19,7 +19,7 @@ import { regionsData } from '../PublicCloud/views/providerRegionsData';
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { toast, ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns
 //  a list of supported KMS Configurations
@@ -89,7 +89,7 @@ class KeyManagementConfiguration extends Component {
       setKMSConfig(kmsProvider.value, data).then(() => {
         fetchKMSConfigList();
         this.setState({ listView: true });
-        toast.success("Successfully added the configuration");
+        toast.success('Successfully added the configuration');
       });
     }
   };
@@ -290,7 +290,6 @@ class KeyManagementConfiguration extends Component {
             onCreate={this.openCreateConfigForm}
             onDelete={this.deleteAuthConfig}
           />
-          <ToastContainer/>
         </React.Fragment>
       );
 

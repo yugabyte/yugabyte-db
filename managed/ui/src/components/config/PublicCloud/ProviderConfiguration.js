@@ -16,7 +16,6 @@ import AWSProviderInitView from './views/AWSProviderInitView';
 import GCPProviderInitView from './views/GCPProviderInitView';
 import { AzureProviderInitView } from './views/AzureProviderInitView';
 import { YBLoading } from '../../common/indicators';
-import { ToastContainer } from 'react-toastify';
 
 class ProviderConfiguration extends Component {
   constructor(props) {
@@ -334,7 +333,6 @@ class ProviderConfiguration extends Component {
     }
     return <>
       <div className="provider-config-container">{currentProviderView}</div>
-      <ToastContainer />
     </>;
   }
 }
