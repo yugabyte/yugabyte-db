@@ -1,7 +1,61 @@
+# Deploy contexts
+# Environment variables here override variables set in the web UI.
+#
+# https://docs.netlify.com/site-deploys/overview/#deploy-contexts
+# https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
+
+[context.deploy-preview.environment]
+  HUGO_VERSION = "0.80.0"
+
+[context.branch-deploy.environment]
+  HUGO_VERSION = "0.80.0"
+
+[context.production.environment]
+  HUGO_VERSION = "0.80.0"
+
+# Redirects
+# - Default status is a 301 unless otherwise specified.
+# - First match wins: put wildcards AFTER specific paths!
+# - Wildcards include empty matches: /v1.0/* WILL match /v1.0 
+#
+# docs: https://docs.netlify.com/routing/redirects/
+#
+# validator: https://play.netlify.com/redirects
+
+# Legal, FAQ, and release notes should always point to the latest,
+# even if we have content in the older version's folder.
+
 [[redirects]]
-  from = "/v1.0"
-  to = "/latest"
+  from = "/:version/legal/*"
+  to = "/latest/legal/:splat"
   force = true
+
+[[redirects]]
+  from = "/:version/faq/*"
+  to = "/latest/faq/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/releases/*"
+  to = "/latest/releases/:splat"
+  force = true
+
+# Stable quick-starts need defaults,
+# since archiving from /latest removes aliases
+
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/create-local-cluster/"
+  to="/stable/quick-start/create-local-cluster/macos/"
+
+[[redirects]]
+  from="/stable/quick-start/explore/"
+  to="/stable/quick-start/explore/ysql/"
+
+# Docs prior to v1.3 are not online
 
 [[redirects]]
   from = "/v1.0/*"
@@ -9,18 +63,8 @@
   force = true
 
 [[redirects]]
-  from = "/v1.1"
-  to = "/latest"
-  force = true
-
-[[redirects]]
   from = "/v1.1/*"
   to = "/latest/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v1.2"
-  to = "/latest"
   force = true
 
 [[redirects]]

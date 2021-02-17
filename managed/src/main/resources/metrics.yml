@@ -1628,7 +1628,7 @@ ysql_sql_advanced_latency:
     service_method: "BeginStmt|CommitStmt|RollbackStmt|Transactions|OtherStmts"
   group_by: "service_method"
   layout:
-    title: "YSQL Commit Latency (Avg)"
+    title: "YSQL Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:

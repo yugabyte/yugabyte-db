@@ -424,9 +424,8 @@ Status PermissionsManager::AlterRole(
   }
   l->Commit();
   VLOG(1) << "Altered role with request: " << req->ShortDebugString();
-  if (req->has_superuser()) {
-    BuildResourcePermissionsUnlocked();
-  }
+
+  BuildResourcePermissionsUnlocked();
   return Status::OK();
 }
 

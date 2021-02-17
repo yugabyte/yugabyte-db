@@ -19,6 +19,7 @@ import random
 import shutil
 import string
 import subprocess
+import traceback
 import time
 import json
 
@@ -516,6 +517,11 @@ class KubernetesDetails():
         self.pod_name = server_fqdn.split('.')[0]
         # The pod names are yb-master-n/yb-tserver-n where n is the pod number
         # and yb-master/yb-tserver are the container names.
+
+        # TODO(bhavin192): need to change in case of multiple releases
+        # in one namespace. Something like find the word 'master' in
+        # the name.
+
         self.container = self.pod_name.rsplit('-', 1)[0]
         self.env_config = os.environ.copy()
         self.env_config["KUBECONFIG"] = config_map[self.namespace]
@@ -662,6 +668,11 @@ class YBBackup:
         parser.add_argument(
             '--ysql_host', help="Custom YSQL process host. "
                                 "First alive TS host is used if not specified.")
+        parser.add_argument(
+            '--ysql_enable_auth', action='store_true',
+            help="Whether ysql authentication is required. If specified, will connect using local "
+                 "UNIX socket as the host. Overrides --local_ysql_dump_binary to always "
+                 "use remote binary.")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -853,7 +864,16 @@ class YBBackup:
 
     def get_ysql_ip(self):
         if not self.ysql_ip:
-            if self.args.ysql_host:
+            output = ""
+            if self.args.ysql_enable_auth:
+                # Note that this requires YSQL commands to be run on the master leader.
+                socket_fds = self.run_ssh_cmd(
+                    "ls /tmp/.yb.*/.s.PGSQL.*", self.get_leader_master_ip()).strip().split()
+                if len(socket_fds):
+                    self.ysql_ip = os.path.dirname(socket_fds[0])
+                else:
+                    output = "Failed to find local socket."
+            elif self.args.ysql_host:
                 self.ysql_ip = self.args.ysql_host
             else:
                 # Get first ALIVE TS.
@@ -931,7 +951,10 @@ class YBBackup:
                             'FLAGS_use_node_to_node_encryption': 'true'
                         }
 
-        return self.run_tool(self.args.local_ysql_dump_binary, self.args.remote_ysql_dump_binary,
+        # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
+        local_binary = None if self.args.ysql_enable_auth else self.args.local_ysql_dump_binary
+
+        return self.run_tool(local_binary, self.args.remote_ysql_dump_binary,
                              self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
                              cmd_line_args, env_vars=certs_env)
 
@@ -1183,7 +1206,7 @@ class YBBackup:
                 'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
                 num_retry=num_retries)
         else:
-            return self.run_program(['bash', '-c', pipes.quote(cmd)])
+            return self.run_program(['bash', '-c', cmd])
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -1653,11 +1676,11 @@ class YBBackup:
         :param tserver_ip: tablet server ip
         """
         try:
-            self.run_ssh_cmd(['find', self.args.nfs_storage_path], tserver_ip)
+            self.run_ssh_cmd(['ls', self.args.nfs_storage_path], tserver_ip)
         except Exception as ex:
             raise BackupException(
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
-                % (self.args.nfs_storage_path, tserver_ip)))
+                 % (self.args.nfs_storage_path, tserver_ip)))
 
     def upload_metadata_and_checksum(self, src_path, dest_path):
         """
@@ -2233,6 +2256,8 @@ class YBBackup:
             print(json.dumps({"error": "Backup exception: {}".format(str(ex))}))
         except Exception as ex:
             print(json.dumps({"error": "Exception: {}".format(str(ex))}))
+            traceback.print_exc()
+            traceback.print_stack()
 
 
 if __name__ == "__main__":

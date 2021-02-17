@@ -3,8 +3,6 @@ title: Create a multi-zone universe using Yugabyte Platform
 headerTitle: Create a multi-zone universe
 linkTitle: Multi-zone universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
-aliases:
-  - /manage/enterprise-edition/create-universe/
 menu:
   stable:
     identifier: create-multi-zone-universe
@@ -24,9 +22,9 @@ If there are no universes created yet, the Dashboard page will look like the fol
 
 Enter your intent
 
-The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](../../deploy/configure-providers/). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed.
+The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](../../configure-yugabyte-platform/set-up-cloud-provider/). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed.
 
-We are going to enter the following values to create a multi-zone universe on [GCP](../../../deploy/enterprise-edition/configure-providers/gcp) cloud provider:
+We are going to enter the following values to create a multi-zone universe on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
 
 - Enter a universe name (**helloworld1**)
 - Enter the region (**Oregon**)
@@ -206,7 +204,7 @@ $ /home/yugabyte/tserver/bin/ycqlsh <ip address of the node>
 
 You can view the table schema as well as the data entered as shown below.
 
-```
+```sql
 ycqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
 
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (

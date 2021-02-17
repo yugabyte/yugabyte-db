@@ -62,16 +62,4 @@ menu:
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="instance-tags/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Configure instance tags</div>
-      </div>
-      <div class="body">
-        Use Yugabyte Platform to edit instance tags.
-      </div>
-    </a>
-  </div>
-
 </div>

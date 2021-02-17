@@ -2,14 +2,10 @@
 title: KEYS
 linkTitle: KEYS
 description: KEYS
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2217
-aliases:
-  - /stable/api/redis/keys
-  - /stable/api/yedis/keys
 isTocNested: true
 showAsideToc: true
 ---

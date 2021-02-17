@@ -183,6 +183,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     int num_tablets;
     typedef std::pair<std::string, std::string> PartitionKeys;
     typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
+    typedef std::vector<PartitionPB> Partitions;
+    Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
     google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map;
@@ -239,6 +241,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id,
+                                        HybridTime restore_at,
                                         TabletSnapshotOperationCallback callback) override;
 
   void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,

@@ -3,7 +3,6 @@ title: Read replicas
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Learn about read replicas in YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: architecture-docdb-replication-read-replicas
@@ -37,7 +36,7 @@ An application can send write requests to read replicas, but these write request
 
 ## Schema changes
 
-Since read replicas are a Raft replication level extension, the schema changes will transparently apply to these replicas. There is no need to 
+Since read replicas are a Raft replication level extension, the schema changes will transparently apply to these replicas. There is no need to execute DDL operations separately on the read replica cluster.
 
 ## Read replicas vs eventual consistency
 

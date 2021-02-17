@@ -4,7 +4,6 @@ headerTitle: array_to_json()
 linkTitle: array_to_json()
 summary: array_to_json()
 description: Create a JSON array from a SQL array using the array_to_json() function.
-block_indexing: true
 menu:
   stable:
     identifier: array-to-json

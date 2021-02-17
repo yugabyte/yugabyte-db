@@ -26,6 +26,7 @@ import java.util.UUID;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static play.test.Helpers.contentAsString;
 
 public class PlatformInstanceControllerTest extends FakeDBApplication {
@@ -74,14 +75,18 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
   }
 
-  private Result deletePlatformInstance(
-    UUID configUUID,
-    UUID instanceUUID
-  ) {
+  private Result deletePlatformInstance(UUID configUUID, UUID instanceUUID) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString()
       + "/instance/" + instanceUUID.toString();
     return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, authToken);
+  }
+
+  private Result demotePlatformInstance(UUID configUUID, UUID instanceUUID) {
+    String authToken = user.createAuthToken();
+    String uri = "/api/settings/ha/config/" + configUUID.toString()
+      + "/instance/" + instanceUUID.toString() + "/demote";
+    return FakeApiHelper.doRequestWithAuthToken("POST", uri, authToken);
   }
 
   @Test
@@ -187,5 +192,5 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertBadRequest(deleteResult, "Follower platform instance cannot delete platform instances");
   }
 
-  // TODO: (Daniel) - Add test coverage for promoteInstance(...) in #6505
+  // TODO: (Daniel) - Add test coverage for promoteInstance(...) in #6507
 }

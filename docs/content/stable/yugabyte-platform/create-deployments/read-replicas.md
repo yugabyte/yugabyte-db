@@ -3,8 +3,6 @@ title: Create a read replica cluster
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
-aliases:
-  - /stable/manage/enterprise-edition/read-replicas/
 menu:
   stable:
     identifier: create-read-replica-cluster
@@ -14,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe with both a primary and [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+This section will describe how to create a universe that includes both a primary cluster and a [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 ## Create the universe
 
-First, enter the following values to create a primary cluster on [GCP](../../deploy/configure-providers/gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**
@@ -74,8 +72,8 @@ and the read replica cluster in AWS!
 
 This section covers dynamically adding, editing, and removing a read replica cluster from an
 existing universe. Let's create a new universe `helloworld4` with a primary cluster exactly as `helloworld3` but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done,
-navigate to the **Overview** tab, and find the **More** dropdown in the top right corner. There you should
-find the **Configure Read Replica** selection - click on that.
+navigate to the **Overview** tab, and find the **More** drop-down list in the top right corner. There you should
+find the **Configure Read Replica** selection and click on that.
 
 ![Configure Read Replica Dropdown](/images/ee/configure-read-replica-dropdown.png)
 
@@ -97,8 +95,7 @@ total of four new nodes.
 ![Edit Read Replica Nodes](/images/ee/add-rr-4-nodes.png)
 
 Finally, to delete the read replica cluster, go back to the **Configure Read Replica** page and click **Delete
-this configuration. You will be prompted to enter the universe name for safety purposes. Do this and
-press **Yes**.
+this configuration**. You will be prompted to enter the universe name for safety purposes. Do this and press **Yes**.
 
 ![Delete Read Replica](/images/ee/configure-read-replica-delete.png)
 

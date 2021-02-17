@@ -59,9 +59,10 @@ struct TabletReplica {
   consensus::RaftPeerPB::MemberType member_type;
   MonoTime time_updated;
 
-  // Replica is processing a parent data after a tablet splits, rocksdb sst files will have
-  // metadata saying that either the first half, or the second half is irrelevant.
-  bool processing_parent_data = false;
+  // Replica is reporting that load balancer moves should be disabled. This could happen in the case
+  // where a tablet has just been split and still refers to data from its parent which is no longer
+  // relevant, for example.
+  bool should_disable_lb_move = false;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -440,6 +441,19 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Allow for showing outstanding tasks in the master UI.
   std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
 
+  // Returns whether this is a type of table that will use tablespaces
+  // for placement.
+  bool UsesTablespacesForPlacement() const;
+
+  // Provides the ID of the tablespace that will be used to determine
+  // where the tablets for this table should be placed when the table
+  // is first being created.
+  TablespaceId TablespaceIdForTableCreation() const;
+
+  // Set the tablespace to use during table creation. This will determine
+  // where the tablets of the newly created table should reside.
+  void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -473,6 +487,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
   Status create_table_error_;
+
+  // This field denotes the tablespace id that the user specified while
+  // creating the table. This will be used only to place tablets at the time
+  // of table creation. At all other times, this information needs to be fetched
+  // from PG catalog tables because the user may have used Alter Table to change
+  // the table's tablespace.
+  TablespaceId tablespace_id_for_table_creation_;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };

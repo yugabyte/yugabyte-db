@@ -1,18 +1,15 @@
 ---
-title: Authorization in YugabyteDB
-headerTitle: Authorization
-linkTitle: Authorization
+title: Role-Based Access Control in YugabyteDB
+headerTitle: Role-Based Access Control
+linkTitle: Role-Based Access Control
 description: Enable authorization using role-based access control in YugabyteDB.
 headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
-aliases:
-  - /secure/authorization/
-block_indexing: true
 menu:
   stable:
     identifier: authorization
     parent: secure
-    weight: 740
+    weight: 722
 ---
 
 <div class="row">
@@ -20,7 +17,7 @@ menu:
     <a class="section-link icon-offset" href="rbac-model/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">RBAC model</div>
+        <div class="title">Overview</div>
       </div>
       <div class="body">
           Understanding role-based access control (RBAC).
@@ -46,6 +43,28 @@ menu:
       </div>
       <div class="body">
           Grant privileges to users and roles.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="row-level-security">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
+        <div class="title">Row-Level Security (RLS)</div>
+      </div>
+      <div class="body">
+          Using row-level security policies in YugabyteDB.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="column-level-security">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
+        <div class="title">Column-Level Security</div>
+      </div>
+      <div class="body">
+          Restricting column-level permissions in YugabyteDB.
       </div>
     </a>
   </div>

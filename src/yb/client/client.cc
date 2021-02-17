@@ -1695,6 +1695,13 @@ void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
   data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
 }
 
+std::future<Result<internal::RemoteTabletPtr>> YBClient::LookupTabletByKeyFuture(
+    const std::shared_ptr<const YBTable>& table,
+    const std::string& partition_key,
+    CoarseTimePoint deadline) {
+  return data_->meta_cache_->LookupTabletByKeyFuture(table, partition_key, deadline);
+}
+
 std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
     const std::shared_ptr<const YBTable>& table,
     CoarseTimePoint deadline) {

@@ -650,6 +650,9 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   )
 
   if [[ ${YB_BUILD_YW:-0} == "1" ]]; then
+    # This is needed for build.sbt to use YB Client jars that we've built and installed to
+    # YB_MVN_LOCAL_REPO.
+    export USE_MAVEN_LOCAL=true
     yb_release_cmd+=( --yw )
   fi
 

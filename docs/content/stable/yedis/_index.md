@@ -5,12 +5,8 @@ headerTitle: Yugabyte Dictionary Service (YEDIS)
 description: The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library.
 headcontent: 
 image: /images/section_icons/api/yedis.png
-aliases:
-  - /stable/api/redis
-  - /stable/api/yedis
 type: page
 section: MISC
-block_indexing: true
 menu:
   stable:
     identifier: yedis

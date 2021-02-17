@@ -3,9 +3,6 @@ title: Compare CockroachDB with YugabyteDB
 headerTitle: CockroachDB
 linkTitle: CockroachDB
 description: Compare CockroachDB with YugabyteDB in terms of performance, PostgreSQL compatibility, and architecture.
-aliases:
-  - /comparisons/cockroachdb/
-block_indexing: true
 menu:
   stable:
     parent: comparisons

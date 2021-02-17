@@ -2,14 +2,10 @@
 title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2140
-aliases:
-  - /stable/api/redis/hkeys
-  - /stable/api/yedis/hkeys
 isTocNested: true
 showAsideToc: true
 ---

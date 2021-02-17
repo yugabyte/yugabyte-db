@@ -3,7 +3,6 @@ title: Build a C++ application that uses YCQL
 headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a sample C++ application that uses the YCQL API.
-block_indexing: true
 menu:
   stable:
     identifier: build-apps-cpp-2-ycql
@@ -16,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/cpp/ysql" class="nav-link">
+    <a href="/latest/quick-start/build-apps/cpp/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li>
-    <a href="/stable/quick-start/build-apps/cpp/ycql" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/cpp/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

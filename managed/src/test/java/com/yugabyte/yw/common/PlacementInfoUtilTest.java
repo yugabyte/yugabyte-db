@@ -1417,4 +1417,63 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes, azUUID);
     assertEquals(nodeReturned.nodeIdx, 3);
   }
+
+  @Test
+  public void testK8sGetConfigPerNamespace() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.create(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+    String nodePrefix = "demo-universe";
+
+    Map<String, String> config = new HashMap();
+    Map<String, String> expectedConfigs = new HashMap<>();
+    config.put("KUBECONFIG", "az1");
+    config.put("KUBENAMESPACE", "ns-1");
+    az1.setConfig(config);
+    expectedConfigs.put("ns-1", "az1");
+
+    config.put("KUBECONFIG", "az2");
+    config.put("KUBENAMESPACE", "ns-2");
+    az2.setConfig(config);
+    expectedConfigs.put("ns-2", "az2");
+
+    config.remove("KUBENAMESPACE");
+    config.put("KUBECONFIG", "az3");
+    az3.setConfig(config);
+    expectedConfigs.put(String.format("%s-%s", nodePrefix, az3.code), "az3");
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
+
+    assertEquals(expectedConfigs,
+                 PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider));
+  }
+
+  @Test
+  public void testGetKubernetesNamespace() {
+    Map<String, String> config = new HashMap();
+    String az = "az-1";
+    String ns = "ns-1";
+    String nodePrefix = "demo-universe";
+    String nodePrefixAz = String.format("%s-%s", nodePrefix, az);
+
+    assertEquals(nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config));
+    assertEquals(nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config));
+    assertEquals(nodePrefixAz,
+                 PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config));
+    assertEquals(nodePrefix,
+                 PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config));
+
+    config.put("KUBENAMESPACE", ns);
+    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config));
+    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config));
+  }
 }

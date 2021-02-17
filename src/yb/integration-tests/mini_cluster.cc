@@ -671,7 +671,7 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
       MiniCluster* cluster, const TableId& table_id) {
   std::vector<tablet::TabletPeerPtr> result;
   for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    if (peer->tablet()->metadata()->tablet_data_state() !=
+    if (peer->tablet_metadata()->tablet_data_state() !=
         tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       result.push_back(peer);
     }

@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
