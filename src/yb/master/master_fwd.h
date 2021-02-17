@@ -43,6 +43,8 @@ class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
 class ListSnapshotsResponsePB;
 class ListSnapshotRestorationsResponsePB;
+class SnapshotCoordinatorContext;
+class SnapshotState;
 class SysRowEntries;
 class SysSnapshotEntryPB;
 class TabletInfo;
