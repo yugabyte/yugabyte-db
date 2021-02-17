@@ -7,18 +7,33 @@ CREATE TABLESPACE x OWNER yugabyte;
 -- Ill formed JSON
 CREATE TABLESPACE x WITH (replica_placement='[{"cloud"}]');
 
--- One of the required keys missing
-CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1"}]');
+-- num_replicas field missing.
+CREATE TABLESPACE x WITH (replica_placement='{"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
 
--- Invalid value for replication factor
-CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":"three"}]');
+-- placement_blocks field missing.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3}');
+
+-- Invalid value for num_replicas.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
+
+-- Invalid value for min_num_replicas.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
 
 -- Invalid keys in the placement policy.
-CREATE TABLESPACE x WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3,"invalid_key":"invalid_value"}]');
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}');
+
+-- Sum of min_num_replicas greater than num_replicas.
+CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
 -- Positive cases
+-- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
-CREATE TABLESPACE y WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_number_of_replicas":3}]');
+
+-- Sum of min_num_replicas lesser than num_replicas.
+CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1}]}');
+
+-- Sum of min_num_replicas equal to num_replicas.
+CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
 -- describe command
 \db
@@ -28,8 +43,9 @@ DROP TABLESPACE y;
 
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
-CREATE TABLESPACE regress_tblspacewith WITH (replica_placement='[{"cloud":"cloud1","region":"r1","zone":"z1","min_number_of_replicas":3}]'); -- ok
--- check to see the parameter was used
+CREATE TABLESPACE regress_tblspacewith WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}'); -- ok
+
+-- check to see if WITH clause parameter was used
 SELECT spcoptions FROM pg_tablespace WHERE spcname = 'regress_tblspacewith';
 
 DROP TABLESPACE regress_tblspacewith;

@@ -1072,8 +1072,9 @@ TEST_F(SysCatalogTest, TestTablespaceJsonProcessing) {
 
   // Variables to be used throughout the test.
   const string& valid_json =
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replicas\":3},"
-      "{\"cloud\":\"c2\",\"region\":\"r2\",\"zone\":\"z2\",\"min_number_of_replicas\":1}]";
+      "{\"num_replicas\":3,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":2},"
+      "{\"cloud\":\"c2\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
 
   QLValuePB option, invalid_option;
   option.set_string_value("replica_placement=" + valid_json);
@@ -1105,44 +1106,68 @@ TEST_F(SysCatalogTest, TestTablespaceJsonProcessing) {
   options.emplace_back(opt_empty_value);
   ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
 
-  // 5. Missing json keys.
+  // 5. Missing num_replicas field.
   options.clear();
   QLValuePB invalid_json_option;
-  invalid_json_option.set_string_value("replica_placement=["
-      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]");
+  invalid_json_option.set_string_value("replica_placement={\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
 
-  // 6. Invalid format for "min_number_of_replicas".
+  // 6. Invalid value for num_replicas field.
   options.clear();
-  invalid_json_option.set_string_value("replica_placement=["
-      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replicas\":\"3\"}]");
+  invalid_json_option.set_string_value(
+      "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
 
-  // 7. Invalid json.
+  // 7. Missing placement blocks field.
+  options.clear();
+  invalid_json_option.set_string_value("replica_placement={\"num_replicas\":3}");
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
+
+  // 8. Missing keys in placement blocks.
+  options.clear();
+  invalid_json_option.set_string_value(
+      "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}");
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
+
+  // 9. Invalid format for "min_num_replicas".
+  options.clear();
+  invalid_json_option.set_string_value(
+        "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
+        "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":\"abc\"}]}");
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
+
+  // 10. Invalid json.
   options.clear();
   invalid_json_option.set_string_value("replica_placement=["
       "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replica");
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
 
-  // Test whether total replication factor is populated correctly.
+  // 11. Test whether total replication factor is populated correctly.
   options.clear();
   options.push_back(option);
   ReplicationInfoPB result = EXPECT_RESULT(
       sys_catalog->ParseReplicationInfo(tablespace_id, options)).value();
   const auto live_replicas = result.live_replicas();
-  ASSERT_EQ(live_replicas.num_replicas(), 4);
+  ASSERT_EQ(live_replicas.num_replicas(), 3);
 
-  // Test whether the cloud/region/zone information has been populated correctly.
+  // 12. Test whether the cloud/region/zone information has been populated correctly.
+  ASSERT_EQ(live_replicas.placement_blocks_size(), 2);
   for (int i = 0; i < live_replicas.placement_blocks_size(); ++i) {
     const auto& placement_block = live_replicas.placement_blocks(i);
     const auto& cloud_info = placement_block.cloud_info();
     if (cloud_info.placement_cloud() == "c1") {
       ASSERT_EQ(cloud_info.placement_region(), "r1");
       ASSERT_EQ(cloud_info.placement_zone(), "z1");
-      ASSERT_EQ(placement_block.min_num_replicas(), 3);
+      ASSERT_EQ(placement_block.min_num_replicas(), 2);
       continue;
     }
     ASSERT_EQ(cloud_info.placement_cloud(), "c2");

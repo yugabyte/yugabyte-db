@@ -5550,7 +5550,33 @@ transform_string_values_scalar(void *state, char *token, JsonTokenType tokentype
 		appendStringInfoString(_state->strval, token);
 }
 
-// Simple JSON text manipulation functions to be used as utility to parse json strings.
+/*
+ * Simple JSON text manipulation functions to be used as utility to parse
+ * json strings.
+ */
+
+int json_get_int_value(text *json, char *key)
+{
+	text *value = json_get_value(json, key);
+	if (value == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Required key \"%s\" not found", key)));
+	}
+
+	char *int_str = text_to_cstring(value);
+	const int ret_value = atoi(int_str);
+	if (ret_value <= 0) {
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid value for \"%s\" key", key),
+				 errdetail("Found %s but %s value should be an integer > 0",
+						   int_str, key)));
+	}
+	return ret_value;
+}
+
 text*
 json_get_value(text *json, char *key)
 {
