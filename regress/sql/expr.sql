@@ -506,6 +506,13 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN {edge_0:{id:3, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge}
 $$) AS r(result agtype);
+--invalid edge typecast
+SELECT * FROM cypher('expr', $$
+RETURN {edge_0:{id:3, label:"edge 0", properties:{}, startid:0, end_id:1}::edge}
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {edge_0:{id:3, label:"edge 0", properties:{}, start_id:0, endid:1}::edge}
+$$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN {name:"container 1", edges:[{id:3, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge, {id:4, label:"edge 1", properties:{}, start_id:1, end_id:0}::edge]}
 $$) AS r(result agtype);

@@ -1880,7 +1880,7 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     if (fcinfo->argnull[0])
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_vertex() graphid cannot be NULL")));
+                 errmsg("agtype_build_edge() graphid cannot be NULL")));
 
     id = AG_GETARG_GRAPHID(0);
     add_agtype(id, false, &result, GRAPHIDOID, false);
@@ -1892,7 +1892,7 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     if (fcinfo->argnull[1])
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_vertex() startid cannot be NULL")));
+                 errmsg("agtype_build_edge() startid cannot be NULL")));
 
     start_id = AG_GETARG_GRAPHID(1);
     add_agtype(start_id, false, &result, GRAPHIDOID, false);
@@ -1904,7 +1904,7 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     if (fcinfo->argnull[2])
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype_build_vertex() endoid cannot be NULL")));
+                 errmsg("agtype_build_edge() endid cannot be NULL")));
 
     end_id = AG_GETARG_GRAPHID(2);
     add_agtype(end_id, false, &result, GRAPHIDOID, false);
@@ -3075,7 +3075,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     agtv_key.val.string.len = 8;
     agtv_startid = find_agtype_value_from_container(&arg_agt->root,
                                                     AGT_FOBJECT, &agtv_key);
-    if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
+    if (agtv_startid == NULL || agtv_startid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("edge typecast object has an invalid or missing start_id")));
@@ -3084,7 +3084,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     agtv_key.val.string.len = 6;
     agtv_endid = find_agtype_value_from_container(&arg_agt->root,
                                                     AGT_FOBJECT, &agtv_key);
-    if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
+    if (agtv_endid == NULL || agtv_endid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("edge typecast object has an invalid or missing end_id")));
