@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.*;
 import java.io.File;
 import java.lang.reflect.Constructor;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.function.Consumer;
 import javax.inject.Singleton;
@@ -271,10 +272,10 @@ public class EncryptionAtRestManager {
           return result;
         }
 
-        String backupContents = Util.readStringFromFile(backupKeysFile);
+        byte[] backupContents = Files.readAllBytes(backupKeysFile.toPath());
 
         // Nothing to do if the key metadata file is empty
-        if (backupContents.isEmpty()) {
+        if (backupContents.length == 0) {
           result = RestoreKeyResult.RESTORE_SKIPPED;
           return result;
         }

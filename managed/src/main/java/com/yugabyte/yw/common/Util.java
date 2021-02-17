@@ -273,16 +273,6 @@ public class Util {
     }
   }
 
-  // TODO: check correctness  why newline chars are skipped
-  public static String readStringFromFile(File file) throws Exception {
-    StringBuilder stringBuilder = new StringBuilder();
-    try(Scanner fileReader = new Scanner(file)) {
-      while (fileReader.hasNextLine())
-        stringBuilder.append(fileReader.nextLine());
-    }
-    return stringBuilder.toString();
-  }
-
   /**
    * Extracts the name and extension parts of a file name.
    *
@@ -295,7 +285,6 @@ public class Util {
    * @param fullName
    * @return
    */
-  // TODO: replace with return Paths.get(fullName).getFileName().toString();
   public static String getFileName(String fullName) {
     if (fullName == null) {
       return null;
