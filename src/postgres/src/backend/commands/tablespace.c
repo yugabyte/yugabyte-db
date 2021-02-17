@@ -113,33 +113,62 @@ validatePlacementConfiguration(const char *value)
 		return;
 	}
 
-	text *json_array = cstring_to_text(value);
+	text *placement_info = cstring_to_text(value);
+	text *json_array = json_get_value(placement_info, "placement_blocks");
+	if (json_array == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Required key \"placement_blocks\" not found")));
+	}
 	const int length = get_json_array_length(json_array);
 	if (length < 1) {
-		ereport(ERROR,(errmsg("Invalid number of placement policies %d", length)));
+		ereport(ERROR,
+				(errmsg("Invalid number of placement blocks %d", length)));
 		return;
 	}
-	char *keys[4] = {"cloud", "region", "zone", "min_number_of_replicas"};
+
+	char *keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
+	int sum_min_replicas = 0;
 	for (int i = 0; i < length; ++i) {
 		text *json_element = get_json_array_element(json_array, i);
 
-		// Each element in the array is a placement configuration.
-		// Verify that each such configuration contains all the keys in 'keys'
-		// and contains no extraneous keys.
+		/*
+		 *  Each element in the array is a placement configuration. Verify that
+		 *  each such configuration contains all the keys in 'keys' and
+		 *  contains no extraneous keys.
+		 */
 		validate_json_object_keys(json_element, keys, 4);
 
-		// Validate that min replicas is a valid value.
-		char *min_replicas_str = text_to_cstring(json_get_value(json_element, keys[3]));
-		const int min_replicas = atoi(min_replicas_str);
-		if (min_replicas <= 0)
-		{
-			ereport(ERROR,
+		/*
+		 * Find the aggregate of min_num_replicas.
+		 */
+		const int min_replicas = json_get_int_value(json_element, keys[3]);
+		sum_min_replicas += min_replicas;
+	}
+
+	/* Find the total replication factor */
+	int num_replicas = json_get_int_value(placement_info, "num_replicas");
+
+	/* Verify that num_replicas is valid. */
+	if (sum_min_replicas > num_replicas)
+	{
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Invalid value for \"min_number_of_replicas\" key"),
-				errdetail("Found %s but min_replicas_for_block should be "
-					" an integer > 0", min_replicas_str)));
-				return;
-		}
+				 errmsg("Invalid value for \"num_replicas\" key"),
+				 errdetail("num_replicas: %d is lesser than the total of "
+						   "min_num_replicas fields %d", num_replicas,
+						   sum_min_replicas)));
+	}
+	if (sum_min_replicas < num_replicas)
+	{
+		ereport(NOTICE,
+				(errmsg("num_replicas is %d, and the total min_num_replicas "
+					    "fields is %d. The location of the additional %d "
+					    "replicas among the specified zones will be decided "
+					    "dynamically based on the cluster load", num_replicas,
+					    sum_min_replicas, num_replicas - sum_min_replicas)));
+
 	}
 }
 
