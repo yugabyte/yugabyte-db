@@ -41,7 +41,7 @@ Included here are the release notes for all releases in the v2.4 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.4.1.0-b24
+docker pull yugabytedb/yugabyte:2.4.1.0-b25
 ```
 
 ### Improvements
