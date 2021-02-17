@@ -3,6 +3,17 @@ notifications:
     pullrequests: commits@age.apache.org
 
 github:
+  description: "Graph database optimized for fast analysis and real-time data processing. 
+     It is provided as an extension to PostgreSQL."
+  homepage: https://age.apache.org
+  labels:
+    - postgresql
+    - graph-database
+    - analytics
+    - postgresql-extension
+    - graphdb
+    - multi-model-dbms
+    - agensgraph
   features:
     wiki: true
     issues: true
