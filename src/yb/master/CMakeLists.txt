@@ -82,6 +82,9 @@ set(MASTER_SRCS
   master-path-handlers.cc
   mini_master.cc
   master_snapshot_coordinator.cc
+  restoration_state.cc
+  snapshot_state.cc
+  state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
