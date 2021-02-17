@@ -387,7 +387,7 @@ END;
 $$ language plpgsql;
 
 SELECT add2(1,2);
- sub
+ add2
 -----
    3
 (1 row)
