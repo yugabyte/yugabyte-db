@@ -93,7 +93,7 @@ const mapDispatchToProps = (dispatch) => {
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               if (response.error) {
-                const errorMessage = response.payload?.response?.data?.error;
+                const errorMessage = response.payload?.response?.data?.error || response.payload.message;
                 toast.error(errorMessage);
               }
               dispatch(createRegionResponse(response.payload));

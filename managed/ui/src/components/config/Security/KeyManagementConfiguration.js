@@ -284,13 +284,11 @@ class KeyManagementConfiguration extends Component {
     }
     if (listView) {
       return (
-        <React.Fragment>
-          <ListKeyManagementConfigurations
-            configs={configList}
-            onCreate={this.openCreateConfigForm}
-            onDelete={this.deleteAuthConfig}
-          />
-        </React.Fragment>
+        <ListKeyManagementConfigurations
+          configs={configList}
+          onCreate={this.openCreateConfigForm}
+          onDelete={this.deleteAuthConfig}
+        />
       );
 
     };

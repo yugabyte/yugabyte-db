@@ -132,7 +132,7 @@ const mapDispatchToProps = (dispatch) => {
     deleteProviderConfig: (providerUUID) => {
       dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
-          const errorMessage = response.payload?.response?.data?.error;
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
           dispatch(deleteProviderFailure(response.payload));
         } else {

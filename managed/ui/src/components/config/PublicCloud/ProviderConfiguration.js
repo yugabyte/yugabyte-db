@@ -331,9 +331,7 @@ class ProviderConfiguration extends Component {
     } else if (this.state.currentView === 'result') {
       currentProviderView = this.getResultView();
     }
-    return <>
-      <div className="provider-config-container">{currentProviderView}</div>
-    </>;
+    return <div className="provider-config-container">{currentProviderView}</div>;
   }
 }
 
