@@ -148,6 +148,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops,
                                VerifyResponse verify_response = VerifyResponse::kFalse);
 
+  bool IsInProgress(YBOperationPtr yb_op) const;
+
   // Flush any pending writes.
   //
   // Returns a bad status if there are any pending errors after the rows have
