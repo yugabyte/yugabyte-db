@@ -13,11 +13,14 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.forms.DemoteInstanceFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.data.FormFactory;
 import play.libs.Files;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -25,8 +28,9 @@ import play.mvc.Result;
 import play.mvc.With;
 
 import java.io.File;
-import java.util.Date;
+import java.net.URL;
 import java.util.Map;
+import java.util.Date;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {
@@ -34,10 +38,12 @@ public class InternalHAController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(InternalHAController.class);
 
   private final PlatformReplicationManager replicationManager;
+  private final FormFactory formFactory;
 
   @Inject
-  InternalHAController(PlatformReplicationManager replicationManager) {
+  InternalHAController(PlatformReplicationManager replicationManager, FormFactory formFactory) {
     this.replicationManager = replicationManager;
+    this.formFactory = formFactory;
   }
 
   private String getClusterKey() {
@@ -100,7 +106,7 @@ public class InternalHAController extends Controller {
     }
   }
 
-  public Result syncBackups() {
+  public Result syncBackups() throws Exception {
     Http.MultipartFormData<Files.TemporaryFile> body = request().body().asMultipartFormData();
 
     Map<String, String[]> reqParams = body.asFormUrlEncoded();
@@ -133,7 +139,7 @@ public class InternalHAController extends Controller {
 
     // For all the other cases we will accept the backup without checking local config state.
     boolean success = replicationManager.saveReplicationData(
-      fileName, temporaryFile, leader, sender);
+      fileName, temporaryFile, new URL(leader), new URL(sender));
     if (success) {
       return ApiResponse.success("File uploaded");
     } else {
@@ -145,9 +151,15 @@ public class InternalHAController extends Controller {
     try {
       HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
       if (config == null) {
-        LOG.warn("No HA configuration configured");
+        LOG.warn("No HA configuration configured, skipping request");
 
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+      }
+
+      Form<DemoteInstanceFormData> formData =
+        formFactory.form(DemoteInstanceFormData.class).bindFromRequest();
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
       PlatformInstance localInstance = config.getLocal();
@@ -166,22 +178,13 @@ public class InternalHAController extends Controller {
         LOG.warn("Rejecting demote request due to request lastFailover being stale");
 
         return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
-      } else {
+      } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
+        // Otherwise, update the last failover timestamp and proceed with demotion request.
         config.setLastFailover(requestLastFailover);
-        config.update();
       }
 
-      if (!localInstance.getIsLeader()) {
-        LOG.debug("Local platform instance is already a follower; ignoring demote request");
-
-        return ApiResponse.success(localInstance);
-      }
-
-      // Stop the old backup schedule.
-      replicationManager.stopAndDisable();
-
-      // Finally, demote the local instance to follower.
-      localInstance.demote();
+      // Demote the local instance.
+      replicationManager.demoteLocalInstance(localInstance, formData.get().leader_address);
 
       return ApiResponse.success(localInstance);
     } catch (Exception e) {

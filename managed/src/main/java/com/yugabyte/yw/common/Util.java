@@ -5,10 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Functions;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -26,7 +22,6 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
@@ -38,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -307,16 +303,20 @@ public class Util {
 
     byte[] bytes = digest.digest();
     StringBuilder sb = new StringBuilder();
-    for(int i = 0; i < bytes.length; i++) {
+    for (int i = 0; i < bytes.length; i++) {
       sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
     }
    return sb.toString();
   }
 
-  static List<File> listFiles(Path backupDir, String pattern) throws IOException {
+  public static List<File> listFiles(Path backupDir, String pattern) throws IOException {
     return StreamSupport.stream(
       Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
       .map(Path::toFile)
       .collect(Collectors.toList());
+  }
+
+  public static void moveFile(Path source, Path destination) throws IOException {
+    Files.move(source, destination, REPLACE_EXISTING);
   }
 }
