@@ -59,7 +59,7 @@ showAsideToc: true
     *   Cores: 8 Cores
     *   RAM: 16 GB
 *   Storage Disk:  100GB (minimum) (confirm SSD)
-*   Docker Engine: supported versions 1.7.1 to 19.03.8-ce. If not installed, see Installing Docker in [airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+*   Docker Engine: supported version 19.03.n. If not installed, see Installing Docker in [airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 *   The following ports should be open on the Yugabyte Platform host:
     *   8800 – HTTP access to the Replicated UI
     *   80 – HTTP access to the Yugabyte Platform console
