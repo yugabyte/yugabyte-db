@@ -1036,7 +1036,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   public Result pause(UUID customerUUID, UUID universeUUID) {
-	  Universe universe;
+    Universe universe;
     try {
       universe = checkCallValid(customerUUID, universeUUID);
     } catch (RuntimeException e) {
@@ -1078,7 +1078,7 @@ public class UniverseController extends AuthenticatedController {
 
 
   public Result resume(UUID customerUUID, UUID universeUUID) {
-	  Universe universe;
+    Universe universe;
     try {
       universe = checkCallValid(customerUUID, universeUUID);
     } catch (RuntimeException e) {
