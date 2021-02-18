@@ -579,6 +579,9 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }

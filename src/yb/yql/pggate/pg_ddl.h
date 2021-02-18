@@ -340,11 +340,15 @@ class PgAlterTable : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
+  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
+    txn_future_ = transaction;
+  }
+
  private:
   const client::YBTableName table_name_;
   const PgObjectId table_id_;
   std::unique_ptr<client::YBTableAlterer> table_alterer;
-
+  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
 };
 
 }  // namespace pggate

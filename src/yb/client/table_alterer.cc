@@ -79,6 +79,11 @@ YBTableAlterer* YBTableAlterer::wait(bool wait) {
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::part_of_transaction(const TransactionMetadata* txn) {
+  txn_ = txn;
+  return this;
+}
+
 Status YBTableAlterer::Alter() {
   master::AlterTableRequestPB req;
   RETURN_NOT_OK(ToRequest(&req));
@@ -178,6 +183,10 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   if (replication_info_) {
     // TODO: Maybe add checks for the sanity of the replication_info.
     req->mutable_replication_info()->CopyFrom(replication_info_.get());
+  }
+
+  if (txn_) {
+    txn_->ToPB(req->mutable_transaction());
   }
 
   return Status::OK();

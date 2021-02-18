@@ -55,6 +55,7 @@ DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
+DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 namespace yb {
 namespace master {
@@ -686,6 +687,13 @@ void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
 //  Class AsyncAlterTable.
 // ============================================================================
 void AsyncAlterTable::HandleResponse(int attempt) {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
+    VLOG_WITH_PREFIX(1) << "Sleeping for " << tablet_->tablet_id()
+                        << FLAGS_TEST_slowdown_alter_table_rpcs_ms
+                        << "ms before returning response in async alter table request handler";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_alter_table_rpcs_ms));
+  }
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -747,6 +755,13 @@ bool AsyncAlterTable::SendRequest(int attempt) {
     req.set_new_table_name(l->pb.name());
     req.mutable_indexes()->CopyFrom(l->pb.indexes());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
+    if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
+      VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
+          << " with ID " << transaction_id_.ToString() << " for ALTER TABLE operation";
+      req.set_should_abort_active_txns(true);
+      req.set_transaction_id(transaction_id_.ToString());
+    }
 
     schema_version_ = l->pb.version();
   }

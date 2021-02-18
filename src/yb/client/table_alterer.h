@@ -27,6 +27,8 @@
 #include "yb/master/master.pb.h"
 
 namespace yb {
+struct TransactionMetadata;
+
 namespace client {
 
 // Alters an existing table based on the provided steps.
@@ -76,6 +78,9 @@ class YBTableAlterer {
   // Set replication info for the table.
   YBTableAlterer* replication_info(const master::ReplicationInfoPB& ri);
 
+  // The altering of this table is dependent upon the success of this higher-level transaction.
+  YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
+
   // Alters the table.
   //
   // The return value may indicate an error in the alter operation, or a
@@ -115,6 +120,8 @@ class YBTableAlterer {
   boost::optional<uint32_t> wal_retention_secs_;
 
   boost::optional<master::ReplicationInfoPB> replication_info_;
+
+  const TransactionMetadata* txn_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
 };

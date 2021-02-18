@@ -862,12 +862,14 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& txn : transactions_.get<StartTimeTag>()) {
-        if (txn->start_ht() > cutoff) {
+        if (txn->start_ht() > cutoff ||
+            (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
         }
         if (!txn->WasAborted()) {
@@ -1671,8 +1673,9 @@ std::string TransactionParticipant::DumpTransactions() const {
   return impl_->DumpTransactions();
 }
 
-Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+Status TransactionParticipant::StopActiveTxnsPriorTo(
+    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(

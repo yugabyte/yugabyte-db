@@ -1152,7 +1152,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterTableCmd:
 		case T_AlterTableMoveAllStmt:
 		case T_AlterTableSpaceOptionsStmt:
-		case T_AlterTableStmt:
 		case T_AlterUserMappingStmt:
 		case T_AlternativeSubPlan:
 		case T_AlternativeSubPlanState:
@@ -1160,6 +1159,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			return true;
+
+		case T_AlterTableStmt:
+		{
+			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+			ListCell *lcmd = stmt->cmds->head;
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
+				*is_breaking_catalog_change = false;
+			}
+			return true;
+		}
 
 		// T_Grant...
 		case T_GrantStmt:
