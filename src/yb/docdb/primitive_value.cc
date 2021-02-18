@@ -1650,7 +1650,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
   // to be set to Null in QLValue.
   if (primitive_value.value_type() == ValueType::kNullLow ||
       primitive_value.value_type() == ValueType::kNullHigh ||
-      primitive_value.value_type() == ValueType::kInvalid) {
+      primitive_value.value_type() == ValueType::kInvalid ||
+      primitive_value.value_type() == ValueType::kTombstone) {
     SetNull(ql_value);
     return;
   }
