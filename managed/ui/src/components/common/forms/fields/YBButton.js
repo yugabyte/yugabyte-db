@@ -26,7 +26,7 @@ export default class YBButton extends PureComponent {
         onClick={this.props.onClick}
         bsSize={btnSize}
         bsStyle={btnStyle}
-        disabled={disabled}
+        disabled={!!disabled}
         {...otherProps}
       >
         {loading ? (
