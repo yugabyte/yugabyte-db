@@ -8,13 +8,17 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ha;
 
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeApi;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
@@ -37,6 +41,7 @@ import play.test.Helpers;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -71,8 +76,8 @@ public class PlatformTest extends FakeDBApplication {
   @Rule
   public TemporaryFolder remoteStorage = new TemporaryFolder();
 
-  private static final String LOCAL_ACME_ORG = "local.acme.org";
-  private static final String REMOTE_ACME_ORG = "remote.acme.org";
+  private static final String LOCAL_ACME_ORG = "http://local.acme.org";
+  private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
   private FakeApi fakeApi;
   EbeanServer localEBeanServer;
 
@@ -88,8 +93,8 @@ public class PlatformTest extends FakeDBApplication {
       localConfigUUID, LOCAL_ACME_ORG, true, true);
     remoteInstance = createPlatformInstance(
       localConfigUUID, REMOTE_ACME_ORG, false, false);
-    backupDir = Paths.get(app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY),
-      PlatformReplicationManager.BACKUP_DIR);
+    backupDir = Paths.get(app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+      PlatformReplicationHelper.BACKUP_DIR);
   }
 
   @After
@@ -105,13 +110,13 @@ public class PlatformTest extends FakeDBApplication {
   FakeApi startRemoteApp() {
     remoteApp = provideApplication(
       ImmutableMap.of("play.allowGlobalApplication", false,
-        PlatformReplicationManager.STORAGE_PATH_KEY, remoteStorage.getRoot().getAbsolutePath()));
+        PlatformReplicationHelper.STORAGE_PATH_KEY, remoteStorage.getRoot().getAbsolutePath()));
     Helpers.start(remoteApp);
     mat = remoteApp.getWrappedApplication().materializer();
     EbeanServer remoteEBenServer = Ebean.getDefaultServer();
     replicationDir =
-      Paths.get(remoteApp.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY),
-        PlatformReplicationManager.REPLICATION_DIR);
+      Paths.get(remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+        PlatformReplicationHelper.REPLICATION_DIR);
     return new FakeApi(remoteApp, remoteEBenServer);
   }
 
@@ -149,10 +154,10 @@ public class PlatformTest extends FakeDBApplication {
   }
 
   private void assertUploadContents(File backupFile) throws IOException {
-    String storagePath = remoteApp.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationManager.REPLICATION_DIR,
-      localInstance.getAddress(),
+      PlatformReplicationHelper.REPLICATION_DIR,
+      new URL(localInstance.getAddress()).getHost(),
       backupFile.getName()
     ).toFile();
     assertTrue(uploadedFile.exists());
