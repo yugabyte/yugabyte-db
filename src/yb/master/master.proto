@@ -1265,6 +1265,9 @@ message AlterTableRequestPB {
 
   // Replication information for this table.
   optional ReplicationInfoPB replication_info = 8;
+
+  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 9;
 }
 
 message AlterTableResponsePB {
