@@ -144,6 +144,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
   CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
+  bool IsInProgress(YBOperationPtr yb_op) const;
+
   // verify_response - supported only in auto flush mode. Checks that after flush operation
   // is succeeded. (i.e. op->succeeded() returns true).
   CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
