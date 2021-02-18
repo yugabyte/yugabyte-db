@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ha;
 
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
@@ -18,18 +18,20 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import io.ebean.Model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
-import java.io.File;
-import java.io.IOException;
+
+import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -38,23 +40,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-@Singleton
-public class PlatformReplicationManager extends DevopsBase {
-  static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
-  static final String BACKUP_DIR = "platformBackups";
-  public static final String REPLICATION_DIR = "platformReplication";
-  static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
+import static com.yugabyte.yw.common.ha.PlatformReplicationHelper.REPLICATION_FREQUENCY_KEY;
 
-  // Config keys:
-  static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
-  static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
-  static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
-  static final String DB_HOST_CONFIG_KEY = "db.default.host";
-  static final String DB_PORT_CONFIG_KEY = "db.default.port";
-  static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
-  static final String REPLICATION_SCHEDULE_ENABLED_KEY = "yb.ha.replication_schedule_enabled";
-  public static final String STORAGE_PATH_KEY = "yb.storage.path";
+@Singleton
+public class PlatformReplicationManager {
   public static final String BACKUP_FILE_PATTERN = "backup_*.tgz";
+  private static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
+  static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
 
   private final AtomicReference<Cancellable> schedule;
 
@@ -62,30 +54,23 @@ public class PlatformReplicationManager extends DevopsBase {
 
   private final ExecutionContext executionContext;
 
-  private final SettableRuntimeConfigFactory runtimeConfigFactory;
+  private final PlatformReplicationHelper replicationUtil;
 
-  private final PlatformInstanceClientFactory remoteClientFactory;
+  private final ShellProcessHandler shellProcessHandler;
 
   private static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationManager.class);
-
-  @Override
-  protected String getCommandType() {
-    return null;
-  }
 
   @Inject
   public PlatformReplicationManager(
     ActorSystem actorSystem,
     ExecutionContext executionContext,
     ShellProcessHandler shellProcessHandler,
-    SettableRuntimeConfigFactory runtimeConfigFactory,
-    PlatformInstanceClientFactory remoteClientFactory
+    PlatformReplicationHelper replicationUtil
   ) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.shellProcessHandler = shellProcessHandler;
-    this.runtimeConfigFactory = runtimeConfigFactory;
-    this.remoteClientFactory = remoteClientFactory;
+    this.replicationUtil = replicationUtil;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -94,17 +79,17 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   public void start() {
-    if (this.isBackupScheduleRunning()) {
+    if (replicationUtil.isBackupScheduleRunning(this.getSchedule())) {
       LOG.warn("Platform backup schedule is already started");
       return;
     }
 
-    if (!this.isBackupScheduleEnabled()) {
+    if (!replicationUtil.isBackupScheduleEnabled()) {
       LOG.debug("Cannot start backup schedule because it is disabled");
       return;
     }
 
-    Duration frequency = getBackupFrequency();
+    Duration frequency = replicationUtil.getBackupFrequency();
 
     if (!frequency.isNegative() && !frequency.isZero()) {
       this.setSchedule(frequency);
@@ -112,7 +97,7 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   public void stop() {
-    if (!this.isBackupScheduleRunning()) {
+    if (!replicationUtil.isBackupScheduleRunning(this.getSchedule())) {
       LOG.warn("Platform backup schedule is already stopped");
       return;
     }
@@ -122,43 +107,30 @@ public class PlatformReplicationManager extends DevopsBase {
     }
   }
 
-  public JsonNode stopAndDisable() {
-    this.stop();
-    this.setBackupScheduleEnabled(false);
-
-    return this.getBackupInfo();
+  public void init() {
+    // Start periodic platform sync schedule if enabled.
+    this.start();
+    // Switch prometheus to federated if this platform is a follower for HA.
+    replicationUtil.ensurePrometheusConfig();
   }
 
-  private Duration getBackupFrequency() {
-    return this.runtimeConfigFactory.globalRuntimeConf().getDuration(REPLICATION_FREQUENCY_KEY);
+  public JsonNode stopAndDisable() {
+    this.stop();
+    replicationUtil.setBackupScheduleEnabled(false);
+
+    return this.getBackupInfo();
   }
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
     this.stop();
-    this.runtimeConfigFactory.globalRuntimeConf().setValue(
+    replicationUtil.getRuntimeConfig().setValue(
       REPLICATION_FREQUENCY_KEY,
       String.format("%d ms", duration.toMillis())
     );
-    this.setBackupScheduleEnabled(true);
+    replicationUtil.setBackupScheduleEnabled(true);
     this.start();
 
     return this.getBackupInfo();
-  }
-
-  private boolean isBackupScheduleRunning() {
-    return this.getSchedule() != null && !this.getSchedule().isCancelled();
-  }
-
-  private boolean isBackupScheduleEnabled() {
-    return this.runtimeConfigFactory.globalRuntimeConf()
-      .getBoolean(REPLICATION_SCHEDULE_ENABLED_KEY);
-  }
-
-  private void setBackupScheduleEnabled(boolean enabled) {
-    this.runtimeConfigFactory.globalRuntimeConf().setValue(
-      REPLICATION_SCHEDULE_ENABLED_KEY,
-      Boolean.toString(enabled)
-    );
   }
 
   private void setSchedule(Duration frequency) {
@@ -171,16 +143,9 @@ public class PlatformReplicationManager extends DevopsBase {
     ));
   }
 
-  Path getBackupDir() {
-    return Paths.get(
-      this.runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY),
-      BACKUP_DIR
-    );
-  }
-
   // TODO: (Daniel/Shashank) - https://github.com/yugabyte/yugabyte-db/issues/6961.
-  public List<File> listBackups(String leader) throws Exception {
-    Path backupDir = this.getReplicationDirFor(leader);
+  public List<File> listBackups(URL leader) throws Exception {
+    Path backupDir = replicationUtil.getReplicationDirFor(leader.getHost());
 
     if (!backupDir.toFile().exists() || !backupDir.toFile().isDirectory()) {
       LOG.debug(String.format("%s directory does not exist", backupDir.toFile().getName()));
@@ -192,43 +157,45 @@ public class PlatformReplicationManager extends DevopsBase {
   }
 
   public JsonNode getBackupInfo() {
-    return Json.newObject()
-      .put("frequency_milliseconds", this.getBackupFrequency().toMillis())
-      .put("is_running", this.isBackupScheduleRunning());
+    return replicationUtil.getBackupInfoJson(
+      replicationUtil.getBackupFrequency().toMillis(),
+      replicationUtil.isBackupScheduleRunning(this.getSchedule())
+    );
   }
 
-  private boolean demotePreviousInstance(PlatformInstance remoteInstance) {
-    try {
-      HighAvailabilityConfig config = remoteInstance.getConfig();
-      PlatformInstanceClient client = this.remoteClientFactory.getClient(
-        config.getClusterKey(),
-        remoteInstance.getAddress()
-      );
-
-      // Ensure all local records for remote instances are set to follower state.
-      remoteInstance.demote();
-
-      // Send step down request to remote instance.
-      client.demoteInstance(config.getLastFailover().getTime());
-
-      return true;
-    } catch (Exception e) {
-      LOG.error("Error demoting remote platform instance {}", remoteInstance.getAddress(), e);
+  public void demoteLocalInstance(
+    PlatformInstance localInstance,
+    String leaderAddr
+  ) throws MalformedURLException {
+    if (!localInstance.getIsLocal()) {
+      throw new RuntimeException("Cannot perform this action on a remote instance");
     }
 
-    return false;
+    // Stop the old backup schedule.
+    this.stopAndDisable();
+
+    // Demote the local instance to follower.
+    localInstance.demote();
+
+    // Try switching local prometheus to read from the reported leader.
+    replicationUtil.switchPrometheusToFederated(new URL(leaderAddr));
   }
 
-  public void promoteInstance(PlatformInstance newLeader) {
+  public void promoteLocalInstance(PlatformInstance newLeader) throws Exception {
+    if (!newLeader.getIsLocal()) {
+      throw new RuntimeException("Cannot perform this action in a remote instance");
+    }
+
     HighAvailabilityConfig config = newLeader.getConfig();
     // Update which instance should be local.
+    config.getLocal().setIsLocalAndUpdate(false);
     config.getInstances()
       .forEach(i -> i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID())));
     // Mark the failover timestamp.
     config.updateLastFailover();
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
-    config.getRemoteInstances().forEach(this::demotePreviousInstance);
+    config.getRemoteInstances().forEach(replicationUtil::demoteRemoteInstance);
     // Promote the new local leader.
     newLeader.promote();
   }
@@ -282,54 +249,20 @@ public class PlatformReplicationManager extends DevopsBase {
     });
   }
 
-  private void exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
-    try {
-      PlatformInstanceClient client = this.remoteClientFactory.getClient(
-        config.getClusterKey(),
-        remoteInstanceAddr
-      );
-
-      // Form payload to send to remote platform instance.
-      List<PlatformInstance> instances = config.getInstances();
-      JsonNode instancesJson = Json.toJson(instances);
-
-      // Export the platform instances to the given remote platform instance.
-      client.syncInstances(config.getLastFailover().getTime(), instancesJson);
-    } catch (Exception e) {
-      LOG.error("Error exporting local platform instances to remote instance "
-        + remoteInstanceAddr, e);
-    }
-  }
-
   @VisibleForTesting
   boolean sendBackup(PlatformInstance remoteInstance) {
     HighAvailabilityConfig config = remoteInstance.getConfig();
     String clusterKey = config.getClusterKey();
     File recentBackup;
     recentBackup = getMostRecentBackup();
-    return recentBackup != null &&
-      exportBackups(config, clusterKey, remoteInstance.getAddress(), recentBackup) &&
+    return recentBackup != null && replicationUtil.exportBackups(
+      config, clusterKey, remoteInstance.getAddress(), recentBackup) &&
       remoteInstance.updateLastBackup();
-  }
-
-  private boolean exportBackups(HighAvailabilityConfig config, String clusterKey,
-                                String remoteInstanceAddr, File backupFile) {
-    try {
-      remoteClientFactory.getClient(clusterKey, remoteInstanceAddr).syncBackups(
-        config.getLeader().getAddress(),
-        config.getLocal().getAddress(), // sender is same as leader for now
-        backupFile);
-      return true;
-    } catch (Exception exception) {
-      LOG.error(String.format("Error exporting backup instances to remote instance %s",
-        remoteInstanceAddr), exception);
-      return false;
-    }
   }
 
   private File getMostRecentBackup() {
     try {
-      return Util.listFiles(getBackupDir(), BACKUP_FILE_PATTERN).get(0);
+      return Util.listFiles(replicationUtil.getBackupDir(), BACKUP_FILE_PATTERN).get(0);
     } catch (Exception exception) {
       LOG.error("Could not locate recent backup", exception);
     }
@@ -342,7 +275,7 @@ public class PlatformReplicationManager extends DevopsBase {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demotePreviousInstance(remoteInstance)) {
+    if (!replicationUtil.demoteRemoteInstance(remoteInstance)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
 
       return;
@@ -356,7 +289,7 @@ public class PlatformReplicationManager extends DevopsBase {
     }
 
     // Sync the HA cluster metadata to the remote instance.
-    this.exportPlatformInstances(config, remoteAddr);
+    replicationUtil.exportPlatformInstances(config, remoteAddr);
   }
 
   private void sync() {
@@ -388,26 +321,34 @@ public class PlatformReplicationManager extends DevopsBase {
 
   private void cleanupBackups() {
     try {
-      Util.listFiles(getBackupDir(), BACKUP_FILE_PATTERN).forEach(File::delete);
+      Util.listFiles(replicationUtil.getBackupDir(), BACKUP_FILE_PATTERN).forEach(File::delete);
     } catch (IOException ioException) {
       LOG.warn("Failed to list or delete backups");
     }
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, String leader,
-                                     String sender) {
-    Path replicationDir = getReplicationDirFor(leader);
+  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader,
+                                     URL sender) {
+    Path replicationDir = replicationUtil.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
     if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
       if (uploadedFile.renameTo(saveAsFile.toFile())) {
         LOG.debug("Store platform backup received from leader {} via {} as {}.",
-          leader, sender, saveAsFile);
+          leader.toString(), sender.toString(), saveAsFile);
         return true;
       }
     }
-    LOG.error("Could not store platform backup received from leader {} via {} as {}", leader,
-      sender, saveAsFile);
+    LOG.error("Could not store platform backup received from leader {} via {} as {}",
+      leader.toString(), sender.toString(), saveAsFile);
     return false;
+  }
+
+  public void switchPrometheusFromFederated() {
+    try {
+      this.replicationUtil.switchPrometheusFromFederated();
+    } catch (Exception e) {
+      LOG.error("Could not switch prometheus config from federated", e);
+    }
   }
 
   private abstract class PlatformBackupParams {
@@ -423,17 +364,16 @@ public class PlatformReplicationManager extends DevopsBase {
     private final int dbPort;
 
     protected PlatformBackupParams() {
-      RuntimeConfig<Model> appConfig = runtimeConfigFactory.globalRuntimeConf();
-      this.prometheusHost = appConfig.getString(PROMETHEUS_HOST_CONFIG_KEY);
-      this.dbUsername = appConfig.getString(DB_USERNAME_CONFIG_KEY);
-      this.dbPassword = appConfig.getString(DB_PASSWORD_CONFIG_KEY);
-      this.dbHost = appConfig.getString(DB_HOST_CONFIG_KEY);
-      this.dbPort = appConfig.getInt(DB_PORT_CONFIG_KEY);
+      this.prometheusHost = replicationUtil.getPrometheusHost();
+      this.dbUsername = replicationUtil.getDBUser();
+      this.dbPassword = replicationUtil.getDBPassword();
+      this.dbHost = replicationUtil.getDBHost();
+      this.dbPort = replicationUtil.getDBPort();
     }
 
     protected abstract List<String> getCommandSpecificArgs();
 
-    public List<String> getCommandArgs() {
+    List<String> getCommandArgs() {
       List<String> commandArgs = new ArrayList<>();
       commandArgs.add(BACKUP_SCRIPT);
       commandArgs.addAll(getCommandSpecificArgs());
@@ -451,7 +391,7 @@ public class PlatformReplicationManager extends DevopsBase {
       return commandArgs;
     }
 
-    public Map<String, String> getExtraVars() {
+    Map<String, String> getExtraVars() {
       Map<String, String> extraVars = new HashMap<>();
 
       if (dbPassword != null && !dbPassword.isEmpty()) {
@@ -471,10 +411,10 @@ public class PlatformReplicationManager extends DevopsBase {
     // Where to output the platform backup
     private final String outputDirectory;
 
-    public CreatePlatformBackupParams() {
+    CreatePlatformBackupParams() {
       this.excludePrometheus = true;
       this.excludeReleases = true;
-      this.outputDirectory = getBackupDir().toAbsolutePath().toString();
+      this.outputDirectory = replicationUtil.getBackupDir().toString();
     }
 
     @Override
@@ -501,7 +441,7 @@ public class PlatformReplicationManager extends DevopsBase {
     // Where to input a previously taken platform backup from.
     private final String input;
 
-    public RestorePlatformBackupParams(String input) {
+    RestorePlatformBackupParams(String input) {
       this.input = input;
     }
 
@@ -557,10 +497,5 @@ public class PlatformReplicationManager extends DevopsBase {
       LOG.error("Restore failed: " + response.message);
     }
     return response.code == 0;
-  }
-
-  private Path getReplicationDirFor(String leader) {
-    String storagePath = runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY);
-    return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 }
