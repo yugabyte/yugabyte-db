@@ -52,7 +52,7 @@ ON tbl_name [FOR [EACH] { ROW | STATEMENT }]
        EXECUTE PROCEDURE trigger_function
 ```
 
-The trigger *tr_name* fires before or after *event* which can be set to `INSERT` , `DELETE`, `UPDATE`, or `TRUNCATE`. *tbl_name* represents the table associated with the trigger. If you use the `FOR EACH ROW` clause, the scope of the trigger would be one row. If you use the `FOR EACH STATEMENT` clause, the trigger would be fired for each transaction. *trigger_function* represents the procedure to be performed when the trigger is fired.
+The trigger *tr_name* fires before or after *event* which can be set to `INSERT` , `DELETE`, `UPDATE`, or `TRUNCATE`. *tbl_name* represents the table associated with the trigger. If you use the `FOR EACH ROW` clause, the scope of the trigger would be one row. If you use the `FOR EACH STATEMENT` clause, the trigger would be fired for each statement. *trigger_function* represents the procedure to be performed when the trigger is fired.
 
 Suppose you work with a database that includes the following table populated with data:
 
