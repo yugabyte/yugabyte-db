@@ -2076,15 +2076,16 @@ Status Tablet::RemoveTable(const std::string& table_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone() {
-  auto table_info = metadata_->primary_table_info();
+Status Tablet::MarkBackfillDone(const TableId& table_id) {
+  auto table_info = table_id.empty() ?
+    metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
                         << table_info->schema.ToString();
   const vector<DeletedColumn> empty_deleted_cols;
   Schema new_schema = Schema(table_info->schema);
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
-      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version);
+      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
   return metadata_->Flush();
 }
 

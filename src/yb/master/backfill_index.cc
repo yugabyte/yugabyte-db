@@ -930,14 +930,14 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet));
+    RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet, table->id()));
   }
   return Status::OK();
 }
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
-    const scoped_refptr<TabletInfo> &tablet) {
-  auto call = std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet);
+    const scoped_refptr<TabletInfo> &tablet, const std::string &table_id) {
+  auto call = std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id);
   tablet->table()->AddTask(call);
   RETURN_NOT_OK_PREPEND(
       master_->catalog_manager()->ScheduleTask(call),

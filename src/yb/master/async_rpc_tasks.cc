@@ -731,6 +731,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
       << " version " << schema_version_ << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
+  req.set_backfill_done_table_id(table_id_);
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());

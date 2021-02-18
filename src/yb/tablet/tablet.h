@@ -392,7 +392,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that major compactions can now garbage collect delete markers.
-  CHECKED_STATUS MarkBackfillDone();
+  CHECKED_STATUS MarkBackfillDone(const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
   CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);

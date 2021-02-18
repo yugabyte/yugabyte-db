@@ -151,7 +151,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   // Send the "backfill done request" to the specified tablet.
   CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
-      const scoped_refptr<TabletInfo> &index_table_tablet);
+      const scoped_refptr<TabletInfo> &index_table_tablet, const std::string &table_id);
 
   Master* master_;
   ThreadPool* callback_pool_;
