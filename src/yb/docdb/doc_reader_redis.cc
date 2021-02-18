@@ -141,12 +141,8 @@ CHECKED_STATUS BuildSubDocument(
         data.exp.write_ht = write_time.hybrid_time();
       }
 
-      bool has_expired;
-      CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
-                             iter->read_time().read, &has_expired));
-
       // Treat an expired value as a tombstone written at the same time as the original value.
-      if (has_expired) {
+      if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iter->read_time().read)) {
         doc_value = Value::Tombstone();
         value_type = ValueType::kTombstone;
       }
@@ -433,10 +429,8 @@ yb::Status GetRedisSubDocument(
       !data.exp.ttl.IsNegative();
     // Check for expiration.
     if (*data.doc_found && max_overwrite_ht != DocHybridTime::kMin) {
-      bool has_expired;
-      CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
-                             db_iter->read_time().read, &has_expired));
-      *data.doc_found = !has_expired;
+      *data.doc_found =
+          !HasExpiredTTL(data.exp.write_ht, data.exp.ttl, db_iter->read_time().read);
     }
     if (*data.doc_found) {
       // Observe that this will have the right type but not necessarily the right value.
