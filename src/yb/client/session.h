@@ -144,6 +144,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CHECKED_STATUS Apply(YBOperationPtr yb_op);
   CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
+  bool IsInProgress(YBOperationPtr yb_op) const;
+
   CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
   CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
 

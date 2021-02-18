@@ -379,6 +379,16 @@ Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
   return Status::OK();
 }
 
+bool Batcher::Has(std::shared_ptr<YBOperation> yb_op) const {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  for (const InFlightOpPtr& fl_op : ops_) {
+    if (fl_op->yb_op == yb_op) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
   LOG_IF(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
       << "Adding in flight op in a wrong state: " << op->state;

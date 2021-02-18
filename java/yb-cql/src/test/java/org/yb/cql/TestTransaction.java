@@ -20,9 +20,11 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import com.datastax.driver.core.Row;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.ResultSetFuture;
+import com.datastax.driver.core.Row;
 
 import org.yb.YBTestRunner;
 import org.yb.util.SanitizerUtil;
@@ -34,10 +36,26 @@ import org.slf4j.LoggerFactory;
 public class TestTransaction extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTransaction.class);
 
+  @Override
   public int getTestMethodTimeoutSec() {
     // Extend timeout for testBasicReadWrite stress test.
     // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 300;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allow_index_table_read_write", "true");
+    return flagMap;
+  }
+
+  protected void restartClusterWithFlag(String flag, String value) throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(
+        Collections.emptyMap(),
+        Collections.singletonMap(flag, value));
+    setUpCqlClient();
   }
 
   private void createTable(String name, String columns, boolean transactional) {
@@ -53,7 +71,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testInsertMultipleTables() throws Exception {
-
     createTables();
 
     // Insert into multiple tables and ensure all rows are written with same writetime.
@@ -85,7 +102,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testInsertUpdateSameTable() throws Exception {
-
     createTables();
 
     // Insert multiple keys into same table and ensure all rows are written with same writetime.
@@ -120,7 +136,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testMixDML() throws Exception {
-
     createTables();
 
     // Test non-transactional writes to transaction-enabled table.
@@ -187,7 +202,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testPrepareStatement() throws Exception {
-
     createTable("test_hash", "h1 int, h2 int, r int, c text, primary key ((h1, h2), r)", true);
 
     // Prepare a transaction statement. Verify the hash key of the whole statement is the first
@@ -278,9 +292,126 @@ public class TestTransaction extends BaseCQLTest {
                    "end transaction;");
   }
 
+  protected String setupUserAndPrepareTransaction(
+      String newUser, String newNumber, boolean InsertAfterDelete) {
+    session.execute("create table user (user_id text primary key, phone_number text) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create unique index test_unique on user (phone_number)");
+
+    String s =  "begin transaction";
+    if (InsertAfterDelete) {
+      session.execute(
+          "begin transaction" +
+          "  insert into user (user_id, phone_number) values ('A', '22-11');" +
+          "  insert into user (user_id, phone_number) values ('C', '22-44');" +
+          "end transaction;");
+
+      s += "  delete from user where user_id='C' if exists else error;" +
+           "  insert into user (user_id, phone_number) values " +
+           "    ('C', '22-44') if not exists else error;" +
+           "  delete from user where user_id='A' if exists else error;" +
+           "  insert into user (user_id, phone_number) values " +
+           "    ('" + newUser + "', '" + newNumber +"') if not exists else error;";
+    } else {
+      if (newUser != "A") {
+        session.execute(
+            "begin transaction" +
+            "  insert into user (user_id, phone_number) values ('A', '22-11');" +
+            "end transaction;");
+      }
+      s += "  insert into user (user_id, phone_number) values " +
+           "    ('C', '22-44') if not exists else error;" +
+           "  delete from user where user_id='C' if exists else error;" +
+           "  insert into user (user_id, phone_number) values " +
+           "    ('" + newUser + "', '" + newNumber +"') if not exists else error;" +
+           "  delete from user where user_id='A' if exists else error;";
+    }
+    return s + "end transaction;";
+  }
+
+  protected void checkUserRow(
+      int totalRows, int rowIdx, String newUser, String newNumber) throws Exception {
+    List<Row> rows = session.execute("select user_id, phone_number from user").all();
+    assertEquals("Wrong number of rows", totalRows, rows.size());
+    if (totalRows > 0) {
+      Row r = rows.get(rowIdx);
+      assertEquals("Wrong value", newUser, r.getString("user_id"));
+      assertEquals("Wrong value", newNumber, r.getString("phone_number"));
+    }
+  }
+
+  @Test
+  public void testUserInsertAfterDeleteWithoutSerialFlag() throws Exception {
+    try {
+      restartClusterWithFlag("ycql_serial_operation_in_transaction_block", "false");
+      session.execute(setupUserAndPrepareTransaction("A", "22-11", true));
+      checkUserRow(2, 0, "A", "22-11");
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
+  }
+
+  @Test
+  public void testUserInsertAfterDelete() throws Exception {
+    session.execute(setupUserAndPrepareTransaction("A", "22-11", true));
+    checkUserRow(2, 0, "A", "22-11");
+  }
+
+  @Test
+  public void testUserInsertAfterDeleteDiffNumber() throws Exception {
+    session.execute(setupUserAndPrepareTransaction("B", "44-33", true));
+    checkUserRow(2, 1, "B", "44-33");
+  }
+
+  @Test
+  public void testUserDeleteAfterInsert() throws Exception {
+    session.execute(setupUserAndPrepareTransaction("A", "22-11", false));
+    checkUserRow(0, 0, "", "");
+  }
+
+  @Test
+  public void testUserDeleteAfterInsertDiffNumber() throws Exception {
+    session.execute(setupUserAndPrepareTransaction("B", "44-33", false));
+    checkUserRow(1, 0, "B", "44-33");
+  }
+
+  protected void doTestInsertAfterDeleteWithUniqueIndex() {
+    session.execute("create table test_tbl (h int, r int, v int, primary key (h, r)) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create unique index test_idx on test_tbl (v)");
+
+    session.execute("insert into test_tbl (h, r, v) values (1, 1, 99);");
+    session.execute("begin transaction" +
+                    "  delete from test_tbl where h = 1 and r = 1;" +
+                    "  insert into test_tbl (h, r, v) values (1, 2, 99);" +
+                    "end transaction;");
+    // Verify the rows.
+    assertQuery("select * from test_tbl", "Row[1, 2, 99]");
+    assertQuery("select * from test_idx", "Row[1, 2, 99]");
+  }
+
+  @Test
+  public void testInsertAfterDeleteWithUniqueIndex() throws Exception {
+    doTestInsertAfterDeleteWithUniqueIndex();
+  }
+
+  @Test
+  public void testInsertAfterDeleteWithUniqueIndexWithoutSerialFlag() throws Exception {
+    try {
+      restartClusterWithFlag("ycql_serial_operation_in_transaction_block", "false");
+      try {
+        doTestInsertAfterDeleteWithUniqueIndex();
+      } catch (InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+        assertTrue(e.getMessage().contains("Duplicate value disallowed by unique index test_idx"));
+      }
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
+  }
+
   @Test
   public void testBasicReadWrite() throws Exception {
-
     // Stress-test multi-key insert in a loop. Each time insert keys in a transaction and read them
     // back immediately to verify the content and writetime are identical for all keys.
     session.execute("create table test_read_write (k int primary key, v int) " +
@@ -350,7 +481,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testWriteConflicts() throws Exception {
-
     // Test write transaction conflicts by writing to the same rows in parallel repeatedly until
     // the desired number of conlicts have happened and the writes have been retried successfully
     // without error.
@@ -396,7 +526,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testReadRestarts() throws Exception {
-
     // Test read restart by repeatedly inserting 2 rows into a table with an invariant while
     // reading them back in parallel. Verify that the invariant is maintained and writetimes are
     // consistent while there are read restarts and retries.
@@ -513,8 +642,6 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testTransactionConditionalDMLWithElseError() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
-
     createTable("t", "h int, r int, v int, primary key ((h), r)", true);
     session.execute("begin transaction" +
                     "  insert into t (h, r, v) values (1, 1, 11) if not exists else error;" +
@@ -662,14 +789,10 @@ public class TestTransaction extends BaseCQLTest {
 
     assertQueryRowsUnordered("select * from t2",
         "Row[100, 100]");
-
-    LOG.info("End test: " + getCurrentTestMethodName());
   }
 
   @Test
   public void testTransactionConditionalDMLWithoutElseError() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
-
     createTable("t", "h int, r int, v int, primary key ((h), r)", true);
 
     // Not supported yet.
@@ -686,15 +809,11 @@ public class TestTransaction extends BaseCQLTest {
                    "transaction block without ELSE ERROR is not supported yet");
 
     assertNoRow("select * from t");
-
-    LOG.info("End test: " + getCurrentTestMethodName());
   }
 
 
   @Test
   public void testTransactionWithReturnsStatus() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
-
     createTable("t", "h int, r int, v int, primary key ((h), r)", true);
 
     // Not supported yet.
@@ -712,7 +831,5 @@ public class TestTransaction extends BaseCQLTest {
                    "with RETURNS STATUS AS ROW is not supported yet");
 
     assertNoRow("select * from t");
-
-    LOG.info("End test: " + getCurrentTestMethodName());
   }
 }

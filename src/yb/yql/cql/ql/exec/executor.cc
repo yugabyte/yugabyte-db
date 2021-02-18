@@ -75,6 +75,9 @@ using strings::Substitute;
     } while (false)
 
 //--------------------------------------------------------------------------------------------------
+DEFINE_bool(ycql_serial_operation_in_transaction_block, true,
+            "If true, operations within a transaction block must be executed in order, "
+            "at least semantically speaking.");
 
 Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
                    const QLMetrics* ql_metrics)
@@ -1972,7 +1975,8 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     // Apply any op that has not been applied and executed.
     if (!op->response().has_status()) {
       DCHECK_EQ(op->type(), YBOperation::Type::QL_WRITE);
-      if (write_batch_.Add(std::static_pointer_cast<YBqlWriteOp>(op))) {
+      if (write_batch_.Add(
+          std::static_pointer_cast<YBqlWriteOp>(op), tnode_context, exec_context_)) {
         YBSessionPtr session = GetSession(exec_context_);
         TRACE("Apply");
         RETURN_NOT_OK(session->Apply(op));
@@ -2010,17 +2014,24 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     }
 
     // If the transaction is ready to commit, apply child transaction results if any.
-    if (exec_context_->HasTransaction() && !tnode_context->HasPendingOperations()) {
-      const QLResponsePB& response = op->response();
-      if (response.has_child_transaction_result()) {
-        const auto& result = response.child_transaction_result();
-        const Status s = exec_context_->ApplyChildTransactionResult(result);
-        // If restart is needed, reset the current context and return immediately.
-        if (ShouldRestart(s, rescheduler_)) {
-          exec_context_->Reset(client::Restart::kTrue, rescheduler_);
-          return false;
+    if (exec_context_->HasTransaction()) {
+      if (tnode_context->HasPendingOperations()) {
+        // Defer the child transaction result applying till the last TNode operation finish.
+        // This prevents the incomplete operation deletion in the end of the loop.
+        op_itr++;
+        continue;
+      } else {
+        const QLResponsePB& response = op->response();
+        if (response.has_child_transaction_result()) {
+          const auto& result = response.child_transaction_result();
+          const Status s = exec_context_->ApplyChildTransactionResult(result);
+          // If restart is needed, reset the current context and return immediately.
+          if (ShouldRestart(s, rescheduler_)) {
+            exec_context_->Reset(client::Restart::kTrue, rescheduler_);
+            return false;
+          }
+          RETURN_NOT_OK(s);
         }
-        RETURN_NOT_OK(s);
       }
     }
 
@@ -2325,7 +2336,35 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
 
 //--------------------------------------------------------------------------------------------------
 
-bool Executor::WriteBatch::Add(const YBqlWriteOpPtr& op) {
+bool Executor::WriteBatch::Add(const YBqlWriteOpPtr& op,
+                               const TnodeContext* tnode_context,
+                               ExecContext* exec_context) {
+  if (FLAGS_ycql_serial_operation_in_transaction_block &&
+      // Inside BEGIN TRANSACTION; ... END TRANSACTION;
+      exec_context && exec_context->HasTransaction()) {
+    bool allow_parallel_exec = false;  // Always False for the main table.
+
+    // Check if the index-update can be executed in parallel - only
+    // when the main table update is complete or started.
+    // The first op in TNode is treated as the main table operation.
+    // size = 1 means this (usually main table) 'op' is the first and one only op now.
+    // size > 1 means main op + a set of secondary index operations.
+    if (tnode_context->ops().size() > 1) {
+      const client::YBqlOpPtr main_tbl_op = tnode_context->ops()[0];
+      // If the main table operation is complete or just started.
+      allow_parallel_exec = main_tbl_op->response().has_status() ||
+          exec_context->transactional_session()->IsInProgress(main_tbl_op);
+    }
+
+    if (!allow_parallel_exec) {
+      if (Empty()) {
+        ops_by_primary_key_.insert(op);
+        return true; // Start first write op execution.
+      }
+      return false;
+    }
+  }
+
   // Checks if the write operation reads the primary/static row and if another operation that writes
   // the primary/static row by the same primary/hash key already exists.
   if ((op->ReadsPrimaryRow() && ops_by_primary_key_.count(op) > 0) ||
@@ -2365,13 +2404,13 @@ Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_conte
   return session_->Apply(op);
 }
 
-Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext *tnode_context) {
+Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext* tnode_context) {
   tnode_context->AddOperation(op);
 
   // Check for inter-dependency in the current write batch before applying the write operation.
   // Apply it in the transactional session in exec_context for the current statement if there is
   // one. Otherwise, apply to the non-transactional session in the executor.
-  if (write_batch_.Add(op)) {
+  if (write_batch_.Add(op, tnode_context, exec_context_)) {
     YBSessionPtr session = GetSession(exec_context_);
     TRACE("Apply");
     RETURN_NOT_OK(session->Apply(op));

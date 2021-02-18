@@ -128,6 +128,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
   CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op);
 
+  bool Has(std::shared_ptr<YBOperation> yb_op) const;
+
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
   // as soon as they are added, even if Flush has not been called.

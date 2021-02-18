@@ -50,11 +50,11 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(LookupTable(sem_context));
 
   // Analyze the target columns.
-  column_args_->resize(num_columns());
   if (target_) {
+    column_args_->resize(num_columns());
     TreeNodePtrOperator<SemContext> analyze =
         std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1, std::placeholders::_2);
-        RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
+    RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
   }
 
   // Analyze column args to set if primary and/or static row is modified.
