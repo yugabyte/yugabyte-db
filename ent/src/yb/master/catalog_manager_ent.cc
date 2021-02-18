@@ -1309,7 +1309,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
         l.Commit();
         // Update the new table schema in tablets.
-        SendAlterTableRequest(table);
+        RETURN_NOT_OK(SendAlterTableRequest(table));
       }
     }
   } else {

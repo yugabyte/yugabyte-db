@@ -551,7 +551,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 
     if (permissions_updated.ok() && *permissions_updated) {
       VLOG(1) << "Sending alter table request with updated permissions";
-      catalog_manager->SendAlterTableRequest(indexed_table);
+      RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table));
       return Status::OK();
     }
   }
@@ -990,7 +990,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
   indexed_table_->ClearIsBackfilling();
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
-  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
+  RETURN_NOT_OK(master_->catalog_manager()->SendAlterTableRequest(indexed_table_));
   VLOG(1) << "DONE Sending alter table requests to the Indexed table";
 
   LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "

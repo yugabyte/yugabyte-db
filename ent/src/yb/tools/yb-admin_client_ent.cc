@@ -144,6 +144,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
         switch (entry.type()) {
           case SysRowEntry::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+            meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
@@ -153,6 +154,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
             meta.clear_partition_schema();
             meta.clear_index_info();
             meta.clear_indexes();
+            meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }

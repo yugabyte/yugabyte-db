@@ -40,6 +40,7 @@
 
 
 namespace yb {
+struct TransactionMetadata;
 
 class ThreadPool;
 
@@ -409,12 +410,18 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const scoped_refptr<TableInfo>& table)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, table) {}
+      const scoped_refptr<TableInfo>& table,
+      const TransactionId transaction_id)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table), transaction_id_(transaction_id)
+      {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
 
   std::string type_name() const override { return "Alter Table"; }
+
+  TableType table_type() const {
+    return tablet_->table()->GetTableType();
+  }
 
  protected:
   uint32_t schema_version_;
@@ -423,6 +430,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
  private:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+
+  TransactionId transaction_id_ = TransactionId::Nil();
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {
