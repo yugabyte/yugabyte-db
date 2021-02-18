@@ -43,7 +43,7 @@ public class FakeApi {
     return user.createAuthToken();
   }
 
-  FakeApi(Application app, EbeanServer remoteEBenServer) {
+  public FakeApi(Application app, EbeanServer remoteEBenServer) {
     this.app = app;
     this.appEBeanServer = remoteEBenServer;
     authToken = getAuthToken();

@@ -8,17 +8,13 @@ import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.models.*;
 import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
-
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExtraMigration;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.MetricConfig;
-import com.yugabyte.yw.models.Provider;
 
 import play.Application;
 import play.Configuration;
@@ -130,8 +126,8 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
 
-      // Start periodic platform backups
-      replicationManager.start();
+      // Startup platform HA.
+      replicationManager.init();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

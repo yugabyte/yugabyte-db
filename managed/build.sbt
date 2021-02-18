@@ -107,7 +107,9 @@ libraryDependencies ++= Seq(
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
-  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test
+  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
+  "org.apache.velocity" % "velocity" % "1.7",
+  "org.apache.velocity" % "velocity-tools" % "2.0"
 )
 // Clear default resolvers.
 appResolvers := None

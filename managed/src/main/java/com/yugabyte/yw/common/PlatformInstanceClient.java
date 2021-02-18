@@ -15,6 +15,7 @@ import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.ReverseInternalHAController;
@@ -109,8 +110,9 @@ public class PlatformInstanceClient {
    * {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp)}
    * on remote platform instance
    */
-  public void demoteInstance(long timestamp) {
-    this.makeRequest(this.controller.demoteLocalLeader(timestamp), Json.newObject());
+  public void demoteInstance(String localAddr, long timestamp) {
+    ObjectNode formData = Json.newObject().put("leader_address", localAddr);
+    this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
   }
 
   public JsonNode syncBackups(
