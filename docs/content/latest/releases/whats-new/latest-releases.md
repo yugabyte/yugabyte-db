@@ -13,36 +13,20 @@ menu:
     identifier: latest-release
     weight: 2585
 isTocNested: true
-showAsideToc: false 
+showAsideToc: true 
 ---
 
 Included here are the release notes for all releases in the v2.5 latest release series.
 
-{{< note title="New release versioning" >}}
-
-Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
-
-{{< /note >}}
-
-{{< note title="Upgrading from 1.3" >}}
-
-Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
-
-{{< /note >}}
-
 ## Notable features and changes (cumulative for the v2.5 latest release series)
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the v2.5 latest release series. For the latest v2.5 release notes, see [Release notes](#release-notes) below.
+Note: Content will be added as new notable features and changes are available in the patch releases of the v2.5 latest release series.
 
-## Release notes
-
-### **Yugabyte Release Notes v2.5.1**
-
-**Jan 14, 2021**
+## v2.5.1 - Jan 14, 2021
 
 **Build:** `2.5.1.0-b153`
 
-#### Downloads
+### Downloads
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.1.0-darwin.tar.gz">
   <button>
@@ -57,20 +41,20 @@ Note: Content will be added as new notable features and changes are available in
 </a>
 <br />
 
-#### Docker
+### Docker
 
 ```sh
 docker pull yugabytedb/yugabyte:2.5.1.0-b153
 ```
 
-### **New features**
+### New features
 
-**Yugabyte Platform**
+#### Yugabyte Platform
 
 *   [#5723] Support for custom CA signed certificates for encryption in-flight 
 *   [#5556] Add alerts capability for backup tasks
 
-**Core Database**
+#### Core Database
 
 *   [#6010] YCQL: Cache authentication information
 *   [#4874] YSQL: Backup for colocated databases
@@ -82,9 +66,9 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
     *   [#6370] Bump default max_clock_skew to 500ms
     *   [#3335] Crash when too big clock skew is detected
 
-### **Improvements**
+### Improvements
 
-**Yugabyte Platform**
+#### Yugabyte Platform
 
 *   [#5888] Better error for handling when user creates concurrent backup tasks 
 *   [#6016] Pre-flight checks for create universe / edit universe / add node operations
@@ -108,7 +92,7 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 *   [#6683] Use a timeout mechanism in cluster_health.py that is more compatible with docker's lack of zombie reaping
 *   [#6633] Platform: rename Pivotal to VMware Tanzu, add Red Hat OpenShift cloud provider
 
-**Core Database**
+#### Core Database
 
 *   [#6580] ycql: Log the status when statement fails for system query cache
 *   [#6608, #6609] YCQL: Consolidate authentication error handling and messages
@@ -159,11 +143,9 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 *   [#6445] docdb: Master should rebuild YCQL system.partitions on a background thread
 *   [#6696] Small master perf tweaks
 
-**Bug Fixes**
+### Bug Fixes
 
-**Yugabyte Platform**
-
-
+#### Yugabyte Platform
 
 *   [#6300] Install of s3cmd fails for default GCP OS image when airgapped
 *   [#6085] Fixed the issue where master is brought up in read replica cluster
@@ -174,9 +156,7 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 *   [#6275] Fixed missing stats on Nodes page when universe has read replicas
 *   [#6257] Updating user profile when smtp username or password are empty
 
-**Core Database**
-
-
+#### Core Database
 
 *   [#6144] YCQL: Fix handling of tablet-lookup errors in Executor::FlushAsync
 *   [#6570] YSQL: Use IsYBRelation instead of IsYugaByteEnabled
@@ -213,30 +193,24 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 *   [#6635] Fix the wrong detection of communication failure when no operations transferred
 *   [#6678] backup: Fix restore of colocated table with table_oid already set
 
-    **Known Issues**
+### Known Issues
 
-
-**Yugabyte Platform**
-
-
+#### Yugabyte Platform
 
 *   Azure IaaS orchestration
     *   No pricing information provided (5624)
     *   No support for regions with zero Availability Zones(AZs) (5628)
 
-**Core Database**
-
-
+#### Core Database
 
 *   Advisory on clock-skew
     *   After commit `a60a4ae00d217563cac865b3363e2c2bb8aa58ba`, by default, any YB node will explicitly crash if it detects a clock skew higher than the `max_clock_skew` flag (default 500ms). This can be disabled by setting `fail_on_out_of_range_clock_skew=false`, but this could lead to consistency issues! The recommendation is that you ensure clocks are synchronized across your cluster.
 
-
-### v2.5.0 - November 12, 2020
+## v2.5.0 - Nov 12, 2020
 
 **Build:** `2.5.0.0-b2`
 
-#### Downloads
+### Downloads
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.0.0-darwin.tar.gz">
   <button>
@@ -251,15 +225,15 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 </a>
 <br />
 
-#### Docker
+### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.5.0.0-b2
+docker pull yugabytedb/yugabyte:2.5.1.0-b153
 ```
 
-### **New features**
+### New features
 
-**Yugabyte Platform**
+#### Yugabyte Platform
 
 *   **Azure Cloud integration for Yugabyte Platform (in beta):** 
 
@@ -267,7 +241,7 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
 
 *   Yugabyte Platform operations now allow promoting a Yugabyte TServer only node to run Yugabyte Master and TServer process (5831)
 
-**Core Database**
+#### Core Database
 
 *   **Enhanced multi-region capabilities with geo-partitioning and follower reads**
 
@@ -284,12 +258,9 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
     *   **Cluster execution statistics and running queries** can be analyzed in detail, allowing administrators to gain insights into how the database is performing. The <code>[pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)</code> extension, which enables tracking execution statistics of all SQL statements executed by the cluster, is supported and enabled by default.  Support for <code>pg_stat_activity</code> has also been added, which shows information related to the activity performed by each connection. Yet another useful feature in this category is the ability to view all the live queries being executed by the cluster at any point in time.
     *   <strong>Detailed query plan and execution analysis </strong>can now be performed with commands such as <code>EXPLAIN</code> and <code>EXPLAIN ANALYZE</code>. These commands display the execution plan generated by the planner for a given SQL statement. The execution plan shows details for any SQL statement such as how tables will be scanned (plain sequential scan, index scan), what join algorithms will be used to fetch required rows from the different tables, etc.
 
+### Improvements
 
-### <strong>Improvements</strong>
-
-**Yugabyte Platform**
-
-
+#### Yugabyte Platform
 
 *   Enhancements to on-prem deployment workflows 
     *   Do not fail universe creation if cronjobs can't be created for on-prem (5939)
@@ -313,9 +284,7 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
 *   For Yugabyte Universes with Replication Factor(RF) > 3, change the default min_num replicas for even distribution of AZs across all regions (5426)
 *   Added functionality to create IPv6 enabled Universe in Kubernetes (5309, 5235)
 
-**Core Database**
-
-
+#### Core Database
 
 *   Support for SQL/JSON Path Language( jsonb_path_query) (5408)
 *   Incorrect index update if used expression result is still unchanged (5898)
@@ -327,9 +296,9 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
 *   Stability improvements: Make exponential backoff on lagging RAFT followers send NOOP instead of reading 1 op from disk (5527)
 *   Added use of separate metrics objects for RegularDB and IntentsDB (5640)
 
-**Bug Fixes**
+### Bug Fixes
 
-**Yugabyte Platform**
+#### Yugabyte Platform
 
 *   Fix for Universe disk usage shows up empty on the universe page ([5548](https://github.com/yugabyte/yugabyte-db/issues/5548))
 *   Fix on on-prem backup failures due to file owned by the root user (6062)
@@ -341,7 +310,7 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
 *   Use the correct disk mount point while calculating disk usage of logs (5983)
 *   Fixes to delete backups for TLS Enabled Universes (5980)
 
-**Core Database**
+#### Core Database
 
 *   Fix for bug with the duplicate row detection that allows a unique index to get created when the table is not unique on the index column(s) (5811)
 *   Improve fault tolerance of DDLs and reduce version mismatch errors in YSQL (3979, 4360)
@@ -350,10 +319,24 @@ docker pull yugabytedb/yugabyte:2.5.0.0-b2
 *   Fixes to restore of YSQL Backups after dropping and recreating a database (5651)
 *   Fixes to 2DC(x-cluster replication) by adding TLS support for cleaning up cdc_state table (5905)
 
-**Known Issues**
+### Known Issues
 
-**Yugabyte Platform**
+#### Yugabyte Platform
 
 *   Azure IaaS orchestration -
     *   No pricing information provided  (5624) 
     *   No support for regions with zero Availability Zones(AZs) (5628)
+
+## Notes
+
+{{< note title="New release versioning" >}}
+
+Starting with v2.2, Yugabyte release versions follow a [new release versioning convention](../../versioning). The latest release series, denoted by `MAJOR.ODD`, incrementally introduces new features and changes and is intended for development and testing only. Revision releases, denoted by `MAJOR.ODD.REVISION` versioning, can include new features and changes that might break backwards compatibility. For more information, see [Supported and planned releases](../../releases-overview).
+
+{{< /note >}}
+
+{{< note title="Upgrading from 1.3" >}}
+
+Prior to v2.0, YSQL was still in beta. Upon release of v2.0, a backward-incompatible file format change was made for YSQL. For existing clusters running pre-2.0 release with YSQL enabled, you cannot upgrade to v2.0 or later. Instead, export your data from existing clusters and then import the data into a new cluster (v2.0 or later).
+
+{{< /note >}}
