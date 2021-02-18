@@ -113,6 +113,17 @@ public class TestClusterBase extends BaseCQLTest {
     flags.put("load_balancer_max_concurrent_removals", "5");
     flags.put("load_balancer_max_concurrent_moves", "5");
     */
+    // Disable caching for system.partitions.
+    flags.put("partitions_vtable_cache_refresh_secs", "0");
+    flags.put("load_balancer_initial_delay_secs", "0");
+    return flags;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // Disable the cql query cache for now
+    flags.put("cql_update_system_query_cache_msecs", "0");
     return flags;
   }
 
