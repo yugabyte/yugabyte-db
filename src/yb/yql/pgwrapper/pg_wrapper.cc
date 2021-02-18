@@ -228,21 +228,24 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   vector<string> lines;
 
-  if (FLAGS_ysql_enable_auth || conf.enable_tls) {
-    const auto host_type =  conf.enable_tls ? "hostssl" : "host";
-    const auto auth_method = FLAGS_ysql_enable_auth ? (conf.enable_tls ? "md5 clientcert=1" : "md5")
-                                                    : "cert";
-    lines.push_back(Format("$0 all all all $1", host_type, auth_method));
-  }
-
+  // Add the user-defined custom configuration lines if any.
+  // Put this first so that it can be used to override the auto-generated config below.
   if (!FLAGS_ysql_hba_conf_csv.empty()) {
     RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_hba_conf_csv, &lines));
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
 
+  // Add auto-generated config for the enable auth and enable_tls flags.
+  if (FLAGS_ysql_enable_auth || conf.enable_tls) {
+    const auto host_type =  conf.enable_tls ? "hostssl" : "host";
+    const auto auth_method = FLAGS_ysql_enable_auth ? "md5" : "trust";
+    lines.push_back(Format("$0 all all all $1", host_type, auth_method));
+  }
+
   // Enforce a default hba configuration so users don't lock themselves out.
   if (lines.empty()) {
+    LOG(WARNING) << "No hba configuration lines found, defaulting to trust all configuration.";
     lines.push_back("host all all all trust");
   }
 

@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.2-SNAPSHOT</version>
+  <version>0.8.3-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>YugaByte</name>
@@ -112,6 +112,8 @@
 
     <postgresql.jdbc.driver.version>42.2.5</postgresql.jdbc.driver.version>
 
+    <bouncycastle.version>1.61</bouncycastle.version>
+
     <!-- Test configuration -->
     <testdata.dir>target/testdata</testdata.dir>
     <testArgLine>-enableassertions -Xmx3000m
@@ -128,7 +130,6 @@
     <module>yb-client</module>
     <module>yb-cli</module>
     <module>yb-cql</module>
-    <module>yb-cql-4x</module>
     <module>yb-pgsql</module>
     <module>yb-loadtester</module>
     <module>yb-jedis-tests</module>
@@ -342,7 +343,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.2-SNAPSHOT</version>
+        <version>0.8.3-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -474,6 +475,11 @@
         <artifactId>jedis</artifactId>
         <version>${jedis.version}</version>
       </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcpkix-jdk15on</artifactId>
+        <version>${bouncycastle.version}</version>
+      </dependency>
 
       <!--
         Dependencies typically used in tests.
@@ -494,7 +500,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.2-SNAPSHOT</version>
+        <version>0.8.3-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>
