@@ -649,6 +649,8 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   // kTypeMerge. We need to collect all kTypeMerge values and save them
   // in operands
   std::deque<std::string> operands;
+  // TODO: we dont need rocksdb level merge records and only use RocksDB level tombstones in
+  // intentsdb, so maybe we can be more efficient here.
   while (iter_->Valid() &&
          user_comparator_->Equal(ikey.user_key, saved_key_.GetKey()) &&
          ikey.type == kTypeMerge) {

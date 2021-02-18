@@ -30,9 +30,9 @@ namespace yb {
 namespace docdb {
 
 // Determines whether or not the TTL for a key has expired, given the ttl for the key, its hybrid
-// time and the hybrid_time we're reading at. The result is stored in has_expired.
-CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired);
+// time and the hybrid_time we're reading at.
+bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
+                   const HybridTime& read_hybrid_time);
 
 // Computes the table level TTL, given a schema.
 const MonoDelta TableTTL(const Schema& schema);

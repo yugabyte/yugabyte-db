@@ -235,11 +235,9 @@ Result<RedisValue> GetRedisValue(
     return RedisValue{REDIS_TYPE_NONE};
   }
 
-  bool has_expired = false;
-  CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
-                         iterator->read_time().read, &has_expired));
-  if (has_expired)
+  if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iterator->read_time().read)) {
     return RedisValue{REDIS_TYPE_NONE};
+  }
 
   if (exp)
     *exp = data.exp;

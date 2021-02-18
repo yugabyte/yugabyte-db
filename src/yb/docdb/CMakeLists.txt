@@ -81,6 +81,7 @@ set(DOCDB_SRCS
         redis_operation.cc
         shared_lock_manager.cc
         subdocument.cc
+        subdoc_reader.cc
         value.cc
         kv_debug.cc
         )

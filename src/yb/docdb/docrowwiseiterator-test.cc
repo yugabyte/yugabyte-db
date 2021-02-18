@@ -1265,10 +1265,10 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
 
   ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
-  // Empirically we require 6 seeks to perform this test.
+  // Empirically we require 3 seeks to perform this test.
   // If this number increased, then something got broken and should be fixed.
   // IF this number decreased because of optimization, then we should adjust this check.
-  ASSERT_EQ(intents_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK), 6);
+  ASSERT_EQ(intents_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK), 3);
 }
 
 }  // namespace docdb

@@ -85,11 +85,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
       recent_value, &(current_entry_.value_type),
       &merge_flags, &ttl, &(current_entry_.user_timestamp)));
 
-  bool has_expired;
-  CHECK_OK(HasExpiredTTL(key_data.write_time.hybrid_time(), ttl,
-                         doc_iter->read_time().read, &has_expired));
-
-  if (has_expired) {
+  if (HasExpiredTTL(key_data.write_time.hybrid_time(), ttl, doc_iter->read_time().read)) {
     current_entry_.value_type = ValueType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
     cache_.Put(key_prefix_, current_entry_);
@@ -643,8 +639,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       has_expired = true;
     } else {
       entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      RETURN_NOT_OK(HasExpiredTTL(
-          key_data.write_time.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
+      has_expired = HasExpiredTTL(key_data.write_time.hybrid_time(), entry_ttl, read_ht.read);
     }
 
     if (has_expired) {

@@ -25,15 +25,13 @@ using yb::HybridTime;
 namespace yb {
 namespace docdb {
 
-CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired) {
-  *has_expired = false;
-  if (!(ttl.Equals(Value::kMaxTtl) || ttl.Equals(Value::kResetTtl))) {
-    // We avoid using AddPhysicalTimeToHybridTime, since there might be overflows after addition.
-    *has_expired = server::HybridClock::CompareHybridClocksToDelta(key_hybrid_time,
-                                                                   read_hybrid_time, ttl) > 0;
+bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta &ttl,
+                   const HybridTime& read_hybrid_time) {
+  if (ttl.Equals(Value::kMaxTtl) || ttl.Equals(Value::kResetTtl)) {
+    return false;
   }
-  return Status::OK();
+  return server::HybridClock::CompareHybridClocksToDelta(
+      key_hybrid_time, read_hybrid_time, ttl) > 0;
 }
 
 const MonoDelta TableTTL(const Schema& schema) {
