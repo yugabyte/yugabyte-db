@@ -12,6 +12,7 @@ import {
 } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
+import _ from 'lodash';
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -124,15 +125,14 @@ export default class MetricsPanel extends Component {
         width: this.props.width || this.getGraphWidth(this.props.containerWidth)
       });
     } else {
-      // All graph lines have the same x-axis, so get the first
-      // and compare unix time interval
-      const prevTime = prevProps.metric.data[0]?.x;
-      const currTime = this.props.metric.data[0]?.x;
+      // Comparing deep comparison of x-axis and y-axis arrays
+      // to avoid re-plotting graph if equal
+      const prevData = prevProps.metric.data;
+      const currData = this.props.metric.data;
       if (
-        prevTime &&
-        currTime &&
-        (prevTime[0] !== currTime[0] ||
-          prevTime[prevTime.length - 1] !== currTime[currTime.length - 1])
+        prevData &&
+        currData &&
+        !_.isEqual(prevData, currData)
       ) {
         // Re-plot graph
         this.plotGraph();
