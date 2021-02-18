@@ -81,11 +81,31 @@ class PGConn {
 
   static Result<PGConn> Connect(
       const HostPort& host_port,
-      const std::string& db_name = "",
-      const std::string& user = "postgres");
+      bool simple_query_protocol = false) {
+    return Connect(host_port, "" /* db_name */, simple_query_protocol);
+  }
+  static Result<PGConn> Connect(
+      const HostPort& host_port,
+      const std::string& db_name,
+      bool simple_query_protocol = false) {
+    return Connect(host_port, db_name, "postgres" /* user */, simple_query_protocol);
+  }
+  static Result<PGConn> Connect(
+      const HostPort& host_port,
+      const std::string& db_name,
+      const std::string& user,
+      bool simple_query_protocol = false);
   static Result<PGConn> Connect(
       const std::string& conn_str,
-      CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(60));
+      bool simple_query_protocol = false) {
+    return Connect(conn_str,
+                   CoarseMonoClock::Now() + MonoDelta::FromSeconds(60) /* deadline */,
+                   simple_query_protocol);
+  }
+  static Result<PGConn> Connect(
+      const std::string& conn_str,
+      CoarseTimePoint deadline,
+      bool simple_query_protocol = false);
 
   CHECKED_STATUS Execute(const std::string& command);
 
@@ -138,12 +158,13 @@ class PGConn {
  private:
   struct CopyData;
 
-  explicit PGConn(PGConnPtr ptr);
+  PGConn(PGConnPtr ptr, bool simple_query_protocol);
 
   bool CopyEnsureBuffer(size_t len);
   bool CopyFlushBuffer();
 
   PGConnPtr impl_;
+  bool simple_query_protocol_;
   std::unique_ptr<CopyData> copy_data_;
 };
 

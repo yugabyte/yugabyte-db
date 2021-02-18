@@ -1780,8 +1780,8 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   const std::string kTableName = "t";
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));

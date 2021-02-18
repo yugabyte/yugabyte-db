@@ -97,6 +97,7 @@
 #include "postgres.h"
 
 #include <limits.h>
+#include <unistd.h>
 
 #include "access/htup_details.h"
 #include "access/xact.h"
@@ -260,7 +261,9 @@ AddInvalidationMessage(InvalidationChunk **listHdr,
 		*listHdr = chunk;
 	}
 	/* Okay, add message to current chunk */
-	chunk->msgs[chunk->nitems] = *msg;
+	SharedInvalidationMessage *dest = &chunk->msgs[chunk->nitems];
+	*dest = *msg;
+	dest->yb_header.sender_pid = getpid();
 	chunk->nitems++;
 }
 
@@ -556,6 +559,10 @@ RegisterSnapshotInvalidation(Oid dbId, Oid relId)
 void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
+	/* In YB mode all messages originated by other processes are silently ignored */
+	if (IsYugaByteEnabled() && msg->yb_header.sender_pid != getpid())
+		return;
+
 	if (msg->id >= 0)
 	{
 		if (msg->cc.dbId == MyDatabaseId || msg->cc.dbId == InvalidOid)
