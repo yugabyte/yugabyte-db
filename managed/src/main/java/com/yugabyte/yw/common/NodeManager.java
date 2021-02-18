@@ -165,7 +165,8 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if (type == NodeCommandType.Provision && keyInfo.sshUser != null) {
+      if ((type == NodeCommandType.Provision || type == NodeCommandType.Precheck)
+          && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
       }

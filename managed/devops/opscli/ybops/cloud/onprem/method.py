@@ -179,11 +179,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
     def wait_for_host(self, args, default_port=True):
         logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        if not host_info:
-            host_info = self.cloud.get_host_info(args)
+        host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars.update(
                 get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
