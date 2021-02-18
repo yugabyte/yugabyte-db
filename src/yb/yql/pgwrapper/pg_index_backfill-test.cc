@@ -56,6 +56,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
 
  protected:
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
+  void TestRetainDeleteMarkers(const std::string& db_name);
 
   std::unique_ptr<PGConn> conn_;
 };
@@ -101,6 +102,28 @@ void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suf
   ASSERT_EQ(values[0], 0);
   ASSERT_EQ(values[1], 100);
   ASSERT_EQ(values[2], -5);
+}
+
+// Checks that retain_delete_markers is false after index creation.
+void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  const std::string& kIndexName = "ttt_idx";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+
+  // Verify that retain_delete_markers was set properly in the index table schema.
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), db_name, kIndexName));
+  auto table_info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+  }
+
+  ASSERT_EQ(table_info->schema.version(), 0);
+  ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
 }
 
 // Make sure that backfill works.
@@ -495,6 +518,11 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Tablegroup)) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
   TestSimpleBackfill(Format("TABLEGROUP $0", kTablegroupName));
+}
+
+// Test that retain_delete_markers is properly set after index backfill.
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(RetainDeleteMarkers)) {
+  TestRetainDeleteMarkers(kDatabaseName);
 }
 
 // Override the index backfill test to do alter slowly.
@@ -1415,6 +1443,13 @@ TEST_F_EX(PgIndexBackfillTest,
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   int count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
   ASSERT_EQ(count, 2);
+}
+
+// Test that retain_delete_markers is properly set after index backfill for a colocated table.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(ColocatedRetainDeleteMarkers),
+          PgIndexBackfillColocated) {
+  TestRetainDeleteMarkers(kColoDbName);
 }
 
 } // namespace pgwrapper
