@@ -57,7 +57,7 @@ Click **OK**. The requested backup begins immediately.
 If the universe has encryption at rest enabled, data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted.
 A universe key metadata file, containing key references, is also backed up.
 
-To allow Yugabyte Platform to back up encrypted data with user authentication enabled, add the following flags to your yb-tserver configuration:
+To allow Yugabyte Platform to back up encrypted data with user authentication enabled, follow the [instructions here](../../../manage-deployments/edit-config-flags)) to add the following T-Server flags:
 
 `ysql_enable_auth = true`
 
