@@ -13,7 +13,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import org.slf4j.Logger;
@@ -23,6 +23,7 @@ import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
+import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -107,8 +108,9 @@ public class PlatformReplicationController extends AuthenticatedController {
         }
         leaderAddr = config.getLeader().getAddress();
       }
+
       List<String> backups =
-        replicationManager.listBackups(leaderAddr)
+        replicationManager.listBackups(new URL(leaderAddr))
           .stream()
           .map(File::getName)
           .sorted(Collections.reverseOrder())

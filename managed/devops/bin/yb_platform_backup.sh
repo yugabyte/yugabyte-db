@@ -103,9 +103,9 @@ create_postgres_backup() {
   db_port="$4"
   verbose="$5"
   if [[ "${verbose}" = true ]]; then
-    backup_cmd="pg_dump -h ${db_host} -p ${db_port} -U ${db_username} -Fc -v ${PLATFORM_DB_NAME}"
+    backup_cmd="pg_dump -h ${db_host} -p ${db_port} -U ${db_username} -Fc -v --clean ${PLATFORM_DB_NAME}"
   else
-    backup_cmd="pg_dump -h ${db_host} -p ${db_port} -U ${db_username} -Fc ${PLATFORM_DB_NAME}"
+    backup_cmd="pg_dump -h ${db_host} -p ${db_port} -U ${db_username} -Fc --clean ${PLATFORM_DB_NAME}"
   fi
   # Run pg_dump.
   echo "Creating Yugabyte Platform DB backup ${backup_path}..."
@@ -162,7 +162,7 @@ create_backup() {
     exclude_releases_flag="--exclude release*"
   fi
 
-  exclude_dirs="--exclude postgresql --exclude devops --exclude yugaware/lib \
+  exclude_dirs="--exclude postgres* --exclude devops --exclude yugaware/lib \
   --exclude yugaware/logs --exclude yugaware/README.md --exclude yugaware/bin \
   --exclude yugaware/conf --exclude backup_*.tgz --exclude helm"
 
