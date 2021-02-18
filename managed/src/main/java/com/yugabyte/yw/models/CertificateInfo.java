@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
@@ -22,9 +23,12 @@ import javax.persistence.Id;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 public class CertificateInfo extends Model {
@@ -169,5 +173,15 @@ public class CertificateInfo extends Model {
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
+  }
+
+  public List<UniverseDefinitionTaskParams> getUniverseDetails() {
+    List<Universe> universeDetails = Universe.universeDetailsIfCertsExists(this.uuid,
+        this.customerUUID);
+    List<UniverseDefinitionTaskParams> universeDefinitionTaskParamsList = new ArrayList<>();
+    for (Universe universe: universeDetails) {
+      universeDefinitionTaskParamsList.add(universe.getUniverseDetails());
+    }
+    return universeDefinitionTaskParamsList;
   }
 }
