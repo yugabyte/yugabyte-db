@@ -735,13 +735,26 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
   SemState select_state(sem_context);
   child_select_ = MakeShared(memctx, *this, selected_exprs, scan_spec);
   select_state.set_selecting_from_index(true);
-  RETURN_NOT_OK(child_select_->Analyze(sem_context));
 
-  // TODO(neil) This is a bug and should be fixed in a different diff.
-  //   https://github.com/yugabyte/yugabyte-db/issues/7055
-  //   https://phabricator.dev.yugabyte.com/D10679
-  limit_clause_ = nullptr;
-  offset_clause_ = nullptr;
+  // Analyze whether or not the INDEX scan should execute LIMIT & OFFSET clause execution.
+  if (scan_spec.covers_fully()) {
+    // If the index covers all requested columns, all rows are read directly from the index,
+    // so LIMIT and OFFSET should be applied to the INDEX ReadRequest.
+    //
+    // TODO(neil) We should not modify the original tree, but we have to do it here because some
+    // code rely on "!limit_clause_" condition. When cleaning up code, a boolean predicate for not
+    // using limit clause should be used in place of "!limit_clause_" check.
+    limit_clause_ = nullptr;
+    offset_clause_ = nullptr;
+  } else {
+    // If the index does not cover fully, the data will be read from PRIMARY table. Therefore,
+    // the LIMIT and OFFSET should be applied to the PRIMARY ReadRequest.
+    child_select_->limit_clause_ = nullptr;
+    child_select_->offset_clause_ = nullptr;
+  }
+
+  // Compile the child tree.
+  RETURN_NOT_OK(child_select_->Analyze(sem_context));
   return Status::OK();
 }
 
