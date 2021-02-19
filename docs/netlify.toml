@@ -5,7 +5,7 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.80.0"
+  HUGO_VERSION = "0.81.0"
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.80.0"
