@@ -11,7 +11,7 @@ name: "yugaware"
 properties:
   app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
-  console_title: YugaByte Data Platform
+  console_title: YugaByte Platform Deployment Console
 backup:
   enabled: false
 monitors:
@@ -83,13 +83,13 @@ components:
             permission: "0777"
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
-          - host_path: '{{repl ConfigOptions "storage_path"}}/prometheus_configs'
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
             permission: "0777"
         ports:
           - private_port: "9090"
             public_port: "9090"
-        cmd: '["--config.file=/prometheus_configs/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}}", "--web.enable-admin-api", "--web.enable-lifecycle"]'
+        entrypoint: [ "/bin/sh", "-c", "cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -98,7 +98,7 @@ components:
                 container: postgres
                 action: start
         config_files:
-          - filename: /prometheus_configs/prometheus.yml
+          - filename: /prometheus_configs/default_prometheus.yml
             contents: |
               global:
                   scrape_interval:     {{repl ConfigOption "prometheus_scrape_interval"}}
@@ -166,7 +166,7 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
-          - host_path: '{{repl ConfigOptions "storage_path"}}/prometheus_configs'
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
         env_vars:
           - name: JAVA_OPTS
