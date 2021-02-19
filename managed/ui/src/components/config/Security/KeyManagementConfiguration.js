@@ -19,6 +19,7 @@ import { regionsData } from '../PublicCloud/views/providerRegionsData';
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { toast } from 'react-toastify';
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns
 //  a list of supported KMS Configurations
@@ -88,6 +89,7 @@ class KeyManagementConfiguration extends Component {
       setKMSConfig(kmsProvider.value, data).then(() => {
         fetchKMSConfigList();
         this.setState({ listView: true });
+        toast.success('Successfully added the configuration');
       });
     }
   };
@@ -276,6 +278,7 @@ class KeyManagementConfiguration extends Component {
   render() {
     const { configList } = this.props;
     const { listView, enabledIAMProfile } = this.state;
+
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
     }
@@ -287,7 +290,8 @@ class KeyManagementConfiguration extends Component {
           onDelete={this.deleteAuthConfig}
         />
       );
-    }
+
+    };
 
     const validationSchema = Yup.object().shape({
       apiUrl: Yup.string(),
