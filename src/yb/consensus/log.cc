@@ -559,6 +559,12 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
+
+    if (metrics_) {
+      std::for_each(segments.begin(), segments.end(), 
+                    [this](auto segment) {
+                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
+    }
   }
 
   if (durable_wal_write_) {
@@ -597,7 +603,12 @@ Status Log::CloseCurrentSegment() {
                       << ": " << footer_builder_.ShortDebugString();
 
   footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
-  return active_segment_->WriteFooterAndClose(footer_builder_);
+
+  auto status = active_segment_->WriteFooterAndClose(footer_builder_);
+  if (status.ok() && metrics_) {
+      metrics_->wal_size->IncrementBy(active_segment_->written_offset());
+  } 
+  return status;
 }
 
 Status Log::RollOver() {
@@ -1130,6 +1141,10 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
                             << " (GCed ops < " << min_op_idx << ")";
       RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
       (*num_gced)++;
+
+      if (metrics_) {
+        metrics_->wal_size->IncrementBy(-1 * segment->file_size());
+      }
     }
 
     // Determine the minimum remaining replicate index in order to properly GC the index chunks.
@@ -1371,10 +1386,6 @@ Status Log::SwitchToAllocatedSegment() {
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
   RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
-
-  if (metrics_) {
-    metrics_->wal_files->Increment();
-  }
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
