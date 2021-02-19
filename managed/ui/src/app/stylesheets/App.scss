@@ -75,3 +75,15 @@
 .no-padding {
   padding: 0 !important;
 }
+
+.Toastify__toast--error {
+  background: $YB_FAIL_COLOR;
+}
+
+.Toastify__toast--success {
+  background: $YB_SUCCESS_COLOR;
+}
+
+.Toastify__toast--warning {
+  background: $YB_WARNING_COLOR;
+}
