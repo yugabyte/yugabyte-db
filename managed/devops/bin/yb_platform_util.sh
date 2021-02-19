@@ -139,7 +139,7 @@ then
     esac
 else
     echo "Error: Invalid Actions."
-    echo "Use -h to get all Actions available."
+    HelpMessage
     exit
 fi
 # unset customer_uuid
@@ -310,7 +310,7 @@ case $operation in
                 result=$(python3 -c "import yb_platform_util_py3; yb_platform_util_py3.get_universe_details_by_uuid('$base_url', '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
                 echo $result
             else 
-                result=$(python3 -c "import yb_platform_util_py2; yb_platform_util_py2.get_universe_details_by_uuid('$base_url', '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
+                result=$(python -c "import yb_platform_util_py2; yb_platform_util_py2.get_universe_details_by_uuid('$base_url', '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
                 echo $result
             fi
         elif [[ ! -z "$universe_name" ]]
