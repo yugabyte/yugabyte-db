@@ -39,7 +39,7 @@ public class ResumeServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    LOG.info("Resuming node " + nodeName + " from universe " + taskParams().universeUUID); 
+    LOG.info("Resumed the node " + nodeName + " from universe " + taskParams().universeUUID);
   }
 
   @Override

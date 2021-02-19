@@ -39,7 +39,7 @@ public class PauseServer extends NodeTaskBase {
       LOG.error("No node in universe with name " + nodeName);
       return;
     }
-    LOG.info("Pausing node " + nodeName + " from universe " + taskParams().universeUUID); 
+    LOG.info("Paused the node " + nodeName + " from universe " + taskParams().universeUUID);
   }
 
   @Override

@@ -137,7 +137,7 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
             filters=filters
         )
         if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
+            logging.error("Host {} does not exist.".format(args.search_pattern))
             return
 
         self.extra_vars.update({
@@ -171,7 +171,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
         )
        
         if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
+            logging.error("Host {} does not exist.".format(args.search_pattern))
             return
 
         self.cloud.stop_instance(host_info)
@@ -205,7 +205,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
             filters=filters
         )
         if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
+            logging.error("Host {} does not exist.".format(args.search_pattern))
             return
         self.cloud.start_instance(host_info)
 
