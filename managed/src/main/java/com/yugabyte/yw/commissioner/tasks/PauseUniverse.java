@@ -42,7 +42,7 @@ public class PauseUniverse extends UniverseTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flagvto prevent other updates from happening.
+      // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());

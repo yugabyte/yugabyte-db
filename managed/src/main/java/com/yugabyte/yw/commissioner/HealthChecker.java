@@ -359,7 +359,7 @@ public class HealthChecker {
     UniverseDefinitionTaskParams details = u.getUniverseDetails();
     if (details.universePaused) {
       LOG.warn("Skipping universe " + u.name + " as it is in the paused state...");
-      createAlert(c, u, "Health check skipped as the uiverse in in paused state.");
+      createAlert(c, u, "Health check skipped as the uiverse is in the paused state.");
       return;
     }
     if (details == null) {

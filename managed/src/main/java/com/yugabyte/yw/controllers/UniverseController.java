@@ -1092,7 +1092,7 @@ public class UniverseController extends AuthenticatedController {
     // Create the Commissioner task to resume the universe.
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.universeUUID = universeUUID;
-    // There is no staleness of a delete request. Perform it even if the universe has changed.
+    // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
     taskParams.customerUUID = customerUUID;
     // Submit the task to resume the universe.

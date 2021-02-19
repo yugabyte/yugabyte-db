@@ -458,7 +458,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Creates a task list to resume nodes and adds it to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be resumes
+   * @param nodes : a collection of nodes that need to be resumed.
    */
   public SubTaskGroup createResumeServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("ResumeServer", executor);
@@ -483,7 +483,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to resume the nodes.
       params.nodeIP = node.cloudInfo.private_ip;
-      // Create the task to pause the server.
+      // Create the task to resume the server.
       ResumeServer task = new ResumeServer();
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
