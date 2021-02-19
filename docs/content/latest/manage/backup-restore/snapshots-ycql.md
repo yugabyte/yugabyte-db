@@ -42,7 +42,7 @@ You can create a transactional backup for a YCQL table (including associated sec
   - The existing data will be flushed to disk and hard links to the files will be created in a `.snapshots` directory on each tablet.
   - The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out. 
   - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
-  - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
+  - If the snapshot takes an unusually long time, some operations may time out. In practice, users should expect such slowness occasionally when using network storage (such as AWS EBS, Persistent Disk in GCP, or SAN storage).
 
 ## Step 1: Create a local cluster
 
