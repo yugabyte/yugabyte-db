@@ -130,6 +130,7 @@
     <module>yb-client</module>
     <module>yb-cli</module>
     <module>yb-cql</module>
+    <module>yb-cql-4x</module>
     <module>yb-pgsql</module>
     <module>yb-loadtester</module>
     <module>yb-jedis-tests</module>
