@@ -8,9 +8,40 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-import urllib.request
+
 import json
-from urllib.error import HTTPError
+import urllib2
+import collections
+
+
+def exception_handling(func):
+    def inner_function(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except urllib2.HTTPError as e:
+            content = e.read().decode("utf-8")
+            if "html>" in content:
+                message = "Invalid YB_PLATFORM_URL URL, geting html page in response"
+                response = {"data": message, "status": "failed", "error": message}
+                print(response)
+            else:
+                response = {"data": content, "status": "failed", "error": content}
+                print(response)
+        except Exception as e:
+            response = {"data": str(e), "status": "failed", "error": str(e)}
+            print(response)
+    return inner_function
+
+
+def convert_unicode_json(data):
+    if isinstance(data, basestring):
+        return str(data)
+    elif isinstance(data, collections.Mapping):
+        return dict(map(convert_unicode_json, data.iteritems()))
+    elif isinstance(data, collections.Iterable):
+        return type(data)(map(convert_unicode_json, data))
+    else:
+        return data
 
 
 def call_api(url, auth_uuid, data=None, is_delete=False):
@@ -24,16 +55,17 @@ def call_api(url, auth_uuid, data=None, is_delete=False):
     :return: response of the API call.
     """
     if not is_delete:
-        request = urllib.request.Request(url)
+        request = urllib2.Request(url)
     else:
-        request = urllib.request.Request(url, method="DELETE")
+        request = urllib2.Request(url)
+        request.get_method = lambda: 'DELETE'
 
     request.add_header('X-AUTH-YW-API-TOKEN', auth_uuid)
     request.add_header('Content-Type', 'application/json; charset=utf-8')
     if data:
-        response = urllib.request.urlopen(request, json.dumps(data).encode('utf-8'))
+        response = urllib2.urlopen(request, json.dumps(data).encode('utf-8'))
     else:
-        response = urllib.request.urlopen(request)
+        response = urllib2.urlopen(request)
     return response
 
 
@@ -100,7 +132,7 @@ def get_universe_details_by_uuid(base_url, customer_uuid, auth_uuid, universe_uu
         }
         handle_response(response)
 
-
+@exception_handling
 def create_universe_from_config(universe_config, base_url, customer_uuid, auth_uuid):
     """
     Create the universe from universe config data by calling universe POST API.
@@ -112,17 +144,11 @@ def create_universe_from_config(universe_config, base_url, customer_uuid, auth_u
     :return: None
     """
     universe_create_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes"
-    try:
-        response = call_api(universe_create_url, auth_uuid, universe_config)
-        universe_json = json.loads(response.read())
-        task_id = universe_json['taskUUID']
-        response = {"data": task_id, "status": "success", "error": ""}
-        print(response)
-
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
-        print(response)
+    response = call_api(universe_create_url, auth_uuid, universe_config)
+    universe_json = convert_unicode_json(json.loads(response.read()))
+    task_id = universe_json['taskUUID']
+    response = {"data": task_id, "status": "success", "error": ""}
+    print(response)
 
 
 def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_name=""):
@@ -158,7 +184,7 @@ def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_nam
         }
         handle_response(data)
 
-
+@exception_handling
 def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
     """
     Get details of the ongoing task.
@@ -170,22 +196,21 @@ def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
     :return: None
     """
     task_url = base_url + "/api/v1/customers/" + customer_uuid + "/tasks/" + task_id
-    try:
-        response = call_api(task_url, auth_uuid)
-        universe_json = json.loads(response.read())
-        if universe_json["status"] == "Running":
-            response = {"data": int(universe_json["percent"]), "status": "success", "error": ""}
-            print(response)
-        elif universe_json["status"] == "Success":
-            response = {"data": 100, "status": "success", "error": ""}
-            print(response)
-        elif universe_json["status"] == "Failure":
-            response = {"data": "Failed to create the universe", "status": "success",
-                        "error": "Failed to create the universe"}
-            print(response)
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
+    response = call_api(task_url, auth_uuid)
+    universe_json = convert_unicode_json(json.loads(response.read()))
+    if universe_json["status"] == "Running":
+        response = {"data": int(universe_json["percent"]), "status": "success", "error": ""}
+        print(response)
+    elif universe_json["status"] == "Success":
+        response = {"data": 100, "status": "success", "error": ""}
+        print(response)
+    elif universe_json["status"] == "Failure":
+        content = {
+            "message": "{0} failed".format(universe_json["title"]),
+            "details": universe_json["details"]
+        }
+        response = {"data": content, "status": "success",
+                    "error": content}
         print(response)
 
 
@@ -260,8 +285,10 @@ def modify_universe_config(file_name, universe_name=""):
     :param universe_name: New universe name.
     :return: Modified universe config data.
     """
+    data = {}
     with open(file_name) as f:
-        data = json.load(f)
+        data = convert_unicode_json(json.loads(f.read()))
+
     clusters = data["clusters"]
     if universe_name:
         for each_cluster in clusters:
@@ -271,6 +298,7 @@ def modify_universe_config(file_name, universe_name=""):
     return data
 
 
+@exception_handling
 def post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     """
     Call the universe config URL with the updated data.
@@ -282,16 +310,12 @@ def post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     :return: None
     """
     universe_config_url = base_url + "/api/v1/customers/" + customer_uuid + "/universe_configure"
-    try:
-        response = call_api(universe_config_url, auth_uuid, configure_json)
-        universe_config_json = json.loads(response.read())
-        return universe_config_json
-    except HTTPError as e:
-        content = e.read()
-        print(content)
-        return None
+    response = call_api(universe_config_url, auth_uuid, configure_json)
+    universe_config_json = convert_unicode_json(json.loads(response.read()))
+    return universe_config_json
 
 
+@exception_handling
 def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get universe data by name of the universe.
@@ -303,19 +327,14 @@ def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     :return: None
     """
     universe_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes"
-    try:
-        response = call_api(universe_url, auth_uuid)
-        data = json.load(response)
-        for universe in data:
-            if universe["name"] == universe_name:
-                del universe['pricePerHour']
-                return universe
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
-        print(response)
+    response = call_api(universe_url, auth_uuid)
+    data = convert_unicode_json(json.load(response))
+    for universe in data:
+        if universe["name"] == universe_name:
+            del universe['pricePerHour']
+            return universe
 
-
+@exception_handling
 def get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Get universe details by UUID of the universe.
@@ -328,13 +347,8 @@ def get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     universe_config_url = base_url + "/api/v1/customers/" + customer_uuid + \
                           "/universes/" + universe_uuid
-    try:
-        response = call_api(universe_config_url, auth_uuid)
-        return json.load(response)
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
-        print(response)
+    response = call_api(universe_config_url, auth_uuid)
+    return convert_unicode_json(json.load(response))
 
 
 def get_universe_uuid(base_url, customer_uuid, auth_uuid, universe_name):
@@ -357,6 +371,7 @@ def get_universe_uuid(base_url, customer_uuid, auth_uuid, universe_name):
         print(response)
 
 
+@exception_handling
 def get_customer_uuid(base_url, auth_uuid):
     """
     Get customer UUID.
@@ -365,22 +380,18 @@ def get_customer_uuid(base_url, auth_uuid):
     :param auth_uuid: authentication token for the customer.
     :return: None
     """
-    customer_url = base_url + "/api/v1/customers" 
-    try:
-        response = call_api(customer_url, auth_uuid)
-        data = json.load(response)
-        if (len(data) == 1):
-            response = {"data": str(data[0]), "status": "success", "error": ""}
-            print(response)
-        else:
-            response = {"data": data, "status": "failed", "error": "Please provide customer UUID"}
-            print(response)
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
+    customer_url = base_url + "/api/v1/customers"
+    response = call_api(customer_url, auth_uuid)
+    data = convert_unicode_json(json.load(response))
+    if (len(data) == 1):
+        response = {"data": data[0], "status": "success", "error": ""}
+        print(response)
+    else:
+        response = {"data": data, "status": "failed", "error": "Please provide customer UUID"}
         print(response)
 
 
+@exception_handling
 def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Delete the universe by providing UUID.
@@ -394,16 +405,11 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     universe_delete_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes/" \
                           + universe_uuid + "?isForceDelete=true"
 
-    try:
-        response = call_api(universe_delete_url, auth_uuid, is_delete=True)
-        universe_json = json.loads(response.read())
-        task_id = universe_json['taskUUID']
-        response = {"data": task_id, "status": "success", "error": ""}
-        print(response)
-    except HTTPError as e:
-        content = e.read()
-        response = {"data": content, "status": "failed", "error": content}
-        print(response)
+    response = call_api(universe_delete_url, auth_uuid, is_delete=True)
+    universe_json = convert_unicode_json(json.loads(response.read()))
+    task_id = universe_json['taskUUID']
+    response = {"data": task_id, "status": "success", "error": ""}
+    print(response)
 
 
 def get_key_value(data, key):
@@ -416,7 +422,7 @@ def get_key_value(data, key):
     """
     try:
         if data and data != "":
-            json_data = json.loads(str(data))
+            json_data = convert_unicode_json(json.loads(str(data)))
             print(json_data.get(key))
         else:
             print("Action Failed")
