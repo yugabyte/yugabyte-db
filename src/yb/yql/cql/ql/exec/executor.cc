@@ -800,6 +800,11 @@ Status Executor::GetOffsetOrLimit(
 
 //--------------------------------------------------------------------------------------------------
 
+// NOTE: This function is being called recursively.
+// - The paging-state is loaded to the context only on the first call (Call from user)
+// - Similarly, all code in this function must work for both cases - calls by users and recursive
+//   calls within the same process. These two different cases can be cleaned up later to avoid
+//   confusion.
 Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
@@ -819,13 +824,20 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
                               : exec_context_->Error(tnode, ErrorCode::OBJECT_NOT_FOUND);
   }
 
-  const StatementParameters& params = exec_context_->params();
   // If there is a table id in the statement parameter's paging state, this is a continuation of a
   // prior SELECT statement. Verify that the same table/index still exists and matches the table id
   // for query without index, or the index id in the leaf node (where child_select is null also).
-  const bool continue_select = !tnode->child_select() && !params.table_id().empty();
-  if (continue_select && params.table_id() != table->id()) {
+  const StatementParameters& params = exec_context_->params();
+  const bool continue_user_request = !tnode->child_select() && !params.table_id().empty();
+  if (continue_user_request && params.table_id() != table->id()) {
     return exec_context_->Error(tnode, "Object no longer exists.", ErrorCode::OBJECT_NOT_FOUND);
+  }
+
+  // Read the paging state from user input "params".
+  QueryPagingState *query_state = VERIFY_RESULT(LoadPagingStateFromUser(tnode, tnode_context));
+  if (query_state->reached_select_limit()) {
+    // Return the result without executing the node.
+    return result_ != nullptr ? Status::OK() : GenerateEmptyResult(tnode);
   }
 
   // If there is an index to select from, execute it.
@@ -858,10 +870,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
+
   // Where clause - Hash, range, and regular columns.
-
   req->set_is_aggregate(tnode->is_aggregate());
-
   Result<uint64_t> max_rows_estimate = WhereClauseToPB(req, tnode->key_where_ops(),
                                                        tnode->where_ops(),
                                                        tnode->subscripted_col_where_ops(),
@@ -875,12 +886,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
   if (*max_rows_estimate == 0 && !tnode->is_aggregate()) {
-    QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
-    faststring buffer;
-    empty_row_block.Serialize(select_op->request().client(), &buffer);
-    *select_op->mutable_rows_data() = buffer.ToString();
-    result_ = std::make_shared<RowsResult>(select_op.get());
-    return Status::OK();
+    return GenerateEmptyResult(tnode);
   }
 
   req->set_is_forward_scan(tnode->is_forward_scan());
@@ -931,49 +937,35 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     req->set_return_paging_state(true);
   }
 
-  // Check if there is a limit and compute the new limit based on the number of returned rows.
-  if (tnode->limit()) {
-    int32_t limit;
-    RETURN_NOT_OK(GetOffsetOrLimit(
-        tnode,
-        [](const PTSelectStmt* tnode) -> PTExpr::SharedPtr { return tnode->limit(); },
-        "LIMIT", &limit));
-
-    if (limit == 0 || params.total_num_rows_read() >= limit) {
-      return Status::OK();
+  if (!tnode->child_select()) {
+    // DocDB will do LIMIT and OFFSET computation for this query.
+    if (tnode->limit()) {
+      // Setup request to DocDB according to the given LIMIT.
+      int32_t user_limit = query_state->select_limit() - query_state->read_count();
+      if (!req->has_limit() || user_limit <= req->limit()) {
+        // Set limit and instruct DocDB to clear paging state if limit is reached.
+        req->set_limit(user_limit);
+        req->set_return_paging_state(false);
+      }
     }
 
-    // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
-    // the page size limit set from above, set the lower limit and do not return paging state when
-    // this limit is hit.
-    limit -= params.total_num_rows_read();
-    if (!req->has_limit() || limit <= req->limit()) {
-      req->set_limit(limit);
-      req->set_return_paging_state(false);
+    if (tnode->offset()) {
+      // Setup request to DocDB according to the given OFFSET.
+      int32_t user_offset = query_state->select_offset() - query_state->skip_count();
+      req->set_offset(user_offset);
+      req->set_return_paging_state(true);
     }
   }
 
-  if (tnode->offset()) {
-    int32_t offset;
-    RETURN_NOT_OK(GetOffsetOrLimit(
-        tnode,
-        [](const PTSelectStmt *tnode) -> PTExpr::SharedPtr { return tnode->offset(); },
-        "OFFSET", &offset));
-    // Update the offset with values from previous pagination.
-    offset = std::max(static_cast<int64_t>(0), offset - params.total_rows_skipped());
-    req->set_offset(offset);
-    // We need the paging state to know how many rows were skipped by the offset clause.
-    req->set_return_paging_state(true);
-  }
-
-  // If this is a continuation of a prior read, set the next partition key, row key and total number
-  // of rows read in the request's paging state.
-  if (continue_select) {
+  // If this is a continuation of a prior user's request, set the next partition key, row key,
+  // and total number of rows read in the request's paging state.
+  if (continue_user_request) {
     QLPagingStatePB *paging_state = req->mutable_paging_state();
-    paging_state->set_next_partition_key(params.next_partition_key());
-    paging_state->set_next_row_key(params.next_row_key());
-    paging_state->set_total_num_rows_read(params.total_num_rows_read());
-    paging_state->set_total_rows_skipped(params.total_rows_skipped());
+
+    paging_state->set_next_partition_key(query_state->next_partition_key());
+    paging_state->set_next_row_key(query_state->next_row_key());
+    paging_state->set_total_num_rows_read(query_state->total_num_rows_read());
+    paging_state->set_total_rows_skipped(query_state->total_rows_skipped());
   }
 
   // Set the consistency level for the operation. Always use strong consistency for system tables.
@@ -984,8 +976,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // start partition here, and then iteratively scan the rest in FetchMoreRows.
   // Otherwise, the request will already have the right hashed column values set.
   if (tnode_context->UnreadPartitionsRemaining() > 0) {
-    tnode_context->InitializePartition(select_op->mutable_request(),
-                                       continue_select ? params.next_partition_index() : 0);
+    tnode_context->InitializePartition(select_op->mutable_request(), continue_user_request);
 
     // We can optimize to run the ops in parallel (rather than serially) if:
     // - the estimated max number of rows is less than req limit (min of page size and CQL limit).
@@ -1019,43 +1010,78 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   return AddOperation(select_op, tnode_context);
 }
 
+Result<QueryPagingState*> Executor::LoadPagingStateFromUser(const PTSelectStmt* tnode,
+                                                            TnodeContext* tnode_context) {
+  QueryPagingState *query_state = tnode_context->query_state();
+  if (query_state) {
+    // If select_state is already set, use it.
+    if (tnode->limit()) {
+      // Need to compute the maximum number of rows to fetch for this user's request.
+      query_state->AdjustMaxFetchSizeToSelectLimit();
+    }
+    return query_state;
+  }
+
+  // Create query_state for this execution.
+  // - Only top-level-select node should have the row counter.
+  // - User do not care about row counter of an inner or nested query.
+  const StatementParameters& params = exec_context_->params();
+  query_state = tnode_context->CreateQueryState(params, tnode->IsTopLevelReadNode());
+  if (tnode->limit()) {
+    RSTATUS_DCHECK(tnode->IsTopLevelReadNode(), Corruption,
+                   "LIMIT clause cannot be applied to nested SELECT");
+    if (!query_state->has_select_limit()) {
+      int32_t limit;
+      RETURN_NOT_OK(GetOffsetOrLimit(
+          tnode,
+          [](const PTSelectStmt* tnode) -> PTExpr::SharedPtr { return tnode->limit(); },
+          "LIMIT", &limit));
+      query_state->set_select_limit(limit);
+    }
+
+    query_state->AdjustMaxFetchSizeToSelectLimit();
+  }
+
+  if (tnode->offset()) {
+    RSTATUS_DCHECK(tnode->IsTopLevelReadNode(), Corruption,
+                   "OFFSET clause cannot be applied to nested SELECT");
+    if (!query_state->has_select_offset()) {
+      int32_t offset;
+      RETURN_NOT_OK(GetOffsetOrLimit(
+          tnode,
+          [](const PTSelectStmt *tnode) -> PTExpr::SharedPtr { return tnode->offset(); },
+          "OFFSET", &offset));
+      query_state->set_select_offset(offset);
+    }
+  }
+
+  return query_state;
+}
+
+Status Executor::GenerateEmptyResult(const PTSelectStmt* tnode) {
+  YBqlReadOpPtr select_op(tnode->table()->NewQLSelect());
+  QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
+  faststring buffer;
+  empty_row_block.Serialize(select_op->request().client(), &buffer);
+  *select_op->mutable_rows_data() = buffer.ToString();
+  result_ = std::make_shared<RowsResult>(select_op.get());
+
+  return Status::OK();
+}
+
 Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
                                      const YBqlReadOpPtr& op,
                                      TnodeContext* tnode_context,
                                      ExecContext* exec_context) {
-  RowsResult::SharedPtr current_result = tnode_context->rows_result();
-  if (!current_result) {
+  if (!tnode_context->rows_result()) {
     return STATUS(InternalError, "Missing result for SELECT operation");
   }
 
-  // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
-  const size_t current_fetch_row_count = tnode_context->row_count();
-  const size_t previous_fetches_row_count = exec_context->params().total_num_rows_read();
-  const size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
-
-  // Statement (paging) parameters.
-  StatementParameters current_params;
-  RETURN_NOT_OK(current_params.SetPagingState(current_result->paging_state()));
-
-  const size_t total_rows_skipped = exec_context->params().total_rows_skipped() +
-                                    current_params.total_rows_skipped();
-
-  // The limit for this select: min of page size and result limit (if set).
-  uint64_t fetch_limit = exec_context->params().page_size(); // default;
-  if (tnode->limit()) {
-    QLExpressionPB limit_pb;
-    RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
-
+  QueryPagingState *query_state = tnode_context->query_state();
+  if (tnode->limit() && query_state->reached_select_limit()) {
     // If the LIMIT clause has been reached, we are done.
-    if (total_row_count >= limit_pb.value().int32_value()) {
-      current_result->ClearPagingState();
-      return false;
-    }
-
-    const int64_t limit = limit_pb.value().int32_value() - previous_fetches_row_count;
-    if (limit < fetch_limit) {
-      fetch_limit = limit;
-    }
+    RETURN_NOT_OK(tnode_context->ClearQueryState());
+    return false;
   }
 
   //------------------------------------------------------------------------------------------------
@@ -1065,77 +1091,68 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   // might be non-empty, but just contain num_rows_skipped, in this case the
   // 'next_partition_key' and 'next_row_key' would be empty indicating that we've finished
   // reading the current partition.
-  const bool finished_current_read_partition = current_result->paging_state().empty() ||
-                                               (current_params.next_partition_key().empty() &&
-                                                current_params.next_row_key().empty());
-  if (finished_current_read_partition) {
-
+  if (tnode_context->FinishedReadingPartition()) {
     // If there or no other partitions to query, we are done.
     if (tnode_context->UnreadPartitionsRemaining() <= 1) {
       // Clear the paging state, since we don't have any more data left in the table.
-      current_result->ClearPagingState();
+      RETURN_NOT_OK(tnode_context->ClearQueryState());
       return false;
     }
 
     // Sanity check that if we finished a partition the next partition/row key are empty.
     // Otherwise we could start scanning the next partition from the wrong place.
-    DCHECK(current_params.next_partition_key().empty());
-    DCHECK(current_params.next_row_key().empty());
+    DCHECK(query_state->next_partition_key().empty());
+    DCHECK(query_state->next_row_key().empty());
 
     // Otherwise, we continue to the next partition.
     tnode_context->AdvanceToNextPartition(op->mutable_request());
   }
 
-  // If we reached the fetch limit (min of paging state and limit clause) we are done.
-  if (current_fetch_row_count >= fetch_limit) {
+  // Setup counters in read request to DocDB.
+  const size_t current_fetch_row_count = tnode_context->row_count();
+  const int64_t total_rows_skipped = query_state->skip_count();
+  const int64_t total_row_count = query_state->read_count();
 
+  // If we reached the fetch limit (min of paging_size and limit clause), this batch is done.
+  int64_t fetch_limit = query_state->max_fetch_size();
+  if (fetch_limit >= 0 && current_fetch_row_count >= fetch_limit) {
     // If we need to return a paging state to the user, we create it here so that we can resume from
     // the exact place where we left off: partition index and primary key within that partition.
     if (op->request().return_paging_state()) {
-      QLPagingStatePB paging_state;
-      paging_state.set_total_num_rows_read(total_row_count);
-      paging_state.set_total_rows_skipped(total_rows_skipped);
-      paging_state.set_total_rows_skipped(total_rows_skipped);
-      paging_state.set_table_id(tnode->table()->id());
+      query_state->set_original_request_id(exec_context_->params().request_id());
+      query_state->set_table_id(tnode->table()->id());
+      query_state->set_total_num_rows_read(total_row_count);
+      query_state->set_total_rows_skipped(total_rows_skipped);
 
       // Set the partition to resume from. Relevant for multi-partition selects, i.e. with IN
       // condition on the partition columns.
-      paging_state.set_next_partition_index(tnode_context->current_partition_index());
+      query_state->set_next_partition_index(tnode_context->current_partition_index());
 
-      // Within a partition, set the exact primary key to resume from (if any).
-      paging_state.set_next_partition_key(current_params.next_partition_key());
-      paging_state.set_next_row_key(current_params.next_row_key());
-
-      paging_state.set_original_request_id(exec_context_->params().request_id());
-
-      current_result->SetPagingState(paging_state);
+      // Write paging state to the node's rows_result to prepare for future batches.
+      RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(nullptr, true /* for_new_batches */));
     }
-
     return false;
   }
 
   //------------------------------------------------------------------------------------------------
   // Fetch more results.
-
   // Update limit, offset and paging_state information for next scan request.
   op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
   if (tnode->offset()) {
-    QLExpressionPB offset_pb;
-    RETURN_NOT_OK(PTExprToPB(tnode->offset(), &offset_pb));
     // The paging state keeps a running count of the number of rows skipped so far.
-    op->mutable_request()->set_offset(
-        std::max(static_cast<int64_t>(0),
-                 offset_pb.value().int32_value() - static_cast<int64_t>(total_rows_skipped)));
+    int64_t offset = std::max(static_cast<int64_t>(0),
+                              query_state->select_offset() - total_rows_skipped);
+    op->mutable_request()->set_offset(offset);
   }
 
   QLPagingStatePB *paging_state = op->mutable_request()->mutable_paging_state();
-  paging_state->set_next_partition_key(current_params.next_partition_key());
-  paging_state->set_next_row_key(current_params.next_row_key());
+  paging_state->set_next_partition_key(query_state->next_partition_key());
+  paging_state->set_next_row_key(query_state->next_row_key());
   paging_state->set_total_num_rows_read(total_row_count);
   paging_state->set_total_rows_skipped(total_rows_skipped);
+
   return true;
 }
-
 
 Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
                                        const YBqlReadOpPtr& select_op,
@@ -1904,6 +1921,18 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
 
     // Append the rows if present.
     if (!op->rows_data().empty()) {
+      SCHECK(!tnode->IsTopLevelReadNode() || tnode_context->query_state() != nullptr,
+             Corruption, "Query state cannot be NULL for SELECT");
+      // NOTE: Although it is odd to check for LIMIT counters before appending a new set of data
+      // instead of when counting rows during appending, it is safer to do it this way.
+      // - This function is processing callbacks from RPC whenever data is arrived from DocDB.
+      // - If the arriving rows exceed the LIMIT, all of them will still be passed to this function
+      //   and must be blocked and rejected here before they are appended to tnode_context.
+      if (tnode->IsTopLevelReadNode() && tnode_context->query_state()->reached_select_limit()) {
+        // We've reached the end of scan. Ignore the rest of the operators and results.
+        RETURN_NOT_OK(tnode_context->ClearQueryState());
+        break;
+      }
       RETURN_NOT_OK(tnode_context->AppendRowsResult(std::make_shared<RowsResult>(op.get())));
     }
 
@@ -1941,13 +1970,18 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
 
     // If the child selects from an uncovered index, extract the primary keys returned and use them
     // to select from the indexed table.
-    DCHECK_EQ(child_tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
-    DCHECK(!static_cast<const PTSelectStmt *>(child_tnode)->index_id().empty());
-    const bool covers_fully = static_cast<const PTSelectStmt *>(child_tnode)->covers_fully();
-    DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
+    RSTATUS_DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTSelectStmt,
+                      Corruption, "Expecting SELECT opcode");
+    RSTATUS_DCHECK_EQ(child_tnode->opcode(), TreeNodeOpcode::kPTSelectStmt,
+                      Corruption, "Expecting nested SELECT opcode");
+    RSTATUS_DCHECK(!static_cast<const PTSelectStmt *>(child_tnode)->index_id().empty(),
+                   Corruption, "Expecting valid index id");
+
     const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
+    const auto* child_select = static_cast<const PTSelectStmt *>(child_tnode);
+
     string& rows_data = child_context->rows_result()->rows_data();
-    if (!covers_fully && !rows_data.empty()) {
+    if (!child_select->covers_fully() && !rows_data.empty()) {
       QLRowBlock* keys = tnode_context->keys();
       keys->rows().clear();
       Slice data(rows_data);
@@ -1959,17 +1993,16 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       rows_data.clear();
     }
 
-    // If the current statement tnode and its child are done, move the result from the child
-    // for covered query, or just the paging state for uncovered query.
+    // Finalize the execution.  We will send this result to users, and they send us subsequent
+    // requests if the paging state is not empty.
+    // 1. Case no child: The result is already in the node.
+    // 1. Case fully_covered index: The result is in child_select node.
+    // 2. Case partially_covered index:
+    //    - The result and row-counter are kept in parent node.
+    //    - The paging state is in the child node.
     if (!tnode_context->HasPendingOperations() && !child_context->HasPendingOperations()) {
-      if (covers_fully) {
-        RETURN_NOT_OK(tnode_context->AppendRowsResult(std::move(child_context->rows_result())));
-      } else {
-        if (!tnode_context->rows_result()) {
-          RETURN_NOT_OK(tnode_context->AppendRowsResult(std::make_shared<RowsResult>(select_stmt)));
-        }
-        tnode_context->rows_result()->SetPagingState(std::move(*child_context->rows_result()));
-      }
+      RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(child_select,
+                                                            false /* for_new_batches */));
     }
   }
 

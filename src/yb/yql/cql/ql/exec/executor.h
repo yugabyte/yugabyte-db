@@ -216,6 +216,13 @@ class Executor : public QLExprExecutor {
   // Append rows result.
   CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
 
+  // Read paging state from user's StatementParams.
+  Result<QueryPagingState*> LoadPagingStateFromUser(const PTSelectStmt* tnode,
+                                                    TnodeContext* tnode_context);
+
+  // When request does not need to be executed, create and return empty result (0 row) to users.
+  CHECKED_STATUS GenerateEmptyResult(const PTSelectStmt* tnode);
+
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   Result<bool> FetchMoreRows(const PTSelectStmt* tnode,
                              const client::YBqlReadOpPtr& op,

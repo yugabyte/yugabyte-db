@@ -402,6 +402,23 @@ class PTSelectStmt : public PTDmlStmt {
     return child_select_ ? child_select_->hash_col_indices() : PTDmlStmt::hash_col_indices();
   }
 
+  // CQL does not have nested DML statement, but YugaByte processes INDEX query as a nested DML.
+  // - Returns true by default for all SELECT nodes.
+  // - Returns false for index query node nested inside SELECT node. Because the data from the
+  //   INDEX nested node is used for another READ, it is not the top level READ node where all
+  //   READ operations end.
+  //     SELECT * FROM table WHERE primary_keys IN (SELECT primary_keys FROM index);
+  //   The data from INDEX query (i.e. primary key) is used for another READ from PRIMARY table.
+  // - There is one exception when nested node is promoted to become the top level READ node.
+  //   Due to an optimization, when an INDEX fully-covers a SELECT statement, all data will be
+  //   read from the INDEX.
+  //     SELECT all-requested-data FROM <index>;
+  //   In this case, the nested index node is the top treenode to query data from server. It is not
+  //   the top level SELECT in this case.
+  bool IsTopLevelReadNode() const override {
+    return is_top_level_ || covers_fully_;
+  }
+
  private:
   // Analyze the components of a SELECT.
   CHECKED_STATUS LookupIndex(SemContext *sem_context);

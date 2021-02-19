@@ -180,10 +180,54 @@ TnodeContext::TnodeContext(const TreeNode* tnode) : tnode_(tnode), start_time_(M
 }
 
 Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
+  // Append data arriving from DocDB.
+  // (1) SELECT without nested query.
+  //  - SELECT <select_list> FROM <table or index>
+  //      WHERE <filter_cond>
+  //      LIMIT <limit> OFFSET <offset>
+  //  - New rows are appended at the end.
+  //
+  // (2) SELECT with nested query.
+  //  - SELECT <select_list> FROM <table>
+  //      WHERE
+  //        primary_key IN (SELECT primary_key FROM <index> WHERE <index_cond>)
+  //        AND
+  //        <filter_cond>
+  //      LIMIT <limit> OFFSET <offset>
+  //  - When nested INDEX query fully-covers the SELECT command, data coming from the nested node
+  //    is appended without being filtered or rejected.
+  //  - When nested INDEX query does NOT fully-cover the SELECT command, data is rejected if OFFSET
+  //    is not yet reached. Otherwise, data is appended ONE row at a time.
   if (!rows_result) {
     return Status::OK();
   }
-  row_count_ += VERIFY_RESULT(QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
+
+  int64_t number_of_new_rows =
+    VERIFY_RESULT(QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
+
+  if (query_state_) {
+    RSTATUS_DCHECK(tnode_->opcode() == TreeNodeOpcode::kPTSelectStmt,
+                   Corruption, "QueryPagingState is setup for non-select statement");
+    const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode_);
+
+    // Save the last offset status before loading new status from DocDB.
+    const bool reached_offset = query_state_->reached_select_offset();
+    const bool has_nested_query = select_stmt->child_select() != nullptr;
+    RETURN_NOT_OK(
+      query_state_->LoadPagingStateFromDocdb(rows_result, number_of_new_rows, has_nested_query));
+
+    if (!reached_offset && has_nested_query) {
+      // Parent query needs to discard the new row when (row_count < SELECT::OFFSET).
+      if (!rows_result_) {
+        rows_result_ = std::make_shared<RowsResult>(select_stmt);
+      }
+      rows_result_->SetPagingState(std::move(*rows_result));
+      return Status::OK();
+    }
+  }
+
+  // Append the new rows to result.
+  row_count_ += number_of_new_rows;
   if (rows_result_ == nullptr) {
     rows_result_ = std::move(rows_result);
     return Status::OK();
@@ -191,7 +235,9 @@ Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   return rows_result_->Append(std::move(*rows_result));
 }
 
-void TnodeContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
+void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_request) {
+  uint64_t start_partition = continue_user_request ? query_state_->next_partition_index() : 0;
+
   current_partition_index_ = start_partition;
   // Hash values before the first 'IN' condition will be already set.
   // hash_values_options_ vector starts from the first column with an 'IN' restriction.
@@ -218,6 +264,11 @@ void TnodeContext::InitializePartition(QLReadRequestPB *req, uint64_t start_part
     *req->mutable_hashed_column_values(i + set_cols_size) = options[pos];
     start_partition /= options.size();
   }
+}
+
+bool TnodeContext::FinishedReadingPartition() {
+  return rows_result_->paging_state().empty() ||
+      (query_state_->next_partition_key().empty() && query_state_->next_row_key().empty());
 }
 
 void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
@@ -268,6 +319,205 @@ void TnodeContext::SetUncoveredSelectOp(const YBqlReadOpPtr& select_op) {
     key_column_ids.emplace_back(schema.column_id(idx));
   }
   keys_ = std::make_unique<QLRowBlock>(schema, key_column_ids);
+}
+
+QueryPagingState *TnodeContext::CreateQueryState(const StatementParameters& user_params,
+                                                 bool is_top_level_select) {
+  query_state_ = std::make_unique<QueryPagingState>(user_params, is_top_level_select);
+  return query_state_.get();
+}
+
+Status TnodeContext::ClearQueryState() {
+  RSTATUS_DCHECK(query_state_, Corruption, "Query state should not be null for SELECT");
+  rows_result_->ClearPagingState();
+  query_state_->ClearPagingState();
+
+  return Status::OK();
+}
+
+Status TnodeContext::ComposeRowsResultForUser(const TreeNode* child_select_node,
+                                              bool for_new_batches) {
+  RSTATUS_DCHECK_EQ(tnode_->opcode(), TreeNodeOpcode::kPTSelectStmt,
+                    Corruption, "Only SELECT node can have nested query");
+  const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode_);
+
+  // Case 1:
+  //   SELECT * FROM <table>;
+  if (!child_select_node) {
+    if (rows_result_->has_paging_state() || for_new_batches) {
+      // Paging state must be provided for two cases. Otherwise, we've reached end of result set.
+      // - Docdb sent back rows_result with paging state.
+      // - Seting up paging_state for user's next batches.
+      RETURN_NOT_OK(query_state_->ComposePagingStateForUser());
+      rows_result_->SetPagingState(query_state_->query_pb());
+    }
+    return Status::OK();
+  }
+
+  // Check for nested condition.
+  RSTATUS_DCHECK(child_context_ && child_select_node->opcode() == TreeNodeOpcode::kPTSelectStmt,
+                 Corruption, "Expecting nested context with a SELECT node");
+
+  // Case 2:
+  //   SELECT <fully_covered_columns> FROM <index>;
+  // Move result from index query (child) to the table query (this parent node).
+  const auto* child_select = static_cast<const PTSelectStmt *>(child_select_node);
+  if (child_select->covers_fully()) {
+    return AppendRowsResult(std::move(child_context_->rows_result()));
+  }
+
+  // Case 3:
+  //   SELECT <any columns> FROM <table> WHERE primary_keys IN (SELECT primary_keys FROM <index>);
+  // Compose result of the following fields.
+  // - The rows_result should be from this node (rows_result_).
+  // - The counter_state should be from this node (query_state_::counter_pb_).
+  // - The read paging_state should be from the CHILD node (query_state_::query_pb_)
+  if (!rows_result_) {
+    // Allocate an empty rows_result that will be filled with paging state.
+    rows_result_ = std::make_shared<RowsResult>(select_stmt);
+  }
+
+  if (child_context_->rows_result()->has_paging_state() &&
+      !query_state_->reached_select_limit()) {
+    // If child node has paging state and LIMIT is not yet reached, provide paging state to users
+    // to continue reading.
+    RETURN_NOT_OK(
+        query_state_->ComposePagingStateForUser(child_context_->query_state()->query_pb()));
+    rows_result_->SetPagingState(query_state_->query_pb());
+  } else {
+    // Clear paging state once all requested rows were retrieved.
+    rows_result_->ClearPagingState();
+  }
+
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+QueryPagingState::QueryPagingState(const StatementParameters& user_params,
+                                   bool is_top_level_read_node)
+    : max_fetch_size_(user_params.page_size()) {
+  LoadPagingStateFromUser(user_params, is_top_level_read_node);
+
+  // Just default it to max_int.
+  if (max_fetch_size_ <= 0) {
+    max_fetch_size_ = INT_MAX;
+  }
+}
+
+void QueryPagingState::AdjustMaxFetchSizeToSelectLimit() {
+  int64_t limit = select_limit();
+  if (limit < 0) {
+    return;
+  }
+
+  int64_t count = read_count();
+  if (count < limit) {
+    int64_t wanted = limit - count;
+    if (wanted < max_fetch_size_) {
+      max_fetch_size_ = wanted;
+    }
+  } else {
+    max_fetch_size_ = 0;
+  }
+}
+
+void QueryPagingState::ClearPagingState() {
+  // Clear only the paging state.
+  // Keep the counter so that we knows how many rows have been processed.
+  query_pb_.Clear();
+}
+
+void QueryPagingState::LoadPagingStateFromUser(const StatementParameters& user_params,
+                                               bool is_top_level_read_node) {
+  user_params.WritePagingState(&query_pb_);
+
+  // Calculate "skip_count" and "read_count".
+  // (1) Top level read node.
+  //  - Either top-level SELECT or fully-covering INDEX query.
+  //  - User "params::couter_pb_" should have the valid "counter_pb_"
+  //
+  // (2) Nested read node.
+  //  - Zero out its counters. We don't use "counter_pb_" for this node because LIMIT and OFFSET
+  //    restrictions are not applied to nested nodes.
+  //  - Because nested node might be running different READ operators (with different hash values)
+  //    for different calls from users, the counters from users' message are discarded here.
+  if (is_top_level_read_node) {
+    counter_pb_.CopyFrom(query_pb_.row_counter());
+  } else {
+    // These values are not used, set them to zero.
+    set_skip_count(0);
+    set_read_count(0);
+  }
+}
+
+Status QueryPagingState::ComposePagingStateForUser() {
+  // Write the counters into the paging_state.
+  query_pb_.mutable_row_counter()->CopyFrom(counter_pb_);
+  return Status::OK();
+}
+
+Status QueryPagingState::ComposePagingStateForUser(const QLPagingStatePB& child_state) {
+  // Write child_state.
+  query_pb_.CopyFrom(child_state);
+
+  // Write the counters into the paging_state.
+  query_pb_.mutable_row_counter()->CopyFrom(counter_pb_);
+
+  return Status::OK();
+}
+
+Status QueryPagingState::LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
+                                                  int64_t number_of_new_rows,
+                                                  bool has_nested_query) {
+  // Load "query_pb_" with the latest result from DocDB.
+  query_pb_.ParseFromString(rows_result->paging_state());
+
+  // If DocDB processed the skipping rows, record it here.
+  if (total_rows_skipped() > 0) {
+    set_skip_count(total_rows_skipped());
+  }
+
+  if (!has_nested_query) {
+    // SELECT <select_list> FROM <table or index>
+    //   WHERE <filter_cond>
+    //   LIMIT <limit> OFFSET <offset>
+    // - DocDB processed the <limit> and <offset> restrictions.
+    //   Either "reached_select_offset() == TRUE" OR number_of_new_rows == 0.
+    // - Two DocDB::counters are used to compute here.
+    //   . QLPagingStatePB::total_rows_skipped - Skip count in DocDB.
+    //   . number_of_new_rows - Rows of data from DocDB after skipping.
+    set_read_count(read_count() + number_of_new_rows);
+
+  } else {
+    // SELECT <select_list> FROM <table>
+    //   WHERE
+    //     primary_key IN (SELECT primary_key FROM <index> WHERE <index_cond>)
+    //     AND
+    //     <filter_cond>
+    //   LIMIT <limit> OFFSET <offset>
+    //
+    // NOTE:
+    // 1. Case INDEX query fully-covers the SELECT command.
+    //    - DocDB counters are transfered from nested node to this node.
+    //    - "reached_select_offset() == TRUE" OR number_of_new_rows == 0.
+    //
+    // 2. Case INDEX query does NOT fully-cover the SELECT command.
+    //    - Values of <limit> and <offset> are NOT sent together with proto request to DocDB. They
+    //      are computed and processed here in CQL layer.
+    //    - For this case, "number_of_new_rows" is either 1 or 0.
+    //      CQL assumes that outer SELECT reads at most one row at a time as it uses values of
+    //      PRIMARY KEY (always unique) to read the rest of the columns of the <table>.
+    if (!reached_select_offset()) {
+      // Since OFFSET is processed here, this must be case 2.
+      RSTATUS_DCHECK_LE(number_of_new_rows, 1, Corruption, "Incorrect counter calculation");
+      set_skip_count(skip_count() + number_of_new_rows);
+    } else {
+      set_read_count(read_count() + number_of_new_rows);
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace ql

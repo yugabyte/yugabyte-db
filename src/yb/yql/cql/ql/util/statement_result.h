@@ -149,6 +149,7 @@ class RowsResult : public ExecutedResult {
   void SetPagingState(const QLPagingStatePB& paging_state);
   void SetPagingState(RowsResult&& other);
   void ClearPagingState();
+  bool has_paging_state() { return !paging_state_.empty(); }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
