@@ -3739,9 +3739,7 @@ Status CatalogManager::BackfillIndex(
   }
 
   return MultiStageAlterTable::StartBackfillingData(
-      this,
-      indexed_table,
-      index_info_pb);
+      this, indexed_table, index_info_pb, boost::none);
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
