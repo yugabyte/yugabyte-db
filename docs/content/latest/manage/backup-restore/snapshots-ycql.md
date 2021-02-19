@@ -37,7 +37,7 @@ You can create a transactional backup for a YCQL table (including associated sec
 
 - Implementation notes:
   - Massively parallel, efficient for very large data sets.
-  - Once the snapshot command is issued, the db will “buffer” newly incoming writes to that tablet without writing them immediately.
+  - Once the snapshot command is issued, the database will “buffer” newly incoming writes to that tablet without writing them immediately.
   - The existing data will be flushed to disk and hard links to the files will be created in a `.snapshots` directory on each tablet.
   - The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out. 
   - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
