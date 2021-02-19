@@ -40,6 +40,11 @@
   to = "/latest/releases/:splat"
   force = true
 
+[[redirects]]
+  from = "/:version/comparisons/*"
+  to = "/latest/comparisons/:splat"
+  force = true
+
 # Stable quick-starts need defaults,
 # since archiving from /latest removes aliases
 
