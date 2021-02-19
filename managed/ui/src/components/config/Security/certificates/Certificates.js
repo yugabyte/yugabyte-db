@@ -15,6 +15,7 @@ import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
+import AssociatedUniverse from '../../../common/associatedUniverse/AssociatedUniverse';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -87,7 +88,12 @@ class DownloadCertificateForm extends Component {
 class Certificates extends Component {
   state = {
     showSubmitting: false,
-    selectedCert: {}
+    selectedCert: {},
+    showUniverseModal: false,
+    data: [
+      { universeName: 'GauravTestUniverse1502', universeStatus: 'Ready', universeUUID: 1 },
+      { universeName: 'GauravTestUniverse1302GauravTestUniverse1302', universeStatus: 'Error', universeUUID: 2 },
+    ]
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -135,6 +141,13 @@ class Certificates extends Component {
     )
   };
 
+  /**
+   * Hide the associated universe modal.
+   */
+  closeUniverseListModal = () => {
+    this.setState({ showUniverseModal: false })
+  }
+
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
     const deleteDisabled = row.inUse;
@@ -181,7 +194,13 @@ class Certificates extends Component {
           }}
           disabled={deleteDisabled}
         >
-          <i className="fa fa-trash"></i> Delete Cert
+          <i className="fa fa-trash"></i> Delete Certificate
+        </MenuItem>
+        <MenuItem
+          onClick={() => this.setState({ showUniverseModal: true })}
+          disabled={deleteDisabled}
+        >
+          <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
       </DropdownButton>
     );
@@ -194,7 +213,7 @@ class Certificates extends Component {
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting } = this.state;
+    const { showSubmitting, showUniverseModal, data } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
     ? userCertificates.data.map((cert) => {
@@ -300,6 +319,7 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
+        {showUniverseModal && <AssociatedUniverse closeUniverseListModal={this.closeUniverseListModal} universeList={data}/>}
       </div>
     );
   }
