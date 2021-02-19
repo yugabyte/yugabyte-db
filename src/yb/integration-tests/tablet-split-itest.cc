@@ -79,7 +79,7 @@ namespace {
 Result<size_t> SelectRowsCount(
     const client::YBSessionPtr& session, const client::TableHandle& table) {
   LOG(INFO) << "Running full scan on test table...";
-  session->SetTimeout(5s);
+  session->SetTimeout(5s * kTimeMultiplier);
   QLPagingStatePB paging_state;
   size_t row_count = 0;
   for (;;) {
@@ -108,7 +108,7 @@ Result<size_t> SelectRowsCount(
         }
       }
       return true;
-    }, 15s, "Waiting for session flush"));
+    }, 15s * kTimeMultiplier, "Waiting for session flush"));
     RETURN_NOT_OK(s);
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     row_count += rowblock->row_count();
@@ -402,7 +402,7 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&
            num_peers_leader_ready == expected_total_tablets;
-  }, 20s * kTimeMultiplier, "Wait for tablet split to be completed");
+  }, 40s * kTimeMultiplier, "Wait for tablet split to be completed");
   if (!s.ok()) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
@@ -422,7 +422,7 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
                 << " leader status: "
                 << AsString(consensus->GetLeaderStatus(/* allow_stale =*/true));
     }
-    LOG(INFO) << "Crashing test to avoid waiting on deadlock...";
+    LOG(INFO) << "Crashing test to avoid waiting on deadlock. Received error: " << s.ToString();
     raise(SIGSEGV);
   }
 
@@ -481,7 +481,8 @@ void TabletSplitITest::VerifyTriggeredPostSplitCompaction(int num_peers) {
 
 Result<uint64_t> TabletSplitITest::GetActiveTabletsBytesRead() {
   uint64_t read_bytes_1 = 0, read_bytes_2 = 0;
-  for (auto peer : VERIFY_RESULT(ListPostSplitChildrenTabletPeers())) {
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), VERIFY_RESULT(GetTestTableId()));
+  for (auto peer : peers) {
     auto this_peer_read_bytes = peer->tablet()->regulardb_statistics()->getTickerCount(
         rocksdb::Tickers::COMPACT_READ_BYTES);
     if (read_bytes_1 == 0) {
@@ -828,8 +829,7 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
                           }
                       }
                       return foundReplica;
-                    }, MonoDelta::FromMilliseconds(30000 * 2), "WaitForLBToBeProcessed"));
-
+                    }, 60s * kTimeMultiplier, "WaitForLBToBeProcessed"));
 }
 
 // Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock
@@ -1024,7 +1024,7 @@ void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
   ASSERT_OK(WaitFor([&] {
     s = ResultToStatus(WriteRows(1, 1));
     return !s.IsTryAgain();
-  }, 60s, "Waiting for successful write"));
+  }, 60s * kTimeMultiplier, "Waiting for successful write"));
   ASSERT_OK(s);
 }
 
@@ -1090,7 +1090,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   ASSERT_OK(WaitFor([&] {
     s = ResultToStatus(WriteRows(1, 1));
     return !s.IsTryAgain();
-  }, 60s, "Waiting for successful write"));
+  }, 60s * kTimeMultiplier, "Waiting for successful write"));
 
   scoped_refptr<master::TableInfo> table_info;
   ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
