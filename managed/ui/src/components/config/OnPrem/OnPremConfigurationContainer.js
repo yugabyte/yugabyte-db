@@ -26,6 +26,7 @@ import {
 } from '../../../actions/cloud';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { destroy } from 'redux-form';
+import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -91,6 +92,10 @@ const mapDispatchToProps = (dispatch) => {
           };
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
+              if (response.error) {
+                const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+                toast.error(errorMessage);
+              }
               dispatch(createRegionResponse(response.payload));
             });
           }

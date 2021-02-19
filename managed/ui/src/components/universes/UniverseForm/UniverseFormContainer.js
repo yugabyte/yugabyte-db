@@ -59,6 +59,7 @@ import { getClusterByType } from '../../../utils/UniverseUtils';
 import {
   EXPOSING_SERVICE_STATE_TYPES
 } from './ClusterFields';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -123,6 +124,10 @@ const mapDispatchToProps = (dispatch) => {
 
     submitEditUniverse: (values, universeUUID) => {
       dispatch(editUniverse(values, universeUUID)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        }
         dispatch(editUniverseResponse(response.payload));
       });
     },
