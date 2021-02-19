@@ -46,7 +46,7 @@ Before you install Yugabyte Platform on a Kubernetes cluster, perform the follow
 
 ### Create a yugabyte-helm service account
 
-1. Run the following `kubectl` command to apply the YAML file:
+Run the following `kubectl` command to apply the YAML file:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
@@ -74,13 +74,13 @@ You can create a `kubeconfig` file for a yugabyte-helm service account as follow
     ```sh
     python generate_kubeconfig.py -s yugabyte-helm
     ```
-
-The following output should appear:
-
-```
-Generated the kubeconfig file: /tmp/yugabyte-helm.conf
-```
-
+    
+    The following output should appear:
+    
+    ```
+    Generated the kubeconfig file: /tmp/yugabyte-helm.conf
+    ```
+    
 3. Upload the generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform provider configuration.
 
 ## Install Yugabyte Platform on a Kubernetes Cluster
@@ -139,7 +139,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 5. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2 TLSv1.3"
+    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 A message output will notify you whether or not the deployment is successful.

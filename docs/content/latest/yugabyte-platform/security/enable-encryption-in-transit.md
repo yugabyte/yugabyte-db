@@ -258,11 +258,11 @@ X509v3 Basic Constraints:
 
 ## Enforcing TLS Versions
 
-As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default) or later.
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default).
 
-You can set the TLS version for node-to-node and client-node communication. To enforce minimum TLS versions of 1.2 and 1.3, add the following flag for T-Server: 
+You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
 
 ```
-ssl_protocols = tlsv12 tlsv13
+ssl_protocols = tlsv12
 ```
 
