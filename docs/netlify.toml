@@ -26,8 +26,8 @@
 # even if we have content in the older version's folder.
 
 [[redirects]]
-  from = "/:version/legal/*"
-  to = "/latest/legal/:splat"
+  from = "/:version/comparisons/*"
+  to = "/latest/comparisons/:splat"
   force = true
 
 [[redirects]]
@@ -36,21 +36,17 @@
   force = true
 
 [[redirects]]
+  from = "/:version/legal/*"
+  to = "/latest/legal/:splat"
+  force = true
+
+[[redirects]]
   from = "/:version/releases/*"
   to = "/latest/releases/:splat"
   force = true
 
-[[redirects]]
-  from = "/:version/comparisons/*"
-  to = "/latest/comparisons/:splat"
-  force = true
-
 # Stable quick-starts need defaults,
 # since archiving from /latest removes aliases
-
-[[redirects]]
-  from="/stable/quick-start/install/"
-  to="/stable/quick-start/install/macos/"
 
 [[redirects]]
   from="/stable/quick-start/create-local-cluster/"
@@ -59,6 +55,10 @@
 [[redirects]]
   from="/stable/quick-start/explore/"
   to="/stable/quick-start/explore/ysql/"
+
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
 
 # Docs prior to v1.3 are not online
 
