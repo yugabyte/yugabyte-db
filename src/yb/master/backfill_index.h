@@ -45,11 +45,12 @@ class MultiStageAlterTable {
   static Status LaunchNextTableInfoVersionIfNecessary(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version);
 
-  // Clears the ALTERING state for the given table and updates it to RUNNING.
+  // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
   // If the version has changed and does not match the expected version no
   // change is made.
-  static Status ClearAlteringState(
-      CatalogManager* mgr, const scoped_refptr<TableInfo>& table, uint32_t expected_version);
+  static Status ClearFullyAppliedAndUpdateState(
+      CatalogManager* mgr, const scoped_refptr<TableInfo>& table,
+      boost::optional<uint32_t> expected_version, bool update_state_to_running);
 
   // Copies the current schema, schema_version, indexes and index_info
   // into their fully_applied_* equivalents. This is useful to ensure
@@ -70,7 +71,8 @@ class MultiStageAlterTable {
   static Status
   StartBackfillingData(CatalogManager *catalog_manager,
                        const scoped_refptr<TableInfo> &indexed_table,
-                       IndexInfoPB idx_info);
+                       const IndexInfoPB& idx_info,
+                       boost::optional<uint32_t> expected_version);
 };
 
 class BackfillTablet;

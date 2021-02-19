@@ -253,21 +253,27 @@ void MultiStageAlterTable::CopySchemaDetailsToFullyApplied(SysTablesEntryPB* pb)
   }
 }
 
-Status MultiStageAlterTable::ClearAlteringState(
+Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& table,
-    uint32_t expected_version) {
+    boost::optional<uint32_t> expected_version,
+    bool update_state_to_running) {
   auto l = table->LockForWrite();
   uint32_t current_version = l->data().pb.version();
-  if (expected_version != current_version) {
+  if (expected_version && *expected_version != current_version) {
     return STATUS(AlreadyPresent, "Table has already moved to a different version.");
   }
   l->mutable_data()->pb.clear_fully_applied_schema();
   l->mutable_data()->pb.clear_fully_applied_schema_version();
   l->mutable_data()->pb.clear_fully_applied_indexes();
   l->mutable_data()->pb.clear_fully_applied_index_info();
-  l->mutable_data()->set_state(
-      SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
+  if (update_state_to_running) {
+    l->mutable_data()->set_state(
+        SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
+  } else {
+    l->mutable_data()->set_state(
+        SysTablesEntryPB::ALTERING, Substitute("Current schema version=$0", current_version));
+  }
 
   Status s =
       catalog_manager->sys_catalog_->UpdateItem(table.get(), catalog_manager->leader_ready_term());
@@ -366,52 +372,33 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 }
 
 Status MultiStageAlterTable::StartBackfillingData(
-    CatalogManager *catalog_manager,
-    const scoped_refptr<TableInfo> &indexed_table, const IndexInfoPB index_pb) {
+    CatalogManager* catalog_manager,
+    const scoped_refptr<TableInfo>& indexed_table,
+    const IndexInfoPB& idx_info,
+    boost::optional<uint32_t> current_version) {
+  // We leave the table state as ALTERING so that a master failover can resume the backfill.
+  RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
+      catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false));
+
   if (indexed_table->IsBackfilling()) {
-    LOG(WARNING) << __func__ << " Not starting backfill for "
-                 << indexed_table->ToString() << ": one is already in progress";
     return STATUS(AlreadyPresent, "Backfill already in progress");
   }
 
-  VLOG(1) << __func__ << " starting backfill on " << indexed_table->ToString()
-          << " for " << index_pb.table_id();
-  {
-    TRACE("Locking indexed table");
-    auto l = indexed_table->LockForWrite();
-    auto &indexed_table_data = *l->mutable_data();
-    CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
-    if (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE) {
-      auto& indexed_table_pb = indexed_table_data.pb;
-      indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
-                                   Substitute("Alter table version=$0 ts=$1",
-                                              indexed_table_pb.version(),
-                                              LocalTimeAsString()));
-    }
-    // Update sys-catalog with the new indexed table info.
-    TRACE("Updating indexed table metadata on disk");
-    RETURN_NOT_OK_PREPEND(
-        catalog_manager->sys_catalog_->UpdateItem(
-            indexed_table.get(), catalog_manager->leader_ready_term()),
-        "Updating indexed table metadata on disk. Abandoning.");
-
-    // Update the in-memory state.
-    TRACE("Committing in-memory state");
-    l->Commit();
-  }
+  TRACE("Starting backfill process");
+  VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
+          << yb::ToString(idx_info);
   indexed_table->SetIsBackfilling(true);
 
   scoped_refptr<NamespaceInfo> ns_info;
-  {
-    NamespaceIdentifierPB ns_identifier;
-    ns_identifier.set_id(indexed_table->namespace_id());
-    RETURN_NOT_OK_PREPEND(
-        catalog_manager->FindNamespace(ns_identifier, &ns_info),
-        "Unable to get namespace info for backfill");
-  }
+  NamespaceIdentifierPB ns_identifier;
+  ns_identifier.set_id(indexed_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(
+      catalog_manager->FindNamespace(ns_identifier, &ns_info),
+      "Unable to get namespace info for backfill");
+
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(),
-      indexed_table, std::vector<IndexInfoPB>{index_pb}, ns_info);
+      indexed_table, std::vector<IndexInfoPB>{idx_info}, ns_info);
   backfill_table->Launch();
   return Status::OK();
 }
@@ -490,7 +477,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
       indexes_to_backfill.empty()) {
     TRACE("Not necessary to launch next version");
     VLOG(1) << "Not necessary to launch next version";
-    return ClearAlteringState(catalog_manager, indexed_table, current_version);
+    return ClearFullyAppliedAndUpdateState(
+        catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true);
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
@@ -514,6 +502,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   // TODO(jason): when using INDEX_PERM_DO_BACKFILL, update this comment (issue #6218).
 
   if (!indexes_to_update.empty()) {
+    VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update);
     Result<bool> permissions_updated =
         VERIFY_RESULT(UpdateIndexPermission(catalog_manager, indexed_table, indexes_to_update,
                                             current_version));
@@ -531,9 +520,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     }
   }
 
-  IndexInfoPB index_info_to_update;
   if (!indexes_to_delete.empty()) {
-    index_info_to_update = indexes_to_delete[0];
+    const auto& index_info_to_update = indexes_to_delete[0];
     VLOG(3) << "Deleting the index and the entry in the indexed table for "
             << yb::ToString(index_info_to_update);
     DeleteTableRequestPB req;
@@ -546,14 +534,11 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 
   if (!indexes_to_backfill.empty()) {
     // TODO(Amit): Batch backfill for different indexes.
-    index_info_to_update = indexes_to_backfill[0];
-    VLOG(3) << "Start backfilling for " << yb::ToString(index_info_to_update);
-    TRACE("Starting backfill process");
-    VLOG(1) << "Starting backfill process";
+    const auto& index_info_to_update = indexes_to_backfill[0];
     WARN_NOT_OK(
-        StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
-        "Could not launch Backfill");
-    return Status::OK();
+        StartBackfillingData(
+            catalog_manager, indexed_table.get(), index_info_to_update, current_version),
+        yb::Format("Could not launch backfill for $0", indexed_table->ToString()));
   }
 
   return Status::OK();

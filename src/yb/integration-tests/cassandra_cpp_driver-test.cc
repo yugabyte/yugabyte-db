@@ -261,6 +261,24 @@ class CppCassandraDriverTestIndexMultipleChunks : public CppCassandraDriverTestI
   }
 };
 
+class CppCassandraDriverTestIndexSlowBackfill : public CppCassandraDriverTestIndex {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
+    // We expect backfill to be slow, so give it more time.
+    flags.push_back("--index_backfill_rpc_max_retries=100");
+    return flags;
+  }
+
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
+    flags.push_back("--backfill_index_rate_rows_per_sec=10");
+    flags.push_back("--backfill_index_write_batch_size=2");
+    flags.push_back("--num_concurrent_backfills_allowed=1");
+    return flags;
+  }
+};
+
 class CppCassandraDriverTestUserEnforcedIndex : public CppCassandraDriverTestIndexSlow {
  public:
   std::vector<std::string> ExtraMasterFlags() override {
@@ -1731,38 +1749,63 @@ TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriv
   EXPECT_EQ(main_table_size, index_table_size);
 }
 
-TEST_F_EX(CppCassandraDriverTest, TestCreateMultipleIndex, CppCassandraDriverTestIndex) {
+TEST_F_EX(
+    CppCassandraDriverTest, TestCreateMultipleIndex, CppCassandraDriverTestIndexSlowBackfill) {
   ASSERT_OK(session_.ExecuteQuery(
       "create table test_table (k1 int, k2 int, v text, PRIMARY KEY ((k1), k2)) "
       "with transactions = {'enabled' : true};"));
 
-  LOG(INFO) << "Inserting one row";
-  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k1, k2, v) values (1, 1, 'one');"));
+  constexpr int32_t kMaxKeys = 1000;
+  for (int i = 0; i < kMaxKeys; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        yb::Format("insert into test_table (k1, k2, v) values ($0, $0, 'v-$0');", i)));
+  }
+  LOG(INFO) << "Inserted " << kMaxKeys << " rows.";
+
+  std::atomic<int32_t> failed_cnt(0);
+  std::atomic<int32_t> read_cnt(0);
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &read_cnt, &failed_cnt] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+    auto session = CHECK_RESULT(driver_->CreateSession());
+    int32_t key = 0;
+    constexpr int32_t kSleepTimeMs = 100;
+    while (!stop) {
+      key = (key + 1) % kMaxKeys;
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+      read_cnt++;
+      WARN_NOT_OK(
+          session_.ExecuteQuery(
+              yb::Format("select * from test_table where k1 = $0 and k2 = $0;", key)),
+          yb::Format("Select failed for key = $0. failed count = $0", key, ++failed_cnt));
+    }
+  });
 
   LOG(INFO) << "Creating index";
-  auto session2 = ASSERT_RESULT(EstablishSession());
+  auto session = ASSERT_RESULT(EstablishSession());
   CassandraFuture create_index_future =
-      session2.ExecuteGetFuture("create index test_table_index_by_v on test_table (v);");
-
-  LOG(INFO) << "Inserting one row";
-  WARN_NOT_OK(
-      session_.ExecuteQuery("insert into test_table (k1, k2, v) values (2, 2,'two');"),
-      "insert failed");
-  WARN_NOT_OK(
-      session_.ExecuteQuery("insert into test_table (k1, k2, v) values (3, 3, 'three');"),
-      "insert failed");
+      session.ExecuteGetFuture("create index test_table_index_by_v on test_table (v);");
 
   constexpr auto kNamespace = "test";
   const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
   const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
 
   LOG(INFO) << "Creating index 2";
-  auto session3 = ASSERT_RESULT(EstablishSession());
+  auto session2 = ASSERT_RESULT(EstablishSession());
+
+  IndexPermissions perm;
+  perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_DO_BACKFILL));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+  LOG(INFO) << "Index table " << index_table_name.ToString()
+            << " created to INDEX_PERM_DO_BACKFILL";
+
+  // Launch a 2nd create-index while the first create index is still backfilling. We do this
+  // from a different client session to prevent any client side serialization.
   CassandraFuture create_index_future2 =
       session2.ExecuteGetFuture("create index test_table_index_by_k2 on test_table (k2);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_k2");
 
-  IndexPermissions perm;
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
@@ -1777,6 +1820,11 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateMultipleIndex, CppCassandraDriverTes
 
   LOG(INFO) << "Waited on the Create Index to finish. Status  = " << create_index_future.Wait();
   LOG(INFO) << "Waited on the Create Index to finish. Status  = " << create_index_future2.Wait();
+
+  thread_holder.Stop();
+  LOG(INFO) << "Total failed read operations " << failed_cnt << " out of " << read_cnt;
+  constexpr int32_t kMaxFailurePct = 20;
+  ASSERT_LE(failed_cnt.load(), kMaxFailurePct * read_cnt / 100.0);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTestIndex) {
