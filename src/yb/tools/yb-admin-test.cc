@@ -728,9 +728,9 @@ TEST_F(AdminCliTest, TestModifyPlacementInfoWithDifferentReplicas) {
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
 
-  found_zones.assign(4, false);
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 4);
-  for (int ii = 0; ii < 4; ++ii) {
+  found_zones.assign(3, false);
+  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 3);
+  for (int ii = 0; ii < 3; ++ii) {
     auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
