@@ -76,14 +76,19 @@
   padding: 0 !important;
 }
 
-.Toastify__toast--error {
-  background: $YB_FAIL_COLOR;
-}
+.Toastify__toast {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
 
-.Toastify__toast--success {
-  background: $YB_SUCCESS_COLOR;
-}
+  &--error {
+    background-color: $YB_FAIL_COLOR;
+  }
 
-.Toastify__toast--warning {
-  background: $YB_WARNING_COLOR;
+  &--success {
+    background-color: $YB_SUCCESS_COLOR;
+  }
+
+  &--warning {
+    background-color: $YB_WARNING_COLOR;
+  }
 }
