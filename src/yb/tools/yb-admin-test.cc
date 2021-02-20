@@ -684,7 +684,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
 TEST_F(AdminCliTest, TestModifyPlacementInfoWithDifferentReplicas) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
-  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_tablet_servers = 2;
   FLAGS_num_replicas = 2;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -704,7 +704,7 @@ TEST_F(AdminCliTest, TestModifyPlacementInfoWithDifferentReplicas) {
   // replicas respectively.
   std::string output;
   ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_placement_info", "c.r.z0:2,c.r.z1:3", 2, ""),
+   "-master_addresses", master_address, "modify_placement_info", "c.r.z0:1,c.r.z1:2", 2, ""),
    &output));
 
   // Create a new table.
@@ -722,33 +722,15 @@ TEST_F(AdminCliTest, TestModifyPlacementInfoWithDifferentReplicas) {
   std::shared_ptr<client::YBTable> table;
   ASSERT_OK(client->OpenTable(extra_table, &table));
   ASSERT_FALSE(table->replication_info());
-
-  // Use yb-admin_cli to set a custom placement policy different from that of
-  // the cluster placement policy for the new table.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, ""),
-   &output));
-
-  // Verify that changing the placement _uuid for a table fails if the
-  // placement_uuid does not match the cluster live placement_uuid.
-  const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
-  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid),
-   &output));
-
-  ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
-
+  
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
-  // table should be found in 6 zones since z0:2,z1:3 and z2:1
-  found_zones.assign(6, false);
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 6);
-  for (int ii = 0; ii < 6; ++ii) {
+
+  found_zones.assign(4, false);
+  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 4);
+  for (int ii = 0; ii < 4; ++ii) {
     auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
@@ -756,9 +738,6 @@ TEST_F(AdminCliTest, TestModifyPlacementInfoWithDifferentReplicas) {
       found_zones[0] = true;
     } else if (pb.placement_zone() == "z1") {
       found_zones[1] = true;
-    } else {
-      ASSERT_EQ(pb.placement_zone(), "z2");
-      found_zones[2] = true;
     }
   }
   for (const bool found : found_zones) {
