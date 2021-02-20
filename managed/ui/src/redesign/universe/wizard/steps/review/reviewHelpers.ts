@@ -13,7 +13,7 @@ import {
   UniverseDetails
 } from '../../../../helpers/dtos';
 import { PlacementUI } from '../../fields/PlacementsField/PlacementsField';
-import { api, QUERY_KEY } from '../../../../helpers/api';
+import { api } from '../../../../helpers/api';
 import { useWhenMounted } from '../../../../helpers/hooks';
 
 const tagsToArray = (tags?: FlagsObject): FlagsArray => {
@@ -137,10 +137,7 @@ export const useLaunchUniverse = () => {
           }
 
           // in create mode there's no "nodeDetailsSet" yet, so make a configure call without placements to generate it
-          const interimConfigure = await api.universeConfigure(
-            QUERY_KEY.universeConfigure,
-            configurePayload
-          );
+          const interimConfigure = await api.universeConfigure(configurePayload);
           patchConfigResponse(interimConfigure, configurePayload as UniverseDetails);
 
           // replace node placements returned by a configure call with one provided by the user
@@ -155,10 +152,7 @@ export const useLaunchUniverse = () => {
           };
 
           // make one more configure call to validate payload before submitting
-          const finalPayload = await api.universeConfigure(
-            QUERY_KEY.universeConfigure,
-            interimConfigure
-          );
+          const finalPayload = await api.universeConfigure(interimConfigure);
           patchConfigResponse(finalPayload, configurePayload as UniverseDetails);
 
           // now everything is ready to create universe
@@ -185,7 +179,7 @@ export const useLaunchUniverse = () => {
             payload.clusters[0].placementInfo.cloudList[0].regionList = getPlacements(formData);
 
             // submit configure call to validate the payload
-            const finalPayload = await api.universeConfigure(QUERY_KEY.universeConfigure, payload);
+            const finalPayload = await api.universeConfigure(payload);
             patchConfigResponse(finalPayload, payload);
 
             // TODO: detect if full move is going to happen by analyzing finalPayload.nodeDetailsSet
