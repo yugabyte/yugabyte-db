@@ -1,0 +1,52 @@
+@import '../../../_style/colors';
+
+.ha-replication-view {
+  &__header-buttons {
+    text-align: right;
+
+   > button {
+      margin-right: 8px;
+    }
+  }
+
+  &__row {
+    padding: 8px 0;
+  }
+
+  &__label {
+    color: $YB_SUBTITLE_COLOR;
+  }
+
+  &__value {
+    font-weight: 400;
+  }
+
+  &__topology-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    min-height: 26px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  &__topology-col {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    &--type {
+      min-width: 80px;
+    }
+
+    &--current {
+      min-width: 90px;
+    }
+
+    &--address {
+      width: 100%;
+    }
+  }
+}

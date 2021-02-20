@@ -1,0 +1,11 @@
+@import '../components/universes/UniverseDetail/UniverseDetail';
+
+#administration-main-tabs > .tab-content {
+  padding: 0;
+}
+
+// re-use tabs style from universe details
+#administration-ha-subtab {
+  @extend .universe-detail;
+}
+

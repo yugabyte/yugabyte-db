@@ -76,7 +76,7 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
   // get access key for provider as we don't have such field in UI
   const { isLoading: isAccessKeyLoading } = useQuery(
     [QUERY_KEY.getAccessKeys, formData.cloudConfig.provider?.uuid],
-    api.getAccessKeys,
+    () => api.getAccessKeys(formData.cloudConfig.provider?.uuid),
     {
       // prevent query from running for edit mode or when there's no provider set
       enabled: !formData.hiddenConfig.accessKeyCode && !!formData.cloudConfig.provider?.uuid,

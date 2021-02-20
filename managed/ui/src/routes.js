@@ -9,7 +9,7 @@ import { validateToken, validateFromTokenResponse,
   fetchCustomerCount, customerTokenError,
   resetCustomer, insecureLogin,
   insecureLoginResponse } from './actions/customers';
-import App from './app/App';
+import { App } from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthenticatedComponent from './pages/AuthenticatedComponent';
@@ -30,6 +30,7 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
 import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
+import { Administration } from './pages/Administration';
 
 export const clearCredentials = () => {
   localStorage.removeItem('authToken');
@@ -165,6 +166,8 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile}/>
         <Route path="/logs" component={YugawareLogs}/>
         <Route path="/releases" component={Releases}/>
+        <Route path="/admin" component={Administration} />
+        <Route path="/admin/:tab/:section" component={Administration} />
       </Route>
     </Route>
   );

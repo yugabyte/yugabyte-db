@@ -1,0 +1,19 @@
+@import '../../../_style/colors';
+
+.standby-instance-overlay {
+  position: fixed;
+  left: 90px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background-color: $YB_TEXT_COLOR;
+  opacity: 0.75;
+  z-index: 9999;
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  font-weight: 500;
+  color: $YB_WHITE;
+}
