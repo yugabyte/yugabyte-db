@@ -111,7 +111,7 @@ METRICS_SNAPSHOT_LIST = [
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
 YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
-YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
+YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.yugabyted.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
 
