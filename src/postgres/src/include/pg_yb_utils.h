@@ -33,6 +33,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
 
+#include "nodes/plannodes.h"
 #include "utils/resowner.h"
 
 /*
@@ -384,7 +385,9 @@ void YBIncrementDdlNestingLevel();
 void YBDecrementDdlNestingLevel(bool success,
                                 bool is_catalog_version_increment,
                                 bool is_breaking_catalog_change);
-
+bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
+                                 bool *is_catalog_version_increment,
+                                 bool *is_breaking_catalog_change);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

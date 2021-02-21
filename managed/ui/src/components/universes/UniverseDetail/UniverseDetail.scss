@@ -160,8 +160,8 @@
   .content-title {
     position: static;
     margin-right: 30px;
-  }
-  .nav-tabs {
+  }  
+  > .nav-tabs {
     background: white;
     z-index: 1020;
     height: 57px;
@@ -208,7 +208,7 @@
       }
     }
   }
-  .tab-content {
+  > .tab-content {
     padding: 30px;
     background-color: transparent;
     border: none;
@@ -437,12 +437,30 @@ h2 {
     }
   }
 
-  .alert {
+  > .alert {
     position: absolute;
     top: 10px;
     z-index: 4000;
     left: 40%;
     min-width: 300px;
+  }
+
+  #queries-tab-panel {
+    .alert {
+      position: absolute;
+      top: 20px;
+      min-width: 300px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 15px 28px 15px 15px;
+
+      .alert-close {
+        position: absolute;
+        top: 2px;
+        right: 5px;
+        cursor: pointer;
+      }
+    }
   }
 }
 

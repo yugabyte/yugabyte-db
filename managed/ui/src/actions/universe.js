@@ -636,9 +636,15 @@ export function updateBackupStateResponse(response) {
   };
 }
 
-export function fetchLiveQueries(universeUUID, cancelFn) {
+export function fetchLiveQueries(universeUUID) {
   const customerUUID = localStorage.getItem("customerId");
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
+  return axios.get(endpoint);
+}
+
+export function fetchSlowQueries(universeUUID, cancelFn) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
   let request;
   if (cancelFn) {
     const CancelToken = axios.CancelToken;

@@ -18,7 +18,7 @@ Before trying the code in this section, make sure that you have created the supp
 
 - The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers#cr-actors-movies-edges-table-and-proc-sql)
 
-- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to chose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
+- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to choose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
@@ -35,9 +35,7 @@ Here is a depiction of the synthetic data that this section uses:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-1.jpg)
 
-It has six nodes and nine edges.
-
-Before trying any of the code in this section, make sure that you have installed all the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Then use this script to insert the synthetic data:
+It has six nodes and nine edges. Use this script to insert the synthetic data:
 
 ##### `insert-synthetic-data.sql`
 
@@ -169,7 +167,7 @@ This is the result:
  Twelfth Night
 ```
 
-List the edges that have _"node_1 < node_1"_:
+List the edges that have _"node_1 < node_2"_:
 
 ```plpgsql
 select
@@ -304,7 +302,7 @@ The five paths are highlighted in red here:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-2.jpg)
 
-Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to the produced by invoking in _without_ early pruning and then deriving the shortest paths:
+Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to that produced by invoking in _without_ early pruning and then deriving the shortest paths:
 
 ```plpgsql
 call find_paths('Emily', true);
@@ -327,7 +325,7 @@ This is the result:
       2             3   Emily > Chloe > Helen
       3             3   Emily > James > Steve
 ```
-The first and second result both contain _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
+The first result and the second result each contains _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
 
 ## Decorate the path edges with the list of movies that brought each edge
 

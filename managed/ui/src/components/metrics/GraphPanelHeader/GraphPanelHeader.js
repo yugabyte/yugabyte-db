@@ -227,7 +227,7 @@ class GraphPanelHeader extends Component {
   nodeItemChanged = (event) => {
     const newParams = this.state;
     newParams.nodeName = event.target.value;
-    this.setState({ nodeName: event.target.value });
+    this.setState({ nodeName: event.target.value, currentSelectedNode:event.target.value });
     this.updateUrlQueryParams(newParams);
   };
 
@@ -358,7 +358,7 @@ class GraphPanelHeader extends Component {
                   />
                   {liveQueriesLink && 
                     <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
-                      <i className="fa fa-search" /> See Live Queries
+                      <i className="fa fa-search" /> See Queries
                     </Link>
                   }
                 </div>

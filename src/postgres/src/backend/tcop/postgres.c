@@ -3680,7 +3680,6 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
  */
 static void YBRefreshCache()
 {
-
 	/*
 	 * Check that we are not already inside a transaction or we might end up
 	 * leaking cache references for any open relations (i.e. relations in-use by
@@ -3722,16 +3721,30 @@ static void YBRefreshCache()
 	finish_xact_command();
 }
 
-static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
-                                          bool consider_retry,
-                                          bool *need_retry)
+static bool YBTableSchemaVersionMismatchError(ErrorData *edata, char **table_id)
 {
-	bool		need_global_cache_refresh = false;
-	bool		need_table_cache_refresh = false;
-	char	   *table_to_refresh;
-	const char *table_cache_refresh_search_str =
-		"schema version mismatch for table ";
+	if (!IsYugaByteEnabled())
+		return false;
 
+	const char *table_cache_refresh_search_str = "schema version mismatch for table ";
+	char *table_to_refresh = strstr(edata->message, table_cache_refresh_search_str);
+	if (table_to_refresh)
+	{
+		table_to_refresh += strlen(table_cache_refresh_search_str);
+		const int size_of_uuid = 16; /* boost::uuids::uuid::static_size() */
+		const int size_of_hex_uuid = size_of_uuid * 2;
+		if (strlen(table_to_refresh) >= size_of_hex_uuid)
+		{
+			if (table_id)
+				*table_id = pnstrdup(table_to_refresh, size_of_hex_uuid);
+			return true;
+		}
+	}
+	return false;
+}
+
+static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry, bool *need_retry)
+{
 	*need_retry = false;
 
 	/*
@@ -3740,27 +3753,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	if (!IsYugaByteEnabled())
 		return;
 
-	bool is_retryable_err = YBNeedRetryAfterCacheRefresh(edata);
-	if ((table_to_refresh = strstr(edata->message,
-								   table_cache_refresh_search_str)) != NULL)
-	{
-		int size_of_uuid = 16; /* boost::uuids::uuid::static_size() */
-		int size_of_hex_uuid = size_of_uuid * 2;
-
-		/* Skip to the table id part of the error message. */
-		table_to_refresh += strlen(table_cache_refresh_search_str);
-		if (strlen(table_to_refresh) < size_of_hex_uuid)
-			/* Unexpected table id size; ignore table cache refreshing. */
-			table_to_refresh = NULL;
-		else
-		{
-			/* Trim off the rest of the message. */
-			*(table_to_refresh + size_of_hex_uuid) = '\0';
-			/* Duplicate the string to safely FreeErrorData below. */
-			table_to_refresh = pstrdup(table_to_refresh);
-		}
-	}
-	need_table_cache_refresh = table_to_refresh != NULL;
+	char *table_to_refresh = NULL;
+	const bool need_table_cache_refresh =
+	    YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
 
 	/*
 	 * Get the latest syscatalog version from the master to check if we need
@@ -3768,8 +3763,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 */
 	uint64_t catalog_master_version = 0;
 	YBCGetMasterCatalogVersion(&catalog_master_version);
-	need_global_cache_refresh =
-		yb_catalog_cache_version != catalog_master_version;
+	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
 
@@ -3783,7 +3777,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	/*
 	 * Prepare to retry the query if possible.
 	 */
-	if (is_retryable_err)
+	if (YBNeedRetryAfterCacheRefresh(edata))
 	{
 		/*
 		 * For single-query transactions we abort the current
@@ -3948,7 +3942,6 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	uint64_t shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-
 	if (yb_catalog_cache_version < shared_catalog_version)
 	{
 		YBRefreshCache();
@@ -5106,10 +5099,14 @@ PostgresMain(int argc, char *argv[],
 					}
 					PG_CATCH();
 					{
-						/* Get error data */
-						ErrorData *edata;
+						/*
+						 * Get error data. Original error will be thrown in 2 cases:
+						 * - query can't be restarted transparently
+						 * - original error is "schema version mismatch for table"
+						 *   and restarting will raise an error (workaround for #6982)
+						 */
 						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
-						edata = CopyErrorData();
+						ErrorData *edata = CopyErrorData();
 
 						/*
 						 * The portal recreation logic is restored to the pre-#2216 state
@@ -5158,71 +5155,75 @@ PostgresMain(int argc, char *argv[],
 						 * Execute may have been partially applied so need to
 						 * cleanup (and restart) the transaction.
 						 */
-						YBPrepareCacheRefreshIfNeeded(edata,
-						                              can_retry,
-						                              &need_retry);
+						YBPrepareCacheRefreshIfNeeded(edata, can_retry, &need_retry);
 
 						if (need_retry && can_retry)
 						{
-							if (yb_debug_log_internal_restarts)
+							PG_TRY();
 							{
-								yb_report_cache_version_restart(query_string, edata);
+								if (yb_debug_log_internal_restarts)
+								{
+									yb_report_cache_version_restart(query_string, edata);
+								}
+
+								/* 1. Redo Parse: Create Cached stmt (no output) */
+								exec_parse_message(query_string,
+								                   portal_name,
+								                   NULL /* param_types*/,
+								                   0 /* num_params */,
+								                   DestNone);
+
+								/* 2. Redo the Bind step */
+								Portal portal;
+								/* Create portal */
+								portal = CreatePortal(portal_name, true, true);
+
+								/* Set portal data */
+								MemoryContext oldContext = MemoryContextSwitchTo(
+										portal->portalContext);
+								char          *stmt_name;
+								if (portal_name[0])
+									stmt_name = pstrdup(portal_name);
+								else
+									stmt_name = NULL;
+								query_string = pstrdup(query_string);
+
+								/* TODO params are none for now (see above) */
+								ParamListInfo params = NULL;
+
+								MemoryContextSwitchTo(oldContext);
+
+								CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
+								                                  params,
+								                                  false,
+								                                  NULL);
+
+								PortalDefineQuery(portal,
+								                  stmt_name,
+								                  query_string,
+								                  unnamed_stmt_psrc->commandTag,
+								                  cplan->stmt_list,
+								                  cplan);
+
+								/* Start portal */
+								PortalStart(portal, params, 0, InvalidSnapshot);
+								/* Set the output format */
+								PortalSetResultFormat(portal, nformats, formats);
+
+								/* Now ready to retry the execute step. */
+								yb_exec_execute_message(portal_name,
+														max_rows,
+														restart_data,
+														GetCurrentMemoryContext());
 							}
-							/*
-							 * Free edata before restarting, in other branches
-							 * the memory context will get reset after anyway.
-							 */
-							FreeErrorData(edata);
-
-							/* 1. Redo Parse: Create Cached stmt (no output) */
-							exec_parse_message(query_string,
-							                   portal_name,
-							                   NULL /* param_types*/,
-							                   0 /* num_params */,
-							                   DestNone);
-
-							/* 2. Redo the Bind step */
-							Portal portal;
-							/* Create portal */
-							portal = CreatePortal(portal_name, true, true);
-
-							/* Set portal data */
-							MemoryContext oldContext = MemoryContextSwitchTo(
-									portal->portalContext);
-							char          *stmt_name;
-							if (portal_name[0])
-								stmt_name = pstrdup(portal_name);
-							else
-								stmt_name = NULL;
-							query_string = pstrdup(query_string);
-
-							/* TODO params are none for now (see above) */
-							ParamListInfo params = NULL;
-
-							MemoryContextSwitchTo(oldContext);
-
-							CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
-							                                  params,
-							                                  false,
-							                                  NULL);
-
-							PortalDefineQuery(portal,
-							                  stmt_name,
-							                  query_string,
-							                  unnamed_stmt_psrc->commandTag,
-							                  cplan->stmt_list,
-							                  cplan);
-
-							/* Start portal */
-							PortalStart(portal, params, 0, InvalidSnapshot);
-							/* Set the output format */
-							PortalSetResultFormat(portal, nformats, formats);
-
-							/* Now ready to retry the execute step. */
-							yb_exec_execute_message(portal_name,
-													max_rows,
-													restart_data,
-													GetCurrentMemoryContext());
+							PG_CATCH();
+							{
+								if (YBTableSchemaVersionMismatchError(edata, NULL /* table_id */))
+									ReThrowError(edata);
+								else
+									PG_RE_THROW();
+							}
+							PG_END_TRY();
 						}
 						else
 						{
