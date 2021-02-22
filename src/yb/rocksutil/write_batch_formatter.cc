@@ -33,7 +33,8 @@ rocksdb::Status WriteBatchFormatter::PutCF(
     const Slice& value) {
   StartOutputLine(__FUNCTION__);
   OutputKey(key);
-  OutputValue(value);
+  AddSeparator();
+  OutputValue(key, value);
   FinishOutputLine();
   return Status::OK();
 }
@@ -62,15 +63,15 @@ rocksdb::Status WriteBatchFormatter::MergeCF(
     const Slice& value) {
   StartOutputLine(__FUNCTION__);
   OutputKey(key);
-  OutputValue(value);
+  AddSeparator();
+  OutputValue(key, value);
   FinishOutputLine();
   return Status::OK();
 }
 
 Status WriteBatchFormatter::Frontiers(const rocksdb::UserFrontiers& range) {
-  StartOutputLine(__FUNCTION__, /* is_kv_op */ false);
-  out_ << range.ToString();
-  FinishOutputLine();
+  StartOutputLine(__FUNCTION__, /* is_kv= */ false);
+  out_ << range.ToString() << endl;
   return Status::OK();
 }
 
@@ -78,49 +79,44 @@ std::string WriteBatchFormatter::FormatKey(const Slice& key) {
   return FormatSliceAsStr(key, binary_output_format_, QuotesType::kSingleQuotes);
 }
 
-std::string WriteBatchFormatter::FormatValue(const Slice& value) {
+std::string WriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
+  // We are ignoring the key here, but in subclasses we can use it to decide how to decode value.
   return FormatSliceAsStr(value, binary_output_format_, QuotesType::kSingleQuotes);
 }
 
-void WriteBatchFormatter::StartOutputLine(const char* name, bool is_kv_op) {
-  if (is_kv_op) {
-    ++update_index_;
-    out_ << update_index_ << ". ";
+void WriteBatchFormatter::StartOutputLine(const char* function_name, bool is_kv) {
+  out_ << line_prefix_;
+  if (is_kv) {
+    ++kv_index_;
+    out_ << kv_index_ << ". ";
   }
-  out_ << name;
-  if (is_kv_op) {
-    parentheses_ = true;
-    out_ << "(";
-  } else {
-    // Frontiers.
-    out_ << ": ";
+  out_ << function_name;
+  switch (output_format_) {
+    case WriteBatchOutputFormat::kParentheses: out_ << "("; break;
+    case WriteBatchOutputFormat::kArrow: out_ << ": "; break;
   }
-  need_separator_ = false;
 }
 
-void WriteBatchFormatter::AddSeparatorIfNeeded() {
-  if (need_separator_) {
-    out_ << ", ";
+void WriteBatchFormatter::AddSeparator() {
+  switch (output_format_) {
+    case WriteBatchOutputFormat::kParentheses: out_ << ", "; break;
+    case WriteBatchOutputFormat::kArrow: out_ << " => "; break;
   }
-  need_separator_ = true;
 }
 
 void WriteBatchFormatter::OutputKey(const Slice& key) {
-  AddSeparatorIfNeeded();
   out_ << FormatKey(key);
 }
 
-void WriteBatchFormatter::OutputValue(const Slice& value) {
-  AddSeparatorIfNeeded();
-  out_ << FormatValue(value);
+void WriteBatchFormatter::OutputValue(const Slice& key, const Slice& value) {
+  out_ << FormatValue(key, value);
 }
 
 void WriteBatchFormatter::FinishOutputLine() {
-  if (parentheses_) {
+  if (output_format_ == WriteBatchOutputFormat::kParentheses) {
     out_ << ")";
   }
   out_ << endl;
 }
-
 
 }  // namespace yb
