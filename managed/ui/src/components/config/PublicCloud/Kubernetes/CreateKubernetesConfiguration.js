@@ -85,6 +85,11 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || 'quay.io/yugabyte/yugabyte'
         };
 
+        if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
+          providerConfig['KUBECONFIG_IMAGE_REGISTRY'] =
+            'registry.connect.redhat.com/yugabytedb/yugabyte';
+        }
+
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
           const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
           currentZone.config.KUBECONFIG_CONTENT = configs[1 + i];
@@ -127,7 +132,8 @@ class CreateKubernetesConfiguration extends Component {
     } else {
       providerTypeOptions = KUBERNETES_PROVIDERS
         // skip providers with dedicated tab
-        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks')
+        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks'
+                && provider.code !== 'openshift')
         .map((provider) => ({ value: provider.code, label: provider.name }));
     }
 
@@ -270,7 +276,8 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="imageRegistry"
-                            placeholder="quay.io/yugabyte/yugabyte"
+                            placeholder={ providerTypeOptions.length === 1 && providerTypeOptions[0].value === 'openshift'
+                                          ? "registry.connect.redhat.com/yugabytedb/yugabyte" : "quay.io/yugabyte/yugabyte" }
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />
