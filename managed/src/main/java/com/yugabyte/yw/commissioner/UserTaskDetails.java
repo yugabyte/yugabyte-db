@@ -343,12 +343,12 @@ public class UserTaskDetails {
         description = "Update number of nodes.";
         break;
       case PauseUniverse:
-          title = "Pause universe";
-          description = "Pause the universe";
+          title = "Pause Universe";
+          description = "Pause the universe.";
           break;
       case ResumeUniverse:
-          title = "Resume universe";
-          description = "Resume the universe";
+          title = "Resume Universe";
+          description = "Resume the universe.";
           break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
