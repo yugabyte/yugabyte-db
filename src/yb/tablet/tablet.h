@@ -874,6 +874,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   client::LocalTabletFilter local_tablet_filter_;
 
+  // This is typically "P <peer_id>", so we can get a log prefix "T <tablet_id> P <peer_id>: ".
   std::string log_prefix_suffix_;
 
   IsSysCatalogTablet is_sys_catalog_;
