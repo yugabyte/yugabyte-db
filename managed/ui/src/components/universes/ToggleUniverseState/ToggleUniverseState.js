@@ -50,7 +50,6 @@ class ToggleUniverseState extends Component {
 
   render() {
     const {
-      body,
       visible,
       title,
       error,
