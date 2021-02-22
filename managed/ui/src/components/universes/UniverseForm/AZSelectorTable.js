@@ -113,7 +113,7 @@ export default class AZSelectorTable extends Component {
     } = this.props;
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const currentAZState = [...this.state.azItemState];
-    const replicationFactor = currentPlacementStatus?.replicationFactor;
+    const replicationFactor = currentPlacementStatus.replicationFactor;
     const item = currentAZState.find(item => item.value === zoneId);
     const originalValue = item.count;
     let totalNumNodes = 0;
@@ -403,24 +403,10 @@ export default class AZSelectorTable extends Component {
 
   UNSAFE_componentWillMount() {
     const {
-      universe: { currentUniverse, universeConfigTemplate, currentPlacementStatus},
+      universe: { currentUniverse, universeConfigTemplate },
       type,
       clusterType
     } = this.props;
-
-    // If currentPlacementStatus is null the fetch it.
-    if(!currentPlacementStatus) {
-      const configTemplateCurrentCluster = isNonEmptyObject(universeConfigTemplate.data)
-        ? getClusterByType(universeConfigTemplate.data.clusters, clusterType)
-        : null;
-      const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
-      const placementStatusObject = {
-        numUniqueRegions: placementInfo.uniqueRegions,
-        numUniqueAzs: placementInfo.uniqueAzs,
-        replicationFactor: configTemplateCurrentCluster.userIntent.replicationFactor
-      };
-      this.props.setPlacementStatus(placementStatusObject);
-    }
     const currentCluster = getPromiseState(universeConfigTemplate).isSuccess()
       ? getClusterByType(universeConfigTemplate.data.clusters, clusterType)
       : {};
@@ -448,7 +434,7 @@ export default class AZSelectorTable extends Component {
       const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
       const azGroups = placementInfo.groups;
       if (
-        !areUniverseConfigsEqual( 
+        !areUniverseConfigsEqual(
           this.props.universe.universeConfigTemplate.data,
           universeConfigTemplate.data
         )

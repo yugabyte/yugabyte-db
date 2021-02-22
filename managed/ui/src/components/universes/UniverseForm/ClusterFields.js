@@ -1591,7 +1591,7 @@ export default class ClusterFields extends Component {
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
           placementCloud={placementCloud}
-          providerCode={currentProvider?.code}
+          providerCode={currentProvider.code}
         />
       );
     } else if (currentProvider?.code === 'onprem'
