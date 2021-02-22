@@ -195,8 +195,6 @@ class UniverseDetail extends Component {
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
-    const activePrice = universe?.currentUniverse?.data?.resources?.pricePerHour;
-    const pasuedPrice = universe?.currentUniverse?.data?.resources?.ebsPricePerHour;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -426,28 +424,6 @@ class UniverseDetail extends Component {
       </div>
     );
 
-    const toggleUniverseBody = (
-      <>
-        <span>Are you sure you want to {!universePaused ? 'pause' : 'resume'} the universe?</span>
-        <br />
-        <br />
-        {!universePaused &&
-          <>
-            <h5>Active: ${activePrice}/hr → Paused: ${pasuedPrice}/hr</h5>
-            <br />
-            <span>When your universe is paused:</span>
-            <ul className="toggle-universe-list">
-              <li>Reads and writes will be disabled.</li>
-              <li>Any configured alerts and health checks will not be triggered.</li>
-              <li>Scheduled backups will be stopped.</li>
-              <li>Any changes to universe configuration are not allowed.</li>
-              <li>All data in the cluster will be saved and the cluster can be unpaused at any time.</li>
-            </ul>
-          </>
-        }
-      </>
-    );
-
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (
@@ -669,7 +645,6 @@ class UniverseDetail extends Component {
           visible={showModal && visibleModal === 'toggleUniverseStateForm'}
           onHide={closeModal}
           title={`${!universePaused ? 'Pause' : 'Resume'} Universe: `}
-          body={toggleUniverseBody}
           type="primary"
           universePaused={universePaused}
         />
