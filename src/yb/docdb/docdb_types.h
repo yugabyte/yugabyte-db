@@ -33,7 +33,7 @@ YB_DEFINE_ENUM(
     (kEmpty)
     (kIntentKey)
     (kReverseTxnKey)
-    (kValueKey)
+    (kPlainSubDocKey)
     (kTransactionMetadata)
     (kExternalIntents));
 

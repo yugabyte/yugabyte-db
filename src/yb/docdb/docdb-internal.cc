@@ -23,7 +23,7 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   }
 
   if (db_type == StorageDbType::kRegular) {
-    return KeyType::kValueKey;
+    return KeyType::kPlainSubDocKey;
   }
 
   if (slice[0] == ValueTypeAsChar::kTransactionId) {

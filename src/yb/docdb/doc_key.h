@@ -208,7 +208,7 @@ class DocKey {
   CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice);
 
   // Converts the document key to a human-readable representation.
-  std::string ToString() const;
+  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
   static std::string DebugSliceToString(Slice slice);
 
   // Check if it is an empty key.
@@ -669,7 +669,7 @@ class SubDocKey {
     return FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
   }
 
-  std::string ToString() const;
+  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
   static std::string DebugSliceToString(Slice slice);
   static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 

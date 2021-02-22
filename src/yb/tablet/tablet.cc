@@ -1236,7 +1236,11 @@ void Tablet::WriteToRocksDB(
     LOG_WITH_PREFIX(INFO)
         << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
         << " RocksDB:\n" << docdb::WriteBatchToString(
-            *write_batch, storage_db_type, BinaryOutputFormat::kEscapedAndHex);
+            *write_batch,
+            storage_db_type,
+            BinaryOutputFormat::kEscapedAndHex,
+            WriteBatchOutputFormat::kArrow,
+            "  " + LogPrefix(storage_db_type));
   }
 }
 
