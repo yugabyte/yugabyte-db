@@ -596,7 +596,8 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
 
   google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
-      kTableName, -1, &tablets, RequireTabletsRunning::kFalse));
+      kTableName, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
   for (int i = 0 ; i < kNumPartitions; ++i) {
     Partition p;
     Partition::FromPB(tablets[i].partition(), &p);

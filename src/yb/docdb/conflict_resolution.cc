@@ -30,6 +30,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
@@ -885,12 +886,14 @@ void ResolveTransactionConflicts(const DocOperations& doc_ops,
                                  Counter* conflicts_metric,
                                  ResolutionCallback callback) {
   DCHECK(hybrid_time.is_valid());
+  TRACE("ResolveTransactionConflicts");
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
   auto resolver = std::make_shared<ConflictResolver>(
       doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.
   resolver->Resolve();
+  TRACE("resolver->Resolve done");
 }
 
 void ResolveOperationConflicts(const DocOperations& doc_ops,
@@ -900,12 +903,14 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                TransactionStatusManager* status_manager,
                                Counter* conflicts_metric,
                                ResolutionCallback callback) {
+  TRACE("ResolveOperationConflicts");
   auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
                                                                     conflicts_metric);
   auto resolver = std::make_shared<ConflictResolver>(
       doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.
   resolver->Resolve();
+  TRACE("resolver->Resolve done");
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \

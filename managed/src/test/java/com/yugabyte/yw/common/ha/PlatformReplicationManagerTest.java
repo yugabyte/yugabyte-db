@@ -8,10 +8,12 @@
  * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ha;
 
 import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import io.ebean.Model;
@@ -25,14 +27,13 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import scala.concurrent.ExecutionContext;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.*;
-
-// TODO: (Daniel) - Add unit tests!!!!!!
 
 @RunWith(JUnitParamsRunner.class)
 public class PlatformReplicationManagerTest extends TestCase {
@@ -51,6 +52,9 @@ public class PlatformReplicationManagerTest extends TestCase {
   @Mock
   SettableRuntimeConfigFactory mockRuntimeConfigFactory;
 
+  @Mock
+  PlatformReplicationHelper mockReplicationUtil;
+
   @Before
   public void setUp() {
     MockitoAnnotations.initMocks(this);
@@ -64,14 +68,13 @@ public class PlatformReplicationManagerTest extends TestCase {
     String dbHost,
     int dbPort
   ) {
-    when(mockConfig.getString(PlatformReplicationManager.PROMETHEUS_HOST_CONFIG_KEY))
-      .thenReturn(prometheusHost);
-    when(mockConfig.getString(PlatformReplicationManager.DB_USERNAME_CONFIG_KEY))
-      .thenReturn(dbUsername);
-    when(mockConfig.getString(PlatformReplicationManager.DB_PASSWORD_CONFIG_KEY))
-      .thenReturn(dbPassword);
-    when(mockConfig.getString(PlatformReplicationManager.DB_HOST_CONFIG_KEY)).thenReturn(dbHost);
-    when(mockConfig.getInt(PlatformReplicationManager.DB_PORT_CONFIG_KEY)).thenReturn(dbPort);
+    when(mockReplicationUtil.getBackupDir()).thenReturn(new File("/tmp/foo.bar").toPath());
+    when(mockReplicationUtil.getPrometheusHost()).thenReturn(prometheusHost);
+    when(mockReplicationUtil.getDBHost()).thenReturn(dbHost);
+    when(mockReplicationUtil.getDBPort()).thenReturn(dbPort);
+    when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
+    when(mockReplicationUtil.getDBPassword()).thenReturn(dbPassword);
+
   }
 
   private List<String> getExpectedPlatformBackupCommandArgs(
@@ -139,6 +142,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     }
 
     RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
 
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
@@ -146,8 +150,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       actorSystem,
       executionContext,
       shellProcessHandler,
-      mockRuntimeConfigFactory,
-      null
+      mockReplicationUtil
     ));
 
     List<String> expectedCommandArgs = getExpectedPlatformBackupCommandArgs(
@@ -157,7 +160,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       dbPort,
       inputPath,
       isCreate,
-      backupManager.getBackupDir().toAbsolutePath().toString()
+      "/tmp/foo.bar"
     );
 
     if (isCreate) {

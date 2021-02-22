@@ -155,11 +155,12 @@ class YBTransaction::Impl final {
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
     const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
     const auto now = CoarseMonoClock::Now();
-    if (threshold > 0 && ToMilliseconds(now - start_) > threshold) {
-     LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
+    if (trace_->must_print()
+           || (threshold > 0 && ToMilliseconds(now - start_) > threshold)) {
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
         << trace_->DumpToString(true);
     } else {
-     YB_LOG_IF_EVERY_N(INFO, FLAGS_txn_print_trace_every_n > 0, FLAGS_txn_print_trace_every_n)
+      YB_LOG_IF_EVERY_N(INFO, FLAGS_txn_print_trace_every_n > 0, FLAGS_txn_print_trace_every_n)
         << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
         << trace_->DumpToString(true);
     }

@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.scheduler.Scheduler;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -16,6 +17,8 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
 import play.test.WithApplication;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 import static org.mockito.Mockito.mock;
@@ -46,7 +49,14 @@ public class FakeDBApplication extends WithApplication {
 
   @Override
   protected Application provideApplication() {
+    Map<String, Object> additionalConfiguration = new HashMap<>();
+    return provideApplication(additionalConfiguration);
+  }
+
+  public Application provideApplication(Map<String, Object> additionalConfiguration) {
+
     return new GuiceApplicationBuilder()
+      .configure(additionalConfiguration)
       .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
       .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -69,6 +79,11 @@ public class FakeDBApplication extends WithApplication {
       .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
       .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
       .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+      .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
       .build();
+  }
+
+  public Application getApp() {
+    return app;
   }
 }

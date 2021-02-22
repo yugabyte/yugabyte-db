@@ -8,6 +8,7 @@ import { mouseTrap } from 'react-mousetrap';
 import { browserHistory } from 'react-router';
 import { YBModal, YBCheckBox } from '../components/common/forms/fields';
 import { Table } from 'react-bootstrap';
+import { StandbyInstanceOverlay } from '../components/ha';
 
 import slackLogo from '../components/common/footer/images/slack-logo-full.svg';
 import githubLogo from '../components/common/footer/images/github-light-small.png';
@@ -94,7 +95,7 @@ class AuthenticatedComponent extends Component {
     );
     const welcomeDialogTitle = (
       <div>
-        Welcome to 
+        Welcome to
         <img alt="YugaByte DB logo"
           className="social-media-logo"
           src={ybLogo}
@@ -105,6 +106,7 @@ class AuthenticatedComponent extends Component {
     );
     return (
       <AuthenticatedComponentContainer>
+        <StandbyInstanceOverlay />
         <NavBarContainer />
         <div className="container-body">
           {this.props.children}
@@ -194,7 +196,7 @@ class AuthenticatedComponent extends Component {
                 rel="noopener noreferrer"
               >
                 <img alt="T-Shirt" src={tshirtImage} width="20" />
-                <span>Get a Free t-shirt</span> 
+                <span>Get a Free t-shirt</span>
               </a>
               <a
                 className="social-media-btn"
@@ -203,7 +205,7 @@ class AuthenticatedComponent extends Component {
                 rel="noopener noreferrer"
               >
                 <i className="fa fa-search" />
-                <span>Read docs</span>                
+                <span>Read docs</span>
               </a>
             </div>
           </YBModal>

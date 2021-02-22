@@ -339,7 +339,7 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   const bool is_tablet_split = ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT;
-  if (is_tablet_split || ClientError(*status) == ClientErrorCode::kTablePartitionsAreStale) {
+  if (is_tablet_split || ClientError(*status) == ClientErrorCode::kTablePartitionListIsStale) {
     // Replace status error with TryAgain, so upper layer retry request after refreshing
     // table partitioning metadata.
     *status = status->CloneAndReplaceCode(Status::kTryAgain);
@@ -485,8 +485,9 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
   // For instance if tablet was deleted, we would always receive "Not found".
-  if (!result.ok() && (result.status().IsNotFound() ||
-                       ClientError(result.status()) == ClientErrorCode::kTablePartitionsAreStale)) {
+  if (!result.ok() &&
+      (result.status().IsNotFound() ||
+       ClientError(result.status()) == ClientErrorCode::kTablePartitionListIsStale)) {
     command_->Finished(result.status());
     return;
   }

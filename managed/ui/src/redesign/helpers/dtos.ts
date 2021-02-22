@@ -310,3 +310,24 @@ export interface KmsConfig {
     provider: string;
   };
 }
+
+export interface HAPlatformInstance {
+  uuid: string;
+  config_uuid: string;
+  address: string,
+  is_leader: boolean,
+  is_local: boolean,
+  last_backup: string | null;
+}
+
+export interface HAConfig {
+  uuid: string;
+  cluster_key: string;
+  last_failover: number;
+  instances: HAPlatformInstance[];
+}
+
+export interface HAReplicationSchedule {
+  frequency_milliseconds: number;
+  is_running: boolean;
+}

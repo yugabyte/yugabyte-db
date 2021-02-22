@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.2-SNAPSHOT</version>
+  <version>0.8.3-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>YugaByte</name>
@@ -59,7 +59,7 @@
 
     <!-- Maven plugin versions -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
-    <maven-assembly-plugin.version>3.0.0</maven-assembly-plugin.version>
+    <maven-assembly-plugin.version>3.3.0</maven-assembly-plugin.version>
     <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.0.0-M1</maven-enforcer-plugin.version>
     <protobuf-maven-plugin.version>0.5.1</protobuf-maven-plugin.version>
@@ -111,6 +111,8 @@
     <gson.version>2.8.0</gson.version>
 
     <postgresql.jdbc.driver.version>42.2.5</postgresql.jdbc.driver.version>
+
+    <bouncycastle.version>1.61</bouncycastle.version>
 
     <!-- Test configuration -->
     <testdata.dir>target/testdata</testdata.dir>
@@ -342,7 +344,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.2-SNAPSHOT</version>
+        <version>0.8.3-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -474,6 +476,11 @@
         <artifactId>jedis</artifactId>
         <version>${jedis.version}</version>
       </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcpkix-jdk15on</artifactId>
+        <version>${bouncycastle.version}</version>
+      </dependency>
 
       <!--
         Dependencies typically used in tests.
@@ -494,7 +501,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.2-SNAPSHOT</version>
+        <version>0.8.3-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

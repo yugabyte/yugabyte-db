@@ -102,6 +102,12 @@ export default class SideNavBar extends Component {
                       text="Configs"
                       display={getFeatureState(currentCustomer.data.features, 'menu.config')}
                     />
+                    <NavLink
+                      to="/admin"
+                      icon="fa fa-gear"
+                      text="Admin"
+                      display={getFeatureState(currentCustomer.data.features, 'menu.administration')}
+                    />
                   </ul>
                   {isNotHidden(currentCustomer.data.features, 'menu.help') && (
                     <ul className="nav side-menu position-bottom">
