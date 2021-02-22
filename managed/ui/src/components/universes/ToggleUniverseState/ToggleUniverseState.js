@@ -50,17 +50,23 @@ class ToggleUniverseState extends Component {
 
   render() {
     const {
-      body,
       visible,
       title,
       error,
       onHide,
+      universePaused,
+      universe: {
+        currentUniverse: { data }
+      },
       universe: {
         currentUniverse: {
           data: { name }
         }
       }
     } = this.props;
+    const activePrice = data?.resources?.pricePerHour;
+    const pasuedPrice = data?.resources?.ebsPricePerHour;
+
     return (
       <YBModal
         visible={visible}
@@ -75,7 +81,22 @@ class ToggleUniverseState extends Component {
         asyncValidating={this.state.universeName !== name}
       >
         <div>
-          {body}
+          <span>Are you sure you want to {!universePaused ? 'pause' : 'resume'} the universe?</span>
+          <br />
+          <br />
+          {!universePaused &&
+            <>
+              <h5>Active: ${activePrice}/hr → Paused: ${pasuedPrice}/hr</h5>
+              <span>When your universe is paused:</span>
+              <ul className="toggle-universe-list">
+                <li>Reads and writes will be disabled.</li>
+                <li>Any configured alerts and health checks will not be triggered.</li>
+                <li>Scheduled backups will be stopped.</li>
+                <li>Any changes to universe configuration are not allowed.</li>
+                <li>All data in the cluster will be saved and the cluster can be unpaused at any time.</li>
+              </ul>
+            </>
+          }
           <label>Enter universe name to confirm:</label>
           <YBTextInput
             label="Confirm universe name:"
