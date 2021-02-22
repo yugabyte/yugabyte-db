@@ -47,6 +47,8 @@
 #include "utils/backend_random.h"
 #include "utils/snapmgr.h"
 
+/* GUCs */
+int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
 
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
