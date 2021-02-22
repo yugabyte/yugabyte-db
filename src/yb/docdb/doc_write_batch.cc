@@ -696,8 +696,10 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
  public:
   DocWriteBatchFormatter(
       StorageDbType storage_db_type,
-      BinaryOutputFormat binary_output_format)
-      : WriteBatchFormatter(binary_output_format),
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix)
+      : WriteBatchFormatter(binary_output_format, batch_output_format, line_prefix),
         storage_db_type_(storage_db_type) {}
  protected:
   std::string FormatKey(const Slice& key) override {
@@ -711,6 +713,18 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
         key_result.status());
   }
 
+  std::string FormatValue(const Slice& key, const Slice& value) override {
+    auto key_type = GetKeyType(key, storage_db_type_);
+    const auto value_result = DocDBValueToDebugStr(key_type, key, value);
+    if (value_result.ok()) {
+      return *value_result;
+    }
+    return Format(
+        "$0 (error: $1)",
+        WriteBatchFormatter::FormatValue(key, value),
+        value_result.status());
+  }
+
  private:
   StorageDbType storage_db_type_;
 };
@@ -718,8 +732,11 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
     StorageDbType storage_db_type,
-    BinaryOutputFormat binary_output_format) {
-  DocWriteBatchFormatter formatter(storage_db_type, binary_output_format);
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    const std::string& line_prefix) {
+  DocWriteBatchFormatter formatter(
+      storage_db_type, binary_output_format, batch_output_format, line_prefix);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
 }

@@ -36,7 +36,8 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
       auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(key_slice));
       RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(
           decoded_intent_key.intent_prefix));
-      return subdoc_key.ToString() + " " + ToString(decoded_intent_key.intent_types) + " " +
+      return subdoc_key.ToString(AutoDecodeKeys::kTrue) + " " +
+             ToString(decoded_intent_key.intent_types) + " " +
              decoded_intent_key.doc_ht.ToString();
     }
     case KeyType::kReverseTxnKey:
@@ -55,12 +56,12 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
       return Format("TXN META $0", *transaction_id);
     }
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
-    case KeyType::kValueKey:
+    case KeyType::kPlainSubDocKey:
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFrom(key_slice),
-          "Error: failed decoding RocksDB intent key " +
+          "Error: failed decoding SubDocKey " +
           FormatSliceAsStr(key_slice));
-      return subdoc_key.ToString();
+      return subdoc_key.ToString(AutoDecodeKeys::kTrue);
     case KeyType::kExternalIntents:
     {
       RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId));
@@ -70,10 +71,12 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
       return Format("TXN EXT $0 $1", transaction_id, doc_hybrid_time);
     }
   }
-  return STATUS_FORMAT(Corruption, "Corrupted KeyType: $0", yb::ToString(key_type));
+  return STATUS_FORMAT(Corruption, "Invalid KeyType: $0", yb::ToString(key_type));
 }
 
-Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_type) {
+namespace {
+
+Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_type) {
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
@@ -81,7 +84,7 @@ Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_t
     if (!value_slice.empty()) {
       RETURN_NOT_OK(value_slice.consume_byte(ValueTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {
-        return STATUS_FORMAT(Corruption, "Not enought bytes for write id: $0", value_slice.size());
+        return STATUS_FORMAT(Corruption, "Not enough bytes for write id: $0", value_slice.size());
       }
       auto write_id = BigEndian::Load32(value_slice.data());
       value_slice.remove_prefix(sizeof(write_id));
@@ -101,8 +104,9 @@ Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_t
   }
 }
 
-Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, const std::string& key_str, Slice value) {
+}  // namespace
+
+Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice value) {
   switch (key_type) {
     case KeyType::kTransactionMetadata: {
       TransactionMetadataPB metadata_pb;
@@ -113,10 +117,12 @@ Result<std::string> DocDBValueToDebugStr(
     }
     case KeyType::kReverseTxnKey:
       return DocDBKeyToDebugStr(value, StorageDbType::kIntents);
+
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
-    case KeyType::kValueKey:
-      return DocDBValueToDebugStr(value, key_type);
+    case KeyType::kPlainSubDocKey:
+      return DocDBValueToDebugStrInternal(value, key_type);
+
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
       SubDocKey sub_doc_key;
@@ -136,7 +142,8 @@ Result<std::string> DocDBValueToDebugStr(
         intents.push_back(Format(
             "$0 -> $1",
             sub_doc_key,
-            VERIFY_RESULT(DocDBValueToDebugStr(value.Prefix(len), KeyType::kValueKey))));
+            VERIFY_RESULT(DocDBValueToDebugStrInternal(
+                value.Prefix(len), KeyType::kPlainSubDocKey))));
         value.remove_prefix(len);
       }
       DCHECK(value.empty());
