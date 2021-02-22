@@ -67,6 +67,8 @@ public class ResumeUniverse extends UniverseTaskBase {
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      createSwamperTargetUpdateTask(false);
+
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);

@@ -60,6 +60,7 @@ public class PauseUniverse extends UniverseTaskBase {
         createPauseServerTasks(universe.getNodes()).setSubTaskGroupType(
             SubTaskGroupType.PauseUniverse);
       }
+      createSwamperTargetUpdateTask(false);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
