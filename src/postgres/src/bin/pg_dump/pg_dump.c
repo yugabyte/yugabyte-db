@@ -433,7 +433,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:n:N:oOp:RsS:t:T:U:vwWxZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:m:n:N:oOp:RsS:t:T:U:vwWxZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -719,7 +719,11 @@ main(int argc, char **argv)
 		dopt.pghost = DefaultHost;
 
 #ifndef DISABLE_YB_EXTENSIONS
-	if (dopt.include_yb_metadata)
+	/*
+	 * While dumping create database statements, need to know whether the
+	 * database is colocated or not. Hence initialize PG gate backend.
+	 */
+	if (dopt.include_yb_metadata || dopt.outputCreateDB)
 	{
 		if (dopt.master_hosts)
 			YBCSetMasterAddresses(dopt.master_hosts);
@@ -9441,6 +9445,10 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 						  racl_subquery->data,
 						  initacl_subquery->data,
 						  initracl_subquery->data);
+		destroyPQExpBuffer(acl_subquery);
+		destroyPQExpBuffer(racl_subquery);
+		destroyPQExpBuffer(initacl_subquery);
+		destroyPQExpBuffer(initracl_subquery);
 	}
 	else
 	{
