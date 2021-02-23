@@ -53,6 +53,7 @@ public class PlatformReplicationHelper {
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
     "yb.ha.replication_schedule_enabled";
   private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
+  private static final String NUM_BACKUP_RETENTION_KEY = "yb.ha.num_backup_retention";
   static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
   static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
   static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
@@ -90,6 +91,10 @@ public class PlatformReplicationHelper {
 
   String getPrometheusHost() {
     return this.getRuntimeConfig().getString(PROMETHEUS_HOST_CONFIG_KEY);
+  }
+
+  int getNumBackupsRetention() {
+    return Math.max(0, this.getRuntimeConfig().getInt(NUM_BACKUP_RETENTION_KEY));
   }
 
   String getDBUser() {
@@ -298,5 +303,16 @@ public class PlatformReplicationHelper {
         remoteInstanceAddr), exception);
       return false;
     }
+  }
+
+  void cleanupBackups(List<File> backups, int numToRetain) {
+    int numBackups = backups.size();
+
+    if (numBackups <= numToRetain) {
+      return;
+    }
+
+    LOG.debug("Garbage collecting {} backups", numBackups - numToRetain);
+    backups.subList(numToRetain, numBackups).forEach(File::delete);
   }
 }
