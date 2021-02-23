@@ -19,9 +19,12 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
+import org.yb.minicluster.LogPrinter;
 import org.yb.pgsql.PgRegressRunner;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.RandomNumberUtil;
+import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -34,11 +37,18 @@ import java.util.regex.Pattern;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
   private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
+
+  private LogPrinter stdoutLogPrinter, stderrLogPrinter;
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return super.getTestMethodTimeoutSec() * 10;
+  }
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -65,21 +75,44 @@ public class TestYsqlDump extends BasePgSQLTest {
       VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR));
   }
 
-  private static void expectOnlyEmptyLines(String curLine, BufferedReader in) throws IOException {
+  private static void expectOnlyEmptyLines(String message,
+                                           String curLine,
+                                           BufferedReader in) throws IOException {
     while (curLine != null) {
-      assertEquals("", curLine.trim());
+      assertEquals(message, "", curLine.trim());
       curLine = in.readLine();
     }
   }
 
   @Test
   public void testPgDump() throws Exception {
+    testPgDumpHelper("ysql_dump" /* binaryName */,
+                     "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
+                     "output/yb_ysql_dump.out" /* outputFileRelativePath */,
+                     "expected/yb_ysql_dump.out" /* expectedFileRelativePath */,
+                     "ysql_dump_stdout.txt" /* stdoutFileRelativePath */);
+  }
+
+  @Test
+  public void testPgDumpAll() throws Exception {
+    testPgDumpHelper("ysql_dumpall" /* binaryName */,
+                     "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
+                     "output/yb_ysql_dumpall.out" /* outputFileRelativePath */,
+                     "expected/yb_ysql_dumpall.out" /* expectedFileRelativePath */,
+                     "ysql_dumpall_stdout.txt" /* stdoutFileRelativePath */);
+  }
+
+  void testPgDumpHelper(final String binaryName,
+                        final String inputFileRelativePath,
+                        final String outputFileRelativePath,
+                        final String expectedFileRelativePath,
+                        final String stdoutFileRelativePath) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressRunner.getPgRegressDir();
 
     // Create the data
     try (BufferedReader inputIn = createFileReader(new File(pgRegressDir,
-                                                            "sql/yb_ysql_dump.sql"))) {
+                                                            inputFileRelativePath))) {
       try (Statement statement = connection.createStatement()) {
         String inputLine = null;
         while ((inputLine = inputIn.readLine()) != null) {
@@ -92,26 +125,52 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     // Dump and validate the data
     File pgBinDir = PgRegressRunner.getPgBinDir();
-    File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
+    File ysqlDumpExec = new File(pgBinDir, binaryName);
 
     final int tserverIndex = 0;
-    File actual = new File(pgRegressDir, "output/yb_ysql_dump.out");
+    File actual = new File(pgRegressDir, outputFileRelativePath);
+    File expected = new File(pgRegressDir, expectedFileRelativePath);
     ProcessBuilder pb = new ProcessBuilder(ysqlDumpExec.toString(), "-h", getPgHost(tserverIndex),
                                            "-p", Integer.toString(getPgPort(tserverIndex)),
                                            "-U", DEFAULT_PG_USER,
-                                           "-f", actual.toString());
-    pb.start().waitFor();
-    try (BufferedReader actualIn   = createFileReader(actual);
-         BufferedReader expectedIn = createFileReader(new File(pgRegressDir,
-                                                              "expected/yb_ysql_dump.out"));) {
-      String actualLine = null, expectedLine = null;
+                                           "-f", actual.toString(),
+                                           "-m", getMasterLeaderAddress().toString());
 
+    // Handle the logs output by ysql_dump.
+    String logPrefix = "ysql_dump";
+    Process ysqlDumpProc = pb.start();
+    stdoutLogPrinter = new LogPrinter(
+        ysqlDumpProc.getInputStream(),
+        logPrefix + "|stdout ");
+    stderrLogPrinter = new LogPrinter(
+        ysqlDumpProc.getErrorStream(),
+        logPrefix + "|stderr ");
+
+    // Wait for the process to complete.
+    int exitCode = ysqlDumpProc.waitFor();
+    stdoutLogPrinter.stop();
+    stderrLogPrinter.stop();
+
+    // Compare the expected output and the actual output.
+    try (BufferedReader actualIn   = createFileReader(actual);
+         BufferedReader expectedIn = createFileReader(expected);) {
+
+      // Create the side-by-side diff between the actual output and expected output.
+      // The resulting string will be used to provide debug information if the below
+      // comparison between the two files fails.
+      String message = "Side-by-side diff between expected output and actual output:\n" +
+            new SideBySideDiff(actual, expected).getSideBySideDiff();
+
+      // Compare the actual output and expected output.
+      String actualLine = null, expectedLine = null;
       while ((actualLine = actualIn.readLine()) != null &&
              (expectedLine = expectedIn.readLine()) != null) {
-        assertEquals(postprocessOutputLine(expectedLine), postprocessOutputLine(actualLine));
+        assertEquals(message,
+                     postprocessOutputLine(actualLine),
+                     postprocessOutputLine(expectedLine));
       }
-      expectOnlyEmptyLines(actualLine, actualIn);
-      expectOnlyEmptyLines(expectedLine, expectedIn);
+      expectOnlyEmptyLines(message, actualLine, actualIn);
+      expectOnlyEmptyLines(message, expectedLine, expectedIn);
     }
   }
 
