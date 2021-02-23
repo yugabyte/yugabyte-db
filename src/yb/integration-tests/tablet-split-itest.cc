@@ -1149,6 +1149,31 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
     }, 30s * kTimeMultiplier, "Waiting for TS-1 to catch up ..."), AsString(s));
 }
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/6890.
+// Writes data to the tablet, splits it and then tries to do full scan with `select count(*)`
+// using two different instances of YBTable one after another.
+TEST_F(TabletSplitITest, DifferentYBTableInstances) {
+  constexpr auto kNumRows = 500;
+
+  CreateSingleTablet();
+
+  client::TableHandle table1, table2;
+  for (auto* table : {&table1, &table2}) {
+    ASSERT_OK(table->Open(client::kTableName, client_.get()));
+  }
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto source_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(split_hash_code, kNumRows));
+
+  ASSERT_NO_FATALS(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
+
+  auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table1));
+  ASSERT_EQ(rows_count, kNumRows);
+
+  rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table2));
+  ASSERT_EQ(rows_count, kNumRows);
+}
+
 namespace {
 
 PB_ENUM_FORMATTERS(IsolationLevel);

@@ -79,7 +79,7 @@ If the snapshot creation is not complete, reuse this command until the state sho
 4. Create the backup of the YSQL metadata by running the following `ysql_dump --create` command:
 
 ```sh
-ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <output_file_path>
+ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
 ```
 
 A backup is created of the YSQL metadata, including the schema.
@@ -115,7 +115,7 @@ mkdir snapshot
 ```
 
 ```sh
-cp test.snapshot ysql.snapshot snapshot/
+cp test.snapshot ysql.schema.sql snapshot/
 ```
 
 8. Copy the tablet snapshots into the directory.
@@ -162,7 +162,7 @@ Let’s destroy the existing cluster, create a new cluster and import the snapsh
 1. Import the YSQL metadata.
 
 ```sh
-./bin/ysqlsh -h 127.0.0.1 --echo-all --file=snapshot/ysql.snapshot
+./bin/ysqlsh -h 127.0.0.1 --echo-all --file=snapshot/ysql.schema.sql
 ```
 
 2. Import the snapshot metadata.

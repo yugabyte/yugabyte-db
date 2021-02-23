@@ -135,12 +135,12 @@ class YBOperation {
   bool IsYsqlCatalogOp() const;
 
   // Mark table this op is designated for as having stale partitions.
-  void MarkTablePartitionsAsStale();
+  void MarkTablePartitionListAsStale();
 
   // Refreshes partitions of the table this op is designated of in case partitions have been marked
   // as stale.
   // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshTablePartitions();
+  Result<bool> MaybeRefreshTablePartitionList();
 
   int64_t GetQueryId() const {
     return reinterpret_cast<int64_t>(this);
