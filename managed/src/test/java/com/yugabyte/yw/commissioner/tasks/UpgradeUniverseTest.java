@@ -131,7 +131,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     createTempFile("ca.crt", cert1Contents);
     try {
       CertificateInfo.create(certUUID, defaultCustomer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo);
+                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo, null, null);
     } catch (IOException | NoSuchAlgorithmException e) {}
 
     // create default universe
@@ -154,7 +154,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
     when(mockClient.getLeaderMasterHostAndPort())
             .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
@@ -879,7 +879,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -922,7 +922,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -965,7 +965,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         try {
           when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
         } catch (Exception e) {}
-        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+        when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
       } else if (serverType.equals(TSERVER)) {
         Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
@@ -974,7 +974,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         try {
           when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
         } catch (Exception e) {}
-        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+        when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
       }
       // Simulate universe created with master flags and tserver flags.
       final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
@@ -1094,7 +1094,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     createTempFile("ca2.crt", cert1Contents);
     try {
       CertificateInfo.create(certUUID, defaultCustomer.uuid, "test2", date, date,
-                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo);
+                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo, null, null);
     } catch (IOException | NoSuchAlgorithmException e) {}
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
@@ -1131,7 +1131,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     createTempFile("ca2.crt", cert1Contents);
     try {
       CertificateInfo.create(certUUID, defaultCustomer.uuid, "test2", date, date,
-                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo);
+                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo, null, null);
     } catch (IOException | NoSuchAlgorithmException e) {}
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
@@ -1168,7 +1168,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     createTempFile("ca2.crt", cert2Contents);
     try {
       CertificateInfo.create(certUUID, defaultCustomer.uuid, "test2", date, date,
-                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo);
+                             TestHelper.TMP_PATH + "/ca2.crt", customCertInfo, null, null);
     } catch (IOException | NoSuchAlgorithmException e) {}
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
