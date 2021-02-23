@@ -55,7 +55,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();
