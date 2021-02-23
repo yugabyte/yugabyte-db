@@ -54,7 +54,7 @@ public class PlatformReplicationManager {
 
   private final ExecutionContext executionContext;
 
-  private final PlatformReplicationHelper replicationUtil;
+  private final PlatformReplicationHelper replicationHelper;
 
   private final ShellProcessHandler shellProcessHandler;
 
@@ -65,12 +65,12 @@ public class PlatformReplicationManager {
     ActorSystem actorSystem,
     ExecutionContext executionContext,
     ShellProcessHandler shellProcessHandler,
-    PlatformReplicationHelper replicationUtil
+    PlatformReplicationHelper replicationHelper
   ) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.shellProcessHandler = shellProcessHandler;
-    this.replicationUtil = replicationUtil;
+    this.replicationHelper = replicationHelper;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -79,17 +79,17 @@ public class PlatformReplicationManager {
   }
 
   public void start() {
-    if (replicationUtil.isBackupScheduleRunning(this.getSchedule())) {
+    if (replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
       LOG.warn("Platform backup schedule is already started");
       return;
     }
 
-    if (!replicationUtil.isBackupScheduleEnabled()) {
+    if (!replicationHelper.isBackupScheduleEnabled()) {
       LOG.debug("Cannot start backup schedule because it is disabled");
       return;
     }
 
-    Duration frequency = replicationUtil.getBackupFrequency();
+    Duration frequency = replicationHelper.getBackupFrequency();
 
     if (!frequency.isNegative() && !frequency.isZero()) {
       this.setSchedule(frequency);
@@ -97,7 +97,7 @@ public class PlatformReplicationManager {
   }
 
   public void stop() {
-    if (!replicationUtil.isBackupScheduleRunning(this.getSchedule())) {
+    if (!replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
       LOG.warn("Platform backup schedule is already stopped");
       return;
     }
@@ -111,23 +111,23 @@ public class PlatformReplicationManager {
     // Start periodic platform sync schedule if enabled.
     this.start();
     // Switch prometheus to federated if this platform is a follower for HA.
-    replicationUtil.ensurePrometheusConfig();
+    replicationHelper.ensurePrometheusConfig();
   }
 
   public JsonNode stopAndDisable() {
     this.stop();
-    replicationUtil.setBackupScheduleEnabled(false);
+    replicationHelper.setBackupScheduleEnabled(false);
 
     return this.getBackupInfo();
   }
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
     this.stop();
-    replicationUtil.getRuntimeConfig().setValue(
+    replicationHelper.getRuntimeConfig().setValue(
       REPLICATION_FREQUENCY_KEY,
       String.format("%d ms", duration.toMillis())
     );
-    replicationUtil.setBackupScheduleEnabled(true);
+    replicationHelper.setBackupScheduleEnabled(true);
     this.start();
 
     return this.getBackupInfo();
@@ -145,7 +145,7 @@ public class PlatformReplicationManager {
 
   // TODO: (Daniel/Shashank) - https://github.com/yugabyte/yugabyte-db/issues/6961.
   public List<File> listBackups(URL leader) throws Exception {
-    Path backupDir = replicationUtil.getReplicationDirFor(leader.getHost());
+    Path backupDir = replicationHelper.getReplicationDirFor(leader.getHost());
 
     if (!backupDir.toFile().exists() || !backupDir.toFile().isDirectory()) {
       LOG.debug(String.format("%s directory does not exist", backupDir.toFile().getName()));
@@ -157,9 +157,9 @@ public class PlatformReplicationManager {
   }
 
   public JsonNode getBackupInfo() {
-    return replicationUtil.getBackupInfoJson(
-      replicationUtil.getBackupFrequency().toMillis(),
-      replicationUtil.isBackupScheduleRunning(this.getSchedule())
+    return replicationHelper.getBackupInfoJson(
+      replicationHelper.getBackupFrequency().toMillis(),
+      replicationHelper.isBackupScheduleRunning(this.getSchedule())
     );
   }
 
@@ -178,24 +178,26 @@ public class PlatformReplicationManager {
     localInstance.demote();
 
     // Try switching local prometheus to read from the reported leader.
-    replicationUtil.switchPrometheusToFederated(new URL(leaderAddr));
+    replicationHelper.switchPrometheusToFederated(new URL(leaderAddr));
   }
 
   public void promoteLocalInstance(PlatformInstance newLeader) throws Exception {
-    if (!newLeader.getIsLocal()) {
-      throw new RuntimeException("Cannot perform this action in a remote instance");
-    }
-
     HighAvailabilityConfig config = newLeader.getConfig();
     // Update which instance should be local.
     config.getLocal().setIsLocalAndUpdate(false);
     config.getInstances()
-      .forEach(i -> i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID())));
+      .forEach(i -> {
+        i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+        try {
+          // Clear out any old backups.
+          this.cleanupReceivedBackups(new URL(i.getAddress()), 0);
+        } catch (MalformedURLException ignored) {}
+      });
     // Mark the failover timestamp.
     config.updateLastFailover();
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
-    config.getRemoteInstances().forEach(replicationUtil::demoteRemoteInstance);
+    config.getRemoteInstances().forEach(replicationHelper::demoteRemoteInstance);
     // Promote the new local leader.
     newLeader.promote();
   }
@@ -255,14 +257,14 @@ public class PlatformReplicationManager {
     String clusterKey = config.getClusterKey();
     File recentBackup;
     recentBackup = getMostRecentBackup();
-    return recentBackup != null && replicationUtil.exportBackups(
+    return recentBackup != null && replicationHelper.exportBackups(
       config, clusterKey, remoteInstance.getAddress(), recentBackup) &&
       remoteInstance.updateLastBackup();
   }
 
   private File getMostRecentBackup() {
     try {
-      return Util.listFiles(replicationUtil.getBackupDir(), BACKUP_FILE_PATTERN).get(0);
+      return Util.listFiles(replicationHelper.getBackupDir(), BACKUP_FILE_PATTERN).get(0);
     } catch (Exception exception) {
       LOG.error("Could not locate recent backup", exception);
     }
@@ -275,7 +277,7 @@ public class PlatformReplicationManager {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!replicationUtil.demoteRemoteInstance(remoteInstance)) {
+    if (!replicationHelper.demoteRemoteInstance(remoteInstance)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
 
       return;
@@ -289,7 +291,7 @@ public class PlatformReplicationManager {
     }
 
     // Sync the HA cluster metadata to the remote instance.
-    replicationUtil.exportPlatformInstances(config, remoteAddr);
+    replicationHelper.exportPlatformInstances(config, remoteAddr);
   }
 
   private void sync() {
@@ -315,13 +317,28 @@ public class PlatformReplicationManager {
       // Sync data to remote address.
       remoteInstances.forEach(this::syncToRemoteInstance);
 
-      cleanupBackups();
+      // Remove locally created backups since they have already been sent to followers.
+      cleanupCreatedBackups();
     });
   }
 
-  private void cleanupBackups() {
+  public void cleanupReceivedBackups(URL leader) {
+    this.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
+  }
+
+  private void cleanupReceivedBackups(URL leader, int numToRetain) {
     try {
-      Util.listFiles(replicationUtil.getBackupDir(), BACKUP_FILE_PATTERN).forEach(File::delete);
+      List<File> backups = this.listBackups(leader);
+      replicationHelper.cleanupBackups(backups, numToRetain);
+    } catch (Exception e) {
+      LOG.error("Error garbage collecting old backups", e);
+    }
+  }
+
+  private void cleanupCreatedBackups() {
+    try {
+      List<File> backups = Util.listFiles(replicationHelper.getBackupDir(), BACKUP_FILE_PATTERN);
+      replicationHelper.cleanupBackups(backups, 0);
     } catch (IOException ioException) {
       LOG.warn("Failed to list or delete backups");
     }
@@ -329,7 +346,7 @@ public class PlatformReplicationManager {
 
   public boolean saveReplicationData(String fileName, File uploadedFile, URL leader,
                                      URL sender) {
-    Path replicationDir = replicationUtil.getReplicationDirFor(leader.getHost());
+    Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
     if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
       if (uploadedFile.renameTo(saveAsFile.toFile())) {
@@ -345,7 +362,7 @@ public class PlatformReplicationManager {
 
   public void switchPrometheusFromFederated() {
     try {
-      this.replicationUtil.switchPrometheusFromFederated();
+      this.replicationHelper.switchPrometheusFromFederated();
     } catch (Exception e) {
       LOG.error("Could not switch prometheus config from federated", e);
     }
@@ -364,11 +381,11 @@ public class PlatformReplicationManager {
     private final int dbPort;
 
     protected PlatformBackupParams() {
-      this.prometheusHost = replicationUtil.getPrometheusHost();
-      this.dbUsername = replicationUtil.getDBUser();
-      this.dbPassword = replicationUtil.getDBPassword();
-      this.dbHost = replicationUtil.getDBHost();
-      this.dbPort = replicationUtil.getDBPort();
+      this.prometheusHost = replicationHelper.getPrometheusHost();
+      this.dbUsername = replicationHelper.getDBUser();
+      this.dbPassword = replicationHelper.getDBPassword();
+      this.dbHost = replicationHelper.getDBHost();
+      this.dbPort = replicationHelper.getDBPort();
     }
 
     protected abstract List<String> getCommandSpecificArgs();
@@ -414,7 +431,7 @@ public class PlatformReplicationManager {
     CreatePlatformBackupParams() {
       this.excludePrometheus = true;
       this.excludeReleases = true;
-      this.outputDirectory = replicationUtil.getBackupDir().toString();
+      this.outputDirectory = replicationHelper.getBackupDir().toString();
     }
 
     @Override
