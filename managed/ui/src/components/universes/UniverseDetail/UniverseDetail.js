@@ -128,15 +128,14 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
 
-    if (
-      !getPromiseState(rollingUpgrade).isLoading() &&
+    return !getPromiseState(rollingUpgrade).isLoading() &&
       updateAvailable &&
-      !(showModal && visibleModal === 'softwareUpgradesModal')
-    ) {
-      return true;
-    }
-    return false;
+      !(showModal && visibleModal === 'softwareUpgradesModal');
   };
+
+  stripQueryParams = () => {
+    browserHistory.replace(browserHistory.getCurrentLocation().pathname);
+  }
 
   transitToDefaultRoute = () => {
     const currentLocation = this.props.location;
@@ -339,6 +338,7 @@ class UniverseDetail extends Component {
             key="queries-tab"
             mountOnEnter={true}
             unmountOnExit={true}
+            onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
             <QueriesViewer />

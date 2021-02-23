@@ -82,7 +82,7 @@ const PANEL_STATE = {
 }
 
 const SlowQueriesComponent = ({ location }) => {
-  const [selectedRow, setSelectedRow] = useState(0);
+  const [selectedRow, setSelectedRow] = useState([]);
   const [panelState, setPanelState] = useState(PANEL_STATE.INITIAL);
   const [showAutoComplete, setShowAutoComplete] = useState(false);
   const [searchTokens, setSearchTokens] = useState([]);
@@ -275,11 +275,12 @@ const SlowQueriesComponent = ({ location }) => {
   const displayedQueries = filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys);
 
   const tableColHeaders = [
-    <TableHeaderColumn dataField="queryid" isKey={true} hidden={true} />,
+    <TableHeaderColumn key="query-id-key" dataField="queryid" isKey={true} hidden={true} />,
     ...Object.keys(columns).map(keyName => {
       if (keyName === 'Query') {
         return (
           <TableHeaderColumn
+            key="query-statement-key"
             dataField="query"
             dataSort
             dataAlign="start"
@@ -294,6 +295,7 @@ const SlowQueriesComponent = ({ location }) => {
           formatMillisNumber : undefined;
         return (
           <TableHeaderColumn
+            key={`query-${dropdownColKeys[keyName].value}-key`}
             dataField={dropdownColKeys[keyName].value}
             dataSort
             dataAlign="start"
@@ -356,11 +358,11 @@ const SlowQueriesComponent = ({ location }) => {
             <div className="slow-queries__column-selector">
               <h5>Column Display</h5>
               <ul>
-                {Object.keys(dropdownColKeys).map(keyName => {
+                {Object.keys(dropdownColKeys).map((keyName, index) => {
                   const isChecked = keyName in columns;
                   const disabled = isChecked && columns[keyName].disabled;
                   return (
-                    <li className={disabled ? 'disabled' : ''}>
+                    <li key={`column-${keyName}-${index}`} className={disabled ? 'disabled' : ''}>
                       <YBCheckBox checkState={isChecked}
                         disabled={disabled}
                         onClick={(e) => {
