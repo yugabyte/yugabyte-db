@@ -3702,7 +3702,7 @@ INSERT INTO rls_tbl
 
 INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
-SELECT * FROM rls_tbl;
+SELECT * FROM rls_tbl order by a;
  a  | b  | c  
 ----+----+----
  10 | 20 | 30
