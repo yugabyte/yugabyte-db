@@ -28,6 +28,8 @@ import org.mockito.MockitoAnnotations;
 import scala.concurrent.ExecutionContext;
 
 import java.io.File;
+import java.net.URL;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -171,5 +173,55 @@ public class PlatformReplicationManagerTest extends TestCase {
 
     verify(shellProcessHandler, times(1))
       .run(expectedCommandArgs, expectedEnvVars);
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] parametersToTestGCBackups() {
+    return new Object[][] {
+      { -1 },
+      { 0 },
+      { 1 },
+      { 2 },
+      { 3 },
+      { 4 },
+    };
+  }
+
+  @Parameters(method = "parametersToTestGCBackups")
+  @Test
+  public void testGCBackups(int numToRetain) throws Exception {
+    File testFile1 = File.createTempFile("backup_1", ".tgz");
+    File testFile2 = File.createTempFile("backup_2", ".tgz");
+    File testFile3 = File.createTempFile("backup_3", ".tgz");
+    try {
+      String testAddr = "http://test.com";
+      URL testUrl = new URL(testAddr);
+      Path tmpDir = testFile1.toPath().getParent();
+      RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+      when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
+      when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
+      when(mockReplicationUtil.getReplicationDirFor(anyString()))
+        .thenReturn(tmpDir);
+      doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
+      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+      PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
+        actorSystem,
+        executionContext,
+        shellProcessHandler,
+        mockReplicationUtil
+      ));
+
+      List<File> backups = backupManager.listBackups(testUrl);
+      assertEquals(3, backups.size());
+
+      backupManager.cleanupReceivedBackups(testUrl);
+
+      backups = backupManager.listBackups(testUrl);
+      assertEquals(Math.max(0, Math.min(numToRetain, 3)), backups.size());
+    } finally {
+      testFile1.delete();
+      testFile2.delete();
+      testFile3.delete();
+    }
   }
 }

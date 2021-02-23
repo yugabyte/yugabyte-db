@@ -137,10 +137,14 @@ public class InternalHAController extends Controller {
         "Backup originated on the node itself. Leader: " + leader);
     }
 
+    URL leaderUrl = new URL(leader);
+
     // For all the other cases we will accept the backup without checking local config state.
     boolean success = replicationManager.saveReplicationData(
-      fileName, temporaryFile, new URL(leader), new URL(sender));
+      fileName, temporaryFile, leaderUrl, new URL(sender));
     if (success) {
+      // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
+      replicationManager.cleanupReceivedBackups(leaderUrl);
       return ApiResponse.success("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
