@@ -694,6 +694,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.enableNodeToNodeClientVerification = userIntent.enableNodeToNodeClientVerification;
 
       params.allowInsecure = taskParams().allowInsecure;
       params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;

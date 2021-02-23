@@ -104,7 +104,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any()))
         .thenReturn(new ShellResponse());
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
@@ -170,7 +170,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {}
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;

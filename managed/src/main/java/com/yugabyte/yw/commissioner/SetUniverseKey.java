@@ -81,9 +81,10 @@ public class SetUniverseKey {
     private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
         YBClient client = null;
         String hostPorts = u.getMasterAddresses();
-        String certificate = u.getCertificate();
+        String certificate = u.getCertificateNodeToNode();
+        String[] rpcClientCertFiles = u.getFilesForMutualTLS();
         try {
-            client = ybService.getClient(hostPorts, certificate);
+            client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
             String encodedKeyRef = Base64.getEncoder().encodeToString(keyRef);
             if (!client.hasUniverseKeyInMemory(encodedKeyRef, masterAddr)) {
                 client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, keyVal), masterAddr);
