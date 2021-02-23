@@ -140,7 +140,8 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
 
   // Get tablet ID.
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
@@ -209,7 +210,8 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // Get tablet ID.
   bool replicate_intents = GetParam();
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
@@ -296,7 +298,8 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
 
   // Get tablet ID.
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.

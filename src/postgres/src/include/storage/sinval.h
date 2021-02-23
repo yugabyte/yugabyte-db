@@ -15,6 +15,7 @@
 #define SINVAL_H
 
 #include <signal.h>
+#include <sys/types.h>
 
 #include "storage/relfilenode.h"
 
@@ -60,6 +61,7 @@
 typedef struct
 {
 	int8		id;				/* cache ID --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	uint32		hashValue;		/* hash value of key for this catcache */
 } SharedInvalCatcacheMsg;
@@ -69,6 +71,7 @@ typedef struct
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	Oid			dbId;			/* database ID, or 0 if a shared catalog */
 	Oid			catId;			/* ID of catalog whose contents are invalid */
 } SharedInvalCatalogMsg;
@@ -78,6 +81,7 @@ typedef struct
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID, or 0 if whole relcache */
 } SharedInvalRelcacheMsg;
@@ -88,6 +92,7 @@ typedef struct
 {
 	/* note: field layout chosen to pack into 16 bytes */
 	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	int8		backend_hi;		/* high bits of backend ID, if temprel */
 	uint16		backend_lo;		/* low bits of backend ID, if temprel */
 	RelFileNode rnode;			/* spcNode, dbNode, relNode */
@@ -98,6 +103,7 @@ typedef struct
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	Oid			dbId;			/* database ID, or 0 for shared catalogs */
 } SharedInvalRelmapMsg;
 
@@ -106,13 +112,21 @@ typedef struct
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID */
 } SharedInvalSnapshotMsg;
 
+typedef struct
+{
+	int8		id;				/* type field --- must be first */
+	pid_t		sender_pid;		/* ID of a process which sent the message --- must be second */
+} YBSharedInvalMessageHeader;
+
 typedef union
 {
 	int8		id;				/* type field --- must be first */
+	YBSharedInvalMessageHeader yb_header;
 	SharedInvalCatcacheMsg cc;
 	SharedInvalCatalogMsg cat;
 	SharedInvalRelcacheMsg rc;

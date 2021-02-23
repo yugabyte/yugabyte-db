@@ -227,7 +227,7 @@ class GraphPanelHeader extends Component {
   nodeItemChanged = (event) => {
     const newParams = this.state;
     newParams.nodeName = event.target.value;
-    this.setState({ nodeName: event.target.value });
+    this.setState({ nodeName: event.target.value, currentSelectedNode:event.target.value });
     this.updateUrlQueryParams(newParams);
   };
 

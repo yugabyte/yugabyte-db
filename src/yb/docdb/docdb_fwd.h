@@ -25,6 +25,7 @@ class DocKey;
 class DocPath;
 class DocWriteBatch;
 class IntentAwareIterator;
+class KeyBytes;
 class KeyValueWriteBatchPB;
 class PgsqlWriteOperation;
 class QLWriteOperation;

@@ -14,6 +14,8 @@ import play.data.validation.Constraints;
 
 public class PlatformInstanceFormData {
   @Constraints.Required()
+  @Constraints.Pattern(message="Must be prefixed with http:// or https://",
+    value="\\b(?:http://|https://).+\\b")
   public String address;
 
   @Constraints.Required()

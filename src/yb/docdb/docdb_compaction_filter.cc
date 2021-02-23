@@ -251,15 +251,13 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     return FilterDecision::kDiscard;
   }
 
-  // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.
-  bool has_expired = false;
-
   // Only check for expiration if the current hybrid time is at or below history cutoff.
   // The key could not have possibly expired by history_cutoff_ otherwise.
   MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_.table_ttl);
-  RETURN_NOT_OK(HasExpiredTTL(true_ttl == expiration.ttl ?
-                              expiration.write_ht : ht.hybrid_time(),
-                              true_ttl, history_cutoff, &has_expired));
+  const auto has_expired = HasExpiredTTL(
+      true_ttl == expiration.ttl ? expiration.write_ht : ht.hybrid_time(),
+      true_ttl,
+      history_cutoff);
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
