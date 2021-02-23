@@ -39,25 +39,23 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using the Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.
+YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.
 
 ## Install Replicated
 
-Connect to the Yugabyte Platform instance and do the following.
-
-1. Install Replicated.
+Connect to a Yugabyte Platform instance and then install Replicated by executing the following command:
 
 ```sh
 $ curl -sSL https://get.replicated.com/docker | sudo bash
 ```
 
-**NOTE**: If you are installing Replicated behind a proxy, you need to run the following:
+If you are installing Replicated behind a proxy, you need to execute the following command:
 
 ```sh
 $ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
 ```
 
-After the Replicated installation completes, verify that it is running by running the following command:
+After the Replicated installation completes, verify that it is running by executing the following command:
 
 ```sh
 $ sudo docker ps
@@ -67,27 +65,27 @@ You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-## Set up HTTPS (optional)
+## Set Up HTTPS (optional)
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). You will address this warning as soon after setting up HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the Replicated Admin Console.
+Launch the Replicated UI via [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). Expect to see a warning stating that the connection to the server is not yet private. This condition is resolved once HTTPS for the Replicated Admin Console is set up in the next step. Proceed by clicking **Continue to Setup** **>** **ADVANCED** to bypass the warning and access the **Replicated Admin Console**, as shown in the following illustration:
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
-You can provide your own custom SSL certificate along with a hostname.
+You can provide your own custom SSL certificate and a hostname, as shown in the following illustration:
 
 ![Replicated HTTPS setup](/images/replicated/replicated-https.png)
 
-The simplest option is use a self-signed certificate for now and add the custom SSL certificate later. Note that you will have to connect to the Replicated Admin Console using an IP address (as noted below).
+It is recommended that you start with using a self-signed certificate, and then add the custom SSL certificate later. Note that in this case you connect to the Replicated Admin Console using an IP address, as shown in the following illustration:
 
 ![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
 
-## Upload the license file
+## Upload the License File
 
-Now, upload the Yugabyte license file that you received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
+Upload the Yugabyte license file that you received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form), as shown in the following illustration:
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-If you are asked to choose an installation type, choose `Online`.
+If you are prompted to choose an installation type, choose **Online**, as shown in the following illustration:
 
 ![Replicated License Online Install](/images/replicated/replicated-license-online-install-option.png)
 
@@ -95,16 +93,23 @@ If you are asked to choose an installation type, choose `Online`.
 
 ## Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from Yugabyte Platform, the Admin Console for YugabyteDB).
+Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by Yugabyte Platform, as shown in the following illustration:
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-## Preflight checks
+## Preflight Checks
 
-Replicated will perform a set of preflight checks to ensure that the host is setup correctly for Yugabyte Platform.
+Replicated performs a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform, as shown in the following illustration:
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
 Click **Continue** to configure Yugabyte Platform.
 
-If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to find a resolution.
+If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
+
+## Set the TLS Version for Nginx Frontend 
+
+Specify TLS versions via **Application config**, as shown in the following illustration: 
+![Application Config](/images/replicated/application-config.png)
+
+The recommended TLS version is 1.2 or later.

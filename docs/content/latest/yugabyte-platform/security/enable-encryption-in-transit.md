@@ -255,3 +255,14 @@ X509v3 Basic Constraints:
 3. Verify that certificates and keys are in PEM format (as opposed to the DER or other format). If these artifacts are not in the PEM format and you require assistance with converting them or identifying the format, consult [Converting Certificates](https://support.globalsign.com/ssl/ssl-certificates-installation/converting-certificates-openssl).
 
 4. Ensure that the private key does not have a passphrase associated with it. For information on how to identify this condition, see [How to Decrypt an Enrypted SSL RSA Private Key](https://techjourney.net/how-to-decrypt-an-enrypted-ssl-rsa-private-key-pem-key/).
+
+## Enforcing TLS Versions
+
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default).
+
+You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
+
+```
+ssl_protocols = tlsv12
+```
+
