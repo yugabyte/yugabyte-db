@@ -317,7 +317,7 @@ public class UniverseControllerTest extends WithApplication {
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
     UniverseController universeController = new UniverseController(mockService);
 
     Result result = universeController.getMasterLeaderIP(customer.uuid, universe.universeUUID);

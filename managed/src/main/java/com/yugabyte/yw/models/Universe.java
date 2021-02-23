@@ -599,16 +599,45 @@ public class Universe extends Model {
   }
 
   /**
-   * Returns the certificate in case TLS is enabled.
-   *
-   * @return certificate file if TLS is enabled, null otherwise.
+   * Returns the certificate in case node to node TLS is enabled.
+   * @return certificate file if node to node TLS is enabled, null otherwise.
    */
-  public String getCertificate() {
-    UUID rootCA = this.getUniverseDetails().rootCA;
-    if (rootCA == null) {
-      return null;
+  public String getCertificateNodeToNode() {
+    // If universe does not have node to node enabled, return null.
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      // This means there must be a root CA associated with it.
+      return CertificateInfo.get(details.rootCA).certificate;
     }
-    return CertificateInfo.get(rootCA).certificate;
+    return null;
+  }
+
+  /**
+   * Returns the certificate and key in case client verification is enabled during TLS.
+   * @return String[] {client cert, client key} if mutual TLS is enabled.
+   */
+  public String[] getFilesForMutualTLS() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.getPrimaryCluster().userIntent.enableNodeToNodeClientVerification) {
+      // This means there must be a root CA associated with it.
+      return new String[] {CertificateInfo.get(details.rootCA).platformCert,
+                           CertificateInfo.get(details.rootCA).platformKey};
+    }
+    return new String[] {null, null};
+  }
+
+  /**
+   * Returns the certificate in case client to node TLS is enabled.
+   * @return certificate file if client to node TLS is enabled, null otherwise.
+   */
+  public String getCertificateClientToNode() {
+    // If universe does not have client to node enabled, return null.
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
+      // This means there must be a root CA associated with it.
+      return CertificateInfo.get(details.rootCA).certificate;
+    }
+    return null;
   }
 
   /**
@@ -817,9 +846,10 @@ public class Universe extends Model {
    */
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
-    final String cert = getCertificate();
+    final String cert = getCertificateNodeToNode();
+    final String[] clientFiles = getFilesForMutualTLS();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
-    final YBClient client = ybService.getClient(masterAddresses, cert);
+    final YBClient client = ybService.getClient(masterAddresses, cert, clientFiles);
     final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
     ybService.closeClient(client, masterAddresses);
     return leaderMasterHostAndPort;

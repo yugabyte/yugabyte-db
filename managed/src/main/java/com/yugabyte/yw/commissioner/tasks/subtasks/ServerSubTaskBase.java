@@ -64,8 +64,9 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   public YBClient getClient() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
-    return ybService.getClient(masterAddresses, certificate);
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
+    return ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
   }
 
   public void closeClient(YBClient client) {

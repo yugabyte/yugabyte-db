@@ -60,9 +60,10 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     int numTservers = universe.getTServers().size();
-    YBClient client = ybService.getClient(hostPorts, certificate);
+    YBClient client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
 
     LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
     int numTries = 1;

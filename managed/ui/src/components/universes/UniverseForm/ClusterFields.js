@@ -152,7 +152,6 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
-    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -824,16 +823,7 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-
-      // If NodeToNodeEncrypt is false update ClientToNodeEncrypt field to false.
-      if (!event.target.checked) {
-        updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
-        updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
-      }
-      this.setState({
-        enableNodeToNodeEncrypt: event.target.checked,
-        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
-      });
+      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
     }
   }
 
@@ -1488,10 +1478,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={this.clientToNodeEncryptField(
-            isFieldReadOnly,
-            this.state.enableNodeToNodeEncrypt
-          )}
+          isReadOnly={isFieldReadOnly}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}

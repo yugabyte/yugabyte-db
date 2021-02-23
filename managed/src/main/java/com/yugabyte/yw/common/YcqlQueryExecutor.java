@@ -46,7 +46,7 @@ public class YcqlQueryExecutor {
     if (authEnabled) {
       builder.withCredentials(username.trim(), password.trim());
     }
-    String certificate = Universe.getOrBadRequest(universeUUID).getCertificate();
+    String certificate = Universe.getOrBadRequest(universeUUID).getCertificateClientToNode();
     if (certificate != null) {
       builder.withSSL(SslHelper.getSSLOptions(certificate));
     }

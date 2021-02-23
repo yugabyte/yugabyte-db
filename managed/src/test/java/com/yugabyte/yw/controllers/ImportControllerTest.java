@@ -54,7 +54,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockResponse.getTabletServersCount()).thenReturn(3);

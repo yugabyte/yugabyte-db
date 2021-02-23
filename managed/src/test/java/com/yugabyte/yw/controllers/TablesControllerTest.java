@@ -114,7 +114,7 @@ public class TablesControllerTest extends FakeDBApplication {
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any(), any())).thenReturn(mockClient);
     tablesController = new TablesController(mockService);
   }
 
@@ -879,7 +879,9 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Universe universe = mock(Universe.class);
     when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
-    when(universe.getCertificate()).thenReturn("fake_certificate");
+    when(universe.getCertificateNodeToNode()).thenReturn("fake_certificate");
+    when(universe.getFilesForMutualTLS()).thenReturn(
+        new String[] {"fake_certificate", "fake_key"});
 
 
     // Disallow on Index Table.

@@ -19,9 +19,15 @@ public class LocalYBClientService implements YBClientService {
   }
 
   @Override
-  public synchronized YBClient getClient(String masterHostPorts, String certFile) {
+  public synchronized YBClient getClient(String masterHostPorts, String rootCertFile) {
+    return getClient(masterHostPorts, rootCertFile, new String[] {null, null});
+  }
+
+  @Override
+  public synchronized YBClient getClient(String masterHostPorts, String rootCertFile,
+                                         String[] rpcClientCertFiles) {
     if (masterHostPorts != null) {
-      return getNewClient(masterHostPorts, certFile);
+      return getNewClient(masterHostPorts, rootCertFile, rpcClientCertFiles);
     }
     return null;
   }
@@ -40,10 +46,12 @@ public class LocalYBClientService implements YBClientService {
     }
   }
 
-  private YBClient getNewClient(String masterHPs, String certFile) {
+  private YBClient getNewClient(String masterHPs, String rootCertFile,
+      String[] rpcClientCertFiles) {
     return new YBClient.YBClientBuilder(masterHPs)
                        .defaultAdminOperationTimeoutMs(120000)
-                       .sslCertFile(certFile)
+                       .sslCertFile(rootCertFile)
+                       .sslClientCertFiles(rpcClientCertFiles[0], rpcClientCertFiles[1])
                        .build();
   }
 }

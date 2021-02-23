@@ -96,11 +96,12 @@ public class CreateTable extends AbstractTaskBase {
       throw new IllegalStateException("No master host/ports for a table creation op in " +
           taskParams().universeUUID);
     }
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
 
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
 
       if (StringUtils.isEmpty(taskParams().tableName)) {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;

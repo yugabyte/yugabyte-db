@@ -67,12 +67,13 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       Universe universe = Universe.getOrBadRequest(params().universeUUID);
       String masterAddresses = universe.getMasterAddresses(true);
-      String certificate = universe.getCertificate();
+      String certificate = universe.getCertificateNodeToNode();
+      String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
 
       YBClient client = null;
       Set<UUID> tableSet = new HashSet<>(params().tableUUIDList);
       try {
-        client = ybService.getClient(masterAddresses, certificate);
+        client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
         // If user specified the list of tables, only get info for those tables.
         if (tableSet.size() != 0) {
           for (UUID tableUUID : tableSet) {

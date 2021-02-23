@@ -336,6 +336,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.enableClientToNodeEncrypt) {
             extra_gflags.put("use_client_to_server_encryption", "true");
           }
+          if (taskParam.enableNodeToNodeClientVerification) {
+            extra_gflags.put("node_to_node_encryption_use_client_certificates", "true");
+          }
           extra_gflags.put(
             "allow_insecure_connections",
             taskParam.allowInsecure ? "true" : "false"

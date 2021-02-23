@@ -61,12 +61,13 @@ public class WaitForDataMove extends AbstractTaskBase {
     // Get the master addresses and certificate info.
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     try {
 
-      client = ybService.getClient(masterAddresses, certificate);
+      client = ybService.getClient(masterAddresses, certificate, rpcClientCertFiles);
       LOG.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       // TODO: Have a mechanism to send this percent to the parent task completion.
