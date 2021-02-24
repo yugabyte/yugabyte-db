@@ -705,7 +705,7 @@ public class NodeManager extends DevopsBase {
       commandArgs, getCloudArgs(nodeTaskParam));
   }
 
-  private List<String> addArguments(List<String> commandArgs, String instanceType, String nodeIP){
+  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType){
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     commandArgs.add("--node_ip");
