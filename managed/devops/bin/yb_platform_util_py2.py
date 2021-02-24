@@ -21,7 +21,7 @@ def exception_handling(func):
         except urllib2.HTTPError as e:
             content = e.read().decode("utf-8")
             if "html>" in content:
-                message = "Invalid YB_PLATFORM_URL URL, geting html page in response"
+                message = "Invalid YB_PLATFORM_URL URL or params, Getting html page in response"
                 response = {"data": message, "status": "failed", "error": message}
                 print(response)
             else:
@@ -34,6 +34,10 @@ def exception_handling(func):
 
 
 def convert_unicode_json(data):
+  """
+  Function to convert unicode json to dictionary
+  {u"name": u"universe"} => {"name": "universe"}
+  """
     if isinstance(data, basestring):
         return str(data)
     elif isinstance(data, collections.Mapping):

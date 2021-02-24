@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 
 
 # def exception_handling():
-    
+
 
 def exception_handling(func):
     def inner_function(*args, **kwargs):
@@ -24,7 +24,7 @@ def exception_handling(func):
             content = e.read().decode("utf-8")
             print (content)
             if "html>" in content:
-                message = "Invalid YB_PLATFORM_URL URL, geting html page in response"
+                message = "Invalid YB_PLATFORM_URL URL or params, Getting html page in response"
                 response = {"data": message, "status": "failed", "error": message}
                 print(response)
             else:
@@ -369,7 +369,7 @@ def get_customer_uuid(base_url, auth_uuid):
     :param auth_uuid: authentication token for the customer.
     :return: None
     """
-    customer_url = base_url + "/api/v1/customers" 
+    customer_url = base_url + "/api/v1/customers"
     response = call_api(customer_url, auth_uuid)
     data = json.load(response)
     if (len(data) == 1):
