@@ -347,7 +347,7 @@ DEFINE_double(heartbeat_safe_deadline_ratio, .20,
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
-DEFINE_int32(partitions_vtable_cache_refresh_secs, 30,
+DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
              "Amount of time to wait before refreshing the system.partitions cached vtable.");
 
 DEFINE_int32(txn_table_wait_min_ts_count, 1,
@@ -3739,9 +3739,7 @@ Status CatalogManager::BackfillIndex(
   }
 
   return MultiStageAlterTable::StartBackfillingData(
-      this,
-      indexed_table,
-      index_info_pb);
+      this, indexed_table, index_info_pb, boost::none);
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
