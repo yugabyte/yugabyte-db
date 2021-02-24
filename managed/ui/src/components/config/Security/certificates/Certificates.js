@@ -89,11 +89,7 @@ class Certificates extends Component {
   state = {
     showSubmitting: false,
     selectedCert: {},
-    showUniverseModal: false,
-    data: [
-      { universeName: 'GauravTestUniverse1502', universeStatus: 'Ready', universeUUID: 1 },
-      { universeName: 'GauravTestUniverse1302GauravTestUniverse1302', universeStatus: 'Error', universeUUID: 2 },
-    ]
+    associatedUniverses: []
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -126,27 +122,40 @@ class Certificates extends Component {
   /**
    * Delete the root certificate if certificate is safe to remove,
    * i.e - Certificate is not attached to any universe for current user.
-   * 
+   *
    * @param certificateUUID Unique id of certificate.
    */
   deleteCertificate = (certificateUUID) => {
     const {
-      customer: { currentCustomer}
+      customer: { currentCustomer }
     } = this.props;
-    
-    api.deleteCertificate(certificateUUID, currentCustomer?.data?.uuid).then(
-      () => this.props.fetchCustomerCertificates()
-    ).catch(
-      err => console.error(`Failed to delete certificate ${certificateUUID}`, err)
-    )
+
+    api
+      .deleteCertificate(certificateUUID, currentCustomer?.data?.uuid)
+      .then(() => this.props.fetchCustomerCertificates())
+      .catch((err) => console.error(`Failed to delete certificate ${certificateUUID}`, err));
   };
 
   /**
-   * Hide the associated universe modal.
+   * Populate associated universe list for given certificate
+   * @param universeDetails - list of universe using certificate
    */
-  closeUniverseListModal = () => {
-    this.setState({ showUniverseModal: false })
-  }
+  getAssociatedUniverseList = (universeDetails) => {
+    if (universeDetails.length) {
+      const universeList = universeDetails.map((universe) => {
+        if (universe?.clusters.length) {
+          let universeObject = {
+            universeName: universe.clusters[0].userIntent.universeName,
+            universeUUID: universe.universeUUID,
+            universeStatus:
+              universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
+          };
+          return universeObject;
+        }
+      });
+      this.setState({ associatedUniverses: [...universeList] });
+    }
+  };
 
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
@@ -155,7 +164,8 @@ class Certificates extends Component {
       name: row.name,
       uuid: row.uuid,
       creationTime: row.creationTime,
-      expiryDate: row.expiryDate
+      expiryDate: row.expiryDate,
+      universeDetails: row.universeDetails
     };
     // TODO: Replace dropdown option + modal with a side panel
     return (
@@ -189,16 +199,19 @@ class Certificates extends Component {
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
         <MenuItem
-          onClick={() => { 
-            this.deleteCertificate(payload?.uuid)
+          onClick={() => {
+            this.deleteCertificate(payload?.uuid);
           }}
           disabled={deleteDisabled}
+          title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
         >
           <i className="fa fa-trash"></i> Delete Certificate
         </MenuItem>
         <MenuItem
-          onClick={() => this.setState({ showUniverseModal: true })}
-          disabled={deleteDisabled}
+          onClick={() => {
+            this.getAssociatedUniverseList(payload?.universeDetails);
+            this.props.showassociatedUniversesModal();
+          }}
         >
           <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
@@ -213,23 +226,24 @@ class Certificates extends Component {
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting, showUniverseModal, data } = this.state;
+    const { showSubmitting, associatedUniverses } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-    ? userCertificates.data.map((cert) => {
-      return {
-        type: cert.certType,
-        uuid: cert.uuid,
-        name: cert.label,
-        expiryDate: cert.expiryDate,
-        certificate: cert.certificate,
-        creationTime: cert.startDate,
-        privateKey: cert.privateKey,
-        customCertInfo: cert.customCertInfo,
-        inUse: cert.inUse
-      };
-    })
-    : [];
+      ? userCertificates.data.map((cert) => {
+          return {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse,
+            universeDetails: cert.universeDetails
+          };
+        })
+      : [];
 
     return (
       <div id="page-wrapper">
@@ -282,7 +296,12 @@ class Certificates extends Component {
                 <TableHeaderColumn dataField="certificate" width="240px" dataAlign="left">
                   Certificate
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateKey" width="240px" headerAlign="left" dataAlign="left">
+                <TableHeaderColumn
+                  dataField="privateKey"
+                  width="240px"
+                  headerAlign="left"
+                  dataAlign="left"
+                >
                   Private Key
                 </TableHeaderColumn>
                 <TableHeaderColumn
@@ -319,7 +338,11 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
-        {showUniverseModal && <AssociatedUniverse closeUniverseListModal={this.closeUniverseListModal} universeList={data}/>}
+        <AssociatedUniverse
+          visible={showModal && visibleModal === 'associatedUniversesModal'}
+          onHide={this.props.closeModal}
+          associatedUniverses={associatedUniverses}
+        />
       </div>
     );
   }

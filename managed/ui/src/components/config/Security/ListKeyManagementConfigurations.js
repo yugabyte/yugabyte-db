@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Button } from 'react-bootstrap';
+import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
@@ -13,14 +13,23 @@ export class ListKeyManagementConfigurations extends Component {
     const actionList = (item, row) => {
       const { configUUID, in_use } = row.metadata;
       return (
-        <Button
-          title={'Delete provider'}
-          bsClass="btn btn-default btn-config pull-right"
-          disabled={in_use}
-          onClick={() => onDelete(configUUID)}
+        <DropdownButton
+          className="btn btn-default"
+          title="Actions"
+          id="bg-nested-dropdown"
+          pullRight
         >
-          Delete Configuration
-        </Button>
+          <MenuItem
+            title={'Delete provider'}
+            disabled={in_use}
+            onClick={() => onDelete(configUUID)}
+          >
+            <i className="fa fa-trash"></i> Delete Configuration
+          </MenuItem>
+          <MenuItem>
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </DropdownButton>
       );
     };
 
@@ -107,8 +116,8 @@ export class ListKeyManagementConfigurations extends Component {
                 <TableHeaderColumn
                   dataField="configActions"
                   dataFormat={actionList}
-                  columnClassName="no-border name-column no-side-padding"
-                  className="no-border"
+                  width="120px"
+                  columnClassName="yb-actions-cell"
                 />
               </BootstrapTable>
             </Fragment>

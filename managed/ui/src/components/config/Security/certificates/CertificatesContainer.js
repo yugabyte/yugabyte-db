@@ -23,6 +23,9 @@ const mapDispatchToProps = (dispatch) => {
     showCertificateDetailsModal: () => {
       dispatch(openDialog('certificateDetailsModal'));
     },
+    showUniverseListModal: () => {
+      dispatch(openDialog('associatedUniversesModal'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
