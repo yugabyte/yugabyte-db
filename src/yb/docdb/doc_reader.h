@@ -40,45 +40,6 @@ namespace docdb {
 
 class IntentAwareIterator;
 
-// Pass data to GetSubDocument function.
-struct GetSubDocumentData {
-  GetSubDocumentData(
-    const Slice& subdoc_key,
-    SubDocument* result_,
-    bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = Value::kMaxTtl,
-    DocHybridTime* table_tombstone_time_ = nullptr)
-      : subdocument_key(subdoc_key),
-        result(result_),
-        doc_found(doc_found_),
-        exp(default_ttl),
-        table_tombstone_time(table_tombstone_time_) {}
-
-  Slice subdocument_key;
-  SubDocument* result;
-  bool* doc_found;
-
-  DeadlineInfo* deadline_info = nullptr;
-
-  // The TTL and hybrid time are return values external to the SubDocument
-  // which occasionally need to be accessed for TTL calculation.
-  mutable Expiration exp;
-
-  // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
-  // times of records belonging to the table.
-  DocHybridTime* table_tombstone_time;
-
-  std::string ToString() const {
-    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 table_tombstone_time: $3 }",
-                  SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, table_tombstone_time);
-  }
-};
-
-inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
-  return out << data.ToString();
-}
-
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if seek_fwd_suffices is true, the iterator is expected to be
@@ -91,21 +52,18 @@ inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& dat
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetSubDocument(
-    IntentAwareIterator *db_iter,
-    const GetSubDocumentData& data,
-    const std::vector<PrimitiveValue>* projection = nullptr,
-    SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
-yb::Status GetSubDocument(
+Result<boost::optional<SubDocument>> TEST_GetSubDocument(
+    const Slice& sub_doc_key,
     const DocDB& doc_db,
-    const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max());
+    const ReadHybridTime& read_time = ReadHybridTime::Max(),
+    const std::vector<PrimitiveValue>* projection = nullptr,
+    DocHybridTime* table_tombstone_time = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
@@ -116,7 +74,8 @@ yb::Status GetSubDocument(
 class DocDBTableReader {
  public:
   DocDBTableReader(
-      IntentAwareIterator* iter, DeadlineInfo* deadline_info, SeekFwdSuffices seek_fwd_suffices);
+      IntentAwareIterator* iter, DeadlineInfo* deadline_info,
+      SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
   // Updates expiration/overwrite data based on table tombstone time. If provided pointer is null,
   // this method is a no-op. Else if provided pointer points to an invalid value, AND the table is a
@@ -129,17 +88,15 @@ class DocDBTableReader {
 
   void SetTableTtl(Expiration table_ttl);
 
-  // Read into the provided SubDocument* the data at sub_doc_key. Return false if no such doc is
-  // found.
-  Result<bool> Get(const KeyBytes& sub_doc_key, SubDocument* result);
-
   // For each value in projection, read into the provided SubDocument* a child Subdocument
   // corresponding to the data at the key formed by appending the projection value to the end of the
-  // provided sub_doc_key. If found, the result will be a SubDocument rooted at sub_doc_key with
-  // children at each p in projection where a child was found. If no children are found, this method
-  // returns false.
+  // provided root_doc_key. If found, the result will be a SubDocument rooted at root_doc_key with
+  // children at each p in projection where a child was found. If no children in the projection are
+  // found, this method will seek back to the SubDocument root and attempt to grab the whole range
+  // of data for root_doc_key, build this into result, and return doc_found accordingly.
   Result<bool> Get(
-      const Slice& sub_doc_key, const std::vector<PrimitiveValue>* projection, SubDocument* result);
+      const Slice& root_doc_key, const std::vector<PrimitiveValue>* projection,
+      SubDocument* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
