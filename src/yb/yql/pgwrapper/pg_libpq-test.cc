@@ -890,33 +890,56 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
+namespace {
+
+Result<string> GetNamespaceIdByNamespaceName(
+    client::YBClient* client, const string& namespace_name) {
+  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
+  for (const auto& ns : namespaces) {
+    if (ns.name() == namespace_name) {
+      return ns.id();
+    }
+  }
+  return STATUS(NotFound, "The namespace does not exist");
+}
+
+Result<string> GetTableIdByTableName(
+    client::YBClient* client, const string& namespace_name, const string& table_name) {
+  const auto tables = VERIFY_RESULT(client->ListTables());
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS(NotFound, "The table does not exist");
+}
+
+} // namespace
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
+  const string namespace_name = "yugabyte";
   const string table_name = "test";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (r2 int, r1 int, h int, v2 int, v1 int, primary key (h, r1, r2))",
       table_name));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  yb::client::YBSchema schema;
-  PartitionSchema partition_schema;
-  bool table_found = false;
-  // TODO(dmitry): Find table by name instead of checking all the tables when catalog_mangager
-  // will be able to find YSQL tables
-  const auto tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_type() == YQLDatabase::YQL_DATABASE_PGSQL && t.table_name() == table_name) {
-      table_found = true;
-      ASSERT_OK(client->GetTableSchema(t, &schema, &partition_schema));
-      const auto& columns = schema.columns();
-      std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
-      ASSERT_EQ(expected_column_names.size(), columns.size());
-      for (size_t i = 0; i < expected_column_names.size(); ++i) {
-        ASSERT_EQ(columns[i].name(), expected_column_names[i]);
-      }
-      break;
-    }
+
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), namespace_name, table_name));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
   }
-  ASSERT_TRUE(table_found);
+
+  const auto& columns = table_info->schema.columns();
+  std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
+  ASSERT_EQ(expected_column_names.size(), columns.size());
+  for (size_t i = 0; i < expected_column_names.size(); ++i) {
+    ASSERT_EQ(columns[i].name(), expected_column_names[i]);
+  }
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
@@ -994,21 +1017,16 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CatalogManagerMapsTest)) {
   ASSERT_OK(result);
   ASSERT_FALSE(result.get());
 
-  string ns_id;
-  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
-  ASSERT_OK(list_result);
-  for (const auto& ns : list_result.get()) {
-    if (ns.name() == "test_db_renamed") {
-      ns_id = ns.id();
-    }
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db_renamed", "bar"));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
   }
-
-  client::YBSchema schema;
-  PartitionSchema partition_schema;
-  ASSERT_OK(client->GetTableSchema(
-      {YQL_DATABASE_PGSQL, ns_id, "test_db_renamed", "bar"}, &schema, &partition_schema));
-  ASSERT_EQ(schema.num_columns(), 1);
-  ASSERT_EQ(schema.Column(0).name(), "b");
+  ASSERT_EQ(table_info->schema.num_columns(), 1);
+  ASSERT_EQ(table_info->schema.Column(0).name(), "b");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
@@ -1025,24 +1043,10 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,
     MonoDelta timeout) {
-  std::string ns_id;
+  const string ns_id =
+      VERIFY_RESULT(GetNamespaceIdByNamespaceName(client, database_name));
+
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-
-  bool exists = VERIFY_RESULT(client->NamespaceExists(database_name, YQL_DATABASE_PGSQL));
-  if (!exists) {
-    return STATUS(NotFound, "namespace does not exist");
-  }
-
-  // Get namespace id.
-  for (const auto& ns : VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
-    if (ns.name() == database_name) {
-      ns_id = ns.id();
-      break;
-    }
-  }
-  if (ns_id.empty()) {
-    return STATUS(NotFound, "namespace not found");
-  }
 
   // Get TabletLocations for the colocated tablet.
   RETURN_NOT_OK(WaitFor(
@@ -1102,17 +1106,6 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   return tablets[0];
 }
 
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
-}
-
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
@@ -1120,7 +1113,6 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   const string kDatabaseName = "test_db";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
-  string ns_id;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
@@ -1581,19 +1573,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
   const string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  string ns_id;
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   ASSERT_OK(conn.Execute("CREATE TABLE range(a int, PRIMARY KEY(a ASC)) " \
       "SPLIT AT VALUES ((100), (1000))"));
 
-  // Get database and table IDs
-  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
-    if (ns.name() == kDatabaseName) {
-      ns_id = ns.id();
-      break;
-    }
-  }
+  auto ns_id = ASSERT_RESULT(GetNamespaceIdByNamespaceName(client.get(), kDatabaseName));
   ASSERT_FALSE(ns_id.empty());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1607,26 +1592,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
 // Override the base test to start a cluster that kicks out unresponsive tservers faster.
 class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
  public:
-  PgLibPqTestSmallTSTimeout() {
-    more_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
-    more_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    more_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
+    options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
@@ -1637,7 +1607,7 @@ TEST_F_EX(PgLibPqTest,
   const std::string kDatabaseName = "co";
   const auto kTimeout = 60s;
   const int starting_num_tablet_servers = cluster_->num_tablet_servers();
-  std::string ns_id;
+  ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -1665,8 +1635,9 @@ TEST_F_EX(PgLibPqTest,
   }
 
   // Add a tablet server.
+  UpdateMiniClusterOptions(&opts);
   ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                                      more_tserver_flags));
+                                      opts.extra_tserver_flags));
   ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
 
   // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablet,
@@ -1792,24 +1763,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
 // disabled.
 class PgLibPqTestNoRetry : public PgLibPqTest {
  public:
-  PgLibPqTestNoRetry() {
-    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_tserver_flags.push_back(
+        "--TEST_ysql_disable_transparent_cache_refresh_retry=true");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // This test is like "TestPgCacheConsistency#testVersionMismatchWithFailedRetry".  That one gets
@@ -1823,8 +1780,8 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   const std::string kTableName = "t";
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));

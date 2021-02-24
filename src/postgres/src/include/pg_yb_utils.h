@@ -33,6 +33,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
 
+#include "nodes/plannodes.h"
 #include "utils/resowner.h"
 
 /*
@@ -175,14 +176,6 @@ void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
  * delete our metadata.
  */
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
-
-/*
- * Same as HandleYBStatus but also ask the given resource owner to forget
- * the given YugaByte statement.
- */
-extern void HandleYBStatusWithOwner(YBCStatus status,
-									YBCPgStatement ybc_stmt,
-									ResourceOwner owner);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
@@ -384,7 +377,9 @@ void YBIncrementDdlNestingLevel();
 void YBDecrementDdlNestingLevel(bool success,
                                 bool is_catalog_version_increment,
                                 bool is_breaking_catalog_change);
-
+bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
+                                 bool *is_catalog_version_increment,
+                                 bool *is_breaking_catalog_change);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

@@ -75,6 +75,8 @@ DEFINE_bool(wait_if_no_leader_master, false,
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
+DEFINE_string(client_node_name, "", "Client node name.");
+
 DEFINE_bool(
     disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
@@ -492,7 +494,9 @@ Status ClusterAdminClient::Init() {
   rpc::MessengerBuilder messenger_builder("yb-admin");
   if (!FLAGS_certs_dir_name.empty()) {
     LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
-    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir_name));
+    const auto& cert_name = FLAGS_client_node_name;
+    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(
+        FLAGS_certs_dir_name, server::UseClientCerts(!cert_name.empty()), cert_name));
     server::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
 

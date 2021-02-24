@@ -460,7 +460,8 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
-    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id));
+    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(
+        txn_snapshot_id, HybridTime::FromPB(req->restore_ht())));
     resp->set_restoration_id(id.data(), id.size());
     return Status::OK();
   }
@@ -573,7 +574,8 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        SendRestoreTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
+        SendRestoreTabletSnapshotRequest(
+            tablet, snapshot_id, HybridTime(), TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -946,6 +948,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
   req.set_num_tablets(table_data->num_tablets);
+  for (const auto& p : table_data->partitions) {
+    *req.add_partitions() = p;
+  }
   req.mutable_namespace_()->set_id(new_namespace_id);
   *req.mutable_partition_schema() = meta.partition_schema();
   *req.mutable_replication_info() = meta.replication_info();
@@ -1241,6 +1246,9 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
   ++table_data.num_tablets;
+  if (meta.has_partition()) {
+    table_data.partitions.push_back(meta.partition());
+  }
   return Status::OK();
 }
 
@@ -1323,10 +1331,14 @@ void CatalogManager::SendCreateTabletSnapshotRequest(
 void CatalogManager::SendRestoreTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet,
     const string& snapshot_id,
+    HybridTime restore_at,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE);
+  if (restore_at) {
+    call->SetSnapshotHybridTime(restore_at);
+  }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(ScheduleTask(call), "Failed to send restore snapshot request");
@@ -2928,14 +2940,14 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
   // Assumes that caller has locked universe.
   Status s = sys_catalog_->DeleteItem(universe.get(), leader_ready_term());
   if (!s.ok()) {
-    LOG(ERROR) << "An error occured while updating sys-catalog: " << s
+    LOG(ERROR) << "An error occurred while updating sys-catalog: " << s
                << ": universe_id: " << universe->id();
     return;
   }
   // Remove it from the map.
   std::lock_guard<LockType> catalog_lock(lock_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
-    LOG(ERROR) << "An error occured while removing replication info from map: " << s
+    LOG(ERROR) << "An error occurred while removing replication info from map: " << s
                << ": universe_id: " << universe->id();
   }
 }

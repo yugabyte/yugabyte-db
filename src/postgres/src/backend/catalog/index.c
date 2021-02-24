@@ -987,7 +987,8 @@ index_create(Relation heapRelation,
 					   heapRelation,
 					   split_options,
 					   skip_index_backfill,
-					   tablegroupId);
+					   tablegroupId,
+					   tableSpaceId);
 	}
 
 	/*
@@ -1202,6 +1203,9 @@ index_create(Relation heapRelation,
 											DEPENDENCY_NORMAL,
 											DEPENDENCY_AUTO, false);
 		}
+
+		/* Store dependency on tablespace */
+		recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 	}
 	else
 	{
@@ -3156,7 +3160,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 			callback(indexRelation, heapTuple, values, isnull, tupleIsAlive,
 					 callback_state);
 		}
-	
+
 		if (IsYBRelation(indexRelation))
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 	}

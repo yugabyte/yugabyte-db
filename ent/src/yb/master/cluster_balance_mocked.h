@@ -58,6 +58,10 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return replication_info_.live_replicas();
   }
 
+  const ReplicationInfoPB& GetClusterReplicationInfo() const override {
+    return replication_info_;
+  }
+
   const PlacementInfoPB& GetClusterPlacementInfo() const override {
     return GetEntState()->GetEntOptions()->type == LIVE ?
         replication_info_.live_replicas() : replication_info_.read_replicas(0);

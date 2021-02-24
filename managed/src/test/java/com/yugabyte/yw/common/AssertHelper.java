@@ -15,11 +15,7 @@ import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 
 public class AssertHelper {
@@ -45,6 +41,11 @@ public class AssertHelper {
   public static void assertForbidden(Result result, String errorStr) {
     assertEquals(FORBIDDEN, result.status());
     assertEquals(errorStr, contentAsString(result));
+  }
+
+  public static void assertNotFound(Result result, String errorStr) {
+    assertEquals(NOT_FOUND, result.status());
+    assertErrorResponse(result, errorStr);
   }
 
   public static void assertErrorResponse(Result result, String errorStr) {

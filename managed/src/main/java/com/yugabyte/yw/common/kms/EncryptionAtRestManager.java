@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.*;
 import java.io.File;
 import java.lang.reflect.Constructor;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.function.Consumer;
 import javax.inject.Singleton;
@@ -240,6 +241,11 @@ public class EncryptionAtRestManager {
             File backupKeysFile = EncryptionAtRestUtil.getUniverseBackupKeysFile(storageLocation);
             File backupKeysDir = backupKeysFile.getParentFile();
 
+            // Skip writing key content to file since it already exists and has been written to.
+            if (backupKeysFile.exists() && backupKeysFile.isFile()) {
+              return;
+            }
+
             if ((!backupKeysDir.isDirectory() && !backupKeysDir.mkdirs())
                 || !backupKeysFile.createNewFile()) {
                 throw new RuntimeException("Error creating backup encryption key file!");
@@ -266,10 +272,10 @@ public class EncryptionAtRestManager {
           return result;
         }
 
-        String backupContents = Util.readStringFromFile(backupKeysFile);
+        byte[] backupContents = Files.readAllBytes(backupKeysFile.toPath());
 
         // Nothing to do if the key metadata file is empty
-        if (backupContents.isEmpty()) {
+        if (backupContents.length == 0) {
           result = RestoreKeyResult.RESTORE_SKIPPED;
           return result;
         }
@@ -287,7 +293,7 @@ public class EncryptionAtRestManager {
           result = RestoreKeyResult.RESTORE_SUCCEEDED;
         }
       } catch (Exception e) {
-        LOG.error("Error occured restoring universe key history", e);
+        LOG.error("Error occurred restoring universe key history", e);
       }
 
       return result;

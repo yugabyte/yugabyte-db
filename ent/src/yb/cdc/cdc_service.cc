@@ -79,7 +79,7 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_int32(update_metrics_interval_ms, 1000,
              "How often to update xDC cluster metrics.");
 
-DEFINE_bool(enable_collect_cdc_metrics, false, "Enable collecting cdc metrics.");
+DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -288,7 +288,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   client::YBTableName table_name;
   table_name.set_table_id(stream_metadata->table_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(async_client_init_->client()->GetTablets(table_name, 0, &tablets));
+  RETURN_NOT_OK(async_client_init_->client()->GetTablets(
+      table_name, 0, &tablets, /* partition_list_version =*/ nullptr));
   return tablets;
 }
 
@@ -342,6 +343,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     }
     return;
   }
+
+  // This is the leader tablet, so mark cdc as enabled.
+  cdc_enabled_.store(true, std::memory_order_release);
 
   auto session = async_client_init_->client()->NewSession();
   OpId op_id;
@@ -553,6 +557,18 @@ void CDCServiceImpl::UpdateLagMetrics() {
   }
 }
 
+bool CDCServiceImpl::ShouldUpdateLagMetrics(MonoTime time_since_update_metrics) {
+  // Only update metrics if cdc is enabled, which means we have a valid replication stream.
+  return GetAtomicFlag(&FLAGS_enable_collect_cdc_metrics) &&
+         (time_since_update_metrics == MonoTime::kUninitialized ||
+         MonoTime::Now() - time_since_update_metrics >=
+             MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_update_metrics_interval_ms)));
+}
+
+bool CDCServiceImpl::CDCEnabled() {
+  return cdc_enabled_.load(std::memory_order_acquire);
+}
+
 MicrosTime CDCServiceImpl::GetLastReplicatedTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   yb::tablet::RemoveIntentsData data;
@@ -576,10 +592,12 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   };
 
   do {
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_enable_collect_cdc_metrics) &&
-        (time_since_update_metrics == MonoTime::kUninitialized ||
-         MonoTime::Now() - time_since_update_metrics >=
-             MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_update_metrics_interval_ms)))) {
+    if (!cdc_enabled_.load(std::memory_order_acquire)) {
+      // Have not yet received any GetChanges requests, so skip background thread work.
+      continue;
+    }
+    // Should we update lag metrics default every 1s.
+    if (ShouldUpdateLagMetrics(time_since_update_metrics)) {
       UpdateLagMetrics();
       time_since_update_metrics = MonoTime::Now();
     }
@@ -1390,7 +1408,7 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
 MemTrackerPtr CDCServiceImpl::GetMemTracker(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ProducerTabletInfo& producer_info) {
-  SharedLock<rw_spinlock> l(mutex_);
+  std::lock_guard<rw_spinlock> l(mutex_);
   auto it = tablet_checkpoints_.find(producer_info);
   if (it == tablet_checkpoints_.end()) {
     return nullptr;

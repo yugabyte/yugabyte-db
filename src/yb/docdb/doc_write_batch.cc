@@ -13,7 +13,11 @@
 
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/deadline_info.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -81,11 +85,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
       recent_value, &(current_entry_.value_type),
       &merge_flags, &ttl, &(current_entry_.user_timestamp)));
 
-  bool has_expired;
-  CHECK_OK(HasExpiredTTL(key_data.write_time.hybrid_time(), ttl,
-                         doc_iter->read_time().read, &has_expired));
-
-  if (has_expired) {
+  if (HasExpiredTTL(key_data.write_time.hybrid_time(), ttl, doc_iter->read_time().read)) {
     current_entry_.value_type = ValueType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
     cache_.Put(key_prefix_, current_entry_);
@@ -462,7 +462,7 @@ Status DocWriteBatch::ExtendList(
   return Status::OK();
 }
 
-Status DocWriteBatch::ReplaceInList(
+Status DocWriteBatch::ReplaceRedisInList(
     const DocPath &doc_path,
     const std::vector<int>& indices,
     const std::vector<SubDocument>& values,
@@ -473,8 +473,7 @@ Status DocWriteBatch::ReplaceInList(
     const int64_t start_index,
     std::vector<string>* results,
     MonoDelta default_ttl,
-    MonoDelta write_ttl,
-    bool is_cql) {
+    MonoDelta write_ttl) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
   key_prefix_ = sub_doc_key.Encode();
@@ -509,13 +508,7 @@ Status DocWriteBatch::ReplaceInList(
   while (true) {
     if (indices[replace_index] <= 0 || !iter->valid() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
-      return is_cql ?
-        STATUS_SUBSTITUTE(
-          QLError,
-          "Unable to replace items into list, expecting index $0, reached end of list with size $1",
-          indices[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
-          current_index) :
-        STATUS_SUBSTITUTE(Corruption,
+      return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
           indices[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
@@ -528,15 +521,7 @@ Status DocWriteBatch::ReplaceInList(
     value_slice = iter->value();
     RETURN_NOT_OK(Value::DecodePrimitiveValueType(value_slice, &value_type, nullptr, &entry_ttl));
 
-    bool has_expired = value_type == ValueType::kTombstone;
-    // Redis lists do not have element-level TTL.
-    if (!has_expired && is_cql) {
-      entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      RETURN_NOT_OK(HasExpiredTTL(
-          key_data.write_time.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
-    }
-
-    if (has_expired) {
+    if (value_type == ValueType::kTombstone) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys()+1);
       if (dir == Direction::kForward) {
         iter->SeekPastSubKey(key_data.key);
@@ -583,6 +568,103 @@ Status DocWriteBatch::ReplaceInList(
   }
 }
 
+Status DocWriteBatch::ReplaceCqlInList(
+    const DocPath& doc_path,
+    const int target_cql_index,
+    const SubDocument& value,
+    const ReadHybridTime& read_ht,
+    const CoarseTimePoint deadline,
+    const rocksdb::QueryId query_id,
+    MonoDelta default_ttl,
+    MonoDelta write_ttl) {
+  SubDocKey sub_doc_key;
+  RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
+  key_prefix_ = sub_doc_key.Encode();
+
+  auto iter = yb::docdb::CreateIntentAwareIterator(
+      doc_db_,
+      BloomFilterMode::USE_BLOOM_FILTER,
+      key_prefix_.AsSlice(),
+      query_id,
+      /*txn_op_context*/ boost::none,
+      deadline,
+      read_ht);
+
+  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
+
+  if (!iter->valid()) {
+    return STATUS(QLError, "Unable to replace items in empty list.");
+  }
+
+  auto current_key = VERIFY_RESULT(iter->FetchKey());
+  // Note that the only case we should have a collection without an init marker is if the collection
+  // was created with upsert semantics. e.g.:
+  // UPDATE foo SET v = v + [1, 2] WHERE k = 1
+  // If the value v at row k = 1 did not exist before, then it will be written without an init
+  // marker. In this case, using DocHybridTime::kMin is valid, as it has the effect of treating each
+  // collection item found in DocDB as if there were no higher-level overwrite or invalidation of
+  // it.
+  auto current_key_is_init_marker = current_key.key.compare(key_prefix_) == 0;
+  auto collection_write_time = current_key_is_init_marker
+      ? current_key.write_time : DocHybridTime::kMin;
+
+  Slice value_slice;
+  SubDocKey found_key;
+  int current_cql_index = 0;
+
+  // Seek past init marker if it exists.
+  key_prefix_.AppendValueType(ValueType::kArrayIndex);
+  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
+
+  FetchKeyResult key_data;
+  while (true) {
+    if (target_cql_index < 0 || !iter->valid() ||
+        !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
+      return STATUS_SUBSTITUTE(
+          QLError,
+          "Unable to replace items into list, expecting index $0, reached end of list with size $1",
+          target_cql_index,
+          current_cql_index);
+    }
+
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
+
+    MonoDelta entry_ttl;
+    ValueType value_type;
+    value_slice = iter->value();
+    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value_slice, &value_type, nullptr, &entry_ttl));
+
+    bool has_expired = false;
+    if (value_type == ValueType::kTombstone || key_data.write_time < collection_write_time) {
+      has_expired = true;
+    } else {
+      entry_ttl = ComputeTTL(entry_ttl, default_ttl);
+      has_expired = HasExpiredTTL(key_data.write_time.hybrid_time(), entry_ttl, read_ht.read);
+    }
+
+    if (has_expired) {
+      found_key.KeepPrefix(sub_doc_key.num_subkeys() + 1);
+      iter->SeekPastSubKey(key_data.key);
+      continue;
+    }
+
+    // Should we verify that the subkeys are indeed numbers as list indices should be?
+    // Or just go in order for the index'th largest key in any subdocument?
+    if (current_cql_index == target_cql_index) {
+      // When inserting, key_prefix_ is modified.
+      KeyBytes array_index_prefix(key_prefix_);
+      DocPath child_doc_path = doc_path;
+      child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
+      RETURN_NOT_OK(
+          InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl));
+      return Status::OK();
+    }
+
+    current_cql_index++;
+    iter->SeekPastSubKey(key_data.key);
+  }
+}
+
 void DocWriteBatch::Clear() {
   put_batch_.clear();
   cache_.Clear();
@@ -614,8 +696,10 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
  public:
   DocWriteBatchFormatter(
       StorageDbType storage_db_type,
-      BinaryOutputFormat binary_output_format)
-      : WriteBatchFormatter(binary_output_format),
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix)
+      : WriteBatchFormatter(binary_output_format, batch_output_format, line_prefix),
         storage_db_type_(storage_db_type) {}
  protected:
   std::string FormatKey(const Slice& key) override {
@@ -629,6 +713,18 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
         key_result.status());
   }
 
+  std::string FormatValue(const Slice& key, const Slice& value) override {
+    auto key_type = GetKeyType(key, storage_db_type_);
+    const auto value_result = DocDBValueToDebugStr(key_type, key, value);
+    if (value_result.ok()) {
+      return *value_result;
+    }
+    return Format(
+        "$0 (error: $1)",
+        WriteBatchFormatter::FormatValue(key, value),
+        value_result.status());
+  }
+
  private:
   StorageDbType storage_db_type_;
 };
@@ -636,8 +732,11 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
     StorageDbType storage_db_type,
-    BinaryOutputFormat binary_output_format) {
-  DocWriteBatchFormatter formatter(storage_db_type, binary_output_format);
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    const std::string& line_prefix) {
+  DocWriteBatchFormatter formatter(
+      storage_db_type, binary_output_format, batch_output_format, line_prefix);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
 }

@@ -447,4 +447,8 @@ const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat(
     locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q"))
 );
 
+const DateTime::OutputFormat DateTime::HumanReadableOutputFormat = OutputFormat(
+    locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f"))
+);
+
 } // namespace yb

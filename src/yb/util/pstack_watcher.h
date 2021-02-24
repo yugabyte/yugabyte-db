@@ -44,10 +44,9 @@
 namespace yb {
 
 // PstackWatcher is an object which will pstack the current process and print
-// the results to stdout.  It does this after a certain timeout has occured.
+// the results to stdout.  It does this after a certain timeout has occurred.
 class PstackWatcher {
  public:
-
   enum Flags {
     NO_FLAGS = 0,
 
@@ -105,4 +104,4 @@ class PstackWatcher {
 };
 
 } // namespace yb
-#endif
+#endif // YB_UTIL_PSTACK_WATCHER_H

@@ -5,7 +5,6 @@ linkTitle: Multi-DC deployments
 description: Deploy YugabyteDB across multiple data centers or cloud regions
 headcontent: Deploy YugabyteDB across multiple data centers (DC).
 image: /images/section_icons/explore/planet_scale.png
-block_indexing: true
 menu:
   stable:
     identifier: multi-dc

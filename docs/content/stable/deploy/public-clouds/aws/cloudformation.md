@@ -3,9 +3,6 @@ title: Deploy on Amazon Web Services using AWS CloudFormation
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
-aliases:
-  - /stable/deploy/public-clouds/aws/
-block_indexing: true
 menu:
   stable:
     identifier: deploy-in-aws-1-cloudformation
@@ -17,19 +14,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="/stable/deploy/public-clouds/aws/terraform" class="nav-link">
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="/stable/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
       <i class="icon-shell"></i>
       Manual deployment
     </a>

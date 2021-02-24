@@ -57,14 +57,14 @@ class CQLServerEnt : public cqlserver::CQLServer {
       secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
           server::DefaultRootDir(*fs_manager_),
           FLAGS_cert_node_filename,
-          server::SecureContextType::kClientToServer,
+          server::SecureContextType::kExternal,
           builder));
     } else {
       const string &hosts = !options_.server_broadcast_addresses.empty()
                           ? options_.server_broadcast_addresses
                           : options_.rpc_opts.rpc_bind_addresses;
       secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-          hosts, *fs_manager_, server::SecureContextType::kClientToServer, builder));
+          hosts, *fs_manager_, server::SecureContextType::kExternal, builder));
     }
     return Status::OK();
   }

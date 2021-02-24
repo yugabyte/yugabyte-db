@@ -263,6 +263,10 @@ import static org.mockito.Mockito.when;
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
     cmd.add(storageType);
+    if(storageType.equals("nfs")) {
+      cmd.add("--nfs_storage_path");
+      cmd.add("/foo/bar");
+    }
     if (userIntent.enableNodeToNodeEncrypt) {
       cmd.add("--certs_dir");
       cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);

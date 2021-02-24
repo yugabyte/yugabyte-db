@@ -135,10 +135,6 @@ public class TestPgDropDatabase extends BasePgSQLTest {
     }
   }
 
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
-  }
-
   private void setWriteRejection(HostAndPort server, int percentage) throws Exception {
     runProcess(TestUtils.findBinary("yb-ts-cli"),
                "--server_address",

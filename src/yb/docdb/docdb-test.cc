@@ -423,13 +423,13 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
-      DocHybridTime* table_tombstone_time) {
+      DocHybridTime* table_tombstone_time, const vector<PrimitiveValue>* projection = nullptr) {
   GetSubDocumentData data = { subdoc_key, result, found_result };
   data.table_tombstone_time = table_tombstone_time;
-  ASSERT_OK(GetSubDocument(
-      doc_db, data, rocksdb::kDefaultQueryId,
-      txn_op_context, CoarseTimePoint::max() /* deadline */,
-      read_time));
+  auto iter = CreateIntentAwareIterator(
+      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, rocksdb::kDefaultQueryId,
+      txn_op_context, CoarseTimePoint::max() /* deadline */, read_time);
+  ASSERT_OK(GetSubDocument(iter.get(), data, projection, SeekFwdSuffices::kFalse));
 }
 
 void GetSubDocRedis(
@@ -623,6 +623,49 @@ TEST_P(DocDBTestWrapper, NullChildObjectShouldMaskValues) {
   "obj": null
 }
       )#");
+}
+
+// This test confirms that we return the appropriate value for doc_found in the case that the last
+// projection we look at is not present. Previously we had a bug where we would set doc_found to
+// true if the last projection was present, and false otherwise, reguardless of other projections
+// considered. This test ensures we have the correct behavior, returning true as long as any
+// projection is present, even if the last one is absent.
+TEST_F(DocDBTestQl, LastProjectionIsNull) {
+  const DocKey doc_key(PrimitiveValues("mydockey", 123456));
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "p1"), PrimitiveValue("value"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, "p2"), PrimitiveValue(ValueType::kTombstone), 2000_usec_ht));
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
+      SubDocKey(DocKey([], ["mydockey", 123456]), ["p1"; HT{ physical: 2000 }]) -> "value"
+      SubDocKey(DocKey([], ["mydockey", 123456]), ["p2"; HT{ physical: 2000 }]) -> DEL
+      )#");
+
+  auto subdoc_key = SubDocKey(doc_key);
+  auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+  DocHybridTime table_tombstone_time(DocHybridTime::kInvalid);
+  SubDocument doc_from_rocksdb;
+  bool subdoc_found_in_rocksdb = false;
+  const vector<PrimitiveValue> projection = {
+    PrimitiveValue("p1"),
+    PrimitiveValue("p2")
+  };
+
+  GetSubDocQl(
+      doc_db(), encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
+      kNonTransactionalOperationContext, ReadHybridTime::SingleTime(4000_usec_ht),
+      &table_tombstone_time, &projection);
+  EXPECT_TRUE(subdoc_found_in_rocksdb);
+  EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
+{
+  "p1": "value",
+  "p2": DEL
+}
+  )#", doc_from_rocksdb.ToString());
 }
 
 TEST_F(DocDBTestQl, ColocatedTableTombstoneTest) {
@@ -992,13 +1035,14 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
   }
         )#");
 
-  vector<int> indexes = {2, 4};
   ReadHybridTime read_ht;
   read_ht.read = HybridTime(460);
-  vector<SubDocument> values = {
-      SubDocument(PrimitiveValue::kTombstone), SubDocument(PrimitiveValue(17))};
-  ASSERT_OK(ReplaceInList(DocPath(encoded_doc_key, PrimitiveValue("list2")),
-    indexes, values, read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list2")), 1, SubDocument(PrimitiveValue::kTombstone),
+      read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list2")), 2, SubDocument(PrimitiveValue(17)),
+      read_ht, HybridTime(500), rocksdb::kDefaultQueryId));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
@@ -1020,7 +1064,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); \
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); \
     HT{ physical: 0 logical: 100 w: 1 }]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
-    HT{ physical: 0 logical: 500 w: 1 }]) -> 17
+    HT{ physical: 0 logical: 500 }]) -> 17
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
     HT{ physical: 0 logical: 100 w: 2 }]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); \
@@ -1077,7 +1121,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(-7); \
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(1); \
     HT{ physical: 0 logical: 100 w: 1 }]) -> 10
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
-    HT{ physical: 0 logical: 500 w: 1 }]) -> 17
+    HT{ physical: 0 logical: 500 }]) -> 17
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(2); \
     HT{ physical: 0 logical: 100 w: 2 }]) -> 2
 SubDocKey(DocKey([], ["list_test", 231]), ["list2", ArrayIndex(9); \
@@ -1118,6 +1162,78 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
         )#");
 }
 
+TEST_P(DocDBTestWrapper, ListOverwriteAndInsertTest) {
+  SubDocument parent;
+  DocKey doc_key(PrimitiveValues("list_test", 231));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), parent, HybridTime(100)));
+
+  auto write_list = [&](const std::vector<PrimitiveValue>& children, const int logical_time) {
+    SubDocument list;
+    int idx = 1;
+    for (const auto& child : children) {
+      list.SetChild(PrimitiveValue::ArrayIndex(idx++), SubDocument(child));
+    }
+    ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key, "list"), list, HybridTime(logical_time)));
+  };
+
+  write_list(PrimitiveValues(1, 2, 3, 4, 5), 200);
+  write_list(PrimitiveValues(6, 7, 8), 300);
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(350),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 7,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
+      R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT{ physical: 0 logical: 100 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 300 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 200 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 300 w: 1 }]) -> 6
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 200 w: 1 }]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 300 w: 2 }]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 200 w: 2 }]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 300 w: 3 }]) -> 8
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 200 w: 3 }]) -> 3
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(4); \
+    HT{ physical: 0 logical: 200 w: 4 }]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
+    HT{ physical: 0 logical: 200 w: 5 }]) -> 5
+        )#");
+
+  // Replacing cql index 1 with 17 should work as expected, ignoring overwritten DocDB entries
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list")), 1, SubDocument(PrimitiveValue(17)),
+      ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
+  // Replacing cql index 3 should fail, rather than overwrite an old overwritten index
+  ASSERT_NOK(ReplaceInList(
+      DocPath(encoded_doc_key, PrimitiveValue("list")), 3, SubDocument(PrimitiveValue(17)),
+      ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(500),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 17,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+}
+
 TEST_P(DocDBTestWrapper, ExpiredValueCompactionTest) {
   const DocKey doc_key(PrimitiveValues("k1"));
   const MonoDelta one_ms = 1ms;
@@ -1154,26 +1270,40 @@ SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 1000 }]) -> "v21"; ttl: 0.003
 TEST_P(DocDBTestWrapper, GetDocTwoLists) {
   SubDocument parent;
   SubDocument list1({PrimitiveValue(10), PrimitiveValue(2)});
-  DocKey doc_key(PrimitiveValues("list_test", 231));
+  DocKey doc_key(PrimitiveValues("foo", 231));
 
   KeyBytes encoded_doc_key = doc_key.Encode();
-  parent.SetChild(PrimitiveValue("list1"), SubDocument(list1));
+  parent.SetChild(PrimitiveValue("key1"), SubDocument(list1));
   ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), parent, HybridTime(100)));
 
-  SubDocKey sub_doc_key(doc_key, PrimitiveValue("list2"));
+  SubDocKey sub_doc_key(doc_key, PrimitiveValue("key2"));
   KeyBytes encoded_sub_doc_key = sub_doc_key.Encode();
   SubDocument list2({PrimitiveValue(31), PrimitiveValue(32)});
 
   ASSERT_OK(InsertSubDocument(DocPath(encoded_sub_doc_key), list2, HybridTime(100)));
 
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
+      R"#(
+SubDocKey(DocKey([], ["foo", 231]), [HT{ physical: 0 logical: 100 }]) -> {}
+SubDocKey(DocKey([], ["foo", 231]), ["key1", ArrayIndex(1); HT{ physical: 0 logical: 100 w: 1 }]) \
+-> 10
+SubDocKey(DocKey([], ["foo", 231]), ["key1", ArrayIndex(2); HT{ physical: 0 logical: 100 w: 2 }]) \
+-> 2
+SubDocKey(DocKey([], ["foo", 231]), ["key2"; HT{ physical: 0 logical: 100 }]) -> []
+SubDocKey(DocKey([], ["foo", 231]), ["key2", ArrayIndex(3); HT{ physical: 0 logical: 100 w: 1 }]) \
+-> 31
+SubDocKey(DocKey([], ["foo", 231]), ["key2", ArrayIndex(4); HT{ physical: 0 logical: 100 w: 2 }]) \
+-> 32
+      )#");
+
   VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
       R"#(
   {
-    "list1": {
+    "key1": {
       ArrayIndex(1): 10,
       ArrayIndex(2): 2
     },
-    "list2": {
+    "key2": {
       ArrayIndex(3): 31,
       ArrayIndex(4): 32
     }

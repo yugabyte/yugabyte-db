@@ -26,7 +26,8 @@
         "(^.*[.]patch$)",
         "(java/yb-cdc/pom.xml)",
         "(java/yb-cdc/README.md)",
-        "(^docs/.*[.]md$)"
+        "(^docs/.*[.]md$)",
+        "(^[.]fossa[.]yml$)"
       ]
     },
     "pycodestyle": {

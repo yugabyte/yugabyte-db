@@ -35,6 +35,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -98,7 +99,7 @@ DEFINE_bool(use_docdb_aware_bloom_filter, true,
 // Empirically 2 is a minimal value that provides best performance on sequential scan.
 DEFINE_int32(max_nexts_to_avoid_seek, 2,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
-DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
+
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
@@ -156,9 +157,7 @@ void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
                            int* next_count, int* seek_count) {
   for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
     if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
-      if (FLAGS_trace_docdb_calls) {
-        TRACE("Did $0 Next(s) instead of a Seek", nexts);
-      }
+      VTRACE(2, "Did $0 Next(s) instead of a Seek", nexts);
       return;
     }
     VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
@@ -167,9 +166,7 @@ void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
     ++*next_count;
   }
 
-  if (FLAGS_trace_docdb_calls) {
-    TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
-  }
+  VTRACE(2, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
   iter->Seek(seek_key);
   ++*seek_count;
 }
@@ -632,7 +629,9 @@ class RocksDBPatcher::Impl {
       if (!file.largest.user_frontier) {
         return;
       }
-      if (down_cast<ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time() <= value) {
+      auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
+      if (consensus_frontier.hybrid_time() <= value ||
+          consensus_frontier.hybrid_time_filter() <= value) {
         return;
       }
       rocksdb::FileMetaData fmd = file;

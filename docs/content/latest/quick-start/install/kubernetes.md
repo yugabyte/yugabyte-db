@@ -96,6 +96,7 @@ Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
 ```sh
 $ helm version
 ```
+
 ```
 version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
@@ -125,17 +126,14 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```sh
-NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...```
+NAME                 CHART VERSION   APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  2.5.1           2.5.1.0-b153  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
-
 
 {{<tip title="Next step" >}}
 
 [Create a local cluster](../../create-local-cluster/kubernetes)
 
 {{< /tip >}}
-
-

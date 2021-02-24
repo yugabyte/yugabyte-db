@@ -5252,7 +5252,7 @@ TEST_F(TestRedisService, KeysTimeout) {
   SyncClient();
   FLAGS_TEST_tserver_timeout = true;
   DoRedisTestExpectError(__LINE__, {"KEYS", "*"},
-                         "Errors occured while reaching out to the tablet servers");
+                         "Errors occurred while reaching out to the tablet servers");
   SyncClient();
   FLAGS_TEST_tserver_timeout = false;
   DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"z_key"});

@@ -91,5 +91,9 @@ void PgMemctx::GetCache(size_t hash_id, PgTableDesc **handle) {
   }
 }
 
+void ClearGlobalPgMemctxMap() {
+  postgres_process_memctxs.clear();
+}
+
 }  // namespace pggate
 }  // namespace yb

@@ -285,6 +285,8 @@ CHECKED_STATUS WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
+CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
+
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
 CHECKED_STATUS StepDown(

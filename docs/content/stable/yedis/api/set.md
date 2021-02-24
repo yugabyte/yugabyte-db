@@ -2,14 +2,10 @@
 title: SET
 linkTitle: SET
 description: SET
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2270
-aliases:
-  - /stable/api/redis/set
-  - /stable/api/yedis/set
 isTocNested: true
 showAsideToc: true
 ---

@@ -73,6 +73,8 @@ if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
   set -x
 fi
 
+# This must be set before including common-build-env.sh as it will set this variable to false by
+# default.
 is_run_test_script=true
 
 . "${BASH_SOURCE%/*}/common-build-env.sh"

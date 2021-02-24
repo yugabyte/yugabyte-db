@@ -3,9 +3,6 @@ title: Build a YugabyteDB YEDIS application using C#
 headerTitle: Build an application using C#
 linkTitle: C#
 description: Use C# to build a YugabyteDB application that interacts with YEDIS
-aliases:
-  - /stable/yedis/develop/client-drivers/csharp
-block_indexing: true
 menu:
   stable:
     identifier: client-drivers-yedis-csharp

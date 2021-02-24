@@ -3,9 +3,6 @@ title: Install YugabyteDB on Kubernetes
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Kubernetes in less than five minutes.
-aliases:
-  - /quick-start/install/
-block_indexing: true
 menu:
   stable:
     parent: quick-start
@@ -20,28 +17,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/install/macos" class="nav-link">
+    <a href="/latest/quick-start/install/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/linux" class="nav-link">
+    <a href="/latest/quick-start/install/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/docker" class="nav-link">
+    <a href="/latest/quick-start/install/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/quick-start/install/kubernetes" class="nav-link active">
+    <a href="/latest/quick-start/install/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -70,6 +67,7 @@ To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in th
 ```sh
 $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
 ```
+
 ```
 ...
 Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
@@ -87,6 +85,7 @@ $ minikube dashboard
 ```sh
 $ kubectl version
 ```
+
 ```
 Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
 Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
@@ -97,6 +96,7 @@ Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
 ```sh
 $ helm version
 ```
+
 ```
 version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
@@ -126,17 +126,14 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```sh
-NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...```
+NAME                 CHART VERSION  APP VERSION  DESCRIPTION
+yugabytedb/yugabyte  2.4.1          2.4.1.0-b20   YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
-
 
 {{<tip title="Next step" >}}
 
 [Create a local cluster](../../create-local-cluster/kubernetes)
 
 {{< /tip >}}
-
-

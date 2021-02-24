@@ -55,8 +55,6 @@ DEFINE_bool(ycql_disable_index_updating_optimization, false,
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DECLARE_bool(trace_docdb_calls);
-
 namespace yb {
 namespace docdb {
 
@@ -726,10 +724,9 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           MonoDelta::FromMilliseconds(schema_->table_properties().DefaultTimeToLive()) :
           MonoDelta::kMax;
 
-      // At YQL layer list indexes start at 0, but internally we start at 1.
-      int index = column_value.subscript_args(0).value().int32_value() + 1;
+      int target_cql_index = column_value.subscript_args(0).value().int32_value();
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          *sub_path, {index}, {sub_doc}, data.read_time, data.deadline, request_.query_id(),
+          *sub_path, target_cql_index, sub_doc, data.read_time, data.deadline, request_.query_id(),
           default_ttl, ttl));
       break;
     }
@@ -1337,9 +1334,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
                                        deadline, read_time, *spec, &iter));
-  if (FLAGS_trace_docdb_calls) {
-    TRACE("Initialized iterator");
-  }
+  VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
   QLTableRow non_static_row;
@@ -1441,9 +1436,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     RETURN_NOT_OK(PopulateAggregate(selected_row, resultset));
   }
 
-  if (FLAGS_trace_docdb_calls) {
-    TRACE("Fetched $0 rows.", resultset->rsrow_count());
-  }
+  VTRACE(1, "Fetched $0 rows.", resultset->rsrow_count());
 
   RETURN_NOT_OK(SetPagingStateIfNecessary(
       iter.get(), resultset, row_count_limit, num_rows_skipped, read_time));

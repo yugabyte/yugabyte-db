@@ -14,7 +14,7 @@ menu:
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="releases-overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
@@ -26,7 +26,7 @@ menu:
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="versioning/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
@@ -45,7 +45,7 @@ menu:
         <div class="title">What's new</div>
       </div>
       <div class="body">
-          What's new in the latest and current stable release series.
+          Learn what's new in the latest and current stable release series.
       </div>
     </a>
   </div>

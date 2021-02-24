@@ -46,13 +46,16 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  // The cached versions are initialized to -1, so if there is a race, we may still generate the
-  // cache on the calling thread.
-  if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
-      cached_tablets_version_ >= 0 &&
-      cached_tablet_locations_version_ >= 0) {
-    // Don't need a version match here, since we have a bg task handling cache refreshing.
-    return cache_;
+  {
+    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
+    // The cached versions are initialized to -1, so if there is a race, we may still generate the
+    // cache on the calling thread.
+    if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
+        cached_tablets_version_ >= 0 &&
+        cached_tablet_locations_version_ >= 0) {
+      // Don't need a version match here, since we have a bg task handling cache refreshing.
+      return cache_;
+    }
   }
 
   RETURN_NOT_OK(GenerateAndCacheData());
@@ -62,7 +65,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
 Status YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
-    std::shared_lock<boost::shared_mutex> lock(mutex_);
+    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
     if (FLAGS_use_cache_for_partitions_vtable &&
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {

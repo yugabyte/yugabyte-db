@@ -36,6 +36,10 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
+  const ReplicationInfoPB& GetClusterReplicationInfo() const override {
+    return replication_info_;
+  }
+
   const PlacementInfoPB& GetClusterPlacementInfo() const override {
     return replication_info_.live_replicas();
   }

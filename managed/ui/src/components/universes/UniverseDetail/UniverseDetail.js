@@ -20,7 +20,7 @@ import {
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
-import { LiveQueries } from '../../queries';
+import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isOnpremUniverse, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -128,15 +128,14 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
 
-    if (
-      !getPromiseState(rollingUpgrade).isLoading() &&
+    return !getPromiseState(rollingUpgrade).isLoading() &&
       updateAvailable &&
-      !(showModal && visibleModal === 'softwareUpgradesModal')
-    ) {
-      return true;
-    }
-    return false;
+      !(showModal && visibleModal === 'softwareUpgradesModal');
   };
+
+  stripQueryParams = () => {
+    browserHistory.replace(browserHistory.getCurrentLocation().pathname);
+  }
 
   transitToDefaultRoute = () => {
     const currentLocation = this.props.location;
@@ -339,9 +338,10 @@ class UniverseDetail extends Component {
             key="queries-tab"
             mountOnEnter={true}
             unmountOnExit={true}
+            onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <LiveQueries />
+            <QueriesViewer />
           </Tab.Pane>
         ),
 

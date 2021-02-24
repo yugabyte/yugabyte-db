@@ -11,7 +11,8 @@ import {
   OverviewMetricsContainer,
   StandaloneMetricsPanelContainer,
   DiskUsagePanel,
-  CpuUsagePanel
+  CpuUsagePanel,
+  QueryDisplayPanel
 } from '../../metrics';
 import {
   YBResourceCount,
@@ -236,7 +237,7 @@ class HealthInfoPanel extends PureComponent {
     let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
       const healthCheckData = JSON.parse([...healthCheck.data].reverse()[0]);
-      const lastUpdateDate = moment(healthCheckData.timestamp);
+      const lastUpdateDate = moment.utc(healthCheckData.timestamp).local();
       if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
         const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);
         const now = Date.now() / 1000;
@@ -789,6 +790,11 @@ export default class UniverseOverviewNew extends Component {
           <Col lg={4} md={6} sm={6} xs={12}>
             {this.getDiskUsageWidget(universeInfo)}
             {this.getTablesWidget(universeInfo)}
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12} md={12} sm={12} xs={12}>
+            <QueryDisplayPanel universeUUID={universeInfo.universeUUID} />
           </Col>
         </Row>
       </Fragment>

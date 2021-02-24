@@ -14,6 +14,7 @@ export const GET_PROVIDER_LIST = 'GET_PROVIDER_LIST';
 export const GET_PROVIDER_LIST_RESPONSE = 'GET_PROVIDER_LIST_RESPONSE';
 
 // Get Instance Type List
+export const GET_INSTANCE_TYPE_LIST_LOADING = 'GET_INSTANCE_TYPE_LIST_LOADING';
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
 export const GET_INSTANCE_TYPE_LIST_RESPONSE = 'GET_INSTANCE_TYPE_LIST_RESPONSE';
 
@@ -134,8 +135,15 @@ export function getRegionListResponse(responsePayload) {
   };
 }
 
-export function getInstanceTypeList(providerUUID) {
-  const url = getProviderEndpoint(providerUUID) + '/instance_types';
+export const getInstanceTypeListLoading = () => ({
+  type: GET_INSTANCE_TYPE_LIST_LOADING
+});
+
+export function getInstanceTypeList(providerUUID, zones = []) {
+  let url = getProviderEndpoint(providerUUID) + '/instance_types';
+  if (zones.length) {
+    url = url + '?' + zones.map(item => `zone=${encodeURIComponent(item)}`).join('&');
+  }
   const request = axios.get(url);
   return {
     type: GET_INSTANCE_TYPE_LIST,

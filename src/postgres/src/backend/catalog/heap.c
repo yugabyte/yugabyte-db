@@ -1320,6 +1320,8 @@ heap_create_with_catalog(const char *relname,
 	 * Make a dependency link to force the relation to be deleted if its
 	 * namespace is.  Also make a dependency link to its owner, as well as
 	 * dependencies for any roles mentioned in the default ACL.
+	 * Additionally add dependency on the tablespace this table is being
+	 * created in.
 	 *
 	 * For composite types, these dependencies are tracked for the pg_type
 	 * entry, so we needn't record them here.  Likewise, TOAST tables don't
@@ -1352,6 +1354,8 @@ heap_create_with_catalog(const char *relname,
 		recordDependencyOnNewAcl(RelationRelationId, relid, 0, ownerid, relacl);
 
 		recordDependencyOnCurrentExtension(&myself, false);
+
+		recordDependencyOnTablespace(RelationRelationId, relid, reltablespace);
 
 		if (reloftypeid)
 		{
