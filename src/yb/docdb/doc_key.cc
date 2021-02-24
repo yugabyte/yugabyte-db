@@ -16,6 +16,8 @@
 #include <memory>
 #include <sstream>
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/util/string_util.h"
 
 #include "yb/common/partition.h"
@@ -515,7 +517,36 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   return status;
 }
 
-string DocKey::ToString() const {
+namespace {
+
+// We need a special implementation of converting a vector to string because we need to pass the
+// auto_decode_keys flag to PrimitiveValue::ToString.
+void AppendVectorToString(
+    std::string* dest,
+    const std::vector<PrimitiveValue>& vec,
+    AutoDecodeKeys auto_decode_keys) {
+  bool need_comma = false;
+  for (const auto& pv : vec) {
+    if (need_comma) {
+      dest->append(", ");
+    }
+    need_comma = true;
+    dest->append(pv.ToString(auto_decode_keys));
+  }
+}
+
+void AppendVectorToStringWithBrackets(
+    std::string* dest,
+    const std::vector<PrimitiveValue>& vec,
+    AutoDecodeKeys auto_decode_keys) {
+  dest->push_back('[');
+  AppendVectorToString(dest, vec, auto_decode_keys);
+  dest->push_back(']');
+}
+
+}  // namespace
+
+string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   string result = "DocKey(";
   if (!cotable_id_.IsNil()) {
     result += "CoTableId=";
@@ -532,9 +563,9 @@ string DocKey::ToString() const {
     result += ", ";
   }
 
-  result += rocksdb::VectorToString(hashed_group_);
+  AppendVectorToStringWithBrackets(&result, hashed_group_, auto_decode_keys);
   result += ", ";
-  result += rocksdb::VectorToString(range_group_);
+  AppendVectorToStringWithBrackets(&result, range_group_, auto_decode_keys);
   result.push_back(')');
   return result;
 }
@@ -850,27 +881,21 @@ Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   return status;
 }
 
-string SubDocKey::ToString() const {
-  std::stringstream result;
-  result << "SubDocKey(" << doc_key_.ToString() << ", [";
+string SubDocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
+  std::string result("SubDocKey(");
+  result.append(doc_key_.ToString(auto_decode_keys));
+  result.append(", [");
 
-  bool need_comma = false;
-  for (const auto& subkey : subkeys_) {
-    if (need_comma) {
-      result << ", ";
-    }
-    need_comma = true;
-    result << subkey.ToString();
-  }
+  AppendVectorToString(&result, subkeys_, auto_decode_keys);
 
   if (has_hybrid_time()) {
-    if (need_comma) {
-      result << "; ";
+    if (!subkeys_.empty()) {
+      result.append("; ");
     }
-    result << doc_ht_.ToString();
+    result.append(doc_ht_.ToString());
   }
-  result << "])";
-  return result.str();
+  result.append("])");
+  return result;
 }
 
 Status SubDocKey::FromDocPath(const DocPath& doc_path) {
