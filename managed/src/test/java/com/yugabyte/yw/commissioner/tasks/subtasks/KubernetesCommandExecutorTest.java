@@ -666,6 +666,63 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(getExpectedOverrides(true), overrides);
   }
 
+  @Test
+  public void testHelmInstallResourceOverrideMerge() throws IOException {
+    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
+    defaultAZ.setConfig(defaultAnnotations);
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedConfig.capture(), expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+            expectedNamespace.capture(), expectedOverrideFile.capture());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(namespace, expectedNamespace.getValue());
+
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    Map<String, Object> expectedOverrides = getExpectedOverrides(true);
+    Map<String, Object> resourceOverrides = new HashMap<>();
+    Map<String, Object> tserverResource = new HashMap<>();
+    Map<String, Object> tserverLimit = new HashMap<>();
+    Map<String, Object> masterResource = new HashMap<>();
+    Map<String, Object> masterLimit = new HashMap<>();
+    double burstVal = 1.2;
+
+    tserverResource.put("cpu", instanceType.numCores);
+    tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    tserverLimit.put("cpu", instanceType.numCores * burstVal);
+    tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+
+    masterResource.put("cpu", 0.5);
+    masterResource.put("memory", "0.5Gi");
+    masterLimit.put("cpu", "650m");
+    masterLimit.put("memory", "0.5Gi");
+
+    resourceOverrides.put("master", ImmutableMap.of("requests", masterResource,
+                                                     "limits", masterLimit));
+    resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource,
+                                                     "limits", tserverLimit));
+
+    expectedOverrides.put("resource", resourceOverrides);
+
+    // TODO implement exposeAll false case
+    assertEquals(expectedOverrides, overrides);
+  }
 
   @Test
   public void testHelmInstallWithStorageClass() throws IOException {
