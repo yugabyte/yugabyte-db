@@ -238,7 +238,7 @@ TEST_F(MasterTest, TestCallHomeFlag) {
 
   // Disable the callhome flag now.
   disabled = true;
-  FLAGS_callhome_enabled = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_enabled) = false;
   LOG(INFO) << "Callhome disabled. No more traffic";
 
   // Wait for 3 cycles for no callhome posts. The handler is expected to assert
