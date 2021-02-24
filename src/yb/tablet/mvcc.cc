@@ -343,28 +343,31 @@ void MvccManager::AddPending(HybridTime* ht) {
           max_safe_time_returned_with_lease_.safe_time,
           max_safe_time_returned_without_lease_.safe_time,
           max_safe_time_returned_for_follower_.safe_time,
+          propagated_safe_time_,
           last_replicated_,
           last_ht_in_queue});
 
   if (*ht <= sanity_check_lower_bound) {
     auto get_details_msg = [&](bool drain_aborted) {
       std::ostringstream ss;
-#define LOG_INFO_FOR_HT_LOWER_BOUND(t) \
-             "\n  " << EXPR_VALUE_FOR_LOG(t) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(*ht < t.safe_time) \
+#define LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(full, safe_time) \
+             "\n  " << EXPR_VALUE_FOR_LOG(full) \
+          << "\n  " << (*ht < safe_time ? "!!! " : "") << EXPR_VALUE_FOR_LOG(*ht < safe_time) \
           << "\n  " << EXPR_VALUE_FOR_LOG( \
-                           static_cast<int64_t>(ht->ToUint64() - t.safe_time.ToUint64())) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(ht->PhysicalDiff(t.safe_time)) \
+                           static_cast<int64_t>(ht->ToUint64() - safe_time.ToUint64())) \
+          << "\n  " << EXPR_VALUE_FOR_LOG(ht->PhysicalDiff(safe_time)) \
           << "\n  "
 
+#define LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(t) LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(t, t.safe_time)
+#define LOG_INFO_FOR_HT_LOWER_BOUND(t) LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(t, t)
+
       ss << "New operation's hybrid time too low: " << *ht
-         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_with_lease_)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_without_lease_)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(max_safe_time_returned_for_follower_)
-         << LOG_INFO_FOR_HT_LOWER_BOUND(
-                (SafeTimeWithSource{last_replicated_, SafeTimeSource::kUnknown}))
-         << LOG_INFO_FOR_HT_LOWER_BOUND(
-                (SafeTimeWithSource{last_ht_in_queue, SafeTimeSource::kUnknown}))
+         << LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(max_safe_time_returned_with_lease_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(max_safe_time_returned_without_lease_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(max_safe_time_returned_for_follower_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(last_replicated_)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(last_ht_in_queue)
+         << LOG_INFO_FOR_HT_LOWER_BOUND(propagated_safe_time_)
          << "\n  " << EXPR_VALUE_FOR_LOG(is_follower_side)
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
