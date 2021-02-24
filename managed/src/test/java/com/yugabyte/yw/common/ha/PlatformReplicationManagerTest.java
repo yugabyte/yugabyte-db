@@ -218,6 +218,23 @@ public class PlatformReplicationManagerTest extends TestCase {
 
       backups = backupManager.listBackups(testUrl);
       assertEquals(Math.max(0, Math.min(numToRetain, 3)), backups.size());
+      if (numToRetain == 1) {
+        assertFalse(testFile1.exists());
+        assertFalse(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else if (numToRetain == 2) {
+        assertFalse(testFile1.exists());
+        assertTrue(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else if (numToRetain >= 3) {
+        assertTrue(testFile1.exists());
+        assertTrue(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else {
+        assertFalse(testFile1.exists());
+        assertFalse(testFile2.exists());
+        assertFalse(testFile3.exists());
+      }
     } finally {
       testFile1.delete();
       testFile2.delete();
