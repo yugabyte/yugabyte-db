@@ -326,6 +326,7 @@ void ShutdownAllMasters(MiniCluster* cluster);
 CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
 
 CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, int idx1, int idx2);
+Result<int> ServerWithLeaders(MiniCluster* cluster);
 
 }  // namespace yb
 

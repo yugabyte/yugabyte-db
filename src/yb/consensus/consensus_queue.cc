@@ -553,6 +553,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
   *needs_remote_bootstrap = false;
 
+  request->clear_propagated_safe_time();
+
   // If we've never communicated with the peer, we don't know what messages to send, so we'll send a
   // status-only request. If the peer has not responded to the point that our to_index == next_index
   // due to exponential backoff of replicated segment size, we also send a status-only request.
@@ -604,8 +606,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         num_log_ops_to_send == kSendUnboundedLogOps) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
-    } else {
-      request->clear_propagated_safe_time();
     }
   }
 

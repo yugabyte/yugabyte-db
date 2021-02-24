@@ -1363,15 +1363,7 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
   auto session = CreateSession();
   SetValue(session, 1, -1, table);
 
-  int leader_idx = -1;
-  for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
-    auto* ts_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-    if (ts_manager->GetLeaderCount() == 1) {
-      leader_idx = i;
-      break;
-    }
-  }
-  ASSERT_GE(leader_idx, 1);
+  int leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
   LOG(INFO) << "Leader: " << cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
   int follower_idx = 1 ^ 2 ^ leader_idx;
   LOG(INFO) << "Turning off follower: "
@@ -1398,6 +1390,47 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
   ASSERT_NO_FATALS(SetValue(session, 2, -2, table));
 
   ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+}
+
+TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
+  TableHandle table;
+  CreateTable(kTable1Name, &table, 1);
+
+  for (auto iter = 0; iter != 6; ++iter) {
+    auto session = CreateSession();
+    SetValue(session, 1, -1, table);
+
+    int leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
+    LOG(INFO) << "Leader: " << cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
+    int follower_idx = (leader_idx + 1) % cluster_->num_tablet_servers();
+    auto follower = cluster_->mini_tablet_server(follower_idx)->server();
+    LOG(INFO) << "Follower: "  << follower->permanent_uuid();
+    auto follower_peers = follower->tablet_manager()->GetTabletPeers();
+    for (const auto& peer : follower_peers) {
+      peer->raft_consensus()->TEST_DelayUpdate(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
+    }
+
+    SetValue(session, 2, -2, table);
+    std::this_thread::sleep_for(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
+    SetValue(session, 3, -3, table);
+
+    // Shutdown follower, so it would not accept updates and exponential backoff will turn to send
+    // empty operations.
+    cluster_->mini_tablet_server(follower_idx)->Shutdown();
+
+    // Wait exponential backoff goes to empty operations.
+    std::this_thread::sleep_for(FLAGS_raft_heartbeat_interval_ms * 3ms);
+
+    SetValue(session, 4, -4, table);
+
+    ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+
+    // Wait until newly started follower receive a new operation.
+    // Without fix for GH #7145 it would crash in this case.
+    std::this_thread::sleep_for(FLAGS_raft_heartbeat_interval_ms * 3ms);
+
+    ASSERT_OK(cluster_->RestartSync());
+  }
 }
 
 } // namespace client
