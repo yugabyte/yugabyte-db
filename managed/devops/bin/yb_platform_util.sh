@@ -301,8 +301,8 @@ case $operation in
     ADD_UNIVERSE|CREATE_UNIVERSE)
         if [[ -z "$input_file" ]]
         then
-            printf "Input json file required. Use \`-i|--input <file_path>\` to \
-              pass json input file\n"
+            printf "Input json file required. Use \`-i|--input <file_path>\` to "
+            printf "pass json input file\n"
             exit 255
         fi
 
