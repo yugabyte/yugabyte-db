@@ -465,14 +465,14 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false) {
+      done_(false),
+      deadline_info_(deadline_) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
   projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
     projection_subkeys_.emplace_back(projection.column_id(i));
   }
   std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
-  deadline_info_.emplace(deadline);
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() {
@@ -487,7 +487,6 @@ Status DocRowwiseIterator::Init() {
       txn_op_context_,
       deadline_,
       read_time_);
-
   DocKeyEncoder(&iter_key_).Schema(schema_);
   row_key_ = iter_key_;
   row_hash_key_ = row_key_;
@@ -648,6 +647,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     if (!iter_key_.data().empty() &&
         (is_forward_scan_ ? iter_key_.CompareTo(key_data->key) >= 0
                           : iter_key_.CompareTo(key_data->key) <= 0)) {
+      // TODO -- could turn this check off in TPCC?
       has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
                                            FormatSliceAsStr(key_data->key));
       return has_next_status_;
@@ -691,33 +691,20 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // We found a match for the target key or a static column, so we move on to getting the
       // SubDocument.
     }
+    if (doc_reader_ == nullptr) {
+      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), &deadline_info_);
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key, &table_tombstone_time_));
+      Expiration table_ttl(TableTTL(schema_));
+      doc_reader_->SetTableTtl(table_ttl);
+    }
 
-    GetSubDocumentData data = {
-      sub_doc_key,
-      &row_,
-      &doc_found,
-      TableTTL(schema_),
-      &table_tombstone_time_,
-    };
-    data.deadline_info = deadline_info_.get_ptr();
-    has_next_status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
-    RETURN_NOT_OK(has_next_status_);
-    // After this, the iter should be positioned right after the subdocument.
-
-    if (!doc_found) {
-      // TODO -- Add some metrics to understand:
-      // (a) how often we scan back
-      // (b) how often it's useful
-      // Also maybe in debug mode add some every-n logging of the rocksdb values for which it is
-      // useful
-      SubDocument full_row;
-      // If doc is not found, decide if some non-projection column exists.
-      // Currently we read the whole doc here,
-      // may be optimized by exiting on the first column in future.
-      db_iter_->Seek(row_key_);  // Position it for GetSubDocument.
-      data.result = &full_row;
-      has_next_status_ = GetSubDocument(db_iter_.get(), data);
-      RETURN_NOT_OK(has_next_status_);
+    row_ = SubDocument();
+    auto doc_found_res = doc_reader_->Get(sub_doc_key, &projection_subkeys_, &row_);
+    if (!doc_found_res.ok()) {
+      has_next_status_ = doc_found_res.status();
+      return has_next_status_;
+    } else {
+      doc_found = VERIFY_RESULT(doc_found_res);
     }
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();

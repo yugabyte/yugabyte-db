@@ -20,6 +20,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -424,12 +425,16 @@ void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
       DocHybridTime* table_tombstone_time, const vector<PrimitiveValue>* projection = nullptr) {
-  GetSubDocumentData data = { subdoc_key, result, found_result };
-  data.table_tombstone_time = table_tombstone_time;
-  auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, rocksdb::kDefaultQueryId,
-      txn_op_context, CoarseTimePoint::max() /* deadline */, read_time);
-  ASSERT_OK(GetSubDocument(iter.get(), data, projection, SeekFwdSuffices::kFalse));
+  auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
+    subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
+    CoarseTimePoint::max() /* deadline */, read_time, projection, table_tombstone_time));
+  if (doc_from_rocksdb_opt) {
+    *found_result = true;
+    *result = *doc_from_rocksdb_opt;
+  } else {
+    *found_result = false;
+    *result = SubDocument();
+  }
 }
 
 void GetSubDocRedis(
@@ -752,7 +757,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["u"; HT{ physical: 1000 w: 6 }]) ->
      )#");
 }
 
-// This tests GetSubDocument without init markers. Basic Test tests with init markers.
+// This tests reads on data without init markers. Basic Test tests with init markers.
 TEST_P(DocDBTestWrapper, GetSubDocumentTest) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   SetupRocksDBState(doc_key.Encode());
@@ -918,7 +923,6 @@ TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
   parent.SetChild(PrimitiveValue("list2"), SubDocument(list));
   ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), parent, HybridTime(100)));
 
-  // GetSubDocument Doesn't know that this is an array so it is returned as an object for now.
   VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
       R"#(
   {
@@ -2937,8 +2941,8 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   ASSERT_NO_FATALS(get_doc(key2));
   ASSERT_TRUE(!subdoc_found_in_rocksdb);
   // Bloom filter excluded this file.
-  // docdb::GetSubDocument sometimes seeks twice - first time on key2 and second time to advance
-  // out of it, because key2 was found.
+  // docdb::TEST_GetSubDocument sometimes seeks twice - first time on key2 and second time to
+  // advance out of it, because key2 was found.
   ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful, 0, &total_table_iterators));
 
   ASSERT_NO_FATALS(get_doc(key3));
