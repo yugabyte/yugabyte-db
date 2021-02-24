@@ -9,6 +9,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import io.ebean.*;
 import io.ebean.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -175,13 +177,20 @@ public class CertificateInfo extends Model {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
   }
 
-  public List<UniverseDefinitionTaskParams> getUniverseDetails() {
-    List<Universe> universeDetails = Universe.universeDetailsIfCertsExists(this.uuid,
+  public ArrayNode getUniverseDetails() {
+    List<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid,
         this.customerUUID);
-    List<UniverseDefinitionTaskParams> universeDefinitionTaskParamsList = new ArrayList<>();
-    for (Universe universe: universeDetails) {
-      universeDefinitionTaskParamsList.add(universe.getUniverseDetails());
+    ArrayNode detals = Json.newArray();
+    for (Universe universe: universes) {
+      ObjectNode universePayload = Json.newObject();
+      universePayload.put("name", universe.name);
+      // TODO replace with universe status once we introduce that flag.
+      universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
+      universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      detals.add(universePayload);
     }
-    return universeDefinitionTaskParamsList;
+    return detals;
   }
 }
