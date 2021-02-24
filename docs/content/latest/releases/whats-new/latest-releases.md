@@ -47,35 +47,128 @@ Note: Content will be added as new notable features and changes are available in
 docker pull yugabytedb/yugabyte:2.5.2.0-b104
 ```
 
-### New features
-
-#### Yugabyte Platform
-
-* 
-
-#### Core Database
-
-* 
-
 ### Improvements
 
 #### Yugabyte Platform
 
-* 
+* [5376] Added EULA in user registration flow during Platform installation
+* [5732] Disable "Delete provider" for on-premise provider with active universes
+* [5836] Package managed python packages in a portable manner
+* [5919] Platform: change default storage option for AWS provider to 1x250GB
+* [6017] Platform: Need ability for platform to check for actual clock synchronization
+* [6035] Platform UI: show region level config paths for k8s providers
+* [6084] Platform UI: disable STOP and REMOVE actions for kubernetes pods
+* [6165] Platform: Renamed "Universe backups" label for keyspace -or- namespace level backups.
+* [6230] Platform: Add tooltips to KMS Configuration UI
+* [6346] UI visual feedback for KMS related tasks
+* [6421] Edit Universe fails silently in case when it has decommissioned node(s)
+* [6477] UI validation for duplicate region codes
+* [6540] Add ability to remove certificates from UI
+* [6655] Platform: Enabled AWS timeSync as a default on AWS universe
+* [6680] [6882] Platform: Disabled deleting storage configuration when it is in use
+* [6708] For AWS universes fetch instance types with respect to selected availability zones
+* [6740] Update clients to support mTLS in YB clusters.
+* [6807] Platform: Kubernetes: Allow specifying namespace in the AZ config
+* [6838] [6839] [YW] Remove YSQL transactions metrics from Metrics tab
+* [6858] Platform: Preflight checks for NFS backup storage configuration
+* [6893] Platform: Allow platform to specify min TLS version for its own frontend
 
 #### Core Database
 
-* 
+* [1104] YSQL: ALTER TABLE ADD PRIMARY KEY
+* [3565] tools: Allow developers to run yugabyted from the repo
+* [4230] tools: Multi-node cluster restart support for yugabyted
+* [5686] YSQL: apply empty deletes sparingly
+* [5716] Enable Master Register From Raft by Default
+* [6128] 2dc: Enable Replicate Intents By Default
+* [6215] YSQL: Support index backfill on colocated tables
+* [6511] YSQL: the WITH clause is now supported
+* [6571] Handle read replicas when checking counts in GetTabletLocations
+* [6632] ybase: Add new flag for how many servers to wait for before the transactions table is
+* [6636] docdb: Cache table->tablespace->placement information in YB-Master
+* [6637] YSQL: Support CREATE TABLE/INDEX <table/index> SET TABLESPACE <tablespace>
+* [6638] YSQL: Support DROP TABLESPACE API
+* [6720] YSQL: pg_hint_plan is now available. This allows you to adjust the query execution plan with hinting phrases in specially formatted comments.
+* [6749] YSQL: Add support for FETCH NEXT, FORWARD, and positive row-count options
+* [6771] YSQL: Add functionality to validate keys in a JSON object
+* [6772] Display tserver clock information in yb-master UI
+* [6784] YSQL: use all rather than 0.0.0.0/0, ::0/0 in hba conf (#7046)
+* [6825] Add tablet server readiness to yb-ts-cli
+* [6833] TLS Improvements: Add flag to skip client endpoint verification
+* [6841] Display table/cluster replication info in the table UI
+* [6900] YSQL: Imported from PostgreSQL: Avoid some table rewrites for ALTER TABLE .. SET DATA TYPE timestamp
+* [6928] [7105] Add tracing support for yb-client/transactions
+* [6966] YCQL: Java driver changes to allow primary key column with DECIMAL type.
+* [6996] ybase: List the host for pending remote bootstrap
+* [7015] Allow providing restore time for snapshot
+* [7016] docdb: Enabled sanity check that tablet lookup result matches partition key
+* [7038] ybase: Make callhome_enabled a runtime flag
 
 ### Bug Fixes
 
 #### Yugabyte Platform
 
-* 
+* [5172] Health check time is always in the Pacific timezone
+* [5489] Fix slow query panel returning TypeError from API request.
+* [5489] [YW] Add tab panels to Queries tab to separate live from slow queries.
+* [5571] Use local YSQL socket for backups if --ysql_enable_auth is true
+* [5594] Platform: Handle invalid certs/keys correctly
+* [5694] Platform: Fixed Metrics custom time window issue
+* [6164] Manual backup of ysql task is not showing up in the universe tasks page 
+* [6320] Platform: Create Universe does not validate encryption-at-rest
+* [6583] Platform: Fixed the UI alignment for on-prem universes
+* [6758] For on-prem universes, unable to reuse certain instances that are disassociated from a universe
+* [6759] [6760] [6814] Platform: Fixed availability zone error scenarios
+* [6817] [6904] Restore of large number of keyspaces/tables fails with '413 Request Entity Too Large
+* [6901] Platform: YW Fails to send alert email
+* [6911] Platform: Alert for removed universe fires forever
+* [6919] Fix crashing on-prem provider page due to missing instance type details
+* [6965] YSQL backups with node-to-node TLS encryption enabled hang forever
+* [6983] Increase ssh timeout for checking instance availability
+* [7082] Platform: Health-check script generates an alert for 2.5.x when using Python 3
+* [7107] Platform: Changing node filter for universe metrics does not update the graphs
+* [7114] Platform: Fixes a bug while backing up multiple ysql namespaces for encrypted at rest universe
+* [7159] Allow only one cluster per K8s provider with namespace
+* [7196] Health checks should default to TLSv1.2
+* [7233] Fix data format for slow query top sql statement data cells
+* [7268] Use the correct SSH user for on-prem node preflight checks
 
 #### Core Database
 
-* 
+* [4599] YSQL: Fix calculation for transaction counts in YSQL metrics.
+* [4813] YSQL: Imported from PostgreSQL: Don't log incomplete startup packet if it's empty
+* [5007] YSQL: Properly set retain_delete_markers for colocated tables
+* [6397] ybase: blacklisted TS' initial load not replicated during master failover
+* [6406] docdb: Fixed SPLIT_OP replay during bootstrap of the tablet that was crashed before SPLIT_OP apply
+* [6436] YSQL: Avoid cache invalidation initiated by other process
+* [6537] YSQL: Backup: Fixed CREATE INDEX statement generated by ysql_dump to use SPLIT INTO syntax.
+* [6593] Additional default firewall ports
+* [6628] docdb: Read Table Partitions from Snapshot
+* [6735] YCQL: Treat overwritten docdb collection entries as expired
+* [6811] YSQL: apply empty deletes for index backfill
+* [6829] [6879] YCQL: Fixed various issues for literals of collection datatypes
+* [6876] 2dc: Fix data race between TwoDCOutputClient::WriteCDCRecordDone and TwoDCOutputClient destructor
+* [6881] YSQL: Imported from PostgreSQL: Fix calculation of how much shared memory is required to store a TOC
+* [6886] YSQL: Backup: Fixed backup-restore failure due to unexpected NULLABLE column attribute value.
+* [6890] docdb: Fixed tablet splitting partitions version refresh
+* [6902] Remove recently added LongOperationTracker from ThreadPool
+* [6903] YSQL: Imported from PostgreSQL: Fix pg_dump for GRANT OPTION among initial privileges.
+* [6943] YSQL: Imported from PostgreSQL: Fix ALTER DEFAULT PRIVILEGES with duplicated objects
+* [6953] docdb: Intent metadata_write_time is incorrectly set
+* [6960] docdb - Register ScopedRWOperation when accessing doc_db data in StillHasParentDataAfterSplit
+* [7008] YQL: PermissionsManager::AlterRole() should always rebuild permissions
+* [7040] 2DC: Fix Race Condition On Consumer With Smaller Batch Sizes
+* [7070] YSQL: Imported from PostgreSQL: 'Fix ancient memory leak in contrib/auto_explain.'
+* [7071] Update to latest version of cqlsh
+* [7079] [7153] YSQL: Improve configuration and defaults for client to server encryption
+* [7094] YSQL: Imported from PostgreSQL: 'Avoid crash when rolling back within a prepared statement.'
+* [7097] YSQL: Allow table size hints to be used by query planner
+* [7105] Explicitly clear the global PgMemctx map in YBCDestroyPgGate
+* [7109] Fix a race in accessing the YQLPartitionsVTable::cache_ object
+* [7151] YSQL: disallow tampering with postgres role
+* [7192] YSQL: Imported from PostgreSQL: 'Fix usage of whole-row variables in WCO and RLS policy expressions.'
+* [7237] YSQL: Imported from PostgreSQL: 'pg_attribute_no_sanitize_alignment() macro'
+* [7241] YSQL: Imported from PostgreSQL: 'Avoid divide-by-zero in regex_selectivity() with long fixed prefix.'
 
 ### Known Issues
 
