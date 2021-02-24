@@ -313,6 +313,6 @@ public class PlatformReplicationHelper {
     }
 
     LOG.debug("Garbage collecting {} backups", numBackups - numToRetain);
-    backups.subList(numToRetain, numBackups).forEach(File::delete);
+    backups.subList(0, numBackups - numToRetain).forEach(File::delete);
   }
 }
