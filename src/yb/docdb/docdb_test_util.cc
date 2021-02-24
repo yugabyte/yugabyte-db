@@ -421,28 +421,26 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
       fixture_->FullyCompactHistoryBefore(hybrid_time);
     }
     SubDocKey sub_doc_key(doc_key);
-    SubDocument doc_from_rocksdb;
-    bool doc_found_in_rocksdb = false;
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
-    GetSubDocumentData data = { encoded_sub_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb };
-    ASSERT_OK(GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                             txn_op_context, CoarseTimePoint::max() /* deadline */));
+    auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
+      encoded_sub_doc_key, doc_db(), rocksdb::kDefaultQueryId, txn_op_context,
+      CoarseTimePoint::max() /* deadline */));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.
       // In this case, after performing the deletion operation, we definitely should not see the
       // top-level document in RocksDB or in the in-memory database.
-      ASSERT_FALSE(doc_found_in_rocksdb);
+      ASSERT_FALSE(doc_from_rocksdb_opt);
       ASSERT_EQ(nullptr, subdoc_from_mem);
     } else {
       // This is not a deletion, or we've deleted a sub-key from a document, but the top-level
       // document should still be there in RocksDB.
-      ASSERT_TRUE(doc_found_in_rocksdb);
+      ASSERT_TRUE(doc_from_rocksdb_opt);
       ASSERT_NE(nullptr, subdoc_from_mem);
 
-      ASSERT_EQ(*subdoc_from_mem, doc_from_rocksdb);
-      DOCDB_DEBUG_LOG("Retrieved a document from RocksDB: $0", doc_from_rocksdb.ToString());
-      ASSERT_STR_EQ_VERBOSE_TRIMMED(subdoc_from_mem->ToString(), doc_from_rocksdb.ToString());
+      ASSERT_EQ(*subdoc_from_mem, *doc_from_rocksdb_opt);
+      DOCDB_DEBUG_LOG("Retrieved a document from RocksDB: $0", doc_from_rocksdb_opt->ToString());
+      ASSERT_STR_EQ_VERBOSE_TRIMMED(subdoc_from_mem->ToString(), doc_from_rocksdb_opt->ToString());
     }
   }
 

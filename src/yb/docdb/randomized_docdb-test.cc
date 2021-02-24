@@ -87,8 +87,8 @@ class RandomizedDocDBTest : public DocDBTestBase,
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
 
   int num_iterations_divider() {
-    // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
-    // in order to respect the timeout.
+    // Read path is slower when trying to resolve intents, so we reduce number of iterations in
+    // order to respect the timeout.
     return resolve_intents_ ? 2 : 1;
   }
 

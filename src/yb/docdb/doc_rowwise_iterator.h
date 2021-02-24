@@ -17,6 +17,7 @@
 #include <string>
 #include <atomic>
 
+#include "yb/docdb/doc_reader.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
@@ -215,13 +216,15 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Used for keeping track of errors in HasNext.
   mutable Status has_next_status_;
 
-  mutable boost::optional<DeadlineInfo> deadline_info_;
+  mutable DeadlineInfo deadline_info_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
 
   // Hybrid time of the table tombstone, if found.
   mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
+
+  mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
 };
 
 }  // namespace docdb
