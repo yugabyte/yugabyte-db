@@ -685,7 +685,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (overridesYAML != null) {
       annotations =(HashMap<String, Object>) yaml.load(overridesYAML);
       if (annotations != null ) {
-        overrides.putAll(annotations);
+        mergeYaml(overrides, annotations);
       }
     }
 
@@ -716,6 +716,24 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     } catch (IOException e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
+    }
+  }
+
+  // Recursively traverses the override map and updates or adds the
+  // keys to source map.
+  private void mergeYaml(Map<String, Object> source, Map<String, Object> override) {
+    for (Entry<String, Object> entry : override.entrySet()) {
+      String key = entry.getKey();
+      if (!source.containsKey(key)) {
+        source.put(key, override.get(key));
+        continue;
+      }
+      if (!(override.get(key) instanceof Map) || !(source.get(key) instanceof Map)) {
+        source.put(key, override.get(key));
+        continue;
+      }
+      mergeYaml((Map<String, Object>) source.get(key),
+                (Map<String, Object>) override.get(key));
     }
   }
 }
