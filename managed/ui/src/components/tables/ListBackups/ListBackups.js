@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router';
+import Toggle from 'react-toggle';
 import { DropdownButton, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
@@ -15,7 +16,6 @@ import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
-
 import './ListBackups.scss';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
@@ -40,7 +40,8 @@ export default class ListBackups extends Component {
     showModal: false,
     showAlert: false,
     taskUUID: null,
-    alertType: null
+    alertType: null,
+    showDeletedBackups: false
   };
 
   static defaultProps = {
@@ -285,7 +286,14 @@ export default class ListBackups extends Component {
       universeTableTypes,
       title
     } = this.props;
-    const { showModal, taskUUID, showAlert, alertType, selectedRowList } = this.state;
+    const {
+      showModal,
+      taskUUID,
+      showAlert,
+      alertType,
+      selectedRowList,
+      showDeletedBackups
+    } = this.state;
     if (
       getPromiseState(universeBackupList).isLoading() ||
       getPromiseState(universeBackupList).isInit()
@@ -296,7 +304,10 @@ export default class ListBackups extends Component {
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
-        if (backupInfo.actionType === 'CREATE') {
+        if (
+          backupInfo.actionType === 'CREATE' ||
+          (showDeletedBackups && backupInfo.actionType === 'DELETE')
+        ) {
           backupInfo.backupUUID = b.backupUUID;
           backupInfo.status = b.state;
           backupInfo.createTime = b.createTime;
@@ -356,7 +367,8 @@ export default class ListBackups extends Component {
       if (row.backupList && row.backupList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-globe" aria-hidden="true"></i> {item===YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
+            <i className="fa fa-globe" aria-hidden="true"></i>{' '}
+            {item === YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
           </div>
         );
       } else if (row.tableUUIDList && row.tableUUIDList.length) {
@@ -428,6 +440,16 @@ export default class ListBackups extends Component {
                           onSubmit={(data) => this.handleModalSubmit('Restore', data)}
                           onError={() => this.handleModalSubmit('Restore')}
                         />
+                        <div className="chk-show-deleted-backups">
+                          <label>Show deleted backups</label>
+                          <Toggle
+                            checked={showDeletedBackups}
+                            label="Show deleted backups"
+                            onChange={(event) => {
+                              this.setState({ showDeletedBackups: event.target.checked });
+                            }}
+                          />
+                        </div>
                       </>
                     }
                   </div>
