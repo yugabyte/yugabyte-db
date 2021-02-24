@@ -34,6 +34,14 @@ typedef struct cypher_parsestate
     int default_alias_num;
     List *entities;
     List *property_constraint_quals;
+    /*
+     * To flag when an aggregate has been found in an expression during an
+     * expression transform. This is used during the return_item list transform
+     * to know which expressions are group by keys (not an aggregate or a
+     * composite expression with an aggregate), and which aren't (everything
+     * else). It is only used by transform_cypher_item_list.
+     */
+    bool exprHasAgg;
 } cypher_parsestate;
 
 typedef struct errpos_ecb_state

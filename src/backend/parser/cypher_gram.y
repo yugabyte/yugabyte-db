@@ -1127,6 +1127,13 @@ expr_func_norm:
              n->agg_star = true;
              $$ = (Node *)n;
          }
+    | func_name '(' DISTINCT  expr_list ')'
+        {
+            FuncCall *n = (FuncCall *)make_function_expr($1, $4, @1);
+            n->agg_order = NIL;
+            n->agg_distinct = true;
+            $$ = (Node *)n;
+        }
     ;
 
 expr_func_subexpr:

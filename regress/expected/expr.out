@@ -4527,9 +4527,144 @@ ERROR:  function ag_catalog.age_collect() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (col...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- test DISTINCT inside aggregate functions
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Sven", gpa: 3.2, age: 27, zip: 94110})$$)
+AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+                                                           vertex                                                            
+-----------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "students", "properties": {"age": 21, "gpa": 3.0, "zip": 94110, "name": "Jack"}}::vertex
+ {"id": 844424930131970, "label": "students", "properties": {"age": 27, "gpa": 3.5, "zip": 95060, "name": "Jill"}}::vertex
+ {"id": 844424930131971, "label": "students", "properties": {"age": 32, "gpa": 3.75, "zip": 96062, "name": "Jim"}}::vertex
+ {"id": 844424930131972, "label": "students", "properties": {"age": 24, "gpa": 2.5, "zip": "95060", "name": "Rick"}}::vertex
+ {"id": 844424930131973, "label": "students", "properties": {"age": 23, "gpa": 3.8::numeric, "name": "Ann"}}::vertex
+ {"id": 844424930131974, "label": "students", "properties": {"age": 19, "gpa": 4.0, "zip": 90210, "name": "Derek"}}::vertex
+ {"id": 844424930131975, "label": "students", "properties": {"age": 20, "gpa": 3.9::numeric, "name": "Jessica"}}::vertex
+ {"id": 844424930131976, "label": "students", "properties": {"age": 24, "name": "Dave"}}::vertex
+ {"id": 844424930131977, "label": "students", "properties": {"age": 18, "name": "Mike"}}::vertex
+ {"id": 844424930131978, "label": "students", "properties": {"age": 27, "gpa": 3.2, "zip": 94110, "name": "Sven"}}::vertex
+(10 rows)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN count(u.zip), count(DISTINCT u.zip) $$)
+AS (zip agtype, distinct_zip agtype);
+ zip | distinct_zip 
+-----+--------------
+ 6   | 5
+(1 row)
+
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN count(u.age), count(DISTINCT u.age) $$)
+AS (age agtype, distinct_age agtype);
+ age | distinct_age 
+-----+--------------
+ 10  | 8
+(1 row)
+
+-- test AUTO GROUP BY for aggregate functions
+SELECT create_graph('group_by');
+NOTICE:  graph "group_by" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 2, k:3})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 2, k:4})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 3, k:5})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 2, j: 3, k:6})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, u.k$$) AS (i agtype, j agtype, k agtype);
+ i | j | k 
+---+---+---
+ 1 | 2 | 3
+ 1 | 2 | 4
+ 1 | 3 | 5
+ 2 | 3 | 6
+(4 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, sum(u.k)$$) AS (i agtype, j agtype, sumk agtype);
+ i | j | sumk 
+---+---+------
+ 1 | 2 | 7.0
+ 2 | 3 | 6.0
+ 1 | 3 | 5.0
+(3 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 1, b: 2, c:3})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 2, b: 3, c:1})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 3, b: 1, c:2})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a, x.b, x.c, x.a + count(*) + x.b + count(*) + x.c$$)
+AS (a agtype, b agtype, c agtype, result agtype);
+ a | b | c | result 
+---+---+---+--------
+ 3 | 1 | 2 | 8.0
+ 2 | 3 | 1 | 8.0
+ 1 | 2 | 3 | 8.0
+(3 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + x.b + x.c, x.a + x.b + x.c + count(*) + count(*) $$)
+AS (a_b_c agtype,  result agtype);
+ a_b_c | result 
+-------+--------
+ 6     | 12.0
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a, x.a + count(*) + x.b + count(*) + x.c$$)
+AS (a agtype, result agtype);
+ERROR:  "x" must be either part of an explicitly listed key or used inside an aggregate function
+LINE 1: ...p_by', $$MATCH (x:L) RETURN x.a, x.a + count(*) + x.b + coun...
+                                                             ^
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + count(*) + x.b + count(*) + x.c$$)
+AS (result agtype);
+ERROR:  "x" must be either part of an explicitly listed key or used inside an aggregate function
+LINE 1: ...CT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + coun...
+                                                             ^
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('group_by', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table group_by._ag_label_vertex
+drop cascades to table group_by._ag_label_edge
+drop cascades to table group_by."row"
+drop cascades to table group_by."L"
+NOTICE:  graph "group_by" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('UCSC', true);
 NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table "UCSC"._ag_label_vertex

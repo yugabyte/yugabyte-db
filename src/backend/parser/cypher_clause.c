@@ -1,23 +1,27 @@
 /*
- * Copyright 2020 Bitnine Co., Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 #include "postgres.h"
 
 #include "access/sysattr.h"
 #include "catalog/pg_type_d.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
@@ -25,13 +29,13 @@
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
 #include "optimizer/var.h"
-#include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_node.h"
+#include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
@@ -48,6 +52,7 @@
 #include "parser/cypher_clause.h"
 #include "parser/cypher_expr.h"
 #include "parser/cypher_item.h"
+#include "parser/cypher_parse_agg.h"
 #include "parser/cypher_parse_node.h"
 #include "utils/ag_cache.h"
 #include "utils/ag_func.h"
@@ -205,20 +210,21 @@ static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
 // set and remove clause
 static Query *transform_cypher_set(cypher_parsestate *cpstate,
                                    cypher_clause *clause);
-cypher_update_information *transform_cypher_set_item_list(cypher_parsestate *cpstate, List *set_item_list, Query *query);
-cypher_update_information *transform_cypher_remove_item_list(
-    cypher_parsestate *cpstate, List *remove_item_list, Query *query);
-
+static cypher_update_information *transform_cypher_set_item_list(cypher_parsestate *cpstate,
+                                                                 List *set_item_list,
+                                                                 Query *query);
+static cypher_update_information *transform_cypher_remove_item_list(cypher_parsestate *cpstate,
+                                                                    List *remove_item_list,
+                                                                    Query *query);
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
     transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause, \
                                         prev_clause)
 
-static RangeTblEntry *
-transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
-                                    transform_method transform,
-                                    cypher_clause *clause);
+static RangeTblEntry *transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
+                                                          transform_method transform,
+                                                          cypher_clause *clause);
 static Query *analyze_cypher_clause(transform_method transform,
                                     cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate);
@@ -227,7 +233,22 @@ static ParseNamespaceItem *makeNamespaceItem(RangeTblEntry *rte,
                                              bool cols_visible,
                                              bool lateral_only,
                                              bool lateral_ok);
-
+static List *transform_group_clause(cypher_parsestate *cpstate,
+                                    List *grouplist, List **groupingSets,
+                                    List **targetlist, List *sortClause,
+                                    ParseExprKind exprKind);
+static Node *flatten_grouping_sets(Node *expr, bool toplevel,
+                                   bool *hasGroupingSets);
+static Index transform_group_clause_expr(List **flatresult,
+                                         Bitmapset *seen_local,
+                                         cypher_parsestate *cpstate,
+                                         Node *gexpr, List **targetlist,
+                                         List *sortClause,
+                                         ParseExprKind exprKind,
+                                         bool toplevel);
+static List *add_target_to_group_list(cypher_parsestate *cpstate,
+                                      TargetEntry *tle, List *grouplist,
+                                      List *targetlist, int location);
 /*
  * transform a cypher_clause
  */
@@ -504,12 +525,249 @@ cypher_update_information *transform_cypher_set_item_list(
     return info;
 }
 
+/* from PG's static helper function */
+static Node *flatten_grouping_sets(Node *expr, bool toplevel,
+                                   bool *hasGroupingSets)
+{
+    /* just in case of pathological input */
+    check_stack_depth();
+
+    if (expr == (Node *) NIL)
+        return (Node *) NIL;
+
+    switch (expr->type)
+    {
+        case T_RowExpr:
+        {
+            RowExpr *r = (RowExpr *) expr;
+
+            if (r->row_format == COERCE_IMPLICIT_CAST)
+                return flatten_grouping_sets((Node *) r->args, false, NULL);
+            break;
+        }
+        case T_GroupingSet:
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                    errmsg("flattening of GroupingSet is not implemented")));
+            break;
+        case T_List:
+        {
+            List *result = NIL;
+            ListCell *l;
+
+            foreach(l, (List *) expr)
+            {
+                Node *n = flatten_grouping_sets(lfirst(l), toplevel, hasGroupingSets);
+
+                if (n != (Node *) NIL)
+                {
+                    if (IsA(n, List))
+                        result = list_concat(result, (List *) n);
+                    else
+                        result = lappend(result, n);
+                }
+            }
+            return (Node *) result;
+        }
+        default:
+            break;
+    }
+    return expr;
+}
+
+/* from PG's addTargetToGroupList */
+static List *add_target_to_group_list(cypher_parsestate *cpstate,
+                                      TargetEntry *tle, List *grouplist,
+                                      List *targetlist, int location)
+{
+    ParseState *pstate = &cpstate->pstate;
+    Oid restype = exprType((Node *) tle->expr);
+
+    /* if tlist item is an UNKNOWN literal, change it to TEXT */
+    if (restype == UNKNOWNOID)
+    {
+        tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr, restype,
+                                         TEXTOID, -1, COERCION_IMPLICIT,
+                                         COERCE_IMPLICIT_CAST, -1);
+        restype = TEXTOID;
+    }
+
+    /* avoid making duplicate grouplist entries */
+    if (!targetIsInSortList(tle, InvalidOid, grouplist))
+    {
+        SortGroupClause *grpcl = makeNode(SortGroupClause);
+        Oid sortop;
+        Oid eqop;
+        bool hashable;
+        ParseCallbackState pcbstate;
+
+        setup_parser_errposition_callback(&pcbstate, pstate, location);
+
+        /* determine the eqop and optional sortop */
+        get_sort_group_operators(restype, false, true, false, &sortop, &eqop,
+                                 NULL, &hashable);
+
+        cancel_parser_errposition_callback(&pcbstate);
+
+        grpcl->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
+        grpcl->eqop = eqop;
+        grpcl->sortop = sortop;
+        grpcl->nulls_first = false; /* OK with or without sortop */
+        grpcl->hashable = hashable;
+
+        grouplist = lappend(grouplist, grpcl);
+    }
+
+    return grouplist;
+}
+
+/* from PG's transformGroupClauseExpr */
+static Index transform_group_clause_expr(List **flatresult,
+                                         Bitmapset *seen_local,
+                                         cypher_parsestate *cpstate,
+                                         Node *gexpr, List **targetlist,
+                                         List *sortClause,
+                                         ParseExprKind exprKind, bool toplevel)
+{
+    TargetEntry *tle = NULL;
+    bool found = false;
+
+    tle = find_target_list_entry(cpstate, gexpr, targetlist, exprKind);
+
+    if (tle->ressortgroupref > 0)
+    {
+        ListCell *sl;
+
+        /*
+         * Eliminate duplicates (GROUP BY x, x) but only at local level.
+         * (Duplicates in grouping sets can affect the number of returned
+         * rows, so can't be dropped indiscriminately.)
+         *
+         * Since we don't care about anything except the sortgroupref, we can
+         * use a bitmapset rather than scanning lists.
+         */
+        if (bms_is_member(tle->ressortgroupref, seen_local))
+            return 0;
+
+        /*
+         * If we're already in the flat clause list, we don't need to consider
+         * adding ourselves again.
+         */
+        found = targetIsInSortList(tle, InvalidOid, *flatresult);
+        if (found)
+            return tle->ressortgroupref;
+
+        /*
+         * If the GROUP BY tlist entry also appears in ORDER BY, copy operator
+         * info from the (first) matching ORDER BY item.  This means that if
+         * you write something like "GROUP BY foo ORDER BY foo USING <<<", the
+         * GROUP BY operation silently takes on the equality semantics implied
+         * by the ORDER BY.  There are two reasons to do this: it improves the
+         * odds that we can implement both GROUP BY and ORDER BY with a single
+         * sort step, and it allows the user to choose the equality semantics
+         * used by GROUP BY, should she be working with a datatype that has
+         * more than one equality operator.
+         *
+         * If we're in a grouping set, though, we force our requested ordering
+         * to be NULLS LAST, because if we have any hope of using a sorted agg
+         * for the job, we're going to be tacking on generated NULL values
+         * after the corresponding groups. If the user demands nulls first,
+         * another sort step is going to be inevitable, but that's the
+         * planner's problem.
+         */
+
+
+         foreach(sl, sortClause)
+         {
+             SortGroupClause *sc = (SortGroupClause *) lfirst(sl);
+
+             if (sc->tleSortGroupRef == tle->ressortgroupref)
+             {
+                 SortGroupClause *grpc = copyObject(sc);
+
+                 if (!toplevel)
+                     grpc->nulls_first = false;
+                 *flatresult = lappend(*flatresult, grpc);
+                 found = true;
+                 break;
+             }
+         }
+    }
+
+    /*
+     * If no match in ORDER BY, just add it to the result using default
+     * sort/group semantics.
+     */
+    if (!found)
+        *flatresult = add_target_to_group_list(cpstate, tle, *flatresult,
+                                               *targetlist, exprLocation(gexpr));
+
+    /* _something_ must have assigned us a sortgroupref by now... */
+
+    return tle->ressortgroupref;
+}
+
+/* from PG's transformGroupClause */
+static List * transform_group_clause(cypher_parsestate *cpstate,
+                                     List *grouplist, List **groupingSets,
+                                     List **targetlist, List *sortClause,
+                                     ParseExprKind exprKind)
+{
+    List *result = NIL;
+    List *flat_grouplist;
+    List *gsets = NIL;
+    ListCell *gl;
+    bool hasGroupingSets = false;
+    Bitmapset *seen_local = NULL;
+
+    /*
+     * Recursively flatten implicit RowExprs. (Technically this is only needed
+     * for GROUP BY, per the syntax rules for grouping sets, but we do it
+     * anyway.)
+     */
+    flat_grouplist = (List *) flatten_grouping_sets((Node *) grouplist, true,
+                                                    &hasGroupingSets);
+
+    foreach(gl, flat_grouplist)
+    {
+        Node       *gexpr = (Node *) lfirst(gl);
+
+        if (IsA(gexpr, GroupingSet))
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("GroupingSet is not implemented")));
+            break;
+        }
+        else
+        {
+            Index ref = transform_group_clause_expr(&result, seen_local,
+                                                    cpstate, gexpr, targetlist,
+                                                    sortClause, exprKind, true);
+            if (ref > 0)
+            {
+                seen_local = bms_add_member(seen_local, ref);
+                if (hasGroupingSets)
+                    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("GroupingSet is not implemented")));
+            }
+        }
+    }
+
+    /* parser should prevent this */
+    Assert(gsets == NIL || groupingSets != NULL);
+
+    if (groupingSets)
+        *groupingSets = gsets;
+
+    return result;
+}
+
 static Query *transform_cypher_return(cypher_parsestate *cpstate,
                                       cypher_clause *clause)
 {
     ParseState *pstate = (ParseState *)cpstate;
     cypher_return *self = (cypher_return *)clause->self;
     Query *query;
+    List *groupClause = NIL;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -518,15 +776,22 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
         transform_prev_cypher_clause(cpstate, clause->prev);
 
     query->targetList = transform_cypher_item_list(cpstate, self->items,
+                                                   &groupClause,
                                                    EXPR_KIND_SELECT_TARGET);
 
     markTargetListOrigins(pstate, query->targetList);
 
     // ORDER BY
-    query->sortClause = transform_cypher_order_by(
-        cpstate, self->order_by, &query->targetList, EXPR_KIND_ORDER_BY);
+    query->sortClause = transform_cypher_order_by(cpstate, self->order_by,
+                                                  &query->targetList,
+                                                  EXPR_KIND_ORDER_BY);
 
-    // TODO: auto GROUP BY for aggregation
+    /* 'auto' GROUP BY (from PG's transformGroupClause) */
+    query->groupClause = transform_group_clause(cpstate, groupClause,
+                                                &query->groupingSets,
+                                                &query->targetList,
+                                                query->sortClause,
+                                                EXPR_KIND_GROUP_BY);
 
     // DISTINCT
     if (self->distinct)
@@ -552,6 +817,11 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
     query->hasAggs = pstate->p_hasAggs;
 
     assign_query_collations(pstate, query);
+
+    /* this must be done after collations, for reliable comparison of exprs */
+    if (pstate->p_hasAggs ||
+        query->groupClause || query->groupingSets || query->havingQual)
+        parse_check_aggregates(pstate, query);
 
     return query;
 }
@@ -847,7 +1117,7 @@ static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
     qry->hasAggs = pstate->p_hasAggs;
 
     if (qry->hasAggs)
-        parseCheckAggregates(pstate, qry);
+        parse_check_aggregates(pstate, qry);
 
     assign_query_collations(pstate, qry);
 

@@ -17,22 +17,11 @@
  * under the License.
  */
 
-#ifndef AG_CYPHER_ITEM_H
-#define AG_CYPHER_ITEM_H
+#ifndef CYPHER_PARSE_AGG_H
+#define CYPHER_PARSE_AGG_H
 
-#include "postgres.h"
-
-#include "nodes/nodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
 #include "parser/parse_node.h"
 
-#include "parser/cypher_parse_node.h"
+extern void parse_check_aggregates(ParseState *pstate, Query *qry);
 
-TargetEntry *transform_cypher_item(cypher_parsestate *cpstate, Node *node,
-                                   Node *expr, ParseExprKind expr_kind,
-                                   char *colname, bool resjunk);
-List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
-                                 List **groupClause, ParseExprKind expr_kind);
-
-#endif
+#endif /* CYPHER_PARSE_AGG_H */

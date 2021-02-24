@@ -1,17 +1,20 @@
 /*
- * Copyright 2020 Bitnine Co., Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 #include "postgres.h"
@@ -700,6 +703,7 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     List *targs = NIL;
     List *fname = NIL;
     ListCell *args;
+    Node *retval = NULL;
 
     /* Transform the list of arguments ... */
     foreach(args, fn->args)
@@ -707,28 +711,8 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
                         transform_cypher_expr_recurse(cpstate,
                                                       (Node *)lfirst(args)));
 
-    /*
-     * When WITHIN GROUP is used, we treat its ORDER BY expressions as
-     * additional arguments to the function, for purposes of function lookup
-     * and argument type coercion.  So, transform each such expression and add
-     * them to the targs list.  We don't explicitly mark where each argument
-     * came from, but ParseFuncOrColumn can tell what's what by reference to
-     * list_length(fn->agg_order).
-     */
-
-    /* This part needs to be worked on. So, for now, we exit if it is set. */
-    Assert(fn->agg_within_group == false);
-    if (fn->agg_within_group)
-    {
-        Assert(fn->agg_order != NIL);
-        foreach(args, fn->agg_order)
-        {
-            SortBy *arg = (SortBy *) lfirst(args);
-
-            targs = lappend(targs, transformExpr(pstate, arg->node,
-                                                 EXPR_KIND_ORDER_BY));
-        }
-    }
+    /* within group should not happen */
+    Assert(!fn->agg_within_group);
 
     /*
      * If the function name is not qualified, then it is one of ours. We need to
@@ -781,8 +765,14 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
         fname = fn->funcname;
 
     /* ... and hand off to ParseFuncOrColumn */
-    return ParseFuncOrColumn(pstate, fname, targs, last_srf, fn, false,
-                             fn->location);
+    retval = ParseFuncOrColumn(pstate, fname, targs, last_srf, fn, false,
+                               fn->location);
+
+    /* flag that an aggregate was found during a transform */
+    if (retval != NULL && retval->type == T_Aggref)
+        cpstate->exprHasAgg = true;
+
+    return retval;
 }
 
 /*

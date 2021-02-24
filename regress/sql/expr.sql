@@ -1884,9 +1884,40 @@ SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (collect agtype);
 
+-- test DISTINCT inside aggregate functions
+SELECT * FROM cypher('UCSC', $$CREATE (:students {name: "Sven", gpa: 3.2, age: 27, zip: 94110})$$)
+AS (a agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN count(u.zip), count(DISTINCT u.zip) $$)
+AS (zip agtype, distinct_zip agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN count(u.age), count(DISTINCT u.age) $$)
+AS (age agtype, distinct_age agtype);
+
+-- test AUTO GROUP BY for aggregate functions
+SELECT create_graph('group_by');
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 2, k:3})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 2, k:4})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 1, j: 3, k:5})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:row {i: 2, j: 3, k:6})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, u.k$$) AS (i agtype, j agtype, k agtype);
+SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, sum(u.k)$$) AS (i agtype, j agtype, sumk agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 1, b: 2, c:3})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 2, b: 3, c:1})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$CREATE (:L {a: 3, b: 1, c:2})$$) AS (result agtype);
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a, x.b, x.c, x.a + count(*) + x.b + count(*) + x.c$$)
+AS (a agtype, b agtype, c agtype, result agtype);
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + x.b + x.c, x.a + x.b + x.c + count(*) + count(*) $$)
+AS (a_b_c agtype,  result agtype);
+-- should fail
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a, x.a + count(*) + x.b + count(*) + x.c$$)
+AS (a agtype, result agtype);
+SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + count(*) + x.b + count(*) + x.c$$)
+AS (result agtype);
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('group_by', true);
 SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);
 
