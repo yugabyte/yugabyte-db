@@ -132,9 +132,15 @@ def search_file_in_paths(dir_candidates, file_name):
                         " file {}".format(candidate, file_name))
             return os.path.join(candidate, file_name)
 
+    # If post_install.sh script isn't found then don't error out
+    # The caller assumes that the environment is dev and skips
+    # performing the post installation steps
+    if(file_name == "post_install.sh"):
+        return None
+
     Output.log_error_and_exit(
-        "Yugabyte file not found in paths. Please check "
-        "the paths."
+        "Yugabyte {} file not found in paths {}. Please check "
+        "the paths.".format(file_name, dir_candidates)
     )
 
 # Finds the path of a particular YB binary
@@ -147,7 +153,6 @@ def find_binary_location(binary_name):
     # Development environment
     dir_candidates += [
         os.path.join(YUGABYTE_DIR, "build", "latest", "bin"),
-        os.path.join(YUGABYTE_DIR, "build-support")
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)
@@ -861,6 +866,13 @@ class ControlScript(object):
             return
 
         post_install_script_path = find_binary_location('post_install.sh')
+
+        # If post_install.sh script is not found then we assume that
+        # we are executing it in development mode, hence skip post_install.sh script
+        # TODO(Sanket): Refactor the design to have yugabyted a way of knowing whether it
+        # is an install env v/s dev
+        if(post_install_script_path is None):
+            return
 
         Output.log("Running the post-installation script {} (may be a no-op)".format(
                     post_install_script_path))
