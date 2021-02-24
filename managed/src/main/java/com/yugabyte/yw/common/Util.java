@@ -313,6 +313,7 @@ public class Util {
     return StreamSupport.stream(
       Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
       .map(Path::toFile)
+      .sorted(File::compareTo)
       .collect(Collectors.toList());
   }
 
