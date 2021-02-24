@@ -93,15 +93,14 @@ class AzureCloud(AbstractCloud):
         volType = args.volume_type
         private_key_file = args.private_key_file
         instanceType = args.instance_type
-        # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
-        [pub, offer, sku, image] = args.machine_image.split(':')
+        image = args.machine_image
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
         nicId = self.get_admin().create_nic(vmName, vnet, subnet, zone, nsg, region, public_ip)
         self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
-                                   instanceType, adminSSH, image, nsg, pub, offer,
-                                   sku, volType, args.type, region, nicId)
+                                   instanceType, adminSSH, nsg, image, volType, args.type,
+                                   region, nicId)
         logging.info("[app] Created Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):

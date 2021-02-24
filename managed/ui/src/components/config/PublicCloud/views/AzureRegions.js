@@ -339,7 +339,7 @@ export const AzureRegions = ({ regions, onChange }) => {
                 <Field name="customSecurityGroupId" component={YBFormInput} />
               </div>
               <div>
-                <div className="form-item-custom-label">Marketplace Image URN (optional)</div>
+                <div className="form-item-custom-label">Marketplace Image URN/Shared Gallery Image ID (optional)</div>
                 <Field name="customImageId" component={YBFormInput} />
               </div>
               <div className="divider" />

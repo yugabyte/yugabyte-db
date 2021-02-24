@@ -12,13 +12,15 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from msrestazure.azure_exceptions import CloudError
+
+from collections import defaultdict
+
 from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key, wait_for_ssh
 from ybops.common.exceptions import YBOpsRuntimeError
 
 import logging
 import os
 import re
-from collections import defaultdict
 import requests
 import adal
 import json
@@ -36,6 +38,7 @@ YUGABYTE_SUBNET_PREFIX = "yugabyte-subnet-{}"
 YUGABYTE_SG_PREFIX = "yugabyte-sg-{}"
 YUGABYTE_PEERING_FORMAT = "yugabyte-peering-{}-{}"
 RESOURCE_SKU_URL = "https://management.azure.com/subscriptions/{}/providers/Microsoft.Compute/skus".format(SUBSCRIPTION_ID)
+GALLERY_IMAGE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Compute/galleries/(?P<gallery_name>[^/]*)/images/(?P<image_definition_name>[^/]*)/versions/(?P<version_id>[^/]*)")
 
 
 def get_credentials():
@@ -52,7 +55,7 @@ def create_resource_group(resource_group, region):
     if resource_group_client.resource_groups.check_existence(resource_group):
         return
     resource_group_params = {'location': region}
-    return self.resource_group_client.resource_groups.create_or_update(
+    return resource_group_client.resource_groups.create_or_update(
         RESOURCE_GROUP,
         resource_group_params
     )
@@ -452,7 +455,7 @@ class AzureCloudAdmin():
         return params
 
     def create_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
-                  instance_type, ssh_user, image, nsg, pub, offer, sku, vol_type, server_type,
+                  instance_type, ssh_user, nsg, image, vol_type, server_type,
                   region, nic_id):
         try:
             return self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
@@ -461,6 +464,22 @@ class AzureCloudAdmin():
 
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
+
+        shared_gallery_image_match = GALLERY_IMAGE_ID_REGEX.match(image)
+        if shared_gallery_image_match:
+            image_reference = {
+                "id": image
+            }
+        else:
+            # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
+            pub, offer, sku, version = image.split(':')
+            image_reference = {
+                "publisher": pub,
+                "offer": offer,
+                "sku": sku,
+                "version": version
+            }
+
         vm_parameters = {
             "location": region,
             "os_profile": {
@@ -486,12 +505,7 @@ class AzureCloudAdmin():
                         "storageAccountType": "Standard_LRS"
                     }
                 },
-                "image_reference": {
-                        "publisher": pub,
-                        "offer": offer,
-                        "sku": sku,
-                        "version": image
-                }
+                "image_reference": image_reference
             },
             "network_profile": {
                 "network_interfaces": [{
