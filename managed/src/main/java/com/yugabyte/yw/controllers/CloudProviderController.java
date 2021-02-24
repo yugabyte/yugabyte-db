@@ -125,6 +125,7 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Customer customer = Customer.get(customerUUID);
+    int customerCount = Customer.find.all().size();
     if (customer.getUniversesForProvider(providerUUID).size() > 0) {
       return ApiResponse.error(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
@@ -141,7 +142,11 @@ public class CloudProviderController extends AuthenticatedController {
         accessKey.delete();
       }
       NodeInstance.deleteByProvider(providerUUID);
-      InstanceType.deleteInstanceTypesForProvider(provider, config);
+      if (customerCount == 1) {
+//        Delete Intance type only if 1 customer.
+//        More than 1 customer can have shared instance type so we can't delete it.
+        InstanceType.deleteInstanceTypesForProvider(provider, config);
+      }
       provider.delete();
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted provider: " + providerUUID);
