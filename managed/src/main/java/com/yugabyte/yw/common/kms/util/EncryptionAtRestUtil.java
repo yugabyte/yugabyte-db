@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -203,6 +204,23 @@ public class EncryptionAtRestUtil {
 
     public static boolean configInUse(UUID configUUID) {
         return KmsHistory.configHasHistory(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+    }
+
+    public static ArrayNode getUniverses(UUID configUUID) {
+        Set<Universe> universes =  KmsHistory.getUniverses(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+        ArrayNode detals = Json.newArray();
+    for (Universe universe: universes) {
+      ObjectNode universePayload = Json.newObject();
+      universePayload.put("name", universe.name);
+      // TODO replace with universe status once we introduce that flag.
+      universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
+      universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      detals.add(universePayload);
+
+    }
+    return detals;
     }
 
     public static int getNumKeyRotations(UUID universeUUID) {
