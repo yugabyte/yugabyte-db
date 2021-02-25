@@ -31,12 +31,15 @@ import play.libs.Scala;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toMap;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertSame;
 
@@ -111,6 +114,9 @@ public class ConfigTest {
     Set<String> allPaths = getAllPaths(expectedConfig);
     allPaths.addAll(actualConfigPaths);
     for (String path : allPaths) {
+      if (path.equals("config.resource")) {
+        continue;
+      }
       assertSame(path, expectedConfig.hasPath(path), actualConfig.hasPath(path));
       assertEquals(
         "\nExpected: " + getKVStr(expectedConfig, path) +
@@ -131,8 +137,8 @@ public class ConfigTest {
         getAllPaths(ConfigFactory.parseResources(expectedConfigFile));
 
       for (String path : actualConfigPaths) {
-        if (currentPathsFromExpectedConfigFile.contains(path) ||
-          isBatchTestPath(path, ALWAYS_GENERATE_PATH_PREFIXES) ||
+        if (isBatchTestPath(path, ALWAYS_GENERATE_PATH_PREFIXES) ||
+          currentPathsFromExpectedConfigFile.contains(path) ||
           !expectedConfig.hasPathOrNull(path) ||
             !expectedConfig.getValue(path).equals(actualConfig.getValue(path))) {
             candidateGeneratedFromActualConfig.add(getKVStr(actualConfig, path));
@@ -168,30 +174,84 @@ public class ConfigTest {
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
     // play uses this property to locate resource instead of taking an argument to load method.
-    System.setProperty("config.resource", testConfigFile);
     Configuration load = Configuration.load(env.asScala(),
-      Scala.asScala(getEnvForName(envName)));
+      Scala.asScala(getEnvVarMap(envName, testConfigFile)));
     return load.underlying();
   }
 
-  private static Map<String, Object> getEnvForName(String envName) {
+  private static Map<String, Object> getEnvVarMap(String envName, Object testConfigFile) {
+    Map<String, Object> map = new HashMap<>();
+    map.put("config.resource", testConfigFile);
+    for (String s : getEnvForName(envName)) {
+      if (map.put(s, "RESOLVED_" + s) != null) {
+        throw new IllegalStateException("Duplicate key");
+      }
+    }
+    return map;
+  }
+
+  private static Set<String> getEnvForName(String envName) {
     switch (envName) {
       case "envHelm":
-        return ImmutableMap.of(
-          "APP_SECRET", "TOP_SECRET_HELM",
-          "POSTGRES_DB", "yugaware",
-          "POSTGRES_USER", "helm.pg.user",
-          "POSTGRES_PASSWORD", "helm#pg$passwd");
+        return ImmutableSet.of(
+          "APP_SECRET",
+          "POSTGRES_DB",
+          "POSTGRES_USER",
+          "POSTGRES_PASSWORD");
       case "envYugabyted":
-        return ImmutableMap.of("USE_NATIVE_METRICS", true);
+        return ImmutableSet.of("USE_NATIVE_METRICS");
       case "envYugabundle":
-        return ImmutableMap.of(
-          "PLATFORM_DB_USER", "ybundle_user",
-          "PLATFORM_DB_PASSWORD", "ybundle_pass",
-          "PLATFORM_APP_SECRET", "PLATFORM_APP_SECRET",
-          "CORS_ORIGIN", "http://cors.origin.com");
+        return ImmutableSet.of(
+          "PLATFORM_DB_USER",
+          "PLATFORM_DB_PASSWORD",
+          "PLATFORM_APP_SECRET",
+          "CORS_ORIGIN",
+          "CUSTOM_ALLOWED_ORIGIN",
+          "DB_PASSWORD",
+          "DB_USERNAME",
+          "DEVOPS_HOME",
+          "HELM_PACKAGE_PATH",
+          "METRICS_URL",
+          "SWAMPER_TARGET_PATH",
+          "USE_NATIVE_METRICS",
+          "USE_OAUTH",
+          "YB_ALERTS_EMAIL",
+          "YB_ALERTS_PASSWORD",
+          "YB_ALERTS_USERNAME",
+          "YB_OIDC_CLIENT_ID",
+          "YB_OIDC_DISCOVERY_URI",
+          "YB_OIDC_EMAIL_ATTR",
+          "YB_OIDC_SCOPE",
+          "YB_OIDC_SECRET",
+          "YB_SECURITY_TYPE",
+          "YW_STORAGE_PATH",
+          "YW_URL"
+        );
+      case "envDev" :
+        return ImmutableSet.of(
+          "CUSTOM_ALLOWED_ORIGIN",
+          "DB_PASSWORD",
+          "DB_USERNAME",
+          "DEVOPS_HOME",
+          "HELM_PACKAGE_PATH",
+          "METRICS_URL",
+          "SWAMPER_TARGET_PATH",
+          "USE_NATIVE_METRICS",
+          "USE_OAUTH",
+          "YB_ALERTS_EMAIL",
+          "YB_ALERTS_PASSWORD",
+          "YB_ALERTS_USERNAME",
+          "YB_OIDC_CLIENT_ID",
+          "YB_OIDC_DISCOVERY_URI",
+          "YB_OIDC_EMAIL_ATTR",
+          "YB_OIDC_SCOPE",
+          "YB_OIDC_SECRET",
+          "YB_SECURITY_TYPE",
+          "YW_STORAGE_PATH",
+          "YW_URL"
+        );
       default:
-        return ImmutableMap.of();
+        return ImmutableSet.of();
     }
   }
 
