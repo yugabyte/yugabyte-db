@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
@@ -207,19 +208,20 @@ public class EncryptionAtRestUtil {
     }
 
     public static ArrayNode getUniverses(UUID configUUID) {
-        Set<Universe> universes =  KmsHistory.getUniverses(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-        ArrayNode universeDetails = Json.newArray();
-        for (Universe universe: universes) {
-        ObjectNode universePayload = Json.newObject();
-        universePayload.put("name", universe.name);
-        // TODO replace with universe status once we introduce that flag.
-        universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
-        universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
-        universePayload.put("uuid", universe.universeUUID.toString());
-        universePayload.put("creationDate", universe.creationDate.getTime());
-        universeDetails.add(universePayload);
+        Set<Universe> universes = KmsHistory.getUniverses(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+        ArrayNode details = Json.newArray();
+        for (Universe universe : universes) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            ObjectNode universePayload = Json.newObject();
+            universePayload.put("name", universe.name);
+            universePayload.put("updateInProgress", universeDetails.updateInProgress);
+            universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
+            universePayload.put("uuid", universe.universeUUID.toString());
+            universePayload.put("creationDate", universe.creationDate.getTime());
+            universePayload.put("universePaused", universeDetails.universePaused);
+            details.add(universePayload);
         }
-        return universeDetails;
+        return details;
     }
 
     public static int getNumKeyRotations(UUID universeUUID) {
