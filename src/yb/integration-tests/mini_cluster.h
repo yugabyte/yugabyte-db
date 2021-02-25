@@ -147,6 +147,9 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   CHECKED_STATUS AddTabletServer();
 
+  // Add a Tablet Server to the blacklist
+  CHECKED_STATUS AddTServerToBlacklist(master::MiniMaster* master, tserver::MiniTabletServer* ts);
+
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
   // there are multiple masters.
