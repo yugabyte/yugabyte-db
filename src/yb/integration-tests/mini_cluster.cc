@@ -931,4 +931,18 @@ Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
   return Status::OK();
 }
 
+Result<int> ServerWithLeaders(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto* server = cluster->mini_tablet_server(i)->server();
+    if (!server) {
+      continue;
+    }
+    auto* ts_manager = server->tablet_manager();
+    if (ts_manager->GetLeaderCount() != 0) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, "No tablet server with leaders");
+}
+
 }  // namespace yb

@@ -1240,6 +1240,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
       auto l = table->LockForWrite();
       SchemaToPB(schema, l->mutable_data()->pb.mutable_schema());
       l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
+      l->mutable_data()->pb.set_updates_only_index_permissions(false);
 
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), term));
@@ -1874,6 +1875,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  l->mutable_data()->pb.set_updates_only_index_permissions(false);
   l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
                                Substitute("Alter table version=$0 ts=$1",
                                           l->mutable_data()->pb.version(),
@@ -3229,7 +3231,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
-      const Status s = GetTableSchema(&get_schema_req, &get_schema_resp);
+      const bool get_fully_applied_indexes = true;
+      const Status s = GetTableSchemaInternal(&get_schema_req,
+                                              &get_schema_resp,
+                                              get_fully_applied_indexes);
       if (!s.ok()) {
         resp->mutable_error()->Swap(get_schema_resp.mutable_error());
         return s;
@@ -3800,6 +3805,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
       indexes->DeleteSubrange(i, 1);
 
       indexed_table_data.pb.set_version(indexed_table_data.pb.version() + 1);
+      // TODO(Amit) : Is this compatible with the previous version?
+      indexed_table_data.pb.set_updates_only_index_permissions(false);
       indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
                                    Substitute("Alter table version=$0 ts=$1",
                                               indexed_table_data.pb.version(),
@@ -4428,6 +4435,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // different path and it's not processed here).
   if (!req->has_wal_retention_secs()) {
     table_pb.set_version(table_pb.version() + 1);
+    table_pb.set_updates_only_index_permissions(false);
   }
   table_pb.set_next_column_id(next_col_id);
   l->mutable_data()->set_state(
@@ -4570,6 +4578,30 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
+  // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
+  // For YQL tables, we will return the "set of indexes" being applied instead of the ones
+  // that are fully completed.
+  // For PGSQL (and other) tables we want to return the fully applied schema.
+  const bool get_fully_applied_indexes = table->GetTableType() != TableType::YQL_TABLE_TYPE;
+  return GetTableSchemaInternal(req, resp, get_fully_applied_indexes);
+}
+
+Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                              GetTableSchemaResponsePB* resp,
+                                              bool get_fully_applied_indexes) {
+  VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<TableInfo> table;
+
+  // Lookup the table and verify if it exists.
+  TRACE("Looking up table");
+  RETURN_NOT_OK(FindTable(req->table(), &table));
+  if (table == nullptr) {
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
   TRACE("Locking table");
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
@@ -4579,6 +4611,12 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // schema that has reached every TS.
     DCHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->data().pb.fully_applied_schema());
+  } else {
+    // There's no AlterTable, the regular schema is "fully applied".
+    resp->mutable_schema()->CopyFrom(l->data().pb.schema());
+  }
+
+  if (get_fully_applied_indexes && l->data().pb.has_fully_applied_schema()) {
     resp->set_version(l->data().pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
     if (l->data().pb.has_fully_applied_index_info()) {
@@ -4595,8 +4633,6 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
             << ":\n"
             << yb::ToString(l->data().pb.indexes());
   } else {
-    // There's no AlterTable, the regular schema is "fully applied".
-    resp->mutable_schema()->CopyFrom(l->data().pb.schema());
     resp->set_version(l->data().pb.version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
     if (l->data().pb.has_index_info()) {
@@ -4609,6 +4645,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
             << ":\n"
             << yb::ToString(l->data().pb.indexes());
   }
+  resp->set_is_compatible_with_previous_version(l->data().pb.updates_only_index_permissions());
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
   if (IsReplicationInfoSet(l->data().pb.replication_info())) {
     resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
