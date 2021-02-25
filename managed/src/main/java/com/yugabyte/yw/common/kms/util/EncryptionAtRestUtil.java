@@ -208,19 +208,18 @@ public class EncryptionAtRestUtil {
 
     public static ArrayNode getUniverses(UUID configUUID) {
         Set<Universe> universes =  KmsHistory.getUniverses(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-        ArrayNode detals = Json.newArray();
-    for (Universe universe: universes) {
-      ObjectNode universePayload = Json.newObject();
-      universePayload.put("name", universe.name);
-      // TODO replace with universe status once we introduce that flag.
-      universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
-      universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
-      universePayload.put("uuid", universe.universeUUID.toString());
-      universePayload.put("creationDate", universe.creationDate.getTime());
-      detals.add(universePayload);
-
-    }
-    return detals;
+        ArrayNode universeDetails = Json.newArray();
+        for (Universe universe: universes) {
+        ObjectNode universePayload = Json.newObject();
+        universePayload.put("name", universe.name);
+        // TODO replace with universe status once we introduce that flag.
+        universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
+        universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
+        universePayload.put("uuid", universe.universeUUID.toString());
+        universePayload.put("creationDate", universe.creationDate.getTime());
+        universeDetails.add(universePayload);
+        }
+        return universeDetails;
     }
 
     public static int getNumKeyRotations(UUID universeUUID) {
