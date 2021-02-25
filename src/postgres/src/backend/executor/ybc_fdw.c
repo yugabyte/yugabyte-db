@@ -247,7 +247,6 @@ typedef struct YbFdwExecState
 {
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement	handle;
-	ResourceOwner	stmt_owner;
 	YBCPgExecParameters *exec_params; /* execution control parameters for YugaByte */
 	bool is_exec_done; /* Each statement should be executed exactly one time */
 } YbFdwExecState;
@@ -276,9 +275,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				   RelationGetRelid(relation),
 				   NULL /* prepare_params */,
 				   &ybc_state->handle));
-	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
-	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
-	ybc_state->stmt_owner = CurrentResourceOwner;
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
@@ -299,10 +295,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */
-	HandleYBStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-														yb_catalog_cache_version),
-														ybc_state->handle,
-														ybc_state->stmt_owner);
+	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_state->handle, yb_catalog_cache_version));
 }
 
 /*
@@ -354,10 +347,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 														target->resno,
 														attr_typid,
 														&type_attrs);
-			HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-																									 expr),
-															ybc_state->handle,
-															ybc_state->stmt_owner);
+			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 			has_targets = true;
 		}
 
@@ -381,10 +371,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 															i + 1,
 															TupleDescAttr(tupdesc, i)->atttypid,
 															&type_attrs);
-				HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-																 expr),
-											ybc_state->handle,
-											ybc_state->stmt_owner);
+				HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 				break;
 			}
 		}
@@ -404,12 +391,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
 
 			/* Create operator. */
-			HandleYBStatusWithOwner(YBCPgNewOperator(ybc_state->handle,
-													 func_name,
-													 type_entity,
-													 &op_handle),
-									ybc_state->handle,
-									ybc_state->stmt_owner);
+			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, &op_handle));
 
 			/* Handle arguments. */
 			if (aggref->aggstar) {
@@ -424,9 +406,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 								 0 /* datum */,
 								 false /* is_null */,
 								 &const_handle);
-				HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, const_handle),
-										ybc_state->handle,
-										ybc_state->stmt_owner);
+				HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
 			} else {
 				/* Add aggregate arguments to operator. */
 				foreach(lc_arg, aggref->args)
@@ -444,9 +424,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 										 const_node->constvalue,
 										 const_node->constisnull,
 										 &const_handle);
-						HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, const_handle),
-												ybc_state->handle,
-												ybc_state->stmt_owner);
+						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
 					}
 					else if (IsA(tle->expr, Var))
 					{
@@ -462,9 +440,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 														attno,
 														attr->atttypid,
 														&type_attrs);
-						HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
-												ybc_state->handle,
-												ybc_state->stmt_owner);
+						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, arg));
 					}
 					else
 					{
@@ -477,10 +453,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			}
 
 			/* Add aggregate operator as scan target. */
-			HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-														 op_handle),
-														 ybc_state->handle,
-														 ybc_state->stmt_owner);
+			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, op_handle));
 		}
 
 		/*
@@ -515,9 +488,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		HandleYBStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
-								ybc_state->handle,
-								ybc_state->stmt_owner);
+		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;
 	}
 
@@ -531,14 +502,12 @@ ybcIterateForeignScan(ForeignScanState *node)
 	YBCPgSysColumns syscols;
 
 	/* Fetch one row. */
-	HandleYBStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
-	                                      tupdesc->natts,
-	                                      (uint64_t *) values,
-	                                      isnull,
-	                                      &syscols,
-	                                      &has_data),
-	                        ybc_state->handle,
-	                        ybc_state->stmt_owner);
+	HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
+	                             tupdesc->natts,
+	                             (uint64_t *) values,
+	                             isnull,
+	                             &syscols,
+	                             &has_data));
 
 	/* If we have result(s) update the tuple slot. */
 	if (has_data)
@@ -576,11 +545,8 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 	/* If yb_fdw_exec_state is NULL, we are in EXPLAIN; nothing to do */
 	if (yb_fdw_exec_state != NULL && yb_fdw_exec_state->handle != NULL)
 	{
-		ResourceOwnerForgetYugaByteStmt(yb_fdw_exec_state->stmt_owner,
-										yb_fdw_exec_state->handle);
 		YBCPgDeleteStatement(yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;
-		yb_fdw_exec_state->stmt_owner = NULL;
 		yb_fdw_exec_state->exec_params = NULL;
 		yb_fdw_exec_state->is_exec_done = false;
 	}

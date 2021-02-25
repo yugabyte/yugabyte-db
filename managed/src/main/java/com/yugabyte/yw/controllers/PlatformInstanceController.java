@@ -12,7 +12,8 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
 import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -24,6 +25,7 @@ import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
+import java.net.URL;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +38,9 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject
   private FormFactory formFactory;
+
+  @Inject
+  CustomerTaskManager taskManager;
 
   public Result createInstance(UUID configUUID) {
     try {
@@ -187,7 +192,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       // Make sure the backup file provided exists.
-      Optional<File> backup = replicationManager.listBackups(curLeaderAddr)
+      Optional<File> backup = replicationManager.listBackups(new URL(curLeaderAddr))
         .stream()
         .filter(f -> f.getName().equals(formData.get().backup_file))
         .findFirst();
@@ -201,11 +206,17 @@ public class PlatformInstanceController extends AuthenticatedController {
       // Restore the backup.
       backup.ifPresent(file -> replicationManager.restoreBackup(file.getAbsolutePath()));
 
-      // Promote the local instance.
-      replicationManager.promoteInstance(PlatformInstance.getByAddress(localInstanceAddr));
+      // Fail any incomplete tasks that may be leftover from the backup that was restored.
+      taskManager.failAllPendingTasks();
 
-      // Finally, start the new backup schedule.
+      // Promote the local instance.
+      replicationManager.promoteLocalInstance(PlatformInstance.getByAddress(localInstanceAddr));
+
+      // Start the new backup schedule.
       replicationManager.start();
+
+      // Finally, switch the prometheus configuration to read from swamper targets directly.
+      replicationManager.switchPrometheusFromFederated();
 
       return ok();
     } catch (Exception e) {

@@ -28,6 +28,7 @@ import org.yb.ColumnSchema;
 import org.yb.Common.HostPortPB;
 import org.yb.Schema;
 import org.yb.client.AsyncYBClient;
+import org.yb.client.AsyncYBClient.AsyncYBClientBuilder;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -84,9 +85,28 @@ public class YBCliCommands implements CommandMarker {
       @CliOption(key = { "masters", "m" },
                  mandatory = true,
                  help = "Comma separated list of masters as '<host>:<port>'")
-      final String masterAddresses) {
+      final String masterAddresses,
+      @CliOption(key = { "certFile", "cert"},
+                 help = "CA Certificate for SSL connections.")
+      final String certFile,
+      @CliOption(key = { "clientCertFile", "clientCert"},
+                 help = "Client Certificate for mTLS connections.")
+      final String clientCertFile,
+      @CliOption(key = { "clientKeyFile", "clientKey"},
+                 help = "Client Private Key for mTLS connections.")
+      final String clientKeyFile) {
     try {
-      AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
+      AsyncYBClientBuilder builder = new AsyncYBClientBuilder(masterAddresses);
+      if (certFile != null) {
+        builder.sslCertFile(certFile);
+      }
+      if (clientCertFile != null) {
+        if (clientKeyFile == null) {
+          return "ClientKey cannot be null when ClientCert is provided.";
+        }
+        builder.sslClientCertFiles(clientCertFile, clientKeyFile);
+      }
+      AsyncYBClient asyncClient = builder.build();
       ybClient = new YBClient(asyncClient);
       this.masterAddresses = masterAddresses;
       connectedToDatabase = true;

@@ -15,7 +15,7 @@ showAsideToc: true
 
 This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.
 
-## Retrieving Data
+## Querying Data
 
 The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions. 
 
@@ -34,11 +34,10 @@ The following `SELECT` statement clauses provide flexiblity and allow you to fin
 - The `DISTINCT` operator allows you to select distinct rows. 
 - The `ORDER BY` clause lets you sort rows.
 - The `WHERE` clause allows you to apply filters to rows.
-- The `LIMIT` and `FETCH` clauses allow you to select a subset of rows from a table. 
+- The `LIMIT` clause allows you to select a subset of rows from a table. 
 - The `GROUP BY` clause allows you to divide rows into groups. 
 - The `HAVING` clause lets you filter groups.
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
-- `UNION`, `INTERSECT`, and `EXCEPT` allow you to perform set operations. 
 
 ### SELECT Examples
 
@@ -46,17 +45,17 @@ Suppose you work with a database that includes the following table populated wit
 
 ```sql
 CREATE TABLE employees (
-    employee_no integer PRIMARY KEY,
-    name text,
-    department text
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text
 );
 
 INSERT INTO employees (employee_no, name, department) 
-VALUES 	
-(1221, 'John Smith', 'Marketing'),
-(1222, 'Bette Davis', 'Sales'),
-(1223, 'Lucille Ball', 'Operations')
-(1224, 'John Zimmerman', 'Sales'); 
+  VALUES 	
+  (1221, 'John Smith', 'Marketing'),
+  (1222, 'Bette Davis', 'Sales'),
+  (1223, 'Lucille Ball', 'Operations'),
+  (1224, 'John Zimmerman', 'Sales'); 
 ```
 
 You can use the `SELECT` statement to find names of all employees in the `employees` table. In this case, you apply `SELECT` to one column only, as follows:
@@ -86,10 +85,10 @@ SELECT employee_no, name || ' ' || department FROM employees;
 The following is the output produced by the preceding example:
 
 ```
-employee_no | ?column 											
+employee_no | ?column
 ------------+---------------------------
-1221        | John Smith Marketing     											
-1222        | Bette Davis Sales     										
+1221        | John Smith Marketing
+1222        | Bette Davis Sales
 1223        | Lucille Ball Operations
 1224        | John Zimmerman Sales
 ```
@@ -100,7 +99,7 @@ In some cases, you may omit the `FROM` clause in the `SELECT` statement. The fol
 SELECT 2 * 5;
 ```
 
-You can always view your queries by executing the following command:
+You can always view your table definitions by executing the following command:
 
 ```shell
 yugabyte=# \d employees
@@ -131,22 +130,22 @@ SELECT expression AS alias_name FROM table_name;
 Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
 
 ```sql
-SELECT name, department FROM employees;  
+SELECT name, department FROM employees;
 ```
 
 The following example renames the `department` column to `section` using an alias:
 
 ```sql
-SELECT name, department AS section FROM employees;  
+SELECT name, department AS section FROM employees;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-name                | section 											
+name                | section
 --------------------+---------------------------
-John Smith          | Marketing     											
-Bette Davis         | Sales     										
+John Smith          | Marketing
+Bette Davis         | Sales
 Lucille Ball        | Operations
 John Zimmerman      | Sales
 ```
@@ -154,20 +153,21 @@ John Zimmerman      | Sales
 Column aliases may contain spaces. In this case, you enclose them in double quotes to produce multi-word headers, as shown in the following example:
 
 ```sql
-SELECT name, department AS "section of the company" FROM employees;  
+SELECT name, department AS "section of the company" FROM employees;
 ```
 
-### Sorting Data
+### Sorting and Ordering Data
 
 The `SELECT` statement returns data in an unspecified order. You can use the the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
 
 `ORDER BY` has the following syntax:
 
 ```sql
-SELECT list FROM table_name 
-ORDER BY sort_expression1 [ASC | DESC] [NULLS FIRST | NULLS LAST], 
-..., 
-sort_expressionN [ASC | DESC];
+SELECT list 
+  FROM table_name
+  ORDER BY sort_expression1 [ASC | DESC] [NULLS FIRST | NULLS LAST],
+  ...,
+  sort_expressionN [ASC | DESC];
 ```
 
 *sort_expression* can be a column name or an expression that you intend to sort. To sort the query result set based on multiple columns or expressions, include a comma separator between two columns or expressions. Use the `ASC` option to sort rows in ascending order and `DESC` to sort rows in descending order; if you do not specify these options, `ASC` is used by default.
@@ -177,13 +177,13 @@ The `ORDER BY` clause is evaluated after `FROM` and `SELECT`. This gives you an 
 Using the table from [SELECT Examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
 
 ```sql
-SELECT name, department FROM employees ORDER BY name DESC;  
+SELECT name, department FROM employees ORDER BY name DESC;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-name                | department 											
+name                | department
 --------------------+---------------------------
 Lucille Ball        | Operations
 John Smith          | Marketing
@@ -196,17 +196,18 @@ Omitting the `DESC` option would result in the employees sorted in ascending ord
 The following example selects the name and department from the `employees` table, then sorts the rows by the name in ascending order, and then sorts the already sorted rows by department in descending order:
 
 ```sql
-SELECT name, department FROM employees ORDER BY name ASC, department DESC;  
+SELECT name, department FROM employees 
+  ORDER BY name ASC, department DESC;  
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-name                | department 											
+name                | department
 --------------------+---------------------------
 Bette Davis         | Sales
 John Zimmerman      | Sales
-John Smith          | Marketing     											
+John Smith          | Marketing
 Lucille Ball        | Operations
 ```
 
@@ -217,10 +218,11 @@ Which `NULL` option of the `ORDER BY` clause is used by default depends on wheth
 The following example demonstrates how to sort the `employees` table by department in ascending order displaying rows with missing departments first:
 
 ```sql
-SELECT department FROM employees ORDER BY department ASC NULLS FIRST;  
+SELECT department FROM employees 
+  ORDER BY department ASC NULLS FIRST;
 ```
 
-### Removing Duplicate Rows
+### Duplicate Rows
 
 You can use the `DISTINCT` clause in the `SELECT` statement to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list.
 
@@ -238,9 +240,8 @@ The `DISTINCT ON (expression)` clause has the following syntax:
 
 ```sql
 SELECT DISTINCT ON (column_name_1) column_alias, column_name_2 
-FROM table_name
-ORDER BY
-column_name_1, column_name_2;
+  FROM table_name
+  ORDER BY column_name_1, column_name_2;
 ```
 
 The following series of examples inserts new rows into the table from [SELECT Examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
@@ -253,30 +254,46 @@ INSERT INTO employees (name, department) VALUES
 ```
 
 ```sql
-SELECT DISTINCT name FROM employees ORDER BY name DESC;  
+SELECT DISTINCT name FROM employees ORDER BY name DESC;
 ```
 
 The following is the output produced by the preceding examples:
 
 ```
-name																
+name
 --------------------
 Random Dude
-Lucille Ball 				
-John Smith 					
-John Zimmerman	
+Lucille Ball
+John Smith
+John Zimmerman
 Jean Harlow
-Bette Davis 				
+Bette Davis
 ```
 
-### Filtering Data
+### Case Sensitivity
+
+YSQL converts identifiers to lowercase unless they are enclosed in quatation marks. That is, YSQL is not case-sensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as an `employees` table and the following query would be executed on the `employees` table without any problems:
+
+```sql
+SELECT name FROM Employees;
+```
+
+The following example shows how to run a query specifically on a table called `Employees`:
+
+```sql
+SELECT name FROM "Employees";
+```
+
+## Filtering Data
 
 The `WHERE` clause allows you to filter data returned by the `SELECT` statement. Only the rows that satisfy a specified condition are included in the result set.
 
 The `WHERE` clause has the following syntax:
 
 ```sql
-SELECT list FROM table_name WHERE condition ORDER BY expression;
+SELECT list FROM table_name 
+  WHERE condition 
+  ORDER BY expression;
 ```
 
 *condition* is a boolean expression or a combination of boolean expressions created with `AND` and `OR` logical operators. *condition* evaluates to `TRUE`, `FALSE`, or unknown. The result set only returns rows that cause *condition* to evaluate to `TRUE`.
@@ -284,29 +301,31 @@ SELECT list FROM table_name WHERE condition ORDER BY expression;
 The following example uses the table from [SELECT Examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
 
 ```sql
-SELECT employee_no FROM employees WHERE name = 'John Smith' AND department = 'Marketing';
+SELECT employee_no FROM employees 
+  WHERE name = 'John Smith' AND department = 'Marketing';
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-employee_no																
+employee_no
 --------------------
-1221				
+1221
 ```
 
 The following example shows how to use the `OR` operator to find employee IDs of specific employees:
 
 ```sql
-SELECT employee_no FROM employees WHERE name = 'John Smith' OR name = 'Bette Davis';
+SELECT employee_no FROM employees 
+  WHERE name = 'John Smith' OR name = 'Bette Davis';
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-employee_no																
+employee_no
 --------------------
-1221	
+1221
 1222
 ```
 
@@ -327,10 +346,10 @@ SELECT name, department FROM employees WHERE name LIKE 'John%';
 The following is the output produced by the preceding example:
 
 ```
-name            | department 											
-----------------+---------------------------
+name            | department
+----------------+--------------------
 John Smith      | Sales
-John Zimmerman  | Marketing     											
+John Zimmerman  | Marketing
 ```
 
 YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT Examples](#select-examples):
@@ -342,33 +361,36 @@ SELECT name FROM employees WHERE employee_no = 1000 + 222;
 The following is the output produced by the preceding example:
 
 ```
-name																
+name
 --------------------
-Bette Davis 				
+Bette Davis
 ```
 
 If the `employees` table had an additional column for the current timestamp that records the time of changes to every row, then the following example could have demonstrated how to use date expressions in the `WHERE` clause:
 
 ```sql
-SELECT name FROM employees WHERE CURRENT_TIMESTAMP = '2021-01-03 16:22:29.079+07:30';
+SELECT name FROM employees 
+  WHERE CURRENT_TIMESTAMP = '2021-01-03 16:22:29.079+07:30';
 ```
 
 If one of the employee records was last modified on specific date and time, then the following could be the output produced by the preceding example:
 
 ```
-name																
+name
 --------------------
-John Smith				
+John Smith
 ```
 
-### Imposing Limits on the Number of Returned Rows
+### The LIMIT Clause
 
 The `LIMIT` clause of the `SELECT` statement allows you to impose constrains on the number of rows that your query can return.
 
 The `LIMIT` clause has the following syntax:
 
 ```sql
-SELECT list FROM table_name ORDER BY expression LIMIT rows_number;
+SELECT list FROM table_name 
+  ORDER BY expression 
+  LIMIT rows_number;
 ```
 
 *rows_number* represents the number of rows included in the query result set. If this number is set to zero, the query does not return any rows. If *rows_number* is set to `NULL`, the query result is the same as if the `SELECT` statement did not contain the `LIMIT` clause. 
@@ -376,7 +398,8 @@ SELECT list FROM table_name ORDER BY expression LIMIT rows_number;
 To skip rows before returning the rows specified by *rows_number*, you can use the `OFFSET` clause immediately after the `LIMIT` clause, as per the following syntax:
 
 ```sql
-SELECT list FROM table_name LIMIT rows_number OFFSET row_skip;
+SELECT list FROM table_name 
+  LIMIT rows_number OFFSET row_skip;
 ```
 
 *row_skip* represents the number of rows that the query skips before returning *rows_number* rows. If *row_skip* is set to zero, the query result is the same as if the `SELECT` statement did not contain the `OFFSET` clause.
@@ -386,474 +409,46 @@ Since rows are often stored in tables in an unspecified order, it is recommended
 Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
 
 ```sql
-SELECT employee_no, name FROM employees ORDER BY employee_no LIMIT 2;  
+SELECT employee_no, name FROM employees 
+  ORDER BY employee_no 
+  LIMIT 2;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-employee_no | name											
-------------+---------------------------
-1221        | John Smith     											
-1222        | Bette Davis     										
+employee_no | name
+------------+--------------------
+1221        | John Smith
+1222        | Bette Davis
 ```
 
 The following example demonstrates how retrieve three employees starting from the second one ordered by their number:
 
 ```sql
-SELECT name, department FROM employees ORDER BY name LIMIT 3 OFFSET 2;  
+SELECT name, department FROM employees 
+  ORDER BY name 
+  LIMIT 3 
+  OFFSET 2;  
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-name                | department 											
---------------------+---------------------------
-John Smith          | Marketing     											
-John Zimmerman      | Sales     										
+name                | department
+--------------------+----------------------
+John Smith          | Marketing
+John Zimmerman      | Sales
 Lucille Ball        | Operations
-
 ```
 
-### Grouping Data
-
-YSQL allows you to divide rows of the result set into groups using the `GROUP BY` clause of the `SELECT` statement. You can apply an aggregate function to each group to calculate the sum of items. You can also count items in a group using the `COUNT()` function.
-
-The `GROUP BY` clause has the following syntax:
-
-```sql
-SELECT column_1, column_2, aggregate_function(column_3) 
-FROM table_name 
-GROUP BY column_1, column_2;
-```
-
-*column_1* and *column_2* in the `SELECT` part of the statement represent columns that are to be selected. *column_3* represents a column to which an aggregate function is applied. In the second, `GROUP BY` part of the statement, *column_1* and *column_2* are the columns that you want to group.
-
-The purpose of the statement clause is to divide the rows by the values of the columns specified in the `GROUP BY` clause and calculate a value for each group.
-
-The `GROUP BY` clause is evaluated after the `FROM` and `WHERE` clauses but before the `HAVING`, `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses.
-
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
-
-```sql
-SELECT employee_no FROM employees GROUP BY employee_no;  
-```
-
-If there were duplicate rows in the result set from the preceding example, these rows would have been removed because the `GROUP BY` clause functions like the `DISTINCT` clause in this case.
-
-The following example shows how to select the total amount that each employee has been paid. The `GROUP BY` clause divides the rows in the `employees` table into groups by employee number. For each group, the total amounts are calculated using the `SUM()` function:
-
-```sql
-SELECT employee_no SUM(amount) FROM employees GROUP BY employee_no;  
-```
-
-### Specifying Search Conditions for a Group
-
-To define search condition for a group or an aggregate, you can use the `HAVING` clause. If you use this clause in combination with the `GROUP BY` clause, you can filter groups and aggregates based on the condition.
-
-The `HAVING` clause has the following syntax:
-
-```sql
-SELECT column_1, aggregate_function(column_2) 
-FROM table_name 
-GROUP BY column_1
-HAVING condition;
-```
-
-The `GROUP BY` clause returns rows grouped by *column_1*.  The `HAVING` clause specifies *condition* to filter the groups.
-
-The `HAVING` clause is evaluated after the `FROM`, `WHERE`, `GROUP BY`, but before the `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses. Since the `HAVING` clause is evaluated before the `SELECT` clause, you cannot use column aliases in the `HAVING` clause.
-
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
-
-```sql
-SELECT department, COUNT (employee_no)
-FROM employees 
-GROUP BY department
-HAVING COUNT (employee_no) > 1;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-department																
---------------------
-Sales
-```
-
-### Joining Columns
-
-You can combine (join) columns from the same or different tables based on the values of the common columns between related tables. Typically, common columns contain primary keys in the first table and foreign key in the second table.
-
-Cross join, inner join, right outer join, left outer join, and full outer join are all supported by YSQL.
-
-Suppose you work with a database that includes two tables created and populated as follows:
-
-```sql
-CREATE TABLE fulltime_employees (
-    ft_employee_no integer PRIMARY KEY,
-    ft_name text,
-    ft_department text
-);
-
-INSERT INTO fulltime_employees (ft_employee_no, ft_name, ft_department) 
-VALUES 	
-(1221, 'John Smith', 'Marketing'),
-(1222, 'Bette Davis', 'Sales'),
-(1223, 'Lucille Ball', 'Operations')
-(1224, 'John Zimmerman', 'Sales'); 
-
-CREATE TABLE permanent_employees (
-    perm_employee_no integer  PRIMARY KEY,
-    perm_name text,
-    perm_department text
-);
-
-INSERT INTO permanent_employees (perm_employee_no, perm_name, perm_department) 
-VALUES 	
-(1221, 'Lucille Ball', 'Operations'),
-(1222, 'Cary Grant', 'Operations'),
-(1223, 'John Smith', 'Marketing');
-```
-
-The following is the `fulltime_employees` table:
-
-```
-ft_employee_no  | ft_name           | ft_department					
-----------------+-------------------+--------------------------
-1221            | John Smith        | Marketing									
-1222            | Bette Davis       | Sales
-1223            | Lucille Ball      | Operations
-1224            | John Zimmerman    | Sales
-```
-
-The following is the `permanet_employees` table:
-
-```
-perm_employee_no  | perm_name           | perm_department					
-------------------+---------------------+--------------------------
-1221              | Lucille Ball        | Operations	
-1222              | Cary Grant          | Operations
-1223              | John Smith          | Marketing
-```
-
-You can always view your tables by executing the following commands:
-
-```shell
-yugabyte=# \d fulltime_employees
-yugabyte=# \d permanent_employees
-```
-
-#### Using an Inner Join
-
-The following example demonstrates how to join the `fulltime_employees` table with the `permanent_employees` table by matching the values in the `ft_name` and `perm_name` columns:
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-INNER JOIN permanent_employees
-ON ft_name = perm_name;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name       | perm_employee_no | perm_name      
-----------------+---------------+------------------+----------------
-1221            | John Smith    | 1223             | John Smith     
-1223            | Lucille Ball  | 1221             | Lucille Ball
-```
-
-Each row of the `fulltime_employees` table has been examined and the value in its `ft_name` column compared with the value in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row was created and its columns populated by values from both tables, then this new row was added to the result set.
-
-#### Using a Left Outer Join
-
-The following example demonstrates how to use the left join to join the `fulltime_employees` table (left table) with the `permanent_employees` table (right table):
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-LEFT JOIN permanent_employees
-ON ft_name = perm_name;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name         | perm_employee_no  | perm_name     	
-----------------+-----------------+-------------------+---------------
-1221            | John Smith      | 1223              | John Smith   	
-1223            | Lucille Ball    | 1221              | Lucille Ball
-1222            | Bette Davis     | [null]            | [null]     
-1224            | John Zimmerman  | [null]            | [null]     
-```
-
-The statement execution starts by selecting data from the  `fulltime_employees`  table, values in its `ft_name` column are compared with the values in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row is created and its columns populated by values from both tables, then this new row is added to the result set. When non-equal values are encountered, a new row is created containing columns from both tables, and then this new row is added to the result set. The columns of the right table `permanent_employees`  are populated with `null` values.
-
-The following example shows how to select the `fulltime_employees` table rows that do not have matching rown in the `permanent_employees` table:
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-LEFT JOIN permanent_employees
-ON ft_name = perm_name
-WHERE perm_employee_no IS NULL;
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name         | perm_employee_no  | perm_name     	
-----------------+-----------------+-------------------+----------------
-1222            | Bette Davis     | [null]            | [null]      
-1224            | John Zimmerman  | [null]            | [null]      
-```
-
-#### Using a Right Outer Join
-
-Unlike the left join that starts data selection from the left table, the right join starts selecting data from the right table. It compares every value in the `perm_name` column of every row in the `permanent_employees` table (right table) with every value in the `ft_name` column of every row in the `fulltime_employees` table (left table). In case of equal values, a new row that contains columns from both tables is created. When non-equal values are encountered, an additional new row containing columns from both tables is created and columns of the left table `fulltime_employees` is populated with `null` values.
-
-The following example demonstrates how to use the right join to join the `fulltime_employees` table with the `permanent_employees` table:
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-RIGHT JOIN permanent_employees
-ON ft_name = perm_name;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name         | perm_employee_no  | perm_name    	
-----------------+-----------------+-------------------+----------------
-1223            | John Smith      | 1221              | John Smith    	
-1221            | Lucille Ball    | 1223              | Lucille Ball
-[null]          | [null]          | 1222              | Cary Grant   
-```
-
-By adding a `WHERE` clause to the end of the `SELECT` statement, you can obtain rows from the right table that do not have matching rows in the left table.
-
-#### Using a Full Outer Join
-
-The full outer join allows you to obtain a result set that contains all rows from left and right table, with the matching rows from both sides (if any). If no match exists, as in the following example, the left table's columns are populated with `null` values:
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-FULL OUTER JOIN permanent_employees
-ON ft_name = perm_name;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name         | perm_employee_no  | perm_name      
-----------------+-----------------+-------------------+---------------
-1221            | John Smith      | 1223              | John Smith    	
-1222            | Bette Davis     | 1221              | Lucille Ball
-1223            | Lucille Ball    | [null]            | [null]      	
-1224            | John Zimmerman  | [null]            | [null] 
-[null]          | [null]          | 1222              | Cary Grant  
-```
-
-The following example shows how to  use the full join with a `WHERE` clause to return rows in a table that do not have matching rows in another table:
-
-```sql
-SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-FROM fulltime_employees 
-FULL JOIN permanent_employees
-ON ft_name = perm_name
-WHERE ft_employee_no IS NULL OR perm_employee_no IS NULL;  
-```
-
-The following is the output produced by the preceding examples:
-
-```
-ft_employee_no  | ft_name         | perm_employee_no  | perm_name   	
-----------------+-----------------+-------------------+----------------
-1222            | Bette Davis     | [null]            | [null]      		
-1224            | John Zimmerman  | [null]            | [null]
-[null]          | [null]          | 1222              | Cary Grant   	
-```
-
-#### Using a Cross Join
-
-You can use a cross join to generate a Cartesian product of rows in at least two tables. 
-
-Unlike other join clauses, the `CROSS JOIN` clause does not have a join predicate.
-
-The `CROSS JOIN` clause has the following syntax:
-
-```sql
-SELECT list FROM table_1_name CROSS JOIN table_2_name;
-```
-
-You may omit the `CROSS JOIN` clause and use the following syntax instead:
-
-```sql
-SELECT list FROM table_1_name, table_2_name;
-```
-
-As an alternative, you can use the following syntax to simulate the cross join by using an inner join with a condition which always evaluates to `true`:
-
-```sql
-SELECT * FROM table_1_name INNER JOIN table_2_name ON true;
-```
-
-The `fulltime_employees` table has 4 rows and the `permanent_employees` table has 3 rows. When these tables are cross-joined, the result set has 4 * 3 = 12 rows, as the following example demonstrates:
-
-```sql
-SELECT * FROM fulltime_employees CROSS JOIN permanent_employees;
-```
-
-### Handling Case Sensitivity in Queries
-
-Since YSQL is case-sensitive, that is, it treats the same characters differently depending on whether they are uppercase and lowercase, it is important to use correct cases when forming queries. For example, a table called `Employees` would not be recognized as a table called `employees`, even if that is what you mean: if your database contains an `employees` table and you want to query it with using following statement, the query execution will result in an error:
-
-```sql
-SELECT name FROM Employees
-```
-
-## Executing Recursive Queries
-
-Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other type of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
-
-You can use the following syntax to create a simple CTE:
-
-```sql
-WITH cte_name (columns) AS (cte_query) statement;
-```
-
-*cte_name* represents the name of the CTE. *columns* is an optional list of table columns. *cte_query* represents a query returning a result set. If *columns* is not specified, the select list of the *cte_query* becomes *columns* of the CTE. *statement* can be a `SELECT`, `INSERT`, `UPDATE`, or `DELETE` YSQL statement, and the CTE acts the way a table does in that statement.
-
-Using the `fulltime_employees` table from [Joining Columns](#joining-columns), the following example demonstrates how to define a CTE and use it to create a complex query:
-
-```sql
-WITH cte_fulltime_employees AS (
-    SELECT 
-        ft_name,
-        (CASE 
-            WHEN ft_employee_no < 1222 THEN 'Sales'
-            WHEN ft_employee_no > 1223 THEN 'Marketing'
-            ELSE 'Operations'
-        END) ft_department    
-    FROM
-        fulltime_employees
-)
-SELECT
-    ft_employee_no,
-    ft_name,
-    ft_department
-FROM 
-    cte_fulltime_employees
-WHERE
-    ft_department = 'Operations'
-ORDER BY 
-    ft_employee_no; 
-```
-
-Recursive queries, often used for querying hierarchical data, refer to recursive CTEs.
-
-You can use the following syntax to create a recursive CTE:
-
-```sql
-WITH RECURSIVE cte_name 
-AS(cte_query --- non-recursive
-    UNION [ALL]
-    cte_query_definition definion  --- recursive
-) 
-SELECT * FROM cte_name;
-```
-
-*cte_name* represents the name of the CTE. *cte_query* represents a non-recursive term which is a CTE query definition creating the base result set of the CTE structure. *cte_query_definition* represents a recursive term which is one or more CTE query definitions joined with the non-recursive term via the `UNION` or `UNION ALL` operator; the CTE name is referenced by the recursive term. The recursion terminates when the previous iteration does not return any rows.
-
-Suppose you work with a database that includes the `employees` table created and populated as follows:
-
-```sql
-CREATE TABLE employees (
-    employee_no integer PRIMARY KEY,
- 		name text,
-  	manager_no integer,
-    department text
-);
-
-INSERT INTO employees (employee_no, name, manager_no, department) 
-VALUES 	
-(1221, 'John Smith', NULL, NULL),
-(1222, 'Bette Davis', 1221, 'Sales'),
-(1223, 'Lucille Ball', 1221, 'Operations')
-(1224, 'John Zimmerman', 1222, 'Sales') 
-(1225, 'Walter Marx', 1222, 'Sales');
-```
-
-The following example demonstrates how to retrieve all employees who report to the manager with their`manager_no` 1222.
-
-```sql
-WITH RECURSIVE reports AS (
-	SELECT
-		employee_no,
-		name,
-  	manager_no,
-		department
-	FROM
-		employees
-	WHERE
-		employee_no = 1222
-	UNION
-		SELECT
-			emp.employee_no,
-			emp.name,
-  		emp.manager_no,
-			emp.department
-		FROM
-			employees emp
-		INNER JOIN reports rep ON rep.employee_no = emp.manager_no
-) SELECT
-	*
-FROM
-	reports;
-```
-
-In the preceding example, the recursive CTE `reports` defines a non-recursive and a recursive term, with non-recursive term returning the base result set that includes the employee whose `employee_no` is 1222, as the following output shows:
-
-```
-employee_no | name            | manager_id  | department  				
-------------+-----------------+-------------+--------------- 
-1222        | Bette Davis     | 1221        |	Sales
-```
-
-Then the recursive term retrieves the direct reports of the employee whose `employee_no`  is 1222. This is the result of joining the `employees` table and the `reports` CTE. The first iteration of the recursive term produces the following output:
-
-```
-employee_no | name            | manager_id  | department   				
-------------+-----------------+-------------+------------
-1224        | John Zimmerman  | 1222        | Sales  
-1225        | Walter Marx     | 1222        | Sales    
-```
-
-The recursive term is executed multiple times. The second iteration uses the preceding result set as the input value but does not return any rows because nobody reports to employees whose `employee_no` is 1224 and 1225.
-
-When the final result set is returned, it represents the combination of all result sets in iterations generated by the non-recursive  and recursive terms, as demonstrated by the following output:
-
-```
-employee_no | name            | manager_id  | department   				
-------------+-----------------+-------------+------------
-1222        | Bette Davis     | 1221        | Sales     
-1223        | Lucille Ball    | 1221        | Operations
-1224        | John Zimmerman  | 1222        | Sales
-1225        | Walter Marx     | 1222        | Sales
-```
-
-Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](https://docs.yugabyte.com/latest/api/ysql/extensions/#tablefunc).
-
-## Recognizing Patterns in Queries
+### The LIKE Operator
 
 There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition. 
 
 The following is the syntax of the `LIKE` operator:
 
-```
+```sql
 value LIKE pattern
 ```
 
@@ -868,9 +463,9 @@ SELECT name, department FROM employees WHERE name LIKE 'Luci%';
 The following is the output produced by the preceding example:
 
 ```
-name          | department 											
---------------+---------------------------
-Lucille Ball  | Operations     											
+name          | department
+--------------+----------------
+Lucille Ball  | Operations
 ```
 
 The `WHERE` clause contains a special expression consisting of `name`, the `LIKE` operator, and a string that contains a percent sign. The string `'Luci%'` represents a pattern.
@@ -888,3 +483,428 @@ value NOT LIKE pattern
 ```
 
 The `NOT LIKE` operator behaves as an opposite of the `LIKE` operator and returns `true` when *value* does not match the *pattern*.
+
+## Grouping Data
+
+YSQL allows you to divide rows of the result set into groups using the `GROUP BY` clause of the `SELECT` statement. You can apply an aggregate function to each group to calculate the sum of items. You can also count items in a group using the `COUNT()` function.
+
+The `GROUP BY` clause has the following syntax:
+
+```sql
+SELECT column_1, column_2, aggregate_function(column_3) 
+  FROM table_name 
+  GROUP BY column_1, column_2;
+```
+
+*column_1* and *column_2* in the `SELECT` part of the statement represent columns that are to be selected. *column_3* represents a column to which an aggregate function is applied. In the second, `GROUP BY` part of the statement, *column_1* and *column_2* are the columns that you want to group.
+
+The purpose of the statement clause is to divide the rows by the values of the columns specified in the `GROUP BY` clause and calculate a value for each group.
+
+The `GROUP BY` clause is evaluated after the `FROM` and `WHERE` clauses but before the `HAVING`, `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses.
+
+Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
+
+```sql
+SELECT employee_no FROM employees GROUP BY employee_no;
+```
+
+If there were duplicate rows in the result set from the preceding example, these rows would have been removed because the `GROUP BY` clause functions like the `DISTINCT` clause in this case.
+
+The following example shows how to select the total amount that each employee has been paid. The `GROUP BY` clause divides the rows in the `employees` table into groups by employee number. For each group, the total amounts are calculated using the `SUM()` function:
+
+```sql
+SELECT employee_no SUM(amount) FROM employees GROUP BY employee_no;
+```
+
+### The HAVING Clause
+
+To define search condition for a group or an aggregate, you can use the `HAVING` clause. If you use this clause in combination with the `GROUP BY` clause, you can filter groups and aggregates based on the condition.
+
+The `HAVING` clause has the following syntax:
+
+```sql
+SELECT column_1, aggregate_function(column_2) 
+  FROM table_name 
+  GROUP BY column_1
+  HAVING condition;
+```
+
+The `GROUP BY` clause returns rows grouped by *column_1*.  The `HAVING` clause specifies *condition* to filter the groups.
+
+The `HAVING` clause is evaluated after the `FROM`, `WHERE`, `GROUP BY`, but before the `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses. Since the `HAVING` clause is evaluated before the `SELECT` clause, you cannot use column aliases in the `HAVING` clause.
+
+Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
+
+```sql
+SELECT department, COUNT (employee_no)
+  FROM employees 
+  GROUP BY department
+  HAVING COUNT (employee_no) > 1;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+department
+------------------
+Sales
+```
+
+## Joining Columns
+
+You can combine (join) columns from the same or different tables based on the values of the common columns between related tables. Typically, common columns contain primary keys in the first table and foreign key in the second table.
+
+Cross join, inner join, right outer join, left outer join, and full outer join are all supported by YSQL.
+
+Suppose you work with a database that includes two tables created and populated as follows:
+
+```sql
+CREATE TABLE fulltime_employees (
+  ft_employee_no integer PRIMARY KEY,
+  ft_name text,
+  ft_department text
+);
+
+INSERT INTO fulltime_employees (ft_employee_no, ft_name, ft_department) 
+  VALUES 	
+  (1221, 'John Smith', 'Marketing'),
+  (1222, 'Bette Davis', 'Sales'),
+  (1223, 'Lucille Ball', 'Operations'),
+  (1224, 'John Zimmerman', 'Sales');
+
+CREATE TABLE permanent_employees (
+  perm_employee_no integer  PRIMARY KEY,
+  perm_name text,
+  perm_department text
+);
+
+INSERT INTO permanent_employees (perm_employee_no, perm_name, perm_department) 
+  VALUES 	
+  (1221, 'Lucille Ball', 'Operations'),
+  (1222, 'Cary Grant', 'Operations'),
+  (1223, 'John Smith', 'Marketing');
+```
+
+The following is the `fulltime_employees` table:
+
+```
+ft_employee_no  | ft_name           | ft_department
+----------------+-------------------+-------------------
+1221            | John Smith        | Marketing
+1222            | Bette Davis       | Sales
+1223            | Lucille Ball      | Operations
+1224            | John Zimmerman    | Sales
+```
+
+The following is the `permanent_employees` table:
+
+```
+perm_employee_no  | perm_name           | perm_department
+------------------+---------------------+----------------------
+1221              | Lucille Ball        | Operations
+1222              | Cary Grant          | Operations
+1223              | John Smith          | Marketing
+```
+
+You can always view your table definitions by executing the following commands:
+
+```shell
+yugabyte=# \d fulltime_employees
+yugabyte=# \d permanent_employees
+```
+
+### Inner Join
+
+The following example demonstrates how to join the `fulltime_employees` table with the `permanent_employees` table by matching the values in the `ft_name` and `perm_name` columns:
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  INNER JOIN permanent_employees
+  ON ft_name = perm_name;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name       | perm_employee_no | perm_name
+----------------+---------------+------------------+----------------
+1221            | John Smith    | 1223             | John Smith
+1223            | Lucille Ball  | 1221             | Lucille Ball
+```
+
+Each row of the `fulltime_employees` table has been examined and the value in its `ft_name` column compared with the value in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row was created and its columns populated by values from both tables, then this new row was added to the result set.
+
+### Left Outer Join
+
+The following example demonstrates how to use the left join to join the `fulltime_employees` table (left table) with the `permanent_employees` table (right table):
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  LEFT JOIN permanent_employees
+  ON ft_name = perm_name;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name         | perm_employee_no  | perm_name
+----------------+-----------------+-------------------+-----------------
+1221            | John Smith      | 1223              | John Smith
+1223            | Lucille Ball    | 1221              | Lucille Ball
+1222            | Bette Davis     | [null]            | [null]
+1224            | John Zimmerman  | [null]            | [null]
+```
+
+The statement execution starts by selecting data from the  `fulltime_employees`  table, values in its `ft_name` column are compared with the values in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row is created and its columns populated by values from both tables, then this new row is added to the result set. When non-equal values are encountered, a new row is created containing columns from both tables, and then this new row is added to the result set. The columns of the right table `permanent_employees`  are populated with `null` values.
+
+The following example shows how to select the `fulltime_employees` table rows that do not have matching rown in the `permanent_employees` table:
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  LEFT JOIN permanent_employees
+  ON ft_name = perm_name
+  WHERE perm_employee_no IS NULL;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name         | perm_employee_no  | perm_name
+----------------+-----------------+-------------------+----------------
+1222            | Bette Davis     | [null]            | [null]
+1224            | John Zimmerman  | [null]            | [null]
+```
+
+### Right Outer Join
+
+Unlike the left join that starts data selection from the left table, the right join starts selecting data from the right table. It compares every value in the `perm_name` column of every row in the `permanent_employees` table (right table) with every value in the `ft_name` column of every row in the `fulltime_employees` table (left table). In case of equal values, a new row that contains columns from both tables is created. When non-equal values are encountered, an additional new row containing columns from both tables is created and columns of the left table `fulltime_employees` is populated with `null` values.
+
+The following example demonstrates how to use the right join to join the `fulltime_employees` table with the `permanent_employees` table:
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  RIGHT JOIN permanent_employees
+  ON ft_name = perm_name;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name         | perm_employee_no  | perm_name
+----------------+-----------------+-------------------+------------------
+1223            | John Smith      | 1221              | John Smith
+1221            | Lucille Ball    | 1223              | Lucille Ball
+[null]          | [null]          | 1222              | Cary Grant
+```
+
+By adding a `WHERE` clause to the end of the `SELECT` statement, you can obtain rows from the right table that do not have matching rows in the left table.
+
+### Full Outer Join
+
+The full outer join allows you to obtain a result set that contains all rows from left and right table, with the matching rows from both sides (if any). If no match exists, as in the following example, the left table's columns are populated with `null` values:
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  FULL OUTER JOIN permanent_employees
+  ON ft_name = perm_name;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name         | perm_employee_no  | perm_name
+----------------+-----------------+-------------------+-----------------
+1221            | John Smith      | 1223              | John Smith
+1222            | Bette Davis     | 1221              | Lucille Ball
+1223            | Lucille Ball    | [null]            | [null]
+1224            | John Zimmerman  | [null]            | [null]
+[null]          | [null]          | 1222              | Cary Grant
+```
+
+The following example shows how to  use the full join with a `WHERE` clause to return rows in a table that do not have matching rows in another table:
+
+```sql
+SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
+  FROM fulltime_employees 
+  FULL JOIN permanent_employees
+  ON ft_name = perm_name
+  WHERE ft_employee_no IS NULL OR perm_employee_no IS NULL;
+```
+
+The following is the output produced by the preceding examples:
+
+```
+ft_employee_no  | ft_name         | perm_employee_no  | perm_name
+----------------+-----------------+-------------------+----------------
+1222            | Bette Davis     | [null]            | [null]
+1224            | John Zimmerman  | [null]            | [null]
+[null]          | [null]          | 1222              | Cary Grant
+```
+
+### Cross Join
+
+You can use a cross join to generate a Cartesian product of rows in at least two tables. 
+
+Unlike other join clauses, the `CROSS JOIN` clause does not have a join predicate.
+
+The `CROSS JOIN` clause has the following syntax:
+
+```sql
+SELECT list FROM table_1_name 
+  CROSS JOIN table_2_name;
+```
+
+You may omit the `CROSS JOIN` clause and use the following syntax instead:
+
+```sql
+SELECT list FROM table_1_name, table_2_name;
+```
+
+As an alternative, you can use the following syntax to simulate the cross join by using an inner join with a condition which always evaluates to `true`:
+
+```sql
+SELECT * FROM table_1_name 
+  INNER JOIN table_2_name ON true;
+```
+
+The `fulltime_employees` table has 4 rows and the `permanent_employees` table has 3 rows. When these tables are cross-joined, the result set has 4 * 3 = 12 rows, as the following example demonstrates:
+
+```sql
+SELECT * FROM fulltime_employees 
+  CROSS JOIN permanent_employees;
+```
+
+## Recursive Queries and CTEs
+
+Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other type of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
+
+You can use the following syntax to create a simple CTE:
+
+```sql
+WITH cte_name (columns) AS (cte_query) statement;
+```
+
+*cte_name* represents the name of the CTE. *columns* is an optional list of table columns. *cte_query* represents a query returning a result set. If *columns* is not specified, the select list of the *cte_query* becomes *columns* of the CTE. *statement* can be a `SELECT`, `INSERT`, `UPDATE`, or `DELETE` YSQL statement, and the CTE acts the way a table does in that statement.
+
+Using the `fulltime_employees` table from [Joining Columns](#joining-columns), the following example demonstrates how to define a CTE and use it to create a complex query:
+
+```sql
+WITH cte_fulltime_employees AS (
+  SELECT 
+    ft_name,
+      (CASE 
+         WHEN ft_employee_no < 1222 THEN 'Sales'
+         WHEN ft_employee_no > 1223 THEN 'Marketing'
+         ELSE 'Operations'
+       END) ft_department 
+  FROM
+    fulltime_employees
+)
+SELECT
+  ft_employee_no,
+  ft_name,
+  ft_department
+FROM 
+  cte_fulltime_employees
+WHERE
+  ft_department = 'Operations'
+ORDER BY 
+  ft_employee_no; 
+```
+
+Recursive queries, often used for querying hierarchical data, refer to recursive CTEs.
+
+You can use the following syntax to create a recursive CTE:
+
+```sql
+WITH RECURSIVE cte_name 
+  AS(cte_query --- non-recursive
+      UNION [ALL]
+      cte_query_definition definion  --- recursive
+  ) 
+SELECT * FROM cte_name;
+```
+
+*cte_name* represents the name of the CTE. *cte_query* represents a non-recursive term which is a CTE query definition creating the base result set of the CTE structure. *cte_query_definition* represents a recursive term which is one or more CTE query definitions joined with the non-recursive term via the `UNION` or `UNION ALL` operator; the CTE name is referenced by the recursive term. The recursion terminates when the previous iteration does not return any rows.
+
+Suppose you work with a database that includes the `employees` table created and populated as follows:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  manager_no integer,
+  department text
+);
+
+INSERT INTO employees (employee_no, name, manager_no, department) 
+  VALUES 	
+  (1221, 'John Smith', NULL, NULL),
+  (1222, 'Bette Davis', 1221, 'Sales'),
+  (1223, 'Lucille Ball', 1221, 'Operations'),
+  (1224, 'John Zimmerman', 1222, 'Sales'), 
+  (1225, 'Walter Marx', 1222, 'Sales');
+```
+
+The following example demonstrates how to retrieve all employees who report to the manager with their`manager_no` 1222.
+
+```sql
+WITH RECURSIVE reports AS (
+  SELECT
+		employee_no,
+		name,
+  	manager_no,
+		department
+	FROM
+		employees
+	WHERE
+		employee_no = 1222
+	UNION
+		SELECT
+			emp.employee_no,
+			emp.name,
+  		emp.manager_no,
+			emp.department
+		FROM
+			employees emp
+		INNER JOIN reports rep ON rep.employee_no = emp.manager_no
+) 
+SELECT * FROM reports;
+```
+
+In the preceding example, the recursive CTE `reports` defines a non-recursive and a recursive term, with non-recursive term returning the base result set that includes the employee whose `employee_no` is 1222, as the following output shows:
+
+```
+employee_no | name            | manager_id  | department
+------------+-----------------+-------------+---------------
+1222        | Bette Davis     | 1221        |	Sales
+```
+
+Then the recursive term retrieves the direct reports of the employee whose `employee_no`  is 1222. This is the result of joining the `employees` table and the `reports` CTE. The first iteration of the recursive term produces the following output:
+
+```
+employee_no | name            | manager_id  | department
+------------+-----------------+-------------+------------
+1224        | John Zimmerman  | 1222        | Sales
+1225        | Walter Marx     | 1222        | Sales
+```
+
+The recursive term is executed multiple times. The second iteration uses the preceding result set as the input value but does not return any rows because nobody reports to employees whose `employee_no` is 1224 and 1225.
+
+When the final result set is returned, it represents the combination of all result sets in iterations generated by the non-recursive  and recursive terms, as demonstrated by the following output:
+
+```
+employee_no | name            | manager_id  | department
+------------+-----------------+-------------+--------------
+1222        | Bette Davis     | 1221        | Sales
+1223        | Lucille Ball    | 1221        | Operations
+1224        | John Zimmerman  | 1222        | Sales
+1225        | Walter Marx     | 1222        | Sales
+```
+
+Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](https://docs.yugabyte.com/latest/api/ysql/extensions/#tablefunc).

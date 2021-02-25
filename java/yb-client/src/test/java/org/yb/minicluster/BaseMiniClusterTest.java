@@ -78,6 +78,15 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected String certFile = null;
 
+  // The client cert files for mTLS.
+  protected String clientCertFile = null;
+  protected String clientKeyFile = null;
+
+  // This is used as the default bind address (Used only for mTLS verification).
+  protected String clientHost = null;
+  protected int clientPort = 0;
+
+
   // Comma separate describing the master addresses and ports.
   protected static String masterAddresses;
   protected static List<HostAndPort> masterHostPorts;
@@ -195,7 +204,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .numShardsPerTServer(overridableNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
                       .replicationFactor(getReplicationFactor())
-                      .sslCertFile(certFile);
+                      .sslCertFile(certFile)
+                      .sslClientCertFiles(clientCertFile, clientKeyFile)
+                      .bindHostAddress(clientHost, clientPort);
 
     if (tserverEnvVars != null) {
       clusterBuilder.addEnvironmentVariables(tserverEnvVars);
@@ -242,6 +253,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .useIpWithCertificate(useIpWithCertificate)
                       .perTServerArgs(tserverArgs)
                       .sslCertFile(certFile)
+                      .sslClientCertFiles(clientCertFile, clientKeyFile)
+                      .bindHostAddress(clientHost, clientPort)
                       .enablePgTransactions(enablePgTransactions)
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();

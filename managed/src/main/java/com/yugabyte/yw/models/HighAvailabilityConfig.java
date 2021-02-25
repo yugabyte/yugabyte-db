@@ -68,6 +68,7 @@ public class HighAvailabilityConfig extends Model {
 
   public void setLastFailover(Date lastFailover) {
     this.lastFailover = lastFailover;
+    this.update();
   }
 
   public void updateLastFailover() {

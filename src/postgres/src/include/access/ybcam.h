@@ -62,7 +62,6 @@ typedef struct YbScanDescData
 
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement handle;
-	ResourceOwner stmt_owner;
 	bool is_exec_done;
 
 	Relation index;
@@ -131,8 +130,6 @@ YbScanDesc ybcBeginScan(Relation relation,
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
-
-void ybcEndScan(YbScanDesc ybScan);
 
 /* Number of rows assumed for a YB table if no size estimates exist */
 #define YBC_DEFAULT_NUM_ROWS  1000

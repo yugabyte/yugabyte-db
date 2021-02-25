@@ -11,16 +11,14 @@
 
 package com.yugabyte.yw.controllers;
 
-import akka.stream.javadsl.FileIO;
-import akka.stream.javadsl.Source;
-import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -32,18 +30,18 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.util.Random;
 import java.util.Date;
+import java.util.Random;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
@@ -56,6 +54,8 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 public class InternalHAControllerTest extends FakeDBApplication {
+  public static final String UPLOAD_ENDPOINT = "/api/settings/ha/internal/upload";
+
   Customer customer;
   Users user;
 
@@ -70,9 +70,9 @@ public class InternalHAControllerTest extends FakeDBApplication {
 
   @After
   public void tearDown() throws IOException {
-    String storagePath = app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File replicationDir =
-      Paths.get(storagePath, PlatformReplicationManager.REPLICATION_DIR).toFile();
+      Paths.get(storagePath, PlatformReplicationHelper.REPLICATION_DIR).toFile();
     FileUtils.deleteDirectory(replicationDir);
   }
 
@@ -121,7 +121,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
     JsonNode body = Json.newObject()
-      .put("address", "abc.com")
+      .put("address", "http://abc.com")
       .put("is_local", isLocal)
       .put("is_leader", isLeader);
     Result createResult =
@@ -213,7 +213,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncInstancesSuccess() {
     JsonNode haConfigJson = createHAConfig();
-    String leaderAddr = "abcdef.com";
+    String leaderAddr = "http://abcdef.com";
     String clusterKey = createInstances(haConfigJson, leaderAddr);
     String uri;
     uri = "/api/settings/ha/internal/config";
@@ -223,7 +223,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     ArrayNode instancesJson = (ArrayNode) getResponse.get("instances");
     assertEquals(instancesJson.size(), 2);
     PlatformInstance local = Json.fromJson(instancesJson.get(0), PlatformInstance.class);
-    assertEquals(local.getAddress(), "abc.com");
+    assertEquals(local.getAddress(), "http://abc.com");
     assertTrue(local.getIsLocal());
     assertFalse(local.getIsLeader());
     PlatformInstance remoteLeader = Json.fromJson(instancesJson.get(1), PlatformInstance.class);
@@ -257,20 +257,17 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testSyncBackups_no_known_leader_retained() throws IOException {
     String clusterKey = createHAConfig().get("cluster_key").asText("");
     // no instances set so we have no valid leader
-    // we should retain invalid backups under "invalid" subfolder
-    assertTrue(app.config().getBoolean(
-      PlatformReplicationManager.RETAIN_DATA_FROM_INVALID_SRC_KEY));
+    // we always retain invalid all backups even when leader does not match local POV.
 
-    String leaderAddr = "node0";
+    String leaderAddr = "http://node0";
     File fakeDump = createFakeDump();
     Result result = sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, leaderAddr);
-    String content = Helpers.contentAsString(result);
-    assertEquals(content, "File uploaded");
+    assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationManager.REPLICATION_DIR,
-      leaderAddr,
+      PlatformReplicationHelper.REPLICATION_DIR,
+      new URL(leaderAddr).getHost(),
       fakeDump.getName()
     ).toFile();
     assertTrue(uploadedFile.exists());
@@ -280,19 +277,18 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncBackups_differentLeader_retained() throws IOException {
     JsonNode haConfigJson = createHAConfig();
-    String knownLeaderAddr = "leader.yw.com";
+    String knownLeaderAddr = "http://leader.yw.com";
     String clusterKey = createInstances(haConfigJson, knownLeaderAddr);
     File fakeDump = createFakeDump();
-    String requestFromLeader = "different.leader";
+    String requestFromLeader = "http://different.leader";
     Result result = sendBackupSyncRequest(clusterKey, requestFromLeader, fakeDump,
       requestFromLeader);
-    String content = Helpers.contentAsString(result);
-    assertEquals(content, "File uploaded");
+    assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationManager.REPLICATION_DIR,
-      requestFromLeader,
+      PlatformReplicationHelper.REPLICATION_DIR,
+      new URL(requestFromLeader).getHost(),
       fakeDump.getName()
     ).toFile();
     assertTrue(uploadedFile.getAbsolutePath(), uploadedFile.exists());
@@ -314,17 +310,16 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncBackups_valid() throws IOException {
     JsonNode haConfigJson = createHAConfig();
-    String leaderAddr = "leader.yw.com";
+    String leaderAddr = "http://leader.yw.com";
     String clusterKey = createInstances(haConfigJson, leaderAddr);
     File fakeDump = createFakeDump();
     Result result = sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, leaderAddr);
-    String content = Helpers.contentAsString(result);
-    assertEquals(content, "File uploaded");
+    assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationManager.REPLICATION_DIR,
-      leaderAddr,
+      PlatformReplicationHelper.REPLICATION_DIR,
+      new URL(leaderAddr).getHost(),
       fakeDump.getName()
     ).toFile();
     assertTrue(uploadedFile.exists());
@@ -341,17 +336,23 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncBackups_badRequest() throws IOException {
     JsonNode haConfigJson = createHAConfig();
-    String leaderAddr = "leader.yw.com";
+    String leaderAddr = "http://leader.yw.com";
     String clusterKey = createInstances(haConfigJson, leaderAddr);
     File fakeDump = createFakeDump();
-    Result result = sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, "different.sender");
-    String content = Helpers.contentAsString(result);
-    assertEquals(content, "{\"error\":\"Sender: different.sender does not " +
-      "match leader: leader.yw.com\"}");
+    Result result = sendBackupSyncRequest(
+      clusterKey,
+      leaderAddr,
+      fakeDump,
+      "http://different.sender"
+    );
+    assertBadRequest(
+      result,
+      "Sender: http://different.sender does not match leader: http://leader.yw.com"
+    );
 
-    String storagePath = app.config().getString(PlatformReplicationManager.STORAGE_PATH_KEY);
+    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
     File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationManager.REPLICATION_DIR,
+      PlatformReplicationHelper.REPLICATION_DIR,
       leaderAddr,
       fakeDump.getName()
     ).toFile();
@@ -360,30 +361,16 @@ public class InternalHAControllerTest extends FakeDBApplication {
 
   private Result sendBackupSyncRequest(String clusterKey, String leaderAddr, File file,
                                        String senderAddr) {
-    Http.MultipartFormData.DataPart formData0 =
-      new Http.MultipartFormData.DataPart(
-        "leader",
-        leaderAddr
-      );
-    Http.MultipartFormData.DataPart formData1 =
-      new Http.MultipartFormData.DataPart(
-        "sender",
-        senderAddr
-      );
-
-    Http.MultipartFormData.FilePart<Source<ByteString, ?>> filePart =
-      new Http.MultipartFormData.FilePart<>(
-        "backup",
-        file.getName(),
-        "application/octet-stream",
-        FileIO.fromFile(file, 1024));
 
     return Helpers.route(app,
       fakeRequest()
         .method("POST")
-        .uri("/api/settings/ha/internal/upload")
+        .uri(UPLOAD_ENDPOINT)
         .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey)
-        .bodyMultipart(ImmutableList.of(formData0, formData1, filePart),
+        .bodyMultipart(
+          PlatformInstanceClient.buildPartsList(
+            file,
+            ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)),
           singletonTemporaryFileCreator(),
           mat));
   }
@@ -400,7 +387,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     PlatformInstance i1 = new PlatformInstance();
     i1.setUUID(UUID.randomUUID());
     i1.setConfig(config);
-    i1.setAddress("abcdef.com");
+    i1.setAddress("http://abcdef.com");
     i1.setIsLeader(true);
     i1.setIsLocal(false);
     body.add(Json.toJson(i1));
