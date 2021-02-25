@@ -3,6 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -15,8 +18,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import java.io.File;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -24,6 +30,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
@@ -117,6 +124,12 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   YcqlQueryExecutor ycqlQueryExecutor;
+
+  @Inject
+  private NodeUniverseManager nodeUniverseManager;
+
+  @Inject
+  private RuntimeConfigFactory runtimeConfigFactory;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -756,6 +769,49 @@ public class UniverseController extends AuthenticatedController {
     universe.resetVersion();
     return ApiResponse.success();
   }
+
+  /**
+   * API that downloads the log files for a particular node in a universe.  Synchronized due to
+   * potential race conditions.
+   * @param customerUUID ID of custoemr
+   * @param universeUUID ID of universe
+   * @param nodeName name of the node
+   * @return tar file of the tserver and master log files (if the node is a master server).
+   */
+  public synchronized
+    Result downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName)
+    throws IOException {
+    Universe universe;
+    NodeDetails node;
+    String storagePath, tarFileName, targetFile;
+    ShellResponse response;
+
+    LOG.debug("Retrieving logs for " + nodeName);
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+    node = universe.getNode(nodeName);
+    storagePath = runtimeConfigFactory.staticApplicationConf()
+      .getString("yb.storage.path");
+    tarFileName = nodeName + "-support_package.tar.gz";
+    targetFile = storagePath + "/" + tarFileName;
+    response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
+
+    if (response.code != 0) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+    }
+
+    File file = new File(targetFile);
+    InputStream is = new FileInputStream(file);
+    file.delete();
+
+    // return file to client
+    response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
+    return ok(is).as("application/x-compressed");
+  }
+
 
   /**
    * API that queues a task to update/edit a universe of a given customer.
