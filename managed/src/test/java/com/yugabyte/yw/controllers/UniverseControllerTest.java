@@ -7,15 +7,14 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
-import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
-import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.RunInShellFormData;
+
+import static com.yugabyte.yw.common.PlacementInfoUtil.*;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -1350,7 +1349,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testResetVersionUniverseBadUUID() {
     UUID universeUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" +
-      universeUUID + "/reset_version";
+      universeUUID + "/setup_universe_2dc";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertBadRequest(result, "No universe found with UUID: " + universeUUID);
   }
@@ -1359,7 +1358,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testResetVersionUniverse() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" +
-      u.universeUUID + "/reset_version";
+      u.universeUUID + "/setup_universe_2dc";
     assertNotEquals(Universe.get(u.universeUUID).version, -1);
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
