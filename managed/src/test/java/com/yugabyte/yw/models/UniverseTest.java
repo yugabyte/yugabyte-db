@@ -9,6 +9,7 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
@@ -34,6 +35,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import play.api.i18n.DefaultLangs;
 import play.libs.Json;
 
 import java.util.*;
@@ -530,6 +532,14 @@ public class UniverseTest extends FakeDBApplication {
       assertThat(iae.getMessage(), allOf(notNullValue(), containsString("Mismatched provider types")));
     }
   }
+
+  @Test
+    public void testGetUniverses() {
+      UUID certUUID = CertificateHelper.createRootCA("test", defaultCustomer.uuid , "/tmp/certs");
+      ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
+      List<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
+      assertEquals(universes.size(), 1);
+    }
 
   private UserIntent getBaseIntent() {
 

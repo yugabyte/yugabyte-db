@@ -235,12 +235,12 @@ public class KmsHistory extends Model {
     }
 
     public static Set<Universe> getUniverses(UUID configUUID, KmsHistoryId.TargetType type) {
-       Set<UUID> universeUUIDs = new HashSet<>();
-       KmsHistory.find.query().where()
-                .eq("config_uuid", configUUID)
-                .eq("type", type)
-                .findList().forEach(n -> universeUUIDs.add(n.uuid.targetUuid));    
-       return Universe.get(universeUUIDs);
+      Set<UUID> universeUUIDs = new HashSet<>();
+      KmsHistory.find.query().where()
+          .eq("config_uuid", configUUID)
+          .eq("type", type)
+          .findList().forEach(n -> universeUUIDs.add(n.uuid.targetUuid));    
+      return Universe.get(universeUUIDs);
     }
 
     @Override
