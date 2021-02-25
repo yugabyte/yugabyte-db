@@ -1846,7 +1846,7 @@ INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
 INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
-SELECT * FROM rls_tbl;
+SELECT * FROM rls_tbl order by a;
 
 DROP TABLE rls_tbl;
 RESET SESSION AUTHORIZATION;

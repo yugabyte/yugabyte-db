@@ -288,7 +288,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   client::YBTableName table_name;
   table_name.set_table_id(stream_metadata->table_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(async_client_init_->client()->GetTablets(table_name, 0, &tablets));
+  RETURN_NOT_OK(async_client_init_->client()->GetTablets(
+      table_name, 0, &tablets, /* partition_list_version =*/ nullptr));
   return tablets;
 }
 
@@ -317,9 +318,6 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   Status s = CheckTabletValidForStream(producer_tablet);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-  // Since GetChanges is called for a valid stream, mark cdc as enabled.
-  cdc_enabled_.store(true, std::memory_order_release);
-
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
   auto original_leader_term = tablet_peer ? tablet_peer->LeaderTerm() : OpId::kUnknownTerm;
@@ -345,6 +343,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     }
     return;
   }
+
+  // This is the leader tablet, so mark cdc as enabled.
+  cdc_enabled_.store(true, std::memory_order_release);
 
   auto session = async_client_init_->client()->NewSession();
   OpId op_id;
@@ -595,7 +596,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       // Have not yet received any GetChanges requests, so skip background thread work.
       continue;
     }
-    // Always update lag metrics, default every 1s.
+    // Should we update lag metrics default every 1s.
     if (ShouldUpdateLagMetrics(time_since_update_metrics)) {
       UpdateLagMetrics();
       time_since_update_metrics = MonoTime::Now();
@@ -1407,7 +1408,7 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
 MemTrackerPtr CDCServiceImpl::GetMemTracker(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ProducerTabletInfo& producer_info) {
-  SharedLock<rw_spinlock> l(mutex_);
+  std::lock_guard<rw_spinlock> l(mutex_);
   auto it = tablet_checkpoints_.find(producer_info);
   if (it == tablet_checkpoints_.end()) {
     return nullptr;

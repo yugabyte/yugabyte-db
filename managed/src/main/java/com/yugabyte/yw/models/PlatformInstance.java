@@ -102,9 +102,15 @@ public class PlatformInstance extends Model {
     this.lastBackup = lastBackup;
   }
 
-  public void updateLastBackup() {
-    this.lastBackup = new Date();
-    this.update();
+  public boolean updateLastBackup() {
+    try {
+      this.lastBackup = new Date();
+      this.update();
+      return true;
+    } catch (Exception exception) {
+      LOG.warn("DB error saving last backup time", exception);
+    }
+    return false;
   }
 
   @JsonGetter("is_leader")

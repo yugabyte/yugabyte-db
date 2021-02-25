@@ -85,11 +85,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
       recent_value, &(current_entry_.value_type),
       &merge_flags, &ttl, &(current_entry_.user_timestamp)));
 
-  bool has_expired;
-  CHECK_OK(HasExpiredTTL(key_data.write_time.hybrid_time(), ttl,
-                         doc_iter->read_time().read, &has_expired));
-
-  if (has_expired) {
+  if (HasExpiredTTL(key_data.write_time.hybrid_time(), ttl, doc_iter->read_time().read)) {
     current_entry_.value_type = ValueType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
     cache_.Put(key_prefix_, current_entry_);
@@ -643,8 +639,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       has_expired = true;
     } else {
       entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      RETURN_NOT_OK(HasExpiredTTL(
-          key_data.write_time.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
+      has_expired = HasExpiredTTL(key_data.write_time.hybrid_time(), entry_ttl, read_ht.read);
     }
 
     if (has_expired) {
@@ -701,8 +696,10 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
  public:
   DocWriteBatchFormatter(
       StorageDbType storage_db_type,
-      BinaryOutputFormat binary_output_format)
-      : WriteBatchFormatter(binary_output_format),
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix)
+      : WriteBatchFormatter(binary_output_format, batch_output_format, line_prefix),
         storage_db_type_(storage_db_type) {}
  protected:
   std::string FormatKey(const Slice& key) override {
@@ -716,6 +713,18 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
         key_result.status());
   }
 
+  std::string FormatValue(const Slice& key, const Slice& value) override {
+    auto key_type = GetKeyType(key, storage_db_type_);
+    const auto value_result = DocDBValueToDebugStr(key_type, key, value);
+    if (value_result.ok()) {
+      return *value_result;
+    }
+    return Format(
+        "$0 (error: $1)",
+        WriteBatchFormatter::FormatValue(key, value),
+        value_result.status());
+  }
+
  private:
   StorageDbType storage_db_type_;
 };
@@ -723,8 +732,11 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
     StorageDbType storage_db_type,
-    BinaryOutputFormat binary_output_format) {
-  DocWriteBatchFormatter formatter(storage_db_type, binary_output_format);
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    const std::string& line_prefix) {
+  DocWriteBatchFormatter formatter(
+      storage_db_type, binary_output_format, batch_output_format, line_prefix);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
 }

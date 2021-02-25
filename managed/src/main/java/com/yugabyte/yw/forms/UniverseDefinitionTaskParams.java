@@ -96,6 +96,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // operation.
   public boolean updateSucceeded = true;
 
+  // This tracks whether the universe is in the paused state or not.
+  public boolean universePaused = false;
+
   // The next cluster index to be used when a new read-only cluster is added.
   public int nextClusterIndex = 1;
 
