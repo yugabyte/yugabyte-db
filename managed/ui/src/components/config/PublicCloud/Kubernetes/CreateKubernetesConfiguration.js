@@ -17,6 +17,8 @@ import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
+const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
+const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -82,12 +84,11 @@ class CreateKubernetesConfiguration extends Component {
               ? providerTypeMetadata.code
               : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || 'quay.io/yugabyte/yugabyte'
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
-          providerConfig['KUBECONFIG_IMAGE_REGISTRY'] =
-            'registry.connect.redhat.com/yugabytedb/yugabyte';
+          providerConfig['KUBECONFIG_IMAGE_REGISTRY'] = redhatImageRegistry;
         }
 
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
@@ -277,7 +278,7 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="imageRegistry"
                             placeholder={ providerTypeOptions.length === 1 && providerTypeOptions[0].value === 'openshift'
-                                          ? "registry.connect.redhat.com/yugabytedb/yugabyte" : "quay.io/yugabyte/yugabyte" }
+                                          ? redhatImageRegistry : quayImageRegistry }
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />

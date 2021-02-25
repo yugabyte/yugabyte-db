@@ -50,7 +50,7 @@ class KubernetesProviderConfiguration extends Component {
 
         // If the type has a dedicated tab, we don't want to include
         // other k8s configs and vice versa.
-        let dedicatedK8sTabs = ['tanzu', 'openshift']
+        const dedicatedK8sTabs = ['tanzu', 'openshift'];
         if (
           !isDefinedNotNull(providerData) ||
           (dedicatedK8sTabs.includes(type) && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
