@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import './AssociatedUniverse.scss';
 
 function AssociatedUniverse(props) {
-  const { onHide, associatedUniverses, visible } = props;
+  const { onHide, associatedUniverses, visible, title } = props;
 
   /**
    * Returns the decorated status.
@@ -79,7 +79,7 @@ function AssociatedUniverse(props) {
           </BootstrapTable>
         </div>
       ) : (
-        <div>No Associated Universe for Certificate</div>
+        <div>No Associated Universe</div>
       )}
     </YBModal>
   );

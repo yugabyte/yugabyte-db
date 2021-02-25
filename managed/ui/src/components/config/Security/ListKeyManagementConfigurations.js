@@ -23,6 +23,8 @@ export class ListKeyManagementConfigurations extends Component {
         return universeObject;
       });
       this.setState({ associatedUniverses: [...universeList] });
+    } else {
+      this.setState({ associatedUniverses: [] });
     }
   };
 
