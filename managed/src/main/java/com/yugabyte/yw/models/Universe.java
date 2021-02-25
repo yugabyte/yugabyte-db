@@ -832,7 +832,7 @@ public class Universe extends Model {
   public static List<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
     return Customer.get(customerUUID).getUniverses().stream()
       .filter(s -> s.getUniverseDetails().rootCA != null
-        && !s.getUniverseDetails().rootCA.equals(certUUID))
+        && s.getUniverseDetails().rootCA.equals(certUUID))
       .collect(Collectors.toList());
   }
 
