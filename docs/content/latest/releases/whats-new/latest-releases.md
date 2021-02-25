@@ -448,7 +448,7 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 
 #### Yugabyte Platform
 
-* Fix for Universe disk usage shows up empty on the universe page ([[5548](https://github.com/yugabyte/yugabyte-db/issues/5548)](https://github.com/yugabyte/yugabyte-db/issues/5548))
+* Fix for Universe disk usage shows up empty on the universe page (5548)
 * Fix on on-prem backup failures due to file owned by the root user (6062)
 * Fix for a bug where user operation to perform a change to nodes count by AZ was doing a full move (5335)
 * Fixes for Yugabyte Platform data backup script for Replicated based installations
