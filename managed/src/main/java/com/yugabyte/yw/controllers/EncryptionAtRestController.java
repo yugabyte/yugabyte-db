@@ -131,7 +131,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                                 EncryptionAtRestUtil.configInUse(configModel.configUUID)
                         );
                         metadata.put(
-                            "UniverseDetails",
+                            "universeDetails",
                             EncryptionAtRestUtil.getUniverses(configModel.configUUID)
                     );
                         metadata.put("name", configModel.name);
