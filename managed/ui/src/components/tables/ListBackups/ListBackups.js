@@ -292,6 +292,7 @@ export default class ListBackups extends Component {
     ) {
       return <YBLoadingCircleIcon size="medium" />;
     }
+    const universePaused = currentUniverse?.universeDetails?.universePaused;
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
@@ -407,24 +408,28 @@ export default class ListBackups extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    <TableAction
-                      disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
-                      className="table-action"
-                      btnClass="btn-orange"
-                      actionType="create-backup"
-                      isMenuItem={false}
-                      onSubmit={(data) => this.handleModalSubmit('Backup', data)}
-                      onError={() => this.handleModalSubmit('Backup')}
-                    />
-                    <TableAction
-                      disabled={currentUniverse.universeDetails.backupInProgress}
-                      className="table-action"
-                      btnClass="btn-default"
-                      actionType="restore-backup"
-                      isMenuItem={false}
-                      onSubmit={(data) => this.handleModalSubmit('Restore', data)}
-                      onError={() => this.handleModalSubmit('Restore')}
-                    />
+                    {!universePaused &&
+                      <>
+                        <TableAction
+                          disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
+                          className="table-action"
+                          btnClass="btn-orange"
+                          actionType="create-backup"
+                          isMenuItem={false}
+                          onSubmit={(data) => this.handleModalSubmit('Backup', data)}
+                          onError={() => this.handleModalSubmit('Backup')}
+                        />
+                        <TableAction
+                          disabled={currentUniverse.universeDetails.backupInProgress}
+                          className="table-action"
+                          btnClass="btn-default"
+                          actionType="restore-backup"
+                          isMenuItem={false}
+                          onSubmit={(data) => this.handleModalSubmit('Restore', data)}
+                          onError={() => this.handleModalSubmit('Restore')}
+                        />
+                      </>
+                    }
                   </div>
                 )}
               </div>
@@ -496,17 +501,19 @@ export default class ListBackups extends Component {
               >
                 Status
               </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField={'actions'}
-                columnClassName={'no-border yb-actions-cell'}
-                className={'no-border yb-actions-cell'}
-                dataFormat={formatActionButtons}
-                headerAlign="center"
-                dataAlign="center"
-                expandable={false}
-              >
-                Actions
-              </TableHeaderColumn>
+              {!universePaused &&
+                <TableHeaderColumn
+                  dataField={'actions'}
+                  columnClassName={'no-border yb-actions-cell'}
+                  className={'no-border yb-actions-cell'}
+                  dataFormat={formatActionButtons}
+                  headerAlign="center"
+                  dataAlign="center"
+                  expandable={false}
+                >
+                  Actions
+                </TableHeaderColumn>
+              }
             </BootstrapTable>
           }
         />
