@@ -11,6 +11,21 @@ export class ListKeyManagementConfigurations extends Component {
   state = {
     associatedUniverses: []
   }
+
+  getAssociatedUniverseList = (universeDetails) => {
+    if (universeDetails?.length) {
+      const universeList = universeDetails.map((universe) => {
+        let universeObject = {
+          universeName: universe.name,
+          universeUUID: universe.uuid,
+          universeStatus: universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
+        };
+        return universeObject;
+      });
+      this.setState({ associatedUniverses: [...universeList] });
+    }
+  };
+
   render() {
     const {
       configs,
@@ -21,7 +36,7 @@ export class ListKeyManagementConfigurations extends Component {
     const { associatedUniverses } = this.state;
 
     const actionList = (item, row) => {
-      const { configUUID, in_use } = row.metadata;
+      const { configUUID, in_use, universeDetails } = row.metadata;
       return (
         <DropdownButton
           className="btn btn-default"
@@ -36,7 +51,12 @@ export class ListKeyManagementConfigurations extends Component {
           >
             <i className="fa fa-trash"></i> Delete Configuration
           </MenuItem>
-          <MenuItem onClick={() => this.props.showassociatedUniversesModal()}>
+          <MenuItem
+            onClick={() => {
+              this.getAssociatedUniverseList(universeDetails);
+              this.props.showassociatedUniversesModal();
+            }}
+          >
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>
         </DropdownButton>

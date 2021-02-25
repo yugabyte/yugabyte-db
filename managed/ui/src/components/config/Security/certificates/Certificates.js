@@ -143,15 +143,12 @@ class Certificates extends Component {
   getAssociatedUniverseList = (universeDetails) => {
     if (universeDetails?.length) {
       const universeList = universeDetails.map((universe) => {
-        if (universe?.clusters.length) {
-          let universeObject = {
-            universeName: universe.clusters[0].userIntent.universeName,
-            universeUUID: universe.universeUUID,
-            universeStatus:
-              universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
-          };
-          return universeObject;
-        }
+        let universeObject = {
+          universeName: universe.name,
+          universeUUID: universe.uuid,
+          universeStatus: universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
+        };
+        return universeObject;
       });
       this.setState({ associatedUniverses: [...universeList] });
     }
