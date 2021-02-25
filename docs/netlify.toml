@@ -71,3 +71,10 @@
   from = "/v1.2/*"
   to = "/latest/:splat"
   force = true
+
+# Misc old docs with paths that have changed
+
+[[redirects]]
+  from = "/v1.1/explore/cloud-native/binary/observability/"
+  to = "/latest/explore/observability/"
+  force = true
