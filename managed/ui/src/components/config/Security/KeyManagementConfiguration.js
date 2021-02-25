@@ -285,6 +285,7 @@ class KeyManagementConfiguration extends Component {
     if (listView) {
       return (
         <ListKeyManagementConfigurations
+          {...this.props}
           configs={configList}
           onCreate={this.openCreateConfigForm}
           onDelete={this.deleteAuthConfig}

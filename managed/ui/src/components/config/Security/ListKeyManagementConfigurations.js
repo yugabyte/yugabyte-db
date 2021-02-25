@@ -5,10 +5,20 @@ import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
+import AssociatedUniverse from '../../common/associatedUniverse/AssociatedUniverse';
 
 export class ListKeyManagementConfigurations extends Component {
+  state = {
+    associatedUniverses: []
+  }
   render() {
-    const { configs, onCreate, onDelete } = this.props;
+    const {
+      configs,
+      onCreate,
+      onDelete,
+      modal: { showModal, visibleModal }
+    } = this.props;
+    const { associatedUniverses } = this.state;
 
     const actionList = (item, row) => {
       const { configUUID, in_use } = row.metadata;
@@ -26,7 +36,7 @@ export class ListKeyManagementConfigurations extends Component {
           >
             <i className="fa fa-trash"></i> Delete Configuration
           </MenuItem>
-          <MenuItem>
+          <MenuItem onClick={() => this.props.showassociatedUniversesModal()}>
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>
         </DropdownButton>
@@ -123,6 +133,11 @@ export class ListKeyManagementConfigurations extends Component {
             </Fragment>
           }
           noBackground
+        />
+        <AssociatedUniverse
+          visible={showModal && visibleModal === 'associatedUniversesModal'}
+          onHide={this.props.closeModal}
+          associatedUniverses={associatedUniverses}
         />
       </div>
     );

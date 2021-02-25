@@ -141,7 +141,7 @@ class Certificates extends Component {
    * @param universeDetails - list of universe using certificate
    */
   getAssociatedUniverseList = (universeDetails) => {
-    if (universeDetails.length) {
+    if (universeDetails?.length) {
       const universeList = universeDetails.map((universe) => {
         if (universe?.clusters.length) {
           let universeObject = {

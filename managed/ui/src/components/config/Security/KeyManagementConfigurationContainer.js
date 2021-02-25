@@ -12,13 +12,15 @@ import {
   deleteKMSProviderConfigResponse
 } from '../../../actions/cloud';
 import { toast } from 'react-toastify';
+import { closeDialog, openDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
     customerConfigs: state.customer.configs,
     configList: state.cloud.authConfig,
     visibleModal: state.modal.visibleModal,
-    deleteConfig: state.customer.deleteConfig
+    deleteConfig: state.customer.deleteConfig,
+    modal: state.modal
   };
 };
 
@@ -59,6 +61,14 @@ const mapDispatchToProps = (dispatch) => {
         .catch((err) => {
           console.error(err)
         });
+    },
+
+    showassociatedUniversesModal: () => {
+      dispatch(openDialog('associatedUniversesModal'));
+    },
+    
+    closeModal: () => {
+      dispatch(closeDialog());
     }
   };
 };
