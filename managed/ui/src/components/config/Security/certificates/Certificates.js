@@ -328,6 +328,12 @@ class Certificates extends Component {
                 onHide={this.props.closeModal}
                 certificate={this.state.selectedCert}
               />
+              <AssociatedUniverse
+                visible={showModal && visibleModal === 'associatedUniversesModalCert'}
+                onHide={this.props.closeModal}
+                associatedUniverses={associatedUniverses}
+                title= 'Certificate'
+              />
             </Fragment>
           }
         />
@@ -337,11 +343,6 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
-        <AssociatedUniverse
-          visible={showModal && visibleModal === 'associatedUniversesModal'}
-          onHide={this.props.closeModal}
-          associatedUniverses={associatedUniverses}
-        />
       </div>
     );
   }

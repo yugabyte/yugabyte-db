@@ -64,7 +64,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     showassociatedUniversesModal: () => {
-      dispatch(openDialog('associatedUniversesModal'));
+      dispatch(openDialog('associatedUniversesModalKMS'));
     },
     
     closeModal: () => {

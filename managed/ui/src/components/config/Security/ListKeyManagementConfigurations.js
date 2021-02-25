@@ -26,6 +26,34 @@ export class ListKeyManagementConfigurations extends Component {
     } else {
       this.setState({ associatedUniverses: [] });
     }
+    this.props.showassociatedUniversesModal();
+  };
+
+  actionList = (item, row) => {
+    const { configUUID, in_use, universeDetails } = row.metadata;
+    return (
+      <DropdownButton
+        className="btn btn-default"
+        title="Actions"
+        id="bg-nested-dropdown"
+        pullRight
+      >
+        <MenuItem
+          title={'Delete provider'}
+          disabled={in_use}
+          onClick={() => this.props.onDelete(configUUID)}
+        >
+          <i className="fa fa-trash"></i> Delete Configuration
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            this.getAssociatedUniverseList(universeDetails);
+          }}
+        >
+          <i className="fa fa-eye"></i> Show Universes
+        </MenuItem>
+      </DropdownButton>
+    );
   };
 
   render() {
@@ -35,35 +63,8 @@ export class ListKeyManagementConfigurations extends Component {
       onDelete,
       modal: { showModal, visibleModal }
     } = this.props;
-    const { associatedUniverses } = this.state;
 
-    const actionList = (item, row) => {
-      const { configUUID, in_use, universeDetails } = row.metadata;
-      return (
-        <DropdownButton
-          className="btn btn-default"
-          title="Actions"
-          id="bg-nested-dropdown"
-          pullRight
-        >
-          <MenuItem
-            title={'Delete provider'}
-            disabled={in_use}
-            onClick={() => onDelete(configUUID)}
-          >
-            <i className="fa fa-trash"></i> Delete Configuration
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              this.getAssociatedUniverseList(universeDetails);
-              this.props.showassociatedUniversesModal();
-            }}
-          >
-            <i className="fa fa-eye"></i> Show Universes
-          </MenuItem>
-        </DropdownButton>
-      );
-    };
+    const { associatedUniverses } = this.state;
 
     const showConfigProperties = (item, row) => {
       const displayed = [];
@@ -115,7 +116,7 @@ export class ListKeyManagementConfigurations extends Component {
               >
                 <TableHeaderColumn
                   dataField="metadata"
-                  dataFormat={cell => cell.configUUID}
+                  dataFormat={(cell) => cell.configUUID}
                   isKey={true}
                   hidden={true}
                 />
@@ -147,19 +148,20 @@ export class ListKeyManagementConfigurations extends Component {
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="configActions"
-                  dataFormat={actionList}
+                  dataFormat={this.actionList}
                   width="120px"
                   columnClassName="yb-actions-cell"
                 />
               </BootstrapTable>
+              <AssociatedUniverse
+                visible={showModal && visibleModal === 'associatedUniversesModalKMS'}
+                onHide={this.props.closeModal}
+                associatedUniverses={associatedUniverses}
+                title="KMS Provider"
+              />
             </Fragment>
           }
           noBackground
-        />
-        <AssociatedUniverse
-          visible={showModal && visibleModal === 'associatedUniversesModal'}
-          onHide={this.props.closeModal}
-          associatedUniverses={associatedUniverses}
         />
       </div>
     );

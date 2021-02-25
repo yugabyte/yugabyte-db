@@ -6,7 +6,6 @@ import './AssociatedUniverse.scss';
 
 function AssociatedUniverse(props) {
   const { onHide, associatedUniverses, visible, title } = props;
-
   /**
    * Returns the decorated status.
    * @param universeStatus status of universe.
@@ -48,9 +47,9 @@ function AssociatedUniverse(props) {
       visible={visible}
       onHide={onHide}
       showCancelButton={true}
-      title={'Universes using this certificate'}
+      title={`Universes using this ${title}`}
     >
-      {associatedUniverses.length ? (
+      {associatedUniverses?.length ? (
         <div>
           <BootstrapTable
             data={associatedUniverses}
@@ -79,7 +78,7 @@ function AssociatedUniverse(props) {
           </BootstrapTable>
         </div>
       ) : (
-        <div>No Associated Universe</div>
+        <div>No Associated Universe with this {title}</div>
       )}
     </YBModal>
   );
