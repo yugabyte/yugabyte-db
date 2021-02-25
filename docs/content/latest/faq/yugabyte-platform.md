@@ -69,8 +69,6 @@ The data node software is packaged into the Yugabyte Platform application. Yugab
 
 The YugabyteDB Admin Console creates a passwordless SSH connection to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it using the YugabyteDB Admin Console. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
-A REST API is also exposed by the YugabyteDB Admin Console to the end users in addition to the UI as another means of interacting with the data platform.
-
 ## Would we have access to the database machines that get spawned in public clouds?
 
 Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP, it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.

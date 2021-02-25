@@ -2,6 +2,8 @@
 
 export { default as DeleteUniverse } from './DeleteUniverse/DeleteUniverse';
 export { default as DeleteUniverseContainer } from './DeleteUniverse/DeleteUniverseContainer';
+export { ToggleUniverseState } from './ToggleUniverseState/ToggleUniverseState';
+export { default as ToggleUniverseStateContainer } from './ToggleUniverseState/ToggleUniverseStateContainer';
 export { default as ListUniverse } from './ListUniverse/ListUniverse';
 export { default as ListUniverseContainer } from './ListUniverse/ListUniverseContainer';
 export { default as NodeDetails } from './NodeDetails/NodeDetails';

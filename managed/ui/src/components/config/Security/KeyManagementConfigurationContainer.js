@@ -11,6 +11,7 @@ import {
   deleteKMSProviderConfig,
   deleteKMSProviderConfigResponse
 } from '../../../actions/cloud';
+import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -32,26 +33,32 @@ const mapDispatchToProps = (dispatch) => {
     fetchKMSConfigList: () => {
       return dispatch(fetchAuthConfigList()).then((response) =>
         dispatch(fetchAuthConfigListResponse(response.payload))
-      );
+      )
+      .catch(() => toast.error('Error occured while fetching config.'));
     },
 
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then((response) => {
-          return dispatch(createKMSProviderConfigResponse(response.payload));
+          return dispatch(createKMSProviderConfigResponse(response.payload)).then(
+            () => toast.success('Successfully added the configuration')
+          );
         })
-        .catch((err) => console.err('Error submitting KMS configuration: ', err));
+        .catch((err) => toast.error(`Error submitting KMS configuration: ${err}`));
     },
 
     deleteKMSConfig: (configUUID) => {
       dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
+            toast.success('Successfully deleted KMS configuration');
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
-          console.warn('Warning: Deleting configuration returned unsuccessful response.');
+          toast.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          console.error(err)
+        });
     }
   };
 };
