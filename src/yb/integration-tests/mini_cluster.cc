@@ -97,6 +97,11 @@ using std::string;
 using std::vector;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
+using yb::master::GetMasterClusterConfigRequestPB;
+using yb::master::GetMasterClusterConfigResponsePB;
+using yb::master::ChangeMasterClusterConfigRequestPB;
+using yb::master::ChangeMasterClusterConfigResponsePB;
+using yb::master::SysClusterConfigEntryPB;
 
 namespace {
 
@@ -315,6 +320,31 @@ Status MiniCluster::AddTabletServer() {
   auto options = tserver::TabletServerOptions::CreateTabletServerOptions();
   RETURN_NOT_OK(options);
   return AddTabletServer(*options);
+}
+
+Status MiniCluster::AddTServerToBlacklist(MiniMaster* master, MiniTabletServer* ts) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+
+  // Get current config.
+  RETURN_NOT_OK(master->master()->catalog_manager()->GetClusterConfig(&config_resp));
+
+  ChangeMasterClusterConfigRequestPB change_req;
+  *change_req.mutable_cluster_config() = std::move(*config_resp.mutable_cluster_config());
+  SysClusterConfigEntryPB* config = change_req.mutable_cluster_config();
+  // Add tserver to blacklist.
+  HostPortPB* blacklist_host_pb = config->mutable_server_blacklist()->mutable_hosts()->Add();
+  blacklist_host_pb->set_host(ts->bound_rpc_addr().address().to_string());
+  blacklist_host_pb->set_port(ts->bound_rpc_addr().port());
+
+  ChangeMasterClusterConfigResponsePB change_resp;
+
+  RETURN_NOT_OK(master->master()->catalog_manager()->SetClusterConfig(&change_req, &change_resp));
+
+  LOG(INFO) << "TServer at " << ts->bound_rpc_addr().address().to_string() << ":"
+            << ts->bound_rpc_addr().port() << " was added to the blacklist";
+
+  return Status::OK();
 }
 
 string MiniCluster::GetMasterAddresses() const {
