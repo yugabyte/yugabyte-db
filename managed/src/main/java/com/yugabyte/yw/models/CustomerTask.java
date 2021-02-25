@@ -53,6 +53,12 @@ public class CustomerTask extends Model {
   public enum TaskType {
     @EnumValue("Create")
     Create,
+    
+    @EnumValue("Pause")
+    Pause,
+
+    @EnumValue("Resume")
+    Resume,
 
     @EnumValue("Update")
     Update,
@@ -123,6 +129,10 @@ public class CustomerTask extends Model {
       switch (this) {
         case Create:
           return completed ? "Created " : "Creating ";
+        case Pause:
+          return completed ? "Paused " : "Pausing ";
+        case Resume:
+          return completed ? "Resumed " : "Resuming ";
         case Update:
           return completed ? "Updated " : "Updating ";
         case Delete:

@@ -74,6 +74,7 @@ const LiveQueriesComponent = ({ location }) => {
   const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
+  const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
   const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useLiveQueriesApi({
     universeUUID
   });
@@ -325,7 +326,7 @@ const LiveQueriesComponent = ({ location }) => {
             <div className="pull-left">
               <h2 className="content-title pull-left">
                 Live Queries
-                {loading && (
+                {loading && !universePaused && (
                   <span className="live-queries__loading-indicator">
                     <YBLoadingCircleIcon size="small" />
                   </span>

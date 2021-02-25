@@ -47,6 +47,7 @@ export default class UniverseStatus extends Component {
     } = this.props;
     const updateInProgress = universeDetails.updateInProgress;
     const updateSucceeded = universeDetails.updateSucceeded;
+    const universePaused = universeDetails.universePaused;
     const errorString = universeDetails.errorString;
     let statusClassName = 'unknown';
     let statusText = '';
@@ -70,14 +71,27 @@ export default class UniverseStatus extends Component {
         <span className="status-pending-name">{statusText}</span>
       </div>
     );
-    if (!isDefinedNotNull(universePendingTask) && updateSucceeded) {
+    if (!isDefinedNotNull(universePendingTask) && updateSucceeded && !universePaused) {
       statusClassName = 'good';
       if (showLabelText) {
         statusText = 'Ready';
       }
+
       statusDisplay = (
         <div>
           <i className="fa fa-check-circle" />
+          {statusText && <span>{statusText}</span>}
+        </div>
+      );
+    } else if (!isDefinedNotNull(universePendingTask) && updateSucceeded && universePaused) {
+      statusClassName = 'paused';
+      if (showLabelText) {
+        statusText = 'Paused';
+      }
+
+      statusDisplay = (
+        <div>
+          <i className="fa fa-pause-circle-o" />
           {statusText && <span>{statusText}</span>}
         </div>
       );

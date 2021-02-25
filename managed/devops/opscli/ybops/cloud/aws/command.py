@@ -14,7 +14,7 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsNetworkBootstrapMethod, AwsNetworkQueryMethod, AwsNetworkCleanupMethod, \
     AwsQueryCurrentHostMethod, AwsAccessDeleteKeyMethod, \
     AwsQueryVPCMethod, AwsQuerySpotPricingMethod, AwsCreateDnsEntryMethod, AwsEditDnsEntryMethod, \
-    AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod
+    AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, AwsResumeInstancesMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.base import AbstractPerCloudCommand
@@ -38,7 +38,8 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
-
+        self.add_method(AwsPauseInstancesMethod(self))
+        self.add_method(AwsResumeInstancesMethod(self))
 
 class AwsNetworkCommand(NetworkCommand):
     def __init__(self):

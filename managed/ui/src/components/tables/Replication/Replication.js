@@ -61,6 +61,7 @@ export default class Replication extends Component {
 
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     if (!isNonEmptyArray(nodeDetails)) {
       return <YBLoading />;
     }
@@ -151,10 +152,12 @@ export default class Replication extends Component {
           header={
             <div className="replication-header">
               <h2>Replication</h2>
-              <ReplicationAlertModalBtn
-                universeUUID={currentUniverse.data.universeUUID}
-                disabled={!showMetrics}
-              />
+              {!universePaused &&
+                <ReplicationAlertModalBtn
+                  universeUUID={currentUniverse.data.universeUUID}
+                  disabled={!showMetrics}
+                />
+              }
             </div>
           }
           body={
