@@ -1389,35 +1389,35 @@ CREATE AGGREGATE ag_catalog.age_collect(variadic "any")
 --
 -- function for typecasting an agtype value to another agtype value
 --
-CREATE FUNCTION ag_catalog.agtype_typecast_numeric(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_numeric(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.agtype_typecast_float(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_float(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.agtype_typecast_vertex(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_vertex(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.agtype_typecast_edge(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_edge(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.agtype_typecast_path(agtype)
+CREATE FUNCTION ag_catalog.agtype_typecast_path(variadic "any")
 RETURNS agtype
 LANGUAGE c
 STABLE

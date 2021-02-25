@@ -137,7 +137,6 @@ static bool is_object_vertex(agtype_value *agtv);
 static bool is_object_edge(agtype_value *agtv);
 static bool is_array_path(agtype_value *agtv);
 /* helper functions */
-static bool is_agtype_null(agtype *agt);
 static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
                                         int index);
 /* graph entity retrieval */
@@ -2696,21 +2695,6 @@ Datum agtype_string_match_contains(PG_FUNCTION_ARGS)
                     errmsg("agtype string values expected")));
 }
 
-static bool is_agtype_null(agtype *agt)
-{
-    if (AGT_ROOT_IS_ARRAY(agt) && AGT_ROOT_IS_SCALAR(agt))
-    {
-        agtype_value *agtv_element;
-
-        agtv_element = get_ith_agtype_value_from_container(&agt->root, 0);
-
-        if (agtv_element->type == AGTV_NULL)
-            return true;
-    }
-
-    return false;
-}
-
 #define LEFT_ROTATE(n, i) ((n << i) | (n >> (64 - i)))
 #define RIGHT_ROTATE(n, i)  ((n >> i) | (n << (64 - i)))
 
@@ -2788,12 +2772,14 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
     Datum numd;
     char *string = NULL;
 
-    /* return null if arg is null */
-    if (PG_ARGISNULL(0))
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
         PG_RETURN_NULL();
 
     /* check that we have a scalar value */
-    arg_agt = AG_GET_ARG_AGTYPE_P(0);
     if (!AGT_ROOT_IS_SCALAR(arg_agt))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2863,12 +2849,14 @@ Datum agtype_typecast_float(PG_FUNCTION_ARGS)
     Datum d;
     char *string = NULL;
 
-    /* return null if arg is null */
-    if (PG_ARGISNULL(0))
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
         PG_RETURN_NULL();
 
     /* check that we have a scalar value */
-    arg_agt = AG_GET_ARG_AGTYPE_P(0);
     if (!AGT_ROOT_IS_SCALAR(arg_agt))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2936,14 +2924,11 @@ Datum agtype_typecast_vertex(PG_FUNCTION_ARGS)
     Datum result;
     int count;
 
-    /* Return null if arg is null */
-    if (PG_ARGISNULL(0))
-        PG_RETURN_NULL();
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
 
-    arg_agt = AG_GET_ARG_AGTYPE_P(0);
-
-    /* Return null if arg is agtype null */
-    if (is_agtype_null(arg_agt))
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
         PG_RETURN_NULL();
 
     /* A vertex is an object so the arg needs to be one too */
@@ -3014,14 +2999,11 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     Datum result;
     int count;
 
-    /* Return null if arg is null */
-    if (PG_ARGISNULL(0))
-        PG_RETURN_NULL();
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
 
-    arg_agt = AG_GET_ARG_AGTYPE_P(0);
-
-    /* Return null if arg is agtype null */
-    if (is_agtype_null(arg_agt))
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
         PG_RETURN_NULL();
 
     /* An edge is an object, so the arg needs to be one too */
@@ -3111,14 +3093,11 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     int count = 0;
     int i = 0;
 
-    /* return null if arg is null */
-    if (PG_ARGISNULL(0))
-        PG_RETURN_NULL();
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
 
-    arg_agt = AG_GET_ARG_AGTYPE_P(0);
-
-    /* Return null if arg is agtype null */
-    if (is_agtype_null(arg_agt))
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
         PG_RETURN_NULL();
 
     /* path needs to be an array */

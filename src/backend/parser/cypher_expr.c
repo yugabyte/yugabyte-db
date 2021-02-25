@@ -650,27 +650,27 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     if (pg_strcasecmp(ctypecast->typecast, "edge") == 0)
     {
         func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_edge", 1, AGTYPEOID);
+            get_ag_func_oid("agtype_typecast_edge", 1, ANYOID);
     }
     else if (pg_strcasecmp(ctypecast->typecast, "path") == 0)
     {
         func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_path", 1, AGTYPEOID);
+            get_ag_func_oid("agtype_typecast_path", 1, ANYOID);
     }
     else if (pg_strcasecmp(ctypecast->typecast, "vertex") == 0)
     {
         func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_vertex", 1, AGTYPEOID);
+            get_ag_func_oid("agtype_typecast_vertex", 1, ANYOID);
     }
     else if (pg_strcasecmp(ctypecast->typecast, "numeric") == 0)
     {
         func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_numeric", 1, AGTYPEOID);
+            get_ag_func_oid("agtype_typecast_numeric", 1, ANYOID);
     }
     else if (pg_strcasecmp(ctypecast->typecast, "float") == 0)
     {
         func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_float", 1, AGTYPEOID);
+            get_ag_func_oid("agtype_typecast_float", 1, ANYOID);
     }
     /* if none was found, error out */
     else
