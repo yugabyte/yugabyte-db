@@ -14,14 +14,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 The YSQL API of YugabyteDB reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architectural decision allows YSQL to support most of the PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
 
 {{< /tip >}}
-
 
 The following diagram demonstrates how the query layer of PostgreSQL is reused, specifically its components that receive the query (*postman*), the query *parser*, *rewriter*, *analyzer*, as well as components responsible for *planning* and *executing* the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
 
@@ -48,8 +46,9 @@ The following table lists the most important YSQL features which you would find 
 -->
 See also:
 
-* [Document data types (`JSONB` and `JSON`)](../json-support)
+* [Document data types (`JSONB` and `JSON`)](../json-support/jsonb-ysql)
 * [Distributed transactions](../transactions)
+
 <!--
 * [Indexes and constraints]()
 -->
