@@ -693,7 +693,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), &deadline_info_);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key, &table_tombstone_time_));
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key));
       Expiration table_ttl(TableTTL(schema_));
       doc_reader_->SetTableTtl(table_ttl);
     }
