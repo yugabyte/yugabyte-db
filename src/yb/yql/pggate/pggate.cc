@@ -359,10 +359,6 @@ void PgApiImpl::DeleteStatement(PgStatement *handle) {
   }
 }
 
-Status PgApiImpl::ClearBinds(PgStatement *handle) {
-  return handle->ClearBinds();
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::ConnectDatabase(const char *database_name) {
@@ -827,10 +823,6 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
-}
-
-Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondEq(attr_num, attr_value);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,

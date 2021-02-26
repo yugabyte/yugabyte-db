@@ -167,19 +167,6 @@ static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber att
 	HandleYBStatus(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr));
 }
 
-void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_desc,
-						 AttrNumber attnum, Datum value, bool is_null)
-{
-	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
-
-	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, is_null);
-
-	if (is_hash_key)
-		HandleYBStatus(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr));
-	else
-		HandleYBStatus(YBCPgDmlBindColumnCondEq(ybScan->handle, attnum, ybc_expr));
-}
-
 static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
                                      bool start_valid, Datum value, bool end_valid, Datum value_end)
 {
@@ -658,58 +645,11 @@ static void	ybcSetupScanKeys(Relation relation,
 			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 	}
 
-	/*
-	 * All or some of the keys should not be pushed down if any of the following is true.
-	 * - If hash key is not fully set, we must do a full-table scan so we will clear all the scan
-	 * keys.
-	 * - For RANGE columns, if condition on a precedent column in RANGE is not specified, the
-	 * subsequent columns in RANGE are dropped from the optimization.
-	 *
-	 * Implementation Notes:
-	 * Because internally, hash and range columns are cached and stored prior to other columns in
-	 * YugaByte, the columns' indexes are different from the columns' attnum.
-	 * Example:
-	 *   CREATE TABLE tab(i int, j int, k int, primary key(k HASH, j ASC))
-	 *   Column k's index is 1, but its attnum is 3.
-	 *
-	 * Additionally, we currently have the following setup.
-	 * - For PRIMARY KEY SCAN, the key is specified by columns' attnums by both Postgres and YugaByte
-	 *   code components.
-	 * - For SECONDARY INDEX SCAN and INDEX-ONLY SCAN, column_attnums and column_indexes are
-	 *   identical, so they can be both used interchangeably. This is because of CREATE_INDEX
-	 *   syntax rules enforce that HASH columns are specified before RANGE columns which comes
-	 *   before INCLUDE columns.
-	 * - For SYSTEM SCAN, Postgres's layer use attnums to specify a catalog INDEX, but YugaByte
-	 *   layer is using column_indexes to specify them.
-	 * - For SEQUENTIAL SCAN, column_attnums and column_indexes are the same.
-	 *
-	 * TODO(neil) The above differences between different INDEX code path should be changed so that
-	 * different kinds of indexes and scans share the same behavior.
-	 */
-	bool delete_key = !bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols);
-	if (index && index->rd_index->indisprimary) {
-		/* For primary key, column_attnums are used, so we process it different from other scans */
-		for (int i = 0; i < index->rd_index->indnatts; i++) {
-			int key_column = YBAttnumToBmsIndex(index, index->rd_index->indkey.values[i]);
-			if (!delete_key && !bms_is_member(key_column, scan_plan->sk_cols)) {
-				delete_key = true;
-			}
-
-			if (delete_key)
-				bms_del_member(scan_plan->sk_cols, key_column);
-		}
-	} else {
-		int max_idx = YBAttnumToBmsIndex(relation, scan_plan->bind_desc->natts);
-		for (int idx = 0; idx <= max_idx; idx++)
-		{
-			if (!delete_key &&
-					bms_is_member(idx, scan_plan->primary_key) &&
-					!bms_is_member(idx, scan_plan->sk_cols))
-				delete_key = true;
-
-			if (delete_key)
-				bms_del_member(scan_plan->sk_cols, idx);
-		}
+	/* If hash key is not fully set, we must do a full-table scan so clear all the scan keys */
+	if (!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols))
+	{
+		bms_free(scan_plan->sk_cols);
+		scan_plan->sk_cols = NULL;
 	}
 }
 
@@ -832,9 +772,6 @@ static void ybcBindScanKeys(Relation relation,
 			if (is_column_bound[idx])
 				continue;
 
-			bool is_hash_key = bms_is_member(idx, scan_plan->hash_key);
-			bool is_primary_key = bms_is_member(idx, scan_plan->primary_key); // Includes hash key
-
 			switch (ybScan->key[i].sk_strategy)
 			{
 				case InvalidStrategy: /* fallthrough, c IS NULL -> c = NULL (checked above) */
@@ -845,12 +782,12 @@ static void ybcBindScanKeys(Relation relation,
 					{
 						/* Either c = NULL or c IS NULL. */
 						bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
-						ybcBindColumnCondEq(ybScan, is_hash_key, scan_plan->bind_desc,
+						ybcBindColumn(ybScan, scan_plan->bind_desc,
 											scan_plan->bind_key_attnums[i],
 											ybScan->key[i].sk_argument, is_null);
 						is_column_bound[idx] = true;
 					}
-					else if (IsSearchArray(ybScan->key[i].sk_flags) && is_primary_key)
+					else if (IsSearchArray(ybScan->key[i].sk_flags))
 					{
 						/* based on _bt_preprocess_array_keys() */
 						ArrayType  *arrayval;
