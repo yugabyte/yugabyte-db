@@ -44,7 +44,5 @@ export const HAReplication: FC = () => {
     }
   }
 
-  // return <HAReplicationForm backToViewMode={backToViewMode} />;
-
   return null; // should never get here
 };
