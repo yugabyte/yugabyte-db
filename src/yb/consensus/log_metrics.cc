@@ -39,7 +39,7 @@ METRIC_DEFINE_counter(tablet, log_bytes_logged, "Bytes Written to WAL",
                       "Number of bytes logged since service start");
 
 METRIC_DEFINE_counter(tablet, log_wal_size, "Size of WAL Files",
-                      yb::MetricUnit::kUnits,
+                      yb::MetricUnit::kBytes,
                       "Size of wal files");
 
 METRIC_DEFINE_histogram(tablet, log_sync_latency, "Log Sync Latency",

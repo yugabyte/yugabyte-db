@@ -559,12 +559,6 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
-
-    if (metrics_) {
-      std::for_each(segments.begin(), segments.end(), 
-                    [this](auto segment) {
-                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
-    }
   }
 
   if (durable_wal_write_) {
@@ -606,7 +600,7 @@ Status Log::CloseCurrentSegment() {
 
   auto status = active_segment_->WriteFooterAndClose(footer_builder_);
   if (status.ok() && metrics_) {
-      metrics_->wal_size->IncrementBy(active_segment_->written_offset());
+      metrics_->wal_size->IncrementBy(active_segment_->Size());
   } 
   return status;
 }
