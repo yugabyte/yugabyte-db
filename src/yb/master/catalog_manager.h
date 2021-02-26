@@ -1078,11 +1078,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  void DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
 
-  // Marks tablet as deleted and triggers requests to the tablet servers to delete them.
-  void DeleteTabletAndSendRequests(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg);
+  // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
+  CHECKED_STATUS DeleteTabletListAndSendRequests(
+      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
