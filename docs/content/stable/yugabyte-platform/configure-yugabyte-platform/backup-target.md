@@ -20,7 +20,7 @@ To create a local directory on a tserver to back up to, follow these steps:
 
 1. Select **Connect** in the **Nodes** tab of the universe and then select the server from **Admin Host**.
 
-    ![Connect Modal](/images/ee/br-connect-modal.png)
+    ![Connect Modal](/images/yp/br-connect-modal.png)
 
 2. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`.
 
@@ -45,7 +45,7 @@ To configure Amazon S3 as the backup target, follow these steps:
 
 4. Click **Save**.
 
-![AWS Backup](/images/ee/cloud-provider-configuration-backup-aws.png)
+![AWS Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
 The **Access Key** and **Access Secret** values can be added for the IAM of the user.
 
@@ -58,7 +58,7 @@ To configure NFS as the backup target, follow these steps:
 3. Click **NFS** and enter the **NFS Storage Path** (`/backup` or another directory).
 4. Click **Save**.
 
-![NFS Cloud Provider Configuration](/images/ee/cloud-provider-configuration-backup-nfs.png)
+![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
 
 ### Google Cloud Storage (GCS)
 
@@ -69,7 +69,7 @@ To configure NFS as the backup target, follow these steps:
 3. Click **GCS** and enter values for **GCS Bucket** and **GCS Credentials**.
 4. Click **Save**.
 
-![GCS Backup](/images/ee/cloud-provider-configuration-backup-gcs.png)
+![GCS Backup](/images/yp/cloud-provider-configuration-backup-gcs.png)
 
 ### Microsoft Azure
 
@@ -80,4 +80,4 @@ To configure NFS as the backup target, follow these steps:
 3. Click **Azure** and enter values for **Container URL** and **SAS Token**.
 4. Click **Save**.
 
-![Azure Backup](/images/ee/cloud-provider-configuration-backup-azure.png)
+![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
