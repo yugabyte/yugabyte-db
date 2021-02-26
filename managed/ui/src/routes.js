@@ -166,8 +166,9 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile}/>
         <Route path="/logs" component={YugawareLogs}/>
         <Route path="/releases" component={Releases}/>
-        <Route path="/admin" component={Administration} />
-        <Route path="/admin/:tab/:section" component={Administration} />
+        <Route path="/admin" component={Administration}>
+          <Route path="/admin/:tab/:section" component={Administration} />
+        </Route>
       </Route>
     </Route>
   );
