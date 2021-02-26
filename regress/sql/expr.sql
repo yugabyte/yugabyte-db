@@ -359,6 +359,67 @@ $$) AS r(result agtype);
 -- Test typecasting '::' transform and execution logic
 --
 
+--
+-- Test from an agtype value to agtype int
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0.0::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 0.0::integer
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '0'::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '0'::integer
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 0.0::numeric::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::numeric::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1.0, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1.0::int, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::float, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::int
+$$) AS r(result agtype);
+-- should return SQL null
+SELECT agtype_typecast_int('null'::agtype);
+SELECT agtype_typecast_int(null);
+SELECT * FROM cypher('expr', $$
+RETURN null::int
+$$) AS r(result agtype);
+-- should return JSON null
+SELECT agtype_in('null::int');
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN '0.0'::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '1.5'::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('graph_name', $$
+RETURN "15555555555555555555555555555"::int
+$$) AS (string_result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'NaN'::float::int
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'infinity'::float::int
+$$) AS r(result agtype);
+
 -- Test from an agtype value to an agtype numeric
 --
 SELECT * FROM cypher('expr', $$
@@ -1825,10 +1886,15 @@ AS (min agtype, max agtype, count agtype, count_star agtype);
 -- check that min() & max() can work against mixed types
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN min(u.zip), max(u.zip), count(u.zip), count(*) $$)
 AS (min agtype, max agtype, count agtype, count_star agtype);
-SELECT age_min(oid::int), age_max(oid::int) FROM pg_type;
-SELECT age_min(oid::int::float), age_max(oid::int::float) FROM pg_type;
-SELECT age_min(oid::int::float::numeric), age_max(oid::int::float::numeric) FROM pg_type;
-SELECT age_min(oid::text), age_max(oid::text) FROM pg_type;
+CREATE TABLE min_max_tbl (oid oid);
+insert into min_max_tbl VALUES (16), (17188), (1000), (869);
+
+SELECT age_min(oid::int), age_max(oid::int) FROM min_max_tbl;
+SELECT age_min(oid::int::float), age_max(oid::int::float) FROM min_max_tbl;
+SELECT age_min(oid::int::float::numeric), age_max(oid::int::float::numeric) FROM min_max_tbl;
+SELECT age_min(oid::text), age_max(oid::text) FROM min_max_tbl;
+
+DROP TABLE min_max_tbl;
 -- should return null
 SELECT * FROM cypher('UCSC', $$ RETURN min(NULL) $$) AS (min agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN max(NULL) $$) AS (max agtype);

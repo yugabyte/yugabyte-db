@@ -672,6 +672,12 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_float", 1, ANYOID);
     }
+    else if (pg_strcasecmp(ctypecast->typecast, "int") == 0 ||
+             pg_strcasecmp(ctypecast->typecast, "integer") == 0)
+    {
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_int", 1, ANYOID);
+    }
     /* if none was found, error out */
     else
     {
