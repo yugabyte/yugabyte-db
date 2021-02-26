@@ -977,19 +977,6 @@ dropdb(const char *dbname, bool missing_ok)
 	}
 
 	/*
-	 * Check for other backends in the target database.  (Because we hold the
-	 * database lock, no new ones can start after this.)
-	 *
-	 * As in CREATE DATABASE, check this after other error conditions.
-	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("database \"%s\" is being accessed by other users",
-						dbname),
-				 errdetail_busy_db(notherbackends, npreparedxacts)));
-
-	/*
 	 * Check if there are subscriptions defined in the target database.
 	 *
 	 * We can't drop them automatically because they might be holding
@@ -1005,6 +992,19 @@ dropdb(const char *dbname, bool missing_ok)
 								  nsubscriptions, nsubscriptions)));
 
 removing_database_from_system:
+	/*
+	 * Check for other backends in the target database.  (Because we hold the
+	 * database lock, no new ones can start after this.)
+	 *
+	 * As in CREATE DATABASE, check this after other error conditions.
+	 */
+	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("database \"%s\" is being accessed by other users",
+						dbname),
+				 errdetail_busy_db(notherbackends, npreparedxacts)));
+
 	/*
 	 * Remove the database's tuple from pg_database.
 	 */
