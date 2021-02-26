@@ -1,0 +1,62 @@
+.ha-replication-form {
+  &__row {
+    margin-bottom: 25px;
+    position: relative;
+
+    &, & > div {
+      display: flex;
+      align-items: center;
+    }
+
+    .yb-field-group {
+      padding: 0;
+    }
+
+    .standard-error {
+      position: absolute;
+      bottom: -20px;
+    }
+  }
+
+  &__input {
+    width: 500px;
+
+    &--frequency {
+      margin-right: 12px;
+    }
+  }
+
+  &__key-input {
+    display: inline-flex;
+    position: relative;
+    margin-right: 12px;
+
+    input {
+      padding-right: 62px;
+    }
+
+    .btn-copy {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+    }
+  }
+
+  &__generate-key-btn {
+    min-width: 125px;
+  }
+
+  .radio-label {
+    margin: 0;
+    line-height: unset;
+  }
+
+  &__footer {
+    .btn {
+      min-width: 120px;
+      margin-left: 8px;
+    }
+
+    justify-content: flex-end;
+  }
+}

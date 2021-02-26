@@ -1,0 +1,186 @@
+import React, { FC, ReactElement, useState } from 'react';
+import { Col, Grid, Row } from 'react-bootstrap';
+import { BootstrapTable, Options, TableHeaderColumn } from 'react-bootstrap-table';
+import moment from 'moment';
+import { YBButton } from '../../common/forms/fields';
+import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
+import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
+import { YBLoading } from '../../common/indicators';
+import { HAReplicationError } from '../replication/HAReplicationError';
+import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
+import { DeleteModal } from '../modals/DeleteModal';
+import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
+import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
+import './HAInstances.scss';
+
+const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
+  <a href={row.address} target="_blank" rel="noopener noreferrer">
+    {row.address}
+  </a>
+);
+
+const renderIsLocal = (cell: any, row: HAPlatformInstance): ReactElement =>
+  row.is_local ? <span className="badge badge-orange">Current</span> : <span />;
+
+const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement => (
+  <BadgeInstanceType isActive={cell} />
+);
+
+const renderLastBackup = (cell: HAPlatformInstance['last_backup']): string =>
+  cell ? moment(cell).format('lll') : 'n/a';
+
+const tableOptions: Options = {
+  defaultSortName: 'address',
+  defaultSortOrder: 'asc'
+};
+
+export const HAInstances: FC = () => {
+  const [isAddInstancesModalVisible, setAddInstancesModalVisible] = useState(false);
+  const [instanceToDelete, setInstanceToDelete] = useState<string>();
+  const [instanceToPromote, setInstanceToPromote] = useState<string>();
+  const { config, error, isNoHAConfigExists, isLoading } = useLoadHAConfiguration(false);
+
+  const showAddInstancesModal = () => setAddInstancesModalVisible(true);
+  const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
+  const showDeleteModal = (instanceId: string) => setInstanceToDelete(instanceId);
+  const hideDeleteModal = () => setInstanceToDelete(undefined);
+  const showPromoteModal = (instanceId: string) => setInstanceToPromote(instanceId);
+  const hidePromoteModal = () => setInstanceToPromote(undefined);
+
+  const currentInstance = config?.instances.find((item) => item.is_local);
+
+  const renderActions = (cell: any, row: HAPlatformInstance): ReactElement => {
+    if (currentInstance?.is_leader) {
+      return (
+        <YBButton
+          btnText="Delete Instance"
+          btnIcon="fa fa-trash"
+          disabled={row.is_leader}
+          onClick={() => showDeleteModal(row.uuid)}
+        />
+      );
+    } else {
+      if (row.is_local) {
+        return (
+          <YBButton
+            btnText="Make Active"
+            btnClass="btn btn-orange"
+            btnIcon="fa fa-upload"
+            onClick={() => showPromoteModal(row.uuid)}
+          />
+        );
+      } else {
+        // function needs to return at least smth
+        return <span />;
+      }
+    }
+  };
+
+  if (isLoading) {
+    return <YBLoading />;
+  }
+
+  if (error) {
+    return <HAReplicationError error={error} />;
+  }
+
+  if (isNoHAConfigExists) {
+    return (
+      <div className="ha-instances__no-config">
+        <i className="fa fa-file-o" />
+        <div>Please, create replication configuration on the first tab</div>
+      </div>
+    );
+  }
+
+  if (config && currentInstance) {
+    return (
+      <Grid fluid className="ha-instances">
+        <AddStandbyInstanceModal
+          configId={config.uuid}
+          visible={isAddInstancesModalVisible}
+          onClose={hideAddInstancesModal}
+        />
+        <DeleteModal
+          configId={config.uuid}
+          instanceId={instanceToDelete}
+          visible={!!instanceToDelete}
+          onClose={hideDeleteModal}
+        />
+        <PromoteInstanceModal
+          configId={config.uuid}
+          instanceId={instanceToPromote!}
+          visible={!!instanceToPromote}
+          onClose={hidePromoteModal}
+        />
+
+        <Row className="ha-instances__header">
+          <Col xs={6}>
+            <h4>Instances</h4>
+            {!currentInstance.is_leader && (
+              <span>Standby instances are configured from an active platform instance</span>
+            )}
+          </Col>
+          <Col xs={6} className="ha-instances__header-buttons">
+            {currentInstance.is_leader && (
+              <YBButton
+                btnText="Add Instance"
+                btnClass="btn btn-orange"
+                btnIcon="fa fa-plus"
+                onClick={showAddInstancesModal}
+              />
+            )}
+          </Col>
+        </Row>
+        <Row>
+          <Col xs={12}>
+            <BootstrapTable data={config.instances} options={tableOptions}>
+              <TableHeaderColumn dataField="uuid" isKey hidden />
+              <TableHeaderColumn
+                dataField="address"
+                dataFormat={renderAddress}
+                dataSort
+                width="35%"
+              >
+                Address
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="is_local"
+                dataFormat={renderIsLocal}
+                dataSort
+                width="12.5%"
+              >
+                Current
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="is_leader"
+                dataFormat={renderInstanceType}
+                dataSort
+                width="12.5%"
+              >
+                Type
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="last_backup"
+                dataFormat={renderLastBackup}
+                dataSort
+                width="20%"
+              >
+                Last Backup Time
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                columnClassName="yb-actions-cell"
+                dataFormat={renderActions}
+                width="20%"
+              >
+                Action
+              </TableHeaderColumn>
+            </BootstrapTable>
+          </Col>
+        </Row>
+      </Grid>
+    );
+  }
+
+  return <div>Oops</div>; // should never get here
+};

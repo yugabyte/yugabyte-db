@@ -108,7 +108,7 @@ public class HAController extends AuthenticatedController {
       }
 
       // Stop the backup schedule.
-      replicationManager.stop();
+      replicationManager.stopAndDisable();
       HighAvailabilityConfig.delete(configUUID);
 
       return ok();

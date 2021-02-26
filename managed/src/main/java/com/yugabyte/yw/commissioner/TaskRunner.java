@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.CustomerTask;
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
+import play.api.Play;
 
 /**
  * This class is responsible for creating and running a task. It provides all the common
@@ -35,6 +37,9 @@ public class TaskRunner implements Runnable {
 
   // The task object that will run the current task.
   private ITask task;
+
+  // A utility for Platform HA.
+  private final PlatformReplicationManager replicationManager;
 
   static {
     // Initialize the map which holds the task types to their task class.
@@ -99,6 +104,7 @@ public class TaskRunner implements Runnable {
       LOG.error("Could not determine the hostname", e);
     }
     taskInfo.setOwner(hostname);
+    replicationManager = Play.current().injector().instanceOf(PlatformReplicationManager.class);
   }
 
   public UUID getTaskUUID() {
@@ -164,6 +170,9 @@ public class TaskRunner implements Runnable {
       if (scheduleTask != null) {
         scheduleTask.setCompletedTime();
       }
+
+      // Run a one-off Platform HA sync every time a task finishes.
+      replicationManager.oneOffSync();
     }
   }
 
