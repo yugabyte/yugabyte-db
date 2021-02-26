@@ -39,89 +39,91 @@ showAsideToc: true
 
 ## Install Replicated
 
-On a machine connected to the Internet, perform the following steps.
+On a computer connected to the Internet, perform the following steps:
 
-Make a directory for downloading the binaries.
+Make a directory for downloading the binaries by executing the following command:
 
 ```sh
 $ sudo mkdir /opt/downloads
 ```
 
-Change the owner user for the directory.
+Change the owner user for the directory by executing the following command:
 
 ```sh
 $ sudo chown -R ubuntu:ubuntu /opt/downloads
 ```
 
-Change to the directory.
+Change to the directory by executing the following command:
 
 ```sh
 $ cd /opt/downloads
 ```
 
-Download the `replicated.tar.gz` file.
+Download the `replicated.tar.gz` file by executing the following command:
 
 ```sh
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
-Download the `yugaware` binary. Change this number as needed.
+Download the `yugaware` binary and change the following number, as required:
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugaware-2.1.2.0-b10.airgap
 ```
 
-Change to the directory.
+Switch to the following directory:
 
 ```sh
 $ cd /opt/downloads
 ```
 
-Extract the `replicated` binary.
+Extract the `replicated` binary, as follows:
 
 ```sh
 $ tar xzvf replicated.tar.gz
 ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface. The `yugaware` binary will be installed using the replicated UI after the replicated installation completes.
+Install Replicated. If multiple options appear, select the `eth0` network interface, as follows. 
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
 ```
 
-After Replicated finishes installing, make sure it is running.
+The `yugaware` binary is installed using the Replicated UI after the Replicated installation completes.
+
+After Replicated finishes installing, ensure that it is running by executing the following command:
 
 ```sh
 $ sudo docker ps
 ```
 
-You should see an output similar to the following.
+You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-Next, install Yugabyte Platform as described in step 2.
+The next step is to install Yugabyte Platform..
 
-## Set up HTTPS (optional)
+## Set Up HTTPS (optional)
 
-Launch the Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as you configure HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the **Replicated Admin Console**.
+Launch the Replicated UI via [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). Expect to see a warning stating that the connection to the server is not yet private. This condition is resolved once HTTPS for the Replicated Admin Console is set up in the next step. Proceed by clicking **Continue to Setup** **>** **ADVANCED** to bypass the warning and access the **Replicated Admin Console**, as shown in the following illustration:
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
-You can provide your own custom SSL certificate along with a hostname.
+You can provide your own custom SSL certificate and a hostname, as shown in the following illustration:
 
 ![Replicated HTTPS setup](/images/replicated/replicated-https.png)
 
-The simplest option is use a self-signed cert for now and add the custom SSL certificate later. Note that you will have to connect to the Replicated Admin Console only using IP address (as noted below).
+It is recommended that you start with using a self-signed certificate, and then add the custom SSL certificate later. Note that in this case you connect to the Replicated Admin Console using an IP address, as shown in the following illustration:
 
 ![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
 
-## Upload license file
+## Upload the License File
 
-Now, upload the Yugabyte license file received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
+Upload the Yugabyte license file that you received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form), as shown in the following illustration:
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presented.
+Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
@@ -131,16 +133,23 @@ Two options to install Yugabyte Platform are presented.
 
 ## Secure Replicated
 
-The next step is to add a password to protect the Replicated Admin Console (for Replicated use only and differs from the Yugabyte Platform console).
+Add a password to protect the Replicated Admin Console, which is different from the Admin Console for YugabyteDB used by Yugabyte Platform, as shown in the following illustration:
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
 ## Preflight checks
 
-Replicated will perform a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform.
+Replicated performs a set of preflight checks to ensure that the host is set up correctly for Yugabyte Platform, as shown in the following illustration:
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking **Continue** above will bring you to the Yugabyte Platform configuration.
+Click **Continue** to configure Yugabyte Platform.
 
-In case the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to identify the resolution.
+If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
+
+## Set the TLS Version for Nginx Frontend 
+
+Specify TLS versions via **Application config**, as shown in the following illustration: 
+![Application Config](/images/replicated/application-config.png)
+
+The recommended TLS version is 1.2 or later.
