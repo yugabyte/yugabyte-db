@@ -29,7 +29,7 @@ First, enter the following values to create a primary cluster on [GCP](../../con
 ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
 Then, click **Configure Read Replica** and then enter the following intent to create a read replica
-cluster on [AWS](../../../deploy/enterprise-edition/configure-providers/#configure-aws).
+cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 - Enter the set of regions: **US East**
 - Enter the replication factor: **3**

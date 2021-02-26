@@ -14,7 +14,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+    <a href="/latest/secure/authentication/password-authentication" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -95,7 +95,7 @@ or in the `yb-tserver.conf`, add the following line:
 ```
 
 For details on using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag to 
-specify rules that satisfy your security requirements, see [Fine-grained authentication](../../authentication/client-authentication).
+specify rules that satisfy your security requirements, see [Fine-grained authentication](../host-based-authentication).
 
 ## Create a cluster that uses SCRAM-SHA-256 password authentication
 

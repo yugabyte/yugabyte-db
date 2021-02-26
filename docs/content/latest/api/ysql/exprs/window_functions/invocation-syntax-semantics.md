@@ -187,7 +187,7 @@ The [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause) s
   range between unbounded preceding and unbounded following
   ```
 
-Use cases where the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause)'s many other variants are useful arise when an aggregate function is invoked using the `OVER` clause. One example is given in the section [Using the aggregate function `avg()` to compute a moving average](../#using-the-aggregate-function-avg-to-compute-a-moving-average). Another example, that uses `count(*)`, is given in the code that explains the meaning of the [`percent_rank()`](../percent-rank-cume-dist-ntile/#percent-rank) function. Otherwise, see the main [Aggregate functions](../../aggregate_functions) section.
+Use cases where the [`frame_clause`](../../../syntax_resources/grammar_diagrams/#frame-clause)'s many other variants are useful arise when an aggregate function is invoked using the `OVER` clause. One example is given in the section [Using the aggregate function `avg()` to compute a moving average](../#using-the-aggregate-function-avg-to-compute-a-moving-average). Another example, that uses `count(*)`, is given in the code that explains the meaning of the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) function. Otherwise, see the main [Aggregate functions](../../aggregate_functions) section.
 
 #### frame_clause semantics for aggregate functions
 
@@ -345,4 +345,4 @@ window
   w3 as (w1 range between unbounded preceding and current row)
 ```
 
-For a runnable example of this fourth syntax variant, see [Comparing the effect of `percent_rank()`, `cume_dist()`, and `ntile()` on the same input](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#comparing-the-effect-of-percent-rank-cume-dist-and-ntile-on-the-same-input).
+For a runnable example of this fourth syntax variant, see [Comparing the effect of `percent_rank()`, `cume_dist()`, and `ntile()` on the same input](../function-syntax-semantics/percent-rank-cume-dist-ntile/#comparing-the-effect-of-percent-rank-cume-dist-and-ntile-on-the-same-input).

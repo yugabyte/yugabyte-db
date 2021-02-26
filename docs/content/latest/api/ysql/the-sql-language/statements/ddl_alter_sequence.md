@@ -81,7 +81,7 @@ Change the current value of the sequence. If no value is specified, the current 
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
-When YB-TServer [ysql_sequence_cache_minval](../../../../../latest/reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
+When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
 
 #### OWNED BY *table_name.table_column* | NONE
 

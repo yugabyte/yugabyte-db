@@ -49,16 +49,26 @@
 # since archiving from /latest removes aliases
 
 [[redirects]]
-  from="/stable/quick-start/install/"
-  to="/stable/quick-start/install/macos/"
+  from = "/stable/quick-start/install/"
+  to = "/stable/quick-start/install/macos/"
+  force = true
 
 [[redirects]]
-  from="/stable/quick-start/create-local-cluster/"
-  to="/stable/quick-start/create-local-cluster/macos/"
+  from = "/stable/quick-start/create-local-cluster/"
+  to = "/stable/quick-start/create-local-cluster/macos/"
+  force = true
 
 [[redirects]]
-  from="/stable/quick-start/explore/"
-  to="/stable/quick-start/explore/ysql/"
+  from = "/stable/quick-start/explore/"
+  to = "/stable/quick-start/explore/ysql/"
+  force = true
+
+# Misc old docs with paths that have changed
+
+[[redirects]]
+  from = "/v1.1/explore/cloud-native/binary/observability/"
+  to = "/latest/explore/observability/"
+  force = true
 
 # Docs prior to v1.3 are not online
 

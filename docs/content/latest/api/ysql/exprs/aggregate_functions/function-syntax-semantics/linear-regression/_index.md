@@ -40,7 +40,7 @@ Each of these aggregate functions is invoked by using the same syntax:
 - _or_ the `GROUP BY` syntax
 - _or_ the `OVER` syntax
 
-Only the simple invocation is illustrated. See, for example, the sections [`GROUP BY` syntax](../avg-count-max-min-sum/#group-by-syntax) and [`OVER` syntax](../avg-count-max-min-sum/#over-syntax) in the section [`avg(), count(), max(), min(), sum()`](../function-syntax-semantics/avg-count-max-min-sum/) for how to use these syntax patterns.
+Only the simple invocation is illustrated. See, for example, the sections [`GROUP BY` syntax](../avg-count-max-min-sum/#group-by-syntax) and [`OVER` syntax](../avg-count-max-min-sum/#over-syntax) in the section [`avg(), count(), max(), min(), sum()`](../avg-count-max-min-sum/) for how to use these syntax patterns.
 
 **Signature:**
 
@@ -75,7 +75,7 @@ The same test table recipe serves for illustrating all of the functions for line
 
 where _"delta"_ is picked, for each _"x"_ value from a pseudorandom normal distribution with specified mean and standard deviation.
 
-The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../extensions/#tablefunc) extension.
+The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../extensions/#tablefunc) extension.
 
 ```plpgsql
 drop procedure if exists populate_t(

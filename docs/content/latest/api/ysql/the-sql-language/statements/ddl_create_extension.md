@@ -70,5 +70,5 @@ CREATE EXTENSION
 
 ## See also
 
-- [Extensions page](../../extensions)
+- [Extensions page](../../../extensions)
 - [`DROP EXTENSION`](../ddl_drop_extension)

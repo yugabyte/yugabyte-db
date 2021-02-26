@@ -30,8 +30,7 @@ If the master to be replaced is already dead (for example, the VM was terminated
 
 {{< /note >}}
 
-
-## Start the replacement YB-Master server in standby mode. 
+## Start the replacement YB-Master server in standby mode
 
 To start `yb-master` in standby mode, set the `--master_addresses` flag to an empty string (`""`). When the
  `--master_addresses` is `""`, this master server starts without joining any existing master quorum. The node will be added to the master quorum in a later step.
@@ -41,29 +40,32 @@ To start `yb-master` in standby mode, set the `--master_addresses` flag to an em
  to this master process]
 ```
 
-## Add the replacement YB-Master server into the existing cluster.
+## Add the replacement YB-Master server into the existing cluster
 
-To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../admin/cli/yb-admin/#change-master-config) command.
+To add the new YB-Master server, run the [`yb-admin change_master_config ADD_SERVER`](../../../admin/yb-admin/#change-master-config) command.
 
 ```sh
 ./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
 ```
 
-## Remove the failed YB-Master server from the cluster.
+## Remove the failed YB-Master server from the cluster
 
-To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../admin/yb-admin/#change-master-config`) command.
+To remove the failed YB-Master server from the cluster, use the [`yb-admin change_master_config REMOVE_SERVER`](../../../admin/yb-admin/#change-master-config`) command.
 
 ```sh
 ./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
 ```
+
 {{< note title="Note" >}}
 
 Make sure to specify all YB-Master addresses, including M4, to make sure that if M4 becomes the leader, then yb-admin can find it.
 
 {{< /note >}}
+
 ## Validate cluster
 
 Validate that your set of masters is now `M2`, `M3` and `M4` using:
+
 ```bash
 yb-admin -master_addresses M2:7100,M3:7100,M4:7100 list_all_masters
 ```
