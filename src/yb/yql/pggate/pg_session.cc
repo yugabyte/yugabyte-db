@@ -1106,36 +1106,47 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
     return false;
   }
   std::vector<Slice> ybctids;
-  std::vector<decltype(fk_reference_intent_.begin())> to_remove;
   const auto reserved_size = std::min(FLAGS_ysql_session_max_batch_size,
-                                      static_cast<int32_t>(fk_reference_intent_.size()));
+                                      static_cast<int32_t>(fk_reference_intent_.size() + 1));
   ybctids.reserve(reserved_size);
-  to_remove.reserve(reserved_size);
   ybctids.push_back(ybctid);
   // TODO(dmitry): In case number of keys for same table > FLAGS_ysql_session_max_batch_size
   // two strategy are possible:
   // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
   // 2. select keys belonging to different tablets to distribute reads among different nodes
+  const auto intent_match = [table_id](const auto& it) { return it->table_id == table_id; };
   for (auto it = fk_reference_intent_.begin();
        it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
        ++it) {
-    if (it->table_id == table_id) {
+    if (intent_match(it)) {
       ybctids.push_back(it->ybctid);
-      to_remove.push_back(it);
     }
   }
-
   for (auto& r : VERIFY_RESULT(reader(table_id, ybctids))) {
     fk_reference_cache_.emplace(table_id, std::move(r));
   }
-  std::for_each(to_remove.begin(),
-                to_remove.end(),
-                [this](const auto& it) { fk_reference_intent_.erase(it); });
+  // Remove used intents.
+  auto intent_count_for_remove = ybctids.size() - 1;
+  if (intent_count_for_remove == fk_reference_intent_.size()) {
+    fk_reference_intent_.clear();
+  } else {
+    for (auto it = fk_reference_intent_.begin();
+        it != fk_reference_intent_.end() && intent_count_for_remove > 0;) {
+      if (intent_match(it)) {
+        it = fk_reference_intent_.erase(it);
+        --intent_count_for_remove;
+      } else {
+        ++it;
+      }
+    }
+  }
   return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
 }
 
 void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
-  fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+  }
 }
 
 void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {

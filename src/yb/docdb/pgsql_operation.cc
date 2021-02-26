@@ -928,14 +928,6 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
-  if (request_.partition_column_values().empty()) {
-    // Empty components mean that we don't have primary key at all, but request
-    // could still contain hash_code as part of tablet routing.
-    // So we should ignore it.
-    AddIntent(DocKey(schema).Encode().ToStringBuffer(), out);
-    return Status::OK();
-  }
-
   if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");

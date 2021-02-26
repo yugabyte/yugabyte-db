@@ -45,16 +45,13 @@ class PgDml : public PgStatement {
   // - For a secondary-index-scan, this bind specify the value of the secondary key which is used to
   //   query a row.
   // - For a primary-index-scan, this bind specify the value of the keys of the table.
-  virtual CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+  CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
 
   // Bind the whole table.
   CHECKED_STATUS BindTable();
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
-
-  // This function is not yet working and might not be needed.
-  virtual CHECKED_STATUS ClearBinds();
 
   // Process the secondary index request if it is nested within this statement.
   Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters *exec_params);

@@ -161,7 +161,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
     }
   }
 
-  /** Ensure that foreign key caching maintains data correctness and referential integrity. */
+  // Ensure that foreign key caching maintains data correctness and referential integrity.
   @Test
   public void testForeignKeyCaching() throws Exception {
     Set<Row> expectedPkRows = new HashSet<>();
@@ -247,16 +247,27 @@ public class TestPgForeignKey extends BasePgSQLTest {
          Statement extraStmt = extraConnection.createStatement()) {
       connection.setTransactionIsolation(pgIsolationLevel);
       extraConnection.setTransactionIsolation(pgIsolationLevel);
+      stmt.execute("SET yb_transaction_priority_upper_bound = 0.4");
+      extraStmt.execute("SET yb_transaction_priority_lower_bound = 0.5");
       stmt.execute("CREATE TABLE parent(k INT PRIMARY KEY)");
-      stmt.execute("CREATE TABLE child(k INT PRIMARY KEY, v INT REFERENCES parent(k))");
+      stmt.execute(
+        "CREATE TABLE child(k INT PRIMARY KEY, v INT REFERENCES parent(k) ON DELETE SET NULL)");
       stmt.execute("INSERT INTO parent VALUES (1)");
-      stmt.execute("BEGIN");
-      stmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
-
       extraStmt.execute("BEGIN");
-      runInvalidQuery(extraStmt,
-          "INSERT INTO child VALUES(1, 1)",
-          "Conflicts with higher priority transaction");
+      extraStmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
+
+      runInvalidQuery(
+        stmt, "INSERT INTO child VALUES(1, 1)", "Conflicts with higher priority transaction");
+      extraStmt.execute("ROLLBACK");
+      assertNoRows(stmt, "SELECT * FROM child");
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO child VALUES(1, 1)");
+      extraStmt.execute("DELETE FROM parent WHERE k = 1");
+      runInvalidQuery(stmt,
+        "COMMIT",
+        "Operation expired: Transaction expired or aborted by a conflict");
+      assertNoRows(stmt, "SELECT * FROM child");
     }
   }
 
@@ -269,4 +280,34 @@ public class TestPgForeignKey extends BasePgSQLTest {
   public void testRowLockSnapshotIsolation() throws Exception {
     testRowLock(Connection.TRANSACTION_REPEATABLE_READ);
   }
+
+  private void testInsertConcurrency(int pgIsolationLevel) throws Exception {
+    try (Statement stmt = connection.createStatement();
+         Connection extraConnection = getConnectionBuilder().connect();
+         Statement extraStmt = extraConnection.createStatement()) {
+      stmt.execute("CREATE TABLE parent(k int PRIMARY KEY) SPLIT INTO 1 TABLETS");
+      stmt.execute("CREATE TABLE child(pk int PRIMARY KEY," +
+        "CONSTRAINT parent_fk FOREIGN KEY(pk) REFERENCES parent(k)) SPLIT INTO 1 TABLETS");
+      connection.setTransactionIsolation(pgIsolationLevel);
+      extraConnection.setTransactionIsolation(pgIsolationLevel);
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO parent VALUES(1)");
+      stmt.execute("INSERT INTO child VALUES(1)");
+      extraStmt.execute("BEGIN");
+      extraStmt.execute("INSERT INTO parent VALUES(2)");
+      extraStmt.execute("INSERT INTO child VALUES(2)");
+      stmt.execute("COMMIT");
+      extraStmt.execute("COMMIT");
+    }
+  }
+
+  @Test
+  public void testInsertConcurrencySnapshotIsolation() throws Exception {
+    testInsertConcurrency(Connection.TRANSACTION_REPEATABLE_READ);
+  }
+  @Test
+  public void testInsertConcurrencySerializableIsolation() throws Exception {
+    testInsertConcurrency(Connection.TRANSACTION_SERIALIZABLE);
+  }
+
 }

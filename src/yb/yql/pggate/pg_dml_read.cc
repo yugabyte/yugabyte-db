@@ -90,9 +90,11 @@ void PgDmlRead::SetColumnRefs() {
   ColumnRefsToPB(read_req_->mutable_column_refs());
 }
 
-Status PgDmlRead::DeleteEmptyPrimaryBinds() {
+// Method removes empty primary binds and moves tailing non empty range primary binds
+// which are following after empty binds into the 'condition_expr' field.
+Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   if (secondary_index_query_) {
-    RETURN_NOT_OK(secondary_index_query_->DeleteEmptyPrimaryBinds());
+    RETURN_NOT_OK(secondary_index_query_->ProcessEmptyPrimaryBinds());
   }
 
   if (!bind_desc_) {
@@ -117,34 +119,48 @@ Status PgDmlRead::DeleteEmptyPrimaryBinds() {
     }
   }
 
+  SCHECK(!has_partition_columns || !miss_partition_columns, InvalidArgument,
+      "Partition key must be fully specified");
+
+  bool preceding_key_column_missed = false;
+
   if (miss_partition_columns) {
     VLOG(1) << "Full scan is needed";
     read_req_->clear_partition_column_values();
-    read_req_->clear_range_column_values();
+    // Move all range column binds (if any) into the 'condition_expr' field.
+    preceding_key_column_missed = true;
   }
 
-  if (has_partition_columns && miss_partition_columns) {
-    return STATUS(InvalidArgument, "Partition key must be fully specified");
-  }
-
-  bool miss_range_columns = false;
   size_t num_bound_range_columns = 0;
 
   for (size_t i = bind_desc_->num_hash_key_columns(); i < bind_desc_->num_key_columns(); i++) {
-    PgColumn &col = bind_desc_->columns()[i];
-    if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
-      miss_range_columns = true;
-    } else if (miss_range_columns) {
-      return STATUS(InvalidArgument,
-                    "Unspecified range key column must be at the end of the range key");
+    PgColumn& col = bind_desc_->columns()[i];
+    const auto expr_bind = expr_binds_.find(col.bind_pb());
+    if (expr_bind == expr_binds_.end()) {
+      preceding_key_column_missed = true;
     } else {
-      num_bound_range_columns++;
+      if (preceding_key_column_missed) {
+        // Move current bind into the 'condition_expr' field.
+        PgsqlExpressionPB* condition_expr_pb = AllocColumnBindConditionExprPB(&col);
+        condition_expr_pb->mutable_condition()->set_op(QL_OP_EQUAL);
+
+        auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+        auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+        op1_pb->set_column_id(col.id());
+
+        auto attr_value = expr_bind->second;
+        RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+        expr_binds_.erase(expr_bind);
+      } else {
+        ++num_bound_range_columns;
+      }
     }
   }
 
-  auto *range_column_values = read_req_->mutable_range_column_values();
-  range_column_values->DeleteSubrange(num_bound_range_columns,
-                                      range_column_values->size() - num_bound_range_columns);
+  auto& range_column_values = *read_req_->mutable_range_column_values();
+  range_column_values.DeleteSubrange(
+      num_bound_range_columns, range_column_values.size() - num_bound_range_columns);
   return Status::OK();
 }
 
@@ -156,11 +172,10 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
     RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   }
 
+  RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
+
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefs();
-
-  // Delete key columns that are not bound to any values.
-  RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // First, process the secondary index request.
   bool has_ybctid = VERIFY_RESULT(ProcessSecondaryIndexRequest(exec_params));
@@ -184,43 +199,6 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
       SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
                 "YSQL read operation was not sent");
     }
-  }
-
-  return Status::OK();
-}
-
-Status PgDmlRead::BindColumnCondEq(int attr_num, PgExpr *attr_value) {
-  if (secondary_index_query_) {
-    // Bind by secondary key.
-    return secondary_index_query_->BindColumnCondEq(attr_num, attr_value);
-  }
-
-  // Find column.
-  PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
-
-  // Check datatype.
-  if (attr_value) {
-    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
-              "Attribute value type does not match column type");
-  }
-
-  // Alloc the protobuf.
-  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
-
-  if (attr_value != nullptr) {
-    condition_expr_pb->mutable_condition()->set_op(QL_OP_EQUAL);
-
-    auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
-    auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
-
-    op1_pb->set_column_id(col->id());
-
-    RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
-  }
-
-  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
-    ybctid_bind_ = true;
   }
 
   return Status::OK();

@@ -611,7 +611,7 @@ class Schema {
   // caught. If an invalid schema is passed to this constructor, an
   // assertion will be fired!
   Schema(const vector<ColumnSchema>& cols,
-         int key_columns,
+         size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
          const PgTableOid pgtable_id = 0)
@@ -632,7 +632,7 @@ class Schema {
   // assertion will be fired!
   Schema(const vector<ColumnSchema>& cols,
          const vector<ColumnId>& ids,
-         int key_columns,
+         size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
          const PgTableOid pgtable_id = 0)
@@ -648,7 +648,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns,
+  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
                        const PgTableOid pgtable_id = 0) {
@@ -661,7 +661,7 @@ class Schema {
   // state and may not be used.
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols,
                        const vector<ColumnId>& ids,
-                       int key_columns,
+                       size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
                        const PgTableOid pgtable_id = 0);

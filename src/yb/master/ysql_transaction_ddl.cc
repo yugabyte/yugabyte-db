@@ -145,7 +145,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, {} /* hashed_components */,
+        projection, rocksdb::kDefaultQueryId, {} /* hashed_components */, {} /* range_components */,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(doc_iter->Init(spec));
   }

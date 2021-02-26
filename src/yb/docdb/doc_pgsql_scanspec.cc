@@ -91,6 +91,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       schema_(schema),
       query_id_(query_id),
       hashed_components_(nullptr),
+      range_components_(nullptr),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
@@ -105,6 +106,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const std::vector<PrimitiveValue>& hashed_components,
+                                   const std::vector<PrimitiveValue>& range_components,
                                    const PgsqlConditionPB* condition,
                                    const boost::optional<int32_t> hash_code,
                                    const boost::optional<int32_t> max_hash_code,
@@ -116,6 +118,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       schema_(schema),
       query_id_(query_id),
       hashed_components_(&hashed_components),
+      range_components_(&range_components),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
@@ -248,7 +251,7 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 }
 
 std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(schema_, range_bounds_.get(), lower_bound);
+  return GetRangeKeyScanSpec(schema_, range_components_, range_bounds_.get(), lower_bound);
 }
 
 // Return inclusive lower/upper range doc key considering the start_doc_key.

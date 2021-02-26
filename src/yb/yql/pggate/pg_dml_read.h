@@ -61,9 +61,6 @@ class PgDmlRead : public PgDml {
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan);
 
-  // Bind a column with an EQUALS condition.
-  CHECKED_STATUS BindColumnCondEq(int attnum, PgExpr *attr_value);
-
   // Bind a range column with a BETWEEN condition.
   CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
 
@@ -92,11 +89,11 @@ class PgDmlRead : public PgDml {
   // Add column refs to protobuf read request.
   void SetColumnRefs();
 
-  // Delete allocated target for columns that have no bind-values.
-  CHECKED_STATUS DeleteEmptyPrimaryBinds();
-
   // References mutable request from template operation of doc_op_.
   PgsqlReadRequestPB *read_req_ = nullptr;
+
+ private:
+  CHECKED_STATUS ProcessEmptyPrimaryBinds();
 };
 
 }  // namespace pggate

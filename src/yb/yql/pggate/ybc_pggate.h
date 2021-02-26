@@ -54,9 +54,6 @@ void YBCPgDeleteStatement(YBCPgStatement handle);
 // Invalidate the sessions table cache.
 YBCStatus YBCPgInvalidateCache();
 
-// Clear all values and expressions that were bound to the given statement.
-YBCStatus YBCPgClearBinds(YBCPgStatement handle);
-
 // Check if initdb has been already run.
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
@@ -326,7 +323,6 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   The index-scan will use the bind to find base-ybctid which is then use to read data from
 //   the main-table, and therefore the bind-arguments are not associated with columns in main table.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,

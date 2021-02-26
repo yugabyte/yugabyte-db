@@ -194,6 +194,7 @@ Result<bool> GetPgIndexStatus(
     docdb::DocPgsqlScanSpec spec(projection,
                                  rocksdb::kDefaultQueryId,
                                  {} /* hashed_components */,
+                                 {} /* range_components */,
                                  &cond,
                                  boost::none /* hash_code */,
                                  boost::none /* max_hash_code */,

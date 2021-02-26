@@ -25,10 +25,6 @@ class PgDdl : public PgStatement {
  public:
   explicit PgDdl(PgSession::ScopedRefPtr pg_session) : PgStatement(pg_session) {
   }
-
-  virtual CHECKED_STATUS ClearBinds() {
-    return STATUS(InvalidArgument, "This statement cannot be bound to any values");
-  }
 };
 
 //--------------------------------------------------------------------------------------------------

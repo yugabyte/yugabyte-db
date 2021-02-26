@@ -153,13 +153,14 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
   auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
       request.partition_column_values(), schema, 0 /* start_idx */));
 
+  auto range_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
+      request.range_column_values(), schema, schema.num_hash_key_columns()));
+
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, schema, txn_op_context, doc_db_, deadline, read_time);
 
-  if (!request.range_column_values().empty()) {
-    // Construct the scan spec basing on the RANGE condition.
-    auto range_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
-        request.range_column_values(), schema, schema.num_hash_key_columns()));
+  if (range_components.size() == schema.num_range_key_columns()) {
+    // Construct the scan spec basing on the RANGE condition as all range columns are specified.
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(
         schema,
         request.stmt_id(),
@@ -181,6 +182,7 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
         schema,
         request.stmt_id(),
         hashed_components,
+        range_components,
         request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
         request.hash_code(),
         request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())

@@ -81,10 +81,6 @@ class PgStatement : public PgMemctx::Registrable {
   // Add expressions that are belong to this statement.
   void AddExpr(PgExpr::SharedPtr expr);
 
-  //------------------------------------------------------------------------------------------------
-  // Clear all values and expressions that were bound to the given statement.
-  virtual CHECKED_STATUS ClearBinds() = 0;
-
  protected:
   // YBSession that this statement belongs to.
   PgSession::ScopedRefPtr pg_session_;
