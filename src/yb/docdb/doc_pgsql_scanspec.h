@@ -37,6 +37,7 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const std::vector<PrimitiveValue>& hashed_components,
+                   const std::vector<PrimitiveValue>& range_components,
                    const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
@@ -104,6 +105,8 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
 
   // The hashed_components are owned by the caller of QLScanSpec.
   const std::vector<PrimitiveValue> *hashed_components_;
+  // The range_components are owned by the caller of QLScanSpec.
+  const std::vector<PrimitiveValue> *range_components_;
 
   // Hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
