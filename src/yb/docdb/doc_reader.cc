@@ -61,8 +61,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const std::vector<PrimitiveValue>* projection,
-    DocHybridTime* table_tombstone_time) {
+    const std::vector<PrimitiveValue>* projection) {
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
       txn_op_context, deadline, read_time);
@@ -70,7 +69,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
   DocDBTableReader doc_reader(iter.get(), &deadline_info, SeekFwdSuffices::kFalse);
-  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key, table_tombstone_time));
+  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   SubDocument result;
   if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, projection, &result))) {
@@ -92,16 +91,15 @@ void DocDBTableReader::SetTableTtl(Expiration table_ttl) {
   table_expiration_ = table_ttl;
 }
 
-Status DocDBTableReader::UpdateTableTombstoneTime(
-    const Slice& root_doc_key, DocHybridTime* table_tombstone_time) {
-  if (table_tombstone_time != nullptr && root_doc_key[0] == ValueTypeAsChar::kPgTableOid) {
+Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
+  if (root_doc_key[0] == ValueTypeAsChar::kPgTableOid) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
     // time read at a previous invocation of this same code. If instead the DocRowwiseIterator owned
     // an instance of SubDocumentReaderBuilder, and this method call was hoisted up to that level,
     // passing around this table_tombstone_time would no longer be necessary.
-    if (*table_tombstone_time == DocHybridTime::kInvalid) {
+    if (!table_tombstone_time_.is_valid()) {
       DocKey table_id;
       RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
       iter_->Seek(table_id);
@@ -118,10 +116,10 @@ Status DocDBTableReader::UpdateTableTombstoneTime(
                   "Invalid hybrid time for table tombstone");
         table_tombstone_time_ = doc_ht;
       }
-      *table_tombstone_time = table_tombstone_time_;
-    } else {
-      table_tombstone_time_ = *table_tombstone_time;
     }
+  }
+  if (!table_tombstone_time_.is_valid()) {
+    table_tombstone_time_ = DocHybridTime::kMin;
   }
   return Status::OK();;
 }
@@ -147,7 +145,6 @@ void DocDBTableReader::SeekTo(const Slice& subdoc_key) {
 Result<bool> DocDBTableReader::Get(
     const Slice& root_doc_key, const vector<PrimitiveValue>* projection, SubDocument* result) {
   RETURN_NOT_OK(InitForKey(root_doc_key));
-
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
   KeyBytes key_bytes;
