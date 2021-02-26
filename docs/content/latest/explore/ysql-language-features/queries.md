@@ -779,6 +779,80 @@ SELECT * FROM fulltime_employees
   CROSS JOIN permanent_employees;
 ```
 
+## Subqueries
+
+Subqueries allow you to construct complex queries by executing `SELECT`, `INSERT`, `DELETE` or `UPDATE` statements from within other such statements.
+
+Suppose you work with a database that includes the following table populated with data:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  years_service numeric
+);
+
+INSERT INTO employees (employee_no, name, department, years_service) 
+  VALUES 
+  (1221, 'John Smith', 'Marketing', 5),
+  (1222, 'Bette Davis', 'Sales', 3),
+  (1223, 'Lucille Ball', 'Operations', 1),
+  (1224, 'John Zimmerman', 'Sales', 5); 
+```
+
+If you need to find the employees who have been working for the company longer than average, you start by calculating the average years of service using a `SELECT` statement and average function  `AVG`. Then you use the result of the first query in the second `SELECT` statement to find the long-serving employees, as shown in the following examples:
+
+```sql
+SELECT AVG (years_service) FROM employees;
+```
+
+The preceding query returns 3.5.
+
+```sql
+SELECT employee_no, name, years_service FROM employees 
+  WHERE years_service > 3.5;
+```
+
+The following is the output produced by the preceding example:
+
+```
+employee_no | name             | years_service
+------------+------------------+-------------------
+1221        | John Smith       | 5
+1224        | John Zimmerman   | 5
+```
+
+You can avoid executing two separate queries by using a subquery that is passed the result of the first query. To create such a query, you enclose the second query in brackets and use it as an expression in the `WHERE` clause, as as shown in the following example:
+
+```sql
+SELECT employee_no, name, years_service FROM employees 
+  WHERE years_service > (SELECT AVG (years_service) FROM employees);
+```
+
+YSQL executes the subquery first, then obtains the result and passes it to the outer query, and finally  executes the outer query.
+
+You can also create subqueries using the `IN` operator in the `WHERE` clause.
+
+The following example obtains employees who have the employee number between 1221 and 1223:
+
+```
+SELECT
+	inventory.film_id
+FROM
+	rental
+INNER JOIN inventory ON inventory.inventory_id = rental.inventory_id
+WHERE
+	return_date BETWEEN '2005-05-29'
+AND '2005-05-30';
+```
+
+
+
+
+
+
+
 ## Recursive Queries and CTEs
 
 Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other type of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
