@@ -259,12 +259,6 @@ YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTablegroup(handle));
 }
 
-// Statement Operations ----------------------------------------------------------------------------
-
-YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ClearBinds(handle));
-}
-
 // Sequence Operations -----------------------------------------------------------------------------
 
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
@@ -566,10 +560,6 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
-}
-
-YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondEq(handle, attr_num, attr_value));
 }
 
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
