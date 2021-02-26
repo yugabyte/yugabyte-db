@@ -8,13 +8,17 @@ on:
       - master
     paths:
       - '**/yb-ctl*'
+    paths-ignore:
+       - 'docs/**'
 
   pull_request:
     branches:
       - master
     paths:
       - '**/yb-ctl*'
-
+    paths-ignore:
+       - 'docs/**'
+       
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   yb-ctl-test:
