@@ -62,8 +62,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max(),
-    const std::vector<PrimitiveValue>* projection = nullptr,
-    DocHybridTime* table_tombstone_time = nullptr);
+    const std::vector<PrimitiveValue>* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
@@ -77,14 +76,9 @@ class DocDBTableReader {
       IntentAwareIterator* iter, DeadlineInfo* deadline_info,
       SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
-  // Updates expiration/overwrite data based on table tombstone time. If provided pointer is null,
-  // this method is a no-op. Else if provided pointer points to an invalid value, AND the table is a
-  // colocated table as indicated by the provided root_doc_key, this method will attempt to read the
-  // table tombstone time from RocksDB. Else, this method will simply use the provided table
-  // tombstone time to pass update the TTL/overwrite info passed to the eventually created
-  // SubDocumentReader.
-  CHECKED_STATUS UpdateTableTombstoneTime(
-      const Slice& root_doc_key, DocHybridTime* table_tombstone_time);
+  // Updates expiration/overwrite data based on table tombstone time. If the table is not a
+  // colocated table as indicated by the provided root_doc_key, this method is a no-op.
+  CHECKED_STATUS UpdateTableTombstoneTime(const Slice& root_doc_key);
 
   void SetTableTtl(Expiration table_ttl);
 
@@ -112,9 +106,8 @@ class DocDBTableReader {
   // Owned by caller.
   DeadlineInfo* deadline_info_;
   const SeekFwdSuffices seek_fwd_suffices_;
-  DocHybridTime table_tombstone_time_ = DocHybridTime::kMin;
+  DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
   Expiration table_expiration_;
-
   SubDocumentReaderBuilder subdoc_reader_builder_;
 };
 

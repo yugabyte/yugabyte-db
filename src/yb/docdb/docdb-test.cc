@@ -101,8 +101,7 @@ class DocDBTest : public DocDBTestBase {
   virtual void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) = 0;
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) = 0;
 
   // This is the baseline state of the database that we set up and come back to as we test various
   // operations.
@@ -241,10 +240,9 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     // TODO(dtxn) - check both transaction and non-transaction path?
     // https://yugabyte.atlassian.net/browse/ENG-2177
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-    DocHybridTime table_tombstone_time(DocHybridTime::kInvalid);
     GetSubDoc(
         encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
-        kNonTransactionalOperationContext, ReadHybridTime::SingleTime(ht), &table_tombstone_time);
+        kNonTransactionalOperationContext, ReadHybridTime::SingleTime(ht));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -424,10 +422,10 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
-      DocHybridTime* table_tombstone_time, const vector<PrimitiveValue>* projection = nullptr) {
+      const vector<PrimitiveValue>* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
-    CoarseTimePoint::max() /* deadline */, read_time, projection, table_tombstone_time));
+    CoarseTimePoint::max() /* deadline */, read_time, projection));
   if (doc_from_rocksdb_opt) {
     *found_result = true;
     *result = *doc_from_rocksdb_opt;
@@ -439,8 +437,7 @@ void GetSubDocQl(
 
 void GetSubDocRedis(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
-      DocHybridTime* table_tombstone_time) {
+      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time) {
   GetRedisSubDocumentData data = { subdoc_key, result, found_result };
   ASSERT_OK(GetRedisSubDocument(
       doc_db, data, rocksdb::kDefaultQueryId,
@@ -456,19 +453,15 @@ class DocDBTestWrapper : public DocDBTest, public testing::WithParamInterface<Te
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     switch (GetParam()) {
       case TestDocDb::kQlReader: {
-        GetSubDocQl(
-            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-            table_tombstone_time);
+        GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
         break;
       }
       case TestDocDb::kRedisReader: {
         GetSubDocRedis(
-            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-            table_tombstone_time);
+            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
         break;
       }
     }
@@ -484,11 +477,8 @@ class DocDBTestQl : public DocDBTest {
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
-    GetSubDocQl(
-        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-        table_tombstone_time);
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
+    GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
 };
 
@@ -497,11 +487,9 @@ class DocDBTestRedis : public DocDBTest {
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocRedis(
-        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-        table_tombstone_time);
+        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
 };
 
@@ -652,7 +640,6 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
 
   auto subdoc_key = SubDocKey(doc_key);
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-  DocHybridTime table_tombstone_time(DocHybridTime::kInvalid);
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
   const vector<PrimitiveValue> projection = {
@@ -663,7 +650,7 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   GetSubDocQl(
       doc_db(), encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
       kNonTransactionalOperationContext, ReadHybridTime::SingleTime(4000_usec_ht),
-      &table_tombstone_time, &projection);
+      &projection);
   EXPECT_TRUE(subdoc_found_in_rocksdb);
   EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
