@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.util.DefaultIndenter;
@@ -24,8 +26,13 @@ import com.google.common.base.Objects;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Universe;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Singleton
 public class HealthCheckerReport {
+
+  public static final Logger LOG = LoggerFactory.getLogger(HealthCheckerReport.class);
 
   // @formatter:off
   private static final String STYLE_FONT =
@@ -118,20 +125,32 @@ public class HealthCheckerReport {
     // add timestamp to avoid gmail collapsing
     String timestamp = String.format("<span style=\"color:black;font-size:10px;\">%s</span>",
         report.path("timestamp").asText());
+    String hostname = "";
+    String ip = "";
+    try {
+      hostname = InetAddress.getLocalHost().getHostName();
+      ip = InetAddress.getLocalHost().getHostAddress().toString();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the hostname", e);
+    }
 
     String header = String.format(
         "<table width=\"100%%\">\n" +
         "    <tr>\n" +
         "        <td style=\"text-align:left\">%s</td>\n" +
+        "        <td style=\"text-align:left\">%s</td>\n" +
         "        <td style=\"text-align:right\">%s</td>\n" +
         "    </tr>\n" +
         "    <tr>\n" +
         "        <td style=\"text-align:left\">%s</td>\n" +
+        "        <td style=\"text-align:left\">%s</td>\n" +
         "    </tr>\n" +
         "</table>\n",
         makeHeaderLeft("Universe name", u.name),
+        makeHeaderLeft("Universe version", report.path("yb_version").asText()),
         timestamp,
-        makeHeaderLeft("Universe version", report.path("yb_version").asText()));
+        makeHeaderLeft("YW host name", hostname),
+        makeHeaderLeft("YW host IP", ip));
 
     return String.format("<html><body><pre style=\"%s\">%s\n%s %s</pre></body></html>", style,
         header, content.toString(), timestamp);
