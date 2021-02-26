@@ -5,13 +5,13 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.80.0"
+  HUGO_VERSION = "0.81.0"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.80.0"
+  HUGO_VERSION = "0.81.0"
 
 [context.production.environment]
-  HUGO_VERSION = "0.80.0"
+  HUGO_VERSION = "0.81.0"
 
 # Redirects
 # - Default status is a 301 unless otherwise specified.
@@ -26,8 +26,13 @@
 # even if we have content in the older version's folder.
 
 [[redirects]]
-  from = "/:version/legal/*"
-  to = "/latest/legal/:splat"
+  from = "/:version/comparisons/*"
+  to = "/latest/comparisons/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/contribute/*"
+  to = "/latest/contribute/:splat"
   force = true
 
 [[redirects]]
@@ -36,13 +41,13 @@
   force = true
 
 [[redirects]]
-  from = "/:version/releases/*"
-  to = "/latest/releases/:splat"
+  from = "/:version/legal/*"
+  to = "/latest/legal/:splat"
   force = true
 
 [[redirects]]
-  from = "/:version/comparisons/*"
-  to = "/latest/comparisons/:splat"
+  from = "/:version/releases/*"
+  to = "/latest/releases/:splat"
   force = true
 
 # Stable quick-starts need defaults,
@@ -70,6 +75,10 @@
   to = "/latest/explore/observability/"
   force = true
 
+[[redirects]]
+  from="/stable/quick-start/install/"
+  to="/stable/quick-start/install/macos/"
+
 # Docs prior to v1.3 are not online
 
 [[redirects]]
@@ -86,3 +95,15 @@
   from = "/v1.2/*"
   to = "/latest/:splat"
   force = true
+
+# Hugo resource caching plugin configuration
+# https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
+
+[[plugins]]
+  package = "netlify-plugin-hugo-cache-resources"
+
+    [plugins.inputs]
+    # If it should show more verbose logs (optional, default = true)
+    debug = true
+    # Relative path to source directory in case you use Hugo's "--s" option
+    srcdir = "docs"
