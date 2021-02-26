@@ -12,32 +12,10 @@ export class ListKeyManagementConfigurations extends Component {
     associatedUniverses: []
   }
 
-  getAssociatedUniverseList = (universeDetails) => {
-    if (universeDetails?.length) {
-      const universeList = universeDetails.map((universe) => {
-        let universeObject = {
-          universeName: universe.name,
-          universeUUID: universe.uuid,
-          universeStatus: universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
-        };
-        return universeObject;
-      });
-      this.setState({ associatedUniverses: [...universeList] });
-    } else {
-      this.setState({ associatedUniverses: [] });
-    }
-    this.props.showassociatedUniversesModal();
-  };
-
   actionList = (item, row) => {
     const { configUUID, in_use, universeDetails } = row.metadata;
     return (
-      <DropdownButton
-        className="btn btn-default"
-        title="Actions"
-        id="bg-nested-dropdown"
-        pullRight
-      >
+      <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <MenuItem
           title={'Delete provider'}
           disabled={in_use}
@@ -47,7 +25,8 @@ export class ListKeyManagementConfigurations extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.getAssociatedUniverseList(universeDetails);
+            this.setState({ associatedUniverses: [...universeDetails] });
+            this.props.showassociatedUniversesModal();
           }}
         >
           <i className="fa fa-eye"></i> Show Universes

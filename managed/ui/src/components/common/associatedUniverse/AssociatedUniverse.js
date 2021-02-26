@@ -10,7 +10,8 @@ function AssociatedUniverse(props) {
    * Returns the decorated status.
    * @param universeStatus status of universe.
    */
-  const modifyStatus = (universeStatus) => {
+  const modifyStatus = (item,row) => {
+    const universeStatus =  row.updateSucceeded && !row.updateInProgress ? 'Ready' : 'Error'
     // TODO: Add case for pause status.
     switch (universeStatus) {
       case 'Ready':
@@ -37,7 +38,7 @@ function AssociatedUniverse(props) {
   const getUniverseLink = (universeName, row) => {
     return (
       <div>
-        <Link to={`/universes/${row.universeUUID}`}>{universeName}</Link>
+        <Link to={`/universes/${row.uuid}`}>{universeName}</Link>
       </div>
     );
   };
@@ -55,11 +56,11 @@ function AssociatedUniverse(props) {
             data={associatedUniverses}
             className="backup-list-table middle-aligned-table"
           >
-            <TableHeaderColumn dataField="universeUUID" hidden={true} isKey={true}>
+            <TableHeaderColumn dataField="uuid" hidden={true} isKey={true}>
               UUID
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="universeName"
+              dataField="name"
               columnClassName="no-border name-column"
               className="no-border"
               width="80%"

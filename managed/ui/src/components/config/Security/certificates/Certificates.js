@@ -136,26 +136,6 @@ class Certificates extends Component {
       .catch((err) => console.error(`Failed to delete certificate ${certificateUUID}`, err));
   };
 
-  /**
-   * Populate associated universe list for given certificate
-   * @param universeDetails - list of universe using certificate
-   */
-  getAssociatedUniverseList = (universeDetails) => {
-    if (universeDetails?.length) {
-      const universeList = universeDetails.map((universe) => {
-        let universeObject = {
-          universeName: universe.name,
-          universeUUID: universe.uuid,
-          universeStatus: universe.updateSucceeded && !universe.updateInProgress ? 'Ready' : 'Error'
-        };
-        return universeObject;
-      });
-      this.setState({ associatedUniverses: [...universeList] });
-    } else {
-      this.setState({ associatedUniverses: [] });
-    }
-  };
-
   formatActionButtons = (cell, row) => {
     const downloadDisabled = row.type !== 'SelfSigned';
     const deleteDisabled = row.inUse;
@@ -208,7 +188,8 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.getAssociatedUniverseList(payload?.universeDetails);
+            // this.getAssociatedUniverseList(payload?.universeDetails);
+            this.setState({ associatedUniverses: [...payload?.universeDetails] })
             this.props.showassociatedUniversesModal();
           }}
         >
