@@ -11,7 +11,11 @@ function AssociatedUniverse(props) {
    * @param universeStatus status of universe.
    */
   const modifyStatus = (item,row) => {
-    const universeStatus =  row.updateSucceeded && !row.updateInProgress ? 'Ready' : 'Error'
+    const universeStatus = row.universePaused
+      ? 'Paused'
+      : row.updateSucceeded && !row.updateInProgress
+      ? 'Ready'
+      : 'Error';
     // TODO: Add case for pause status.
     switch (universeStatus) {
       case 'Ready':
@@ -25,6 +29,13 @@ function AssociatedUniverse(props) {
         return (
           <div className="universe-status associated-universe-status bad">
             <i className="fa fa-warning associated-universe-icon" />
+            {universeStatus && <span>{universeStatus}</span>}
+          </div>
+        );
+      case 'Paused':
+        return (
+          <div className="universe-status associated-universe-status paused">
+            <i className="fa fa-pause-circle-o associated-universe-icon" />
             {universeStatus && <span>{universeStatus}</span>}
           </div>
         );
