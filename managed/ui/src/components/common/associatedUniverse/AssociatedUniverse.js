@@ -47,7 +47,8 @@ function AssociatedUniverse(props) {
     <YBModal
       visible={visible}
       onHide={onHide}
-      showCancelButton={true}
+      submitLabel={'Close'}
+      onFormSubmit={onHide}
       title={`Universes using this ${title}`}
     >
       {associatedUniverses?.length ? (
