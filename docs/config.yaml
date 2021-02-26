@@ -8,7 +8,7 @@ googleAnalytics: UA-104956980-3
 pygmentsCodefences: true
 pygmentsStyle: "pygments"
 enableGitInfo: true
-
+resourceDir: docs/resources
 
 params:
   author: Team Yugabyte
