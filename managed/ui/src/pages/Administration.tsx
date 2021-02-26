@@ -57,7 +57,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         routePrefix="/admin/"
         id="administration-main-tabs"
       >
-        <Tab eventKey={AdministrationTabs.HA} title="High Availability">
+        <Tab eventKey={AdministrationTabs.HA} title={<span className="beta">High Availability</span>}>
           <YBTabsPanel
             defaultTab={HighAvailabilityTabs.Replication}
             activeTab={params.section}

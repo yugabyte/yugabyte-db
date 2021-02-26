@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import React, { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, Options, TableHeaderColumn } from 'react-bootstrap-table';
@@ -16,11 +17,9 @@ import './HAInstances.scss';
 const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
   <a href={row.address} target="_blank" rel="noopener noreferrer">
     {row.address}
+    {row.is_local && <span className="badge badge-orange">Current</span>}
   </a>
 );
-
-const renderIsLocal = (cell: any, row: HAPlatformInstance): ReactElement =>
-  row.is_local ? <span className="badge badge-orange">Current</span> : <span />;
 
 const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement => (
   <BadgeInstanceType isActive={cell} />
@@ -88,12 +87,13 @@ export const HAInstances: FC = () => {
     return (
       <div className="ha-instances__no-config">
         <i className="fa fa-file-o" />
-        <div>Please, create replication configuration on the first tab</div>
+        <div>You must create a replication configuration first</div>
       </div>
     );
   }
 
   if (config && currentInstance) {
+    const sortedInstances = _.sortBy(config.instances, [item => !item.is_leader, 'address']);
     return (
       <Grid fluid className="ha-instances">
         <AddStandbyInstanceModal
@@ -134,29 +134,21 @@ export const HAInstances: FC = () => {
         </Row>
         <Row>
           <Col xs={12}>
-            <BootstrapTable data={config.instances} options={tableOptions}>
+            <BootstrapTable data={sortedInstances} options={tableOptions}>
               <TableHeaderColumn dataField="uuid" isKey hidden />
               <TableHeaderColumn
                 dataField="address"
                 dataFormat={renderAddress}
                 dataSort
-                width="35%"
+                width="40%"
               >
                 Address
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="is_local"
-                dataFormat={renderIsLocal}
-                dataSort
-                width="12.5%"
-              >
-                Current
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="is_leader"
                 dataFormat={renderInstanceType}
                 dataSort
-                width="12.5%"
+                width="20%"
               >
                 Type
               </TableHeaderColumn>

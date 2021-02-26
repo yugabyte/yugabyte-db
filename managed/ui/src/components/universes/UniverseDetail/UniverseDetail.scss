@@ -105,7 +105,7 @@
   position: fixed;
   z-index: 1031;
   top: 8px;
-  left: 120px;
+  left: 140px;
 
   em {
     font-style: normal;
@@ -160,7 +160,7 @@
   .content-title {
     position: static;
     margin-right: 30px;
-  }  
+  }
   > .nav-tabs {
     background: white;
     z-index: 1020;
@@ -264,7 +264,7 @@
   z-index: 1031;
   white-space: nowrap;
   top: 8px;
-  left: 120px;
+  left: 140px;
   margin-bottom: 0;
 
   @media (max-width: 991px) {

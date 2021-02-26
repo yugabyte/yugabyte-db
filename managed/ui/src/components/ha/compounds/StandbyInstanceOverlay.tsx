@@ -12,5 +12,11 @@ export const StandbyInstanceOverlay = withRouter<{}>(({ location }) => {
     return null;
   }
 
-  return <div className="standby-instance-overlay">Standby Platform Instance</div>;
+  return (
+    <div className="standby-instance-overlay">
+      This is a Standby instance
+      <br />
+      Only the administration configuration is available
+    </div>
+  );
 });

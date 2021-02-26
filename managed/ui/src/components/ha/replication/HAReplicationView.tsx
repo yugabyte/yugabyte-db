@@ -8,6 +8,7 @@ import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { FREQUENCY_MULTIPLIER } from './HAReplicationForm';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
+import { YBCopyButton } from '../../common/descriptors';
 import './HAReplicationView.scss';
 
 interface HAReplicationViewProps {
@@ -25,7 +26,8 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
   const showPromoteModal = () => setPromoteModalVisible(true);
   const hidePromoteModal = () => setPromoteModalVisible(false);
 
-  const sortedInstances = _.sortBy(config.instances, 'address');
+  // sort by is_leader to show active instance on the very top, then sort other items by address
+  const sortedInstances = _.sortBy(config.instances, [item => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
   if (currentInstance) {
     return (
@@ -83,6 +85,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
           </Col>
           <Col xs={10} className="ha-replication-view__value">
             {config.cluster_key}
+            <YBCopyButton text={config.cluster_key} />
           </Col>
         </Row>
         {currentInstance.is_leader && (

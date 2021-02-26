@@ -105,7 +105,7 @@ export default class SideNavBar extends Component {
                     <NavLink
                       to="/admin"
                       icon="fa fa-gear"
-                      text="Admin"
+                      text="Administration"
                       display={getFeatureState(currentCustomer.data.features, 'menu.administration')}
                     />
                   </ul>
