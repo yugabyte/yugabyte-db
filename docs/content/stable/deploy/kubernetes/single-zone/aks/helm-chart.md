@@ -112,7 +112,7 @@ $ az group create --name yugabytedbRG --location westus
 
 You should now be able to view showing the “yugabytedbRG” resource group in the Azure Portal by clicking **Resource Groups**.
 
-![Resource Groups at Microsoft Azure Portal](images/deploy/kubernetes/aks/aks-resource-groups.png)
+![Resource Groups at Microsoft Azure Portal](/images/deploy/kubernetes/aks/aks-resource-groups.png)
 
 ### Step 3: Create the Kubernetes cluster
 

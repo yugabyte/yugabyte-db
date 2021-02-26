@@ -114,3 +114,4 @@ Specify TLS versions via **Application config**, as shown in the following illus
 ![Application Config](/images/replicated/application-config.png)
 
 The recommended TLS version is 1.2.
+

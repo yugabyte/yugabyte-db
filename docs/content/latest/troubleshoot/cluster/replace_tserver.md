@@ -45,7 +45,7 @@ Start the new YB-TServer first, or ensure your remaining YB-TServers have enough
 
 {{< /note >}}
 
-For details on using this command, see [`get_load_move_completion`](../../admin/yb-admin.md#get-load-move-completion).
+For details on using this command, see [`get_load_move_completion`](../../../admin/yb-admin#get-load-move-completion).
 
 ## Kill the failed YB-TServer
 

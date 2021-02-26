@@ -3191,6 +3191,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
 
+					transformColumnDefinition(&cxt, def);
+
 					/*
 					 * Report an error for constraint types which YB does not yet support in
 					 * ALTER TABLE ... ADD COLUMN statements.
@@ -3204,17 +3206,28 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						{
 							case CONSTR_IDENTITY:
 							case CONSTR_PRIMARY:
-							case CONSTR_UNIQUE:
 								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 											errmsg("This ALTER TABLE command is not yet supported.")));
+								break;
+
+							case CONSTR_UNIQUE:
+								// TODO(alex): Since we can't transactionally rollback adding column
+								//             on DocDB side yet, only support the simplest form
+								//             of this for now - the one that can't fail because of
+								//             some constraint violation.
+								//             While FKs ignore NULL values, they may still error
+								//             out if referenced column has no unique constraint
+								//             so we disallow them too.
+								if (def->is_not_null || def->raw_default
+								    || cxt.ckconstraints || cxt.fkconstraints)
+									ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+												errmsg("This ALTER TABLE command is not yet supported.")));
 								break;
 
 							default:
 								break;
 						}
 					}
-
-					transformColumnDefinition(&cxt, def);
 
 					/*
 					 * If the column has a non-null default, we can't skip

@@ -44,8 +44,6 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
     ['getAlertDefinition', universeUUID, ALERT_NAME],
     () => getAlertDefinition(universeUUID, ALERT_NAME),
     {
-      retry: false, // no need to retry a failed query as 400 response is OK when there's no alert definition yet
-      refetchOnWindowFocus: false,
       enabled: isModalVisible,
       onSuccess: (data) => {
         setAlertDefinitionUUID(data.uuid);

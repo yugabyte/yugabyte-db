@@ -168,11 +168,11 @@ export default class NodeAction extends Component {
         ) : null}
         {!hideQueries &&
           <Fragment>
-            <MenuItem key="queries_action_btn" eventKey="queries_action_btn"
+            <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
               disabled={disabled} onClick={this.handleLiveQueryClick}>
               {this.getLabel('LIVE_QUERIES')}
             </MenuItem>
-            <MenuItem key="queries_action_btn" eventKey="queries_action_btn"
+            <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
               disabled={disabled} onClick={this.handleSlowQueryClick}>
               {this.getLabel('SLOW_QUERIES')}
             </MenuItem>
