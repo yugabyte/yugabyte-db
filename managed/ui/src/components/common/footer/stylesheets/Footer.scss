@@ -18,6 +18,7 @@ footer {
   right: 0;
   font-weight: 300;
   z-index: 1;
+  justify-content: space-between;
 
   object {
     margin-right: 20px;
@@ -28,13 +29,6 @@ footer {
     display: inline-block;
   }
 
-  .flex-grow {
-    padding: 0 10px;
-
-    a {
-      margin-left: 4px;
-    }
-  }
 
   .footer-social-container {
     text-align: center;
@@ -49,17 +43,12 @@ footer {
     }
   }
 
-  .flex-grow:last-child {
-    text-align: right;
-  }
-
-  .flex-grow .social-media-logo {
+  .social-media-logo {
     margin-bottom: 4px;
     margin-left: 2px;
   }
 
   span.social-media-cta {
-    margin-right: 5%;
     border: 1px solid #cbcdd0;
     color: #202951;
     text-decoration: none;
