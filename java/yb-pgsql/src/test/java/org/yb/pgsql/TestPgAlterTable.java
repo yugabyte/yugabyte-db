@@ -13,6 +13,10 @@
 
 package org.yb.pgsql;
 
+import static org.yb.pgsql.IsolationLevel.SERIALIZABLE;
+
+import static org.yb.AssertionWrappers.*;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -21,8 +25,8 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.Statement;
-
-import static org.yb.pgsql.IsolationLevel.SERIALIZABLE;
+import java.util.Arrays;
+import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgAlterTable extends BasePgSQLTest {
@@ -129,6 +133,35 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "ALTER TABLE test_table ADD c int NOT NULL",
           "column \"c\" contains null values"
       );
+    }
+  }
+
+  @Test
+  public void testAddColumnUnique() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int)");
+      statement.execute("INSERT INTO test_table VALUES (1)");
+
+      // Different syntax options for simple ADD COLUMN UNIQUE
+      for (String alterTableSql : Arrays.asList(
+          "ALTER TABLE test_table ADD COLUMN a int UNIQUE",
+          "ALTER TABLE test_table ADD a int UNIQUE",
+          "ALTER TABLE test_table ADD COLUMN IF NOT EXISTS a int UNIQUE",
+          "ALTER TABLE test_table ADD IF NOT EXISTS a int UNIQUE")) {
+        statement.execute(alterTableSql);
+        assertQuery(statement, "SELECT * FROM test_table ORDER BY id",
+            new Row(1, null));
+
+        statement.execute("INSERT INTO test_table VALUES (2, 1)");
+        runInvalidQuery(statement, "INSERT INTO test_table VALUES (3, 1)",
+            "duplicate key value violates unique constraint \"test_table_a_key\"");
+        assertQuery(statement, "SELECT * FROM test_table ORDER BY id",
+            new Row(1, null), new Row(2, 1));
+
+        statement.execute("TRUNCATE TABLE test_table");
+        statement.execute("ALTER TABLE test_table DROP COLUMN a");
+        statement.execute("INSERT INTO test_table VALUES (1)");
+      }
     }
   }
 
@@ -371,31 +404,45 @@ public class TestPgAlterTable extends BasePgSQLTest {
   }
 
   @Test
+  public void testAddColumnWithDefault() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int)");
+      statement.execute("ALTER TABLE test_table ADD a int DEFAULT 11");
+      statement.execute("ALTER TABLE test_table ADD b int DEFAULT null");
+
+      // Check that defaults are generated as defined.
+      statement.execute("INSERT INTO test_table(id) values (1)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 1", new Row(11, null));
+      statement.execute("INSERT INTO test_table(id, b) values (2, 0)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 2", new Row(11, 0));
+      statement.execute("INSERT INTO test_table(id, a) values (3, 22)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 3", new Row(22, null));
+    }
+  }
+
+  @Test
   public void testAddColumnWithUnsupportedConstraint() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test_table(id int)");
+      statement.execute("CREATE TABLE test_table_ref(id int)");
 
-      // All variants of UNIQUE fail.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD COLUMN a int UNIQUE",
-          "This ALTER TABLE command is not yet supported"
-      );
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD a int UNIQUE",
-          "This ALTER TABLE command is not yet supported"
-      );
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD COLUMN IF NOT EXISTS a int UNIQUE",
-          "This ALTER TABLE command is not yet supported"
-      );
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD IF NOT EXISTS a int UNIQUE",
-          "This ALTER TABLE command is not yet supported"
-      );
+      // Constrained variants of UNIQUE fail.
+      for (String addCol : Arrays.asList(
+          "ADD COLUMN",
+          "ADD",
+          "ADD COLUMN IF NOT EXISTS",
+          "ADD IF NOT EXISTS")) {
+        for (String constr : Arrays.asList(
+            "DEFAULT 5",
+            "DEFAULT NOW()",
+            "CHECK (id > 0)",
+            "CHECK (a > 0)",
+            "REFERENCES test_table_ref(id)")) {
+          runInvalidQuery(statement,
+              "ALTER TABLE test_table " + addCol + " a int UNIQUE " + constr,
+              "This ALTER TABLE command is not yet supported");
+        }
+      }
 
       // GENERATED fails.
       runInvalidQuery(
@@ -455,23 +502,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "ALTER TABLE pg_class SET WITHOUT OIDS",
           "permission denied: \"pg_class\" is a system catalog"
       );
-    }
-  }
-
-  @Test
-  public void testAddColumnWithDefault() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(id int)");
-      statement.execute("ALTER TABLE test_table ADD a int DEFAULT 11");
-      statement.execute("ALTER TABLE test_table ADD b int DEFAULT null");
-
-      // Check that defaults are generated as defined.
-      statement.execute("INSERT INTO test_table(id) values (1)");
-      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 1", new Row(11, null));
-      statement.execute("INSERT INTO test_table(id, b) values (2, 0)");
-      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 2", new Row(11, 0));
-      statement.execute("INSERT INTO test_table(id, a) values (3, 22)");
-      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 3", new Row(22, null));
     }
   }
 
