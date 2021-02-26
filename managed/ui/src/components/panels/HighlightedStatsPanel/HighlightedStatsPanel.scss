@@ -16,18 +16,16 @@
 .dashboard-stats {
   position: fixed;
   z-index: 2040;
-  top: 10px;
-  left: 50%;
-  margin-left: -300px;
-
-  @media (max-width: 767px) {
-    margin-left: -160px;
-  }
+  width: calc(100% - 110px);
+  display: flex;
+  top: 0;
+  justify-content: center;
+  left: 110px;
+  align-items: center;
+  height: 60px;
 
   .highlighted-stats-panel {
-    max-width: 700px;
-    min-width: 400px;
-    align-content: space-between;
+    width: max-content;
   }
 
   .tile_count .yb-resource-count {
@@ -35,10 +33,6 @@
     padding: 0 50px;
     text-align: center;
     margin: 0;
-
-    @media (max-width: 767px) {
-      padding: 0 30px;
-    }
 
     .yb-resource-count-size {
       font-size: 22px;

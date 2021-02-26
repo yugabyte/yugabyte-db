@@ -122,6 +122,8 @@ a:hover > .schedule-display-item-container,
 
   .list-group.row {
     margin: 20px -12px 0 -12px;
+    display: flex;
+    flex-wrap: wrap;
 
     .col-lg-2,
     .col-md-3 {

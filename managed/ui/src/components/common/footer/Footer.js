@@ -19,11 +19,11 @@ class Footer extends PureComponent {
       : null;
     return (
       <footer>
-        <div className="flex-grow footer-logo-container">
+        <div className="footer-logo-container">
           <YBLogo type="monochrome" />
           {version && <span> Version: {version.substr(0, version.indexOf('-'))}</span>}
         </div>
-        <div className="flex-grow footer-social-container">
+        <div className="footer-social-container">
           <span className="social-media-cta">
             Join us on
             <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
@@ -62,7 +62,7 @@ class Footer extends PureComponent {
             </a>
           </span>
         </div>
-        <div className="flex-grow copyright">&copy; {moment().get('year')} Yugabyte, Inc.</div>
+        <div className="copyright">&copy; {moment().get('year')} Yugabyte, Inc.</div>
       </footer>
     );
   }
