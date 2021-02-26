@@ -2145,6 +2145,9 @@ static void cannot_cast_agtype_value(enum agtype_value_type type,
         {AGTV_BOOL, gettext_noop("cannot cast agtype boolean to type %s")},
         {AGTV_ARRAY, gettext_noop("cannot cast agtype array to type %s")},
         {AGTV_OBJECT, gettext_noop("cannot cast agtype object to type %s")},
+        {AGTV_VERTEX, gettext_noop("cannot cast agtype vertex to type %s")},
+        {AGTV_EDGE, gettext_noop("cannot cast agtype edge to type %s")},
+        {AGTV_PATH, gettext_noop("cannot cast agtype path to type %s")},
         {AGTV_BINARY,
          gettext_noop("cannot cast agtype array or object to type %s")}};
     int i;
@@ -2179,6 +2182,136 @@ Datum agtype_to_bool(PG_FUNCTION_ARGS)
     PG_FREE_IF_COPY(agtype_in, 0);
 
     PG_RETURN_BOOL(agtv.val.boolean);
+}
+
+PG_FUNCTION_INFO_V1(agtype_to_int8);
+/*
+ * Cast agtype to int8.
+ */
+Datum agtype_to_int8(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+    int8 result = 0x0;
+    agtype *arg_agt;
+
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
+        PG_RETURN_NULL();
+
+    if (!agtype_extract_scalar(&arg_agt->root, &agtv) ||
+        (agtv.type != AGTV_FLOAT &&
+         agtv.type != AGTV_INTEGER &&
+         agtv.type != AGTV_NUMERIC &&
+         agtv.type != AGTV_STRING))
+        cannot_cast_agtype_value(agtv.type, "int");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    if (agtv.type == AGTV_INTEGER)
+        result = agtv.val.int_value;        
+    else if (agtv.type == AGTV_FLOAT)
+        result = DatumGetInt64(DirectFunctionCall1(dtoi8,
+                                Float8GetDatum(agtv.val.float_value)));
+    else if (agtv.type == AGTV_NUMERIC)
+        result = DatumGetInt64(DirectFunctionCall1(numeric_int8,
+                     NumericGetDatum(agtv.val.numeric)));
+    else if (agtv.type == AGTV_STRING)
+        result = DatumGetInt64(DirectFunctionCall1(int8in,
+                           CStringGetDatum(agtv.val.string.val)));
+
+    PG_RETURN_INT64(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_to_int4);
+
+/*
+ * Cast agtype to int4.
+ */
+Datum agtype_to_int4(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+    int32 result = 0x0;
+    agtype *arg_agt;
+
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
+        PG_RETURN_NULL();
+
+    if (!agtype_extract_scalar(&arg_agt->root, &agtv) ||
+        (agtv.type != AGTV_FLOAT &&
+         agtv.type != AGTV_INTEGER &&
+         agtv.type != AGTV_NUMERIC &&
+         agtv.type != AGTV_STRING))
+        cannot_cast_agtype_value(agtv.type, "int");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    if (agtv.type == AGTV_INTEGER)
+        result = DatumGetInt32(DirectFunctionCall1(int84,
+                    Int64GetDatum(agtv.val.int_value)));
+    else if (agtv.type == AGTV_FLOAT)
+        result = DatumGetInt32(DirectFunctionCall1(dtoi4,
+                                Float8GetDatum(agtv.val.float_value)));
+    else if (agtv.type == AGTV_NUMERIC)
+        result = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+                     NumericGetDatum(agtv.val.numeric)));
+    else if (agtv.type == AGTV_STRING)
+        result = DatumGetInt32(DirectFunctionCall1(int4in,
+                           CStringGetDatum(agtv.val.string.val)));
+
+    PG_RETURN_INT32(result);
+}
+
+PG_FUNCTION_INFO_V1(agtype_to_int2);
+
+/*
+ * Cast agtype to int2.
+ */
+Datum agtype_to_int2(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+    int16 result = 0x0;
+    agtype *arg_agt;
+
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
+        PG_RETURN_NULL();
+
+    if (!agtype_extract_scalar(&arg_agt->root, &agtv) ||
+        (agtv.type != AGTV_FLOAT &&
+         agtv.type != AGTV_INTEGER &&
+         agtv.type != AGTV_NUMERIC &&
+         agtv.type != AGTV_STRING))
+        cannot_cast_agtype_value(agtv.type, "int");
+
+    PG_FREE_IF_COPY(agtype_in, 0);
+
+    if (agtv.type == AGTV_INTEGER)
+        result = DatumGetInt16(DirectFunctionCall1(int82,
+                    Int64GetDatum(agtv.val.int_value)));
+    else if (agtv.type == AGTV_FLOAT)
+        result = DatumGetInt32(DirectFunctionCall1(dtoi2,
+                                Float8GetDatum(agtv.val.float_value)));
+    else if (agtv.type == AGTV_NUMERIC)
+        result = DatumGetInt16(DirectFunctionCall1(numeric_int2,
+                     NumericGetDatum(agtv.val.numeric)));
+    else if (agtv.type == AGTV_STRING)
+        result = DatumGetInt16(DirectFunctionCall1(int2in,
+                           CStringGetDatum(agtv.val.string.val)));
+
+    PG_RETURN_INT16(result);
 }
 
 PG_FUNCTION_INFO_V1(agtype_to_float8);

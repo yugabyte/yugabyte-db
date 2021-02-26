@@ -356,6 +356,80 @@ RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmo"
 $$) AS r(result agtype);
 
 --
+--Coearce to Postgres 3 int types (smallint, int, bigint)
+--
+SELECT create_graph('type_coercion');
+SELECT * FROM cypher('type_coercion', $$
+	RETURN NULL
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i smallint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i int);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1.0
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1.0::numeric
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN '1'
+$$) AS (i bigint);
+
+--Invalid String Format
+SELECT * FROM cypher('type_coercion', $$
+	RETURN '1.0'
+$$) AS (i bigint);
+
+-- Casting to ints that will cause overflow
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 10000000000000000000
+$$) AS (i smallint);
+
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 10000000000000000000
+$$) AS (i int);
+
+--Invalid types
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN {key: 1}
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN [1]
+$$) AS (i bigint);
+
+SELECT * FROM cypher('type_coercion', $$CREATE ()-[:edge]->()$$) AS (result agtype);
+SELECT * FROM cypher('type_coercion', $$
+	MATCH (v)
+	RETURN v
+$$) AS (i bigint);
+SELECT * FROM cypher('type_coercion', $$
+	MATCH ()-[e]-()
+	RETURN e
+$$) AS (i bigint);
+SELECT * FROM cypher('type_coercion', $$
+	MATCH p=()-[]-()
+	RETURN p
+$$) AS (i bigint);
+
+--
 -- Test typecasting '::' transform and execution logic
 --
 
@@ -1980,9 +2054,35 @@ AS (a agtype, result agtype);
 SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + count(*) + x.b + count(*) + x.c$$)
 AS (result agtype);
 
+--ORDER BY
+SELECT create_graph('order_by');
+SELECT * FROM cypher('order_by', $$CREATE ()$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: '1'})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1.0})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1::numeric})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: true})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: false})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: {key: 'value'}})$$) AS (result agtype);
+SELECT * FROM cypher('order_by', $$CREATE ({i: [1]})$$) AS (result agtype);
+
+SELECT * FROM cypher('order_by', $$
+	MATCH (u)
+	RETURN u.i
+	ORDER BY u.i
+$$) AS (i agtype);
+
+SELECT * FROM cypher('order_by', $$
+	MATCH (u)
+	RETURN u.i
+	ORDER BY u.i DESC
+$$) AS (i agtype);
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('type_coercion', true);
+SELECT * FROM drop_graph('order_by', true);
 SELECT * FROM drop_graph('group_by', true);
 SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);

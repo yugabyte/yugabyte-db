@@ -665,6 +665,119 @@ $$) AS r(result agtype);
 (1 row)
 
 --
+--Coearce to Postgres 3 int types (smallint, int, bigint)
+--
+SELECT create_graph('type_coercion');
+NOTICE:  graph "type_coercion" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN NULL
+$$) AS (i bigint);
+ i 
+---
+  
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i smallint);
+ i 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i int);
+ i 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1
+$$) AS (i bigint);
+ i 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1.0
+$$) AS (i bigint);
+ i 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 1.0::numeric
+$$) AS (i bigint);
+ i 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('type_coercion', $$
+	RETURN '1'
+$$) AS (i bigint);
+ i 
+---
+ 1
+(1 row)
+
+--Invalid String Format
+SELECT * FROM cypher('type_coercion', $$
+	RETURN '1.0'
+$$) AS (i bigint);
+ERROR:  invalid input syntax for integer: "1.0"
+-- Casting to ints that will cause overflow
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 10000000000000000000
+$$) AS (i smallint);
+ERROR:  smallint out of range
+SELECT * FROM cypher('type_coercion', $$
+	RETURN 10000000000000000000
+$$) AS (i int);
+ERROR:  integer out of range
+--Invalid types
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i bigint);
+ERROR:  cannot cast agtype boolean to type int
+SELECT * FROM cypher('type_coercion', $$
+	RETURN {key: 1}
+$$) AS (i bigint);
+ERROR:  cannot cast agtype object to type int
+SELECT * FROM cypher('type_coercion', $$
+	RETURN [1]
+$$) AS (i bigint);
+ERROR:  cannot cast agtype array to type int
+SELECT * FROM cypher('type_coercion', $$CREATE ()-[:edge]->()$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('type_coercion', $$
+	MATCH (v)
+	RETURN v
+$$) AS (i bigint);
+ERROR:  cannot cast agtype vertex to type int
+SELECT * FROM cypher('type_coercion', $$
+	MATCH ()-[e]-()
+	RETURN e
+$$) AS (i bigint);
+ERROR:  cannot cast agtype edge to type int
+SELECT * FROM cypher('type_coercion', $$
+	MATCH p=()-[]-()
+	RETURN p
+$$) AS (i bigint);
+ERROR:  cannot cast agtype path to type int
+--
 -- Test typecasting '::' transform and execution logic
 --
 --
@@ -4795,9 +4908,119 @@ AS (result agtype);
 ERROR:  "x" must be either part of an explicitly listed key or used inside an aggregate function
 LINE 1: ...CT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a + coun...
                                                              ^
+--ORDER BY
+SELECT create_graph('order_by');
+NOTICE:  graph "order_by" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('order_by', $$CREATE ()$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: '1'})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1.0})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: 1::numeric})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: true})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: false})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: {key: 'value'}})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$CREATE ({i: [1]})$$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('order_by', $$
+	MATCH (u)
+	RETURN u.i
+	ORDER BY u.i
+$$) AS (i agtype);
+        i         
+------------------
+ {"key": "value"}
+ [1]
+ "1"
+ false
+ true
+ 1::numeric
+ 1
+ 1.0
+ 
+(9 rows)
+
+SELECT * FROM cypher('order_by', $$
+	MATCH (u)
+	RETURN u.i
+	ORDER BY u.i DESC
+$$) AS (i agtype);
+        i         
+------------------
+ 
+ 1
+ 1.0
+ 1::numeric
+ true
+ false
+ "1"
+ [1]
+ {"key": "value"}
+(9 rows)
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('type_coercion', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table type_coercion._ag_label_vertex
+drop cascades to table type_coercion._ag_label_edge
+drop cascades to table type_coercion.edge
+NOTICE:  graph "type_coercion" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('order_by', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table order_by._ag_label_vertex
+drop cascades to table order_by._ag_label_edge
+NOTICE:  graph "order_by" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('group_by', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table group_by._ag_label_vertex

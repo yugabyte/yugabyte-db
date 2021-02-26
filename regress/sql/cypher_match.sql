@@ -434,7 +434,6 @@ $$) AS (i agtype);
 --
 -- Clean up
 --
-
 SELECT drop_graph('cypher_match', true);
 
 --
