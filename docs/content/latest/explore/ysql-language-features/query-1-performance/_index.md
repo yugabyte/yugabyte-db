@@ -11,31 +11,18 @@ section: Explore
 menu:
   latest:
     identifier: query-1-performance
-    parent: develop    
+    parent: explore-ysql-language-features    
     weight: 600
 ---
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="query-1-performance/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="articles">1 article</div>
-        <div class="title">Optimize query performance</div>
-      </div>
-      <div class="body">
-        Optimize query performance by creating and analyzing execution plans.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="explain-analyze/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">1 article</div>
-        <div class="title">Analyzing Queries with EXPLAIN</div>
+        <div class="title">Analyze Queries with EXPLAIN</div>
       </div>
       <div class="body">
         Optimize query performance by creating and analyzing execution plans.
