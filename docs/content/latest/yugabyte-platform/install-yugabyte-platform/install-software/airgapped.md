@@ -150,6 +150,8 @@ If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../
 ## Set the TLS Version for Nginx Frontend 
 
 Specify TLS versions via **Application config**, as shown in the following illustration: 
+
 ![Application Config](/images/replicated/application-config.png)
 
-The recommended TLS version is 1.2 or later.
+The recommended TLS version is 1.2.
+
