@@ -1,10 +1,10 @@
 ---
-title: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
-linkTitle: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
+title: Analyzing Queries with EXPLAIN
+linkTitle: Analyzing Queries with EXPLAIN
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
-  - /develop/query-1-performance/explain-analyze/
-headerTitle: Optimizing Queries with EXPLAIN and EXPLAIN ANALYZE
+  - /explore/ysql-language-features/query-1-performance/explain-analyze/
+headerTitle: Analyzing Queries with EXPLAIN
 image: /images/section_icons/index/develop.png
 menu:
   latest:
@@ -55,7 +55,8 @@ yugabyte=# CREATE TABLE employees(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (
 To insert table rows, execute the following:
 
 ```sql
-yugabyte=# INSERT INTO employees(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+yugabyte=# INSERT INTO employees (k1, k2, v1, v2) 
+  VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 To check the query plan for simple select, execute the following:
@@ -76,7 +77,8 @@ Foreign Scan on employees  (cost=0.00..112.50 rows=1000 width=44)
 To check the execution plan for select with a complex condition that requires filtering, execute the following:
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM employees WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+yugabyte=# EXPLAIN SELECT * FROM employees 
+  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
 The following output displays the cost estimate based on the filtered result:
@@ -93,22 +95,28 @@ By enabling the `ANALYZE` option and wrapping it to preserve data integrity, you
 
 ```sql
 BEGIN;
-yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees 
+  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ROLLBACK;
 ```
 
 In addition to the cost estimates from the query planner, `EXPLAIN ANALYZE` displays the server output produced during the statement execution, as shown in the following example:
 
 ```sql
-yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
+yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a 
+  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
                                  QUERY PLAN
 -------------------------------------------------------------------------
- Hash Left Join (cost=112.50..390.00 rows=5000 width=8) (actual time=3.939..6.195 rows=100 loops=1)
+ Hash Left Join (cost=112.50..390.00 rows=5000 width=8) 
+                (actual time=3.939..6.195 rows=100 loops=1)
    Hash Cond: (a.a = b.a)
-   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4) (actual time=0.568..2.798 rows=100 loops=1)
-   ->  Hash  (cost=100.00..100.00 rows=1000 width=4) (actual time=3.363..3.363 rows=100 loops=1)
+   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4) 
+                               (actual time=0.568..2.798 rows=100 loops=1)
+   ->  Hash  (cost=100.00..100.00 rows=1000 width=4) 
+             (actual time=3.363..3.363 rows=100 loops=1)
          Buckets: 1024  Batches: 1  Memory Usage: 12kB
-         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4) (actual time=0.458..3.339 rows=100 loops=1)
+         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4) 
+                               (actual time=0.458..3.339 rows=100 loops=1)
  Planning Time: 0.939 ms
  Execution Time: 7.089 ms
 (8 rows)
@@ -119,7 +127,8 @@ The server output from the preceding example includes the number of rescans (loo
 `EXPLAIN`, on the other hand,  does not provide this additional information, as shown in the following examples:
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM employees a LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
+yugabyte=# EXPLAIN SELECT * FROM employees a 
+  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
                               QUERY PLAN
 ----------------------------------------------------------------------
  Hash Left Join (cost=112.50..390.00 rows=5000 width=8)
