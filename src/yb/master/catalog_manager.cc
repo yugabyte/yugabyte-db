@@ -3210,18 +3210,31 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // MasterErrorPB::UNKNOWN_ERROR.
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
-  // 4. For index table:
-  // YCQL only needs to wait for the index to be added to the table's index map, since the
-  // expectation is that the backfill will be completed asynchronously. i.e. create-index does not
-  // wait for it. However, for YSQL index tables:
-  //   a. If backfill is enabled, wait until the index is present in indexed table's index map.
-  //   b. Otherwise wait until the alter schema is done on the indexed table as well.
+  // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
+  // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
+    // For user indexes (which add index info to indexed table's schema),
+    // - if this index is created without backfill,
+    //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
+    //     point, things are fully created.
+    // - if this index is created with backfill
+    //   - and it's YCQL,
+    //     - waiting for the index to be in the indexed table's schema means waiting for the
+    //       DELETE_ONLY index permission, and it's fine to return to the client before the index
+    //       gets the rest of the permissions because the expectation is that backfill will be
+    //       completed asynchronously.
+    //   - and it's YSQL,
+    //     - waiting for the index to be in the indexed table's schema means just that (DocDB index
+    //       permissions don't really matter for YSQL besides being used for backfill purposes), and
+    //       it's a signal for postgres to continue the index backfill process, activating index
+    //       state flags then later triggering backfill and so on.
+    // For YSQL system indexes (which don't add index info to indexed table's schema),
+    // - there's nothing additional to wait on.
+    // Therefore, the only thing needed here is to check whether the index info is in the indexed
+    // table's schema for user indexes.
     if (pb.table_type() == YQL_TABLE_TYPE ||
-        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table) &&
-         IsIndexBackfillEnabled(
-             pb.table_type(), pb.schema().table_properties().is_transactional()))) {
+        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table))) {
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
@@ -3241,16 +3254,6 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
           break;
         }
       }
-    } else {
-      IsAlterTableDoneRequestPB alter_table_req;
-      IsAlterTableDoneResponsePB alter_table_resp;
-      alter_table_req.mutable_table()->set_table_id(indexed_table_id);
-      const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
-      if (!s.ok()) {
-        resp->mutable_error()->Swap(alter_table_resp.mutable_error());
-        return s;
-      }
-      resp->set_done(alter_table_resp.done());
     }
   }
 
