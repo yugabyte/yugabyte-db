@@ -280,12 +280,6 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_int32(yql_is_create_index_done_delay_ms, 0,
-    "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
-    " index in the master index map.");
-TAG_FLAG(yql_is_create_index_done_delay_ms, hidden);
-TAG_FLAG(yql_is_create_index_done_delay_ms, runtime);
-
 DEFINE_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, runtime);
@@ -3246,11 +3240,6 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           resp->set_done(true);
-          // This wait was to give tservers time to apply schema changes and hopefully avoid
-          // consistency issues.  It should now be fixed, but it still exists for now because the
-          // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
-          // and the gflag.
-          SleepFor(MonoDelta::FromMilliseconds(FLAGS_yql_is_create_index_done_delay_ms));
           break;
         }
       }
