@@ -815,7 +815,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
     const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
     auto res2 = client_->GetYBTableInfo(index_table_name);
     ASSERT_TRUE(!res2.ok());
-    ASSERT_TRUE(res2.status().IsNotFound()) << res.status();
+    ASSERT_TRUE(res2.status().IsNotFound()) << res2.status();
   } else {
     ASSERT_TRUE(res.status().IsNotFound()) << res.status();
   }

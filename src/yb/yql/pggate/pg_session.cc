@@ -414,8 +414,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
               return Status::OK();
             }
             return pg_session_.FlushOperations(std::move(ops), transactional);
-          }
-      ));
+          }));
       read_only = read_only && pending_ops_.empty();
     }
   }
@@ -447,7 +446,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
     DCHECK_EQ(yb_session_.get(), session);
   }
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-    LOG(INFO) << "Applying operation : " << op->ToString();
+    LOG(INFO) << "Applying operation: " << op->ToString();
   }
   return yb_session_->Apply(std::move(op));
 }
@@ -1063,8 +1062,8 @@ Status PgSession::FlushOperations(PgsqlOpBuffer ops, bool transactional) {
   }
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG(INFO) << "Flushing buffered operations, using "
-              << (transactional ? " transactional" : "non-transactional")
-              << "session (num ops: " << ops.size() << ")";
+              << (transactional ? "transactional" : "non-transactional")
+              << " session (num ops: " << ops.size() << ")";
   }
   for (const auto& buffered_op : ops) {
     RETURN_NOT_OK(ApplyOperation(session, transactional, buffered_op));

@@ -719,7 +719,7 @@ class YBTransaction::Impl final {
       return;
     }
 
-    VLOG_WITH_PREFIX(1) << "Cleaning up intents for " << metadata_.transaction_id;
+    VLOG_WITH_PREFIX(1) << "Cleaning up intents";
 
     std::vector<std::string> tablet_ids;
     {

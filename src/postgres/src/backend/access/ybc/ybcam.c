@@ -395,9 +395,9 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 		bool colocated = false;
 		bool notfound;
 		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-																											 RelationGetRelid(relation),
-																											 &colocated),
-																 &notfound);
+														   RelationGetRelid(relation),
+														   &colocated),
+									 &notfound);
 		ybScan->prepare_params.querying_colocated_table |= colocated;
 	}
 	else if (!ybScan->prepare_params.querying_colocated_table)
@@ -1511,9 +1511,9 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-																RelationGetRelid(relation),
-																NULL /* prepare_params */,
-																&ybc_stmt));
+								  RelationGetRelid(relation),
+								  NULL /* prepare_params */,
+								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
