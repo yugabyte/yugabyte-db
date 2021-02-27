@@ -1498,7 +1498,9 @@ Status TabletServiceImpl::CheckPeerIsReady(
     auto split_child_tablet_ids = tablet_peer.consensus()->GetSplitChildTabletIds();
     return STATUS(
                IllegalState,
-               Format("The tablet $0 is in $1 state.", tablet->tablet_id(), tablet_data_state),
+               Format("The tablet $0 is in $1 state",
+                      tablet->tablet_id(),
+                      TabletDataState_Name(tablet_data_state)),
                TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
         .CloneAndAddErrorCode(SplitChildTabletIdsData(
             std::vector<TabletId>(split_child_tablet_ids.begin(), split_child_tablet_ids.end())));
