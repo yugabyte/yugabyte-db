@@ -5377,17 +5377,17 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		 */
 		if (strcmp(option->keyword, "user") == 0)
 		{
-		  /* YugaByte default username to "postgres" */
+			/* Yugabyte default username to "yugabyte" */
 			option->val = strdup("yugabyte");
 			continue;
 		}
 
 		/*
-		 * Special handling for "dbname" option.		 
+		 * Special handling for "dbname" option.
 		 */
 		if (strcmp(option->keyword, "dbname") == 0)
 		{
-		  /* YugaByte default dbname to "yugabyte" */
+			/* Yugabyte default dbname to "yugabyte" */
 			option->val = strdup("yugabyte");
 			continue;
 		}
