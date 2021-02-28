@@ -111,7 +111,6 @@ using ql::QLProcessor;
 using ql::ParseTree;
 using ql::Statement;
 using ql::StatementBatch;
-using ql::StatementExecutedCallback;
 using ql::ErrorCode;
 using ql::GetErrorCode;
 using strings::Substitute;

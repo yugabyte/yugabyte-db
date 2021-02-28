@@ -23,6 +23,11 @@ public class TableProperties {
   public static final int TP_NON_COLOCATED     = TP_NO_FLAGS;
   public static final int TP_COLOCATED         = 8; // bit 3
 
+  public static final String YCQL_TRANSACTIONS_ENABLED_STR =
+      " transactions = {'enabled' : true}";
+  public static final String YCQL_USER_ENFORCED_STR =
+      " transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'}";
+
   public int flags;
   public TableProperties() { flags = TP_NO_FLAGS; }
   public TableProperties(int f) { flags = f; }
@@ -37,5 +42,13 @@ public class TableProperties {
   }
   public Boolean isColocated() throws Exception {
     return (flags & TP_COLOCATED) == TP_COLOCATED;
+  }
+
+  // String helpers.
+  public String getWithOptTransEnabledStr() throws Exception {
+    return isTransactional() ? " with" + YCQL_TRANSACTIONS_ENABLED_STR : "";
+  }
+  public String getWithOptUserEnforcedStr() throws Exception {
+    return isTransactional() ? "" : " with" + YCQL_USER_ENFORCED_STR;
   }
 };
