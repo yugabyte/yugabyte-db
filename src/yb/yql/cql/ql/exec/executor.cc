@@ -823,12 +823,27 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // If there is an index to select from, execute it.
   if (tnode->child_select()) {
+    LOG_IF(DFATAL, result_) << "Expecting result is not yet initialized";
     const PTSelectStmt* child_select = tnode->child_select().get();
     TnodeContext* child_context = tnode_context->AddChildTnode(child_select);
     RETURN_NOT_OK(ExecPTNode(child_select, child_context));
     // If the index covers the SELECT query fully, we are done. Otherwise, continue to prepare
     // the SELECT from the table using the primary key to be returned from the index select.
     if (child_select->covers_fully()) {
+      return Status::OK();
+    }
+    // If the child uncovered index select has set result_ already it must have been able
+    // to guarantee an empty result (i.e. if WHERE clause guarantees no rows could match)
+    // so we can just return.
+    if (result_) {
+      LOG_IF(DFATAL, result_->type() != ExecutedResult::Type::ROWS)
+          << "Expecting result type is ROWS=" << static_cast<int>(ExecutedResult::Type::ROWS)
+          << ", got result type=" << static_cast<int>(result_->type());
+      auto rows_result = std::static_pointer_cast<RowsResult>(result_);
+      RSTATUS_DCHECK(rows_result->paging_state().empty(),
+                     Corruption, "Expecting result_ to be empty with empty paging state");
+      RSTATUS_DCHECK(rows_result->rows_data() == string(4, '\0'), // Encoded row_count == 0.
+                     Corruption, "Expecting result_ to be empty with result row_count equals 0");
       return Status::OK();
     }
   }
