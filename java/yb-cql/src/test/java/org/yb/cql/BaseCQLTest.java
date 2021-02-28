@@ -529,13 +529,16 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertFalse(iter.hasNext());
   }
 
-  protected void assertQuery(Statement stmt, String expectedResult) {
-    ResultSet rs = session.execute(stmt);
-    String actualResult = "";
+  protected static String resultSetToString(ResultSet rs) {
+    String result = "";
     for (Row row : rs) {
-      actualResult += row.toString();
+      result += row.toString();
     }
-    assertEquals(expectedResult, actualResult);
+    return result;
+  }
+
+  protected void assertQuery(Statement stmt, String expectedResult) {
+    assertEquals(expectedResult, resultSetToString(session.execute(stmt)));
   }
 
   protected void assertQuery(String stmt, String expectedResult) {
@@ -545,11 +548,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected void assertQuery(Statement stmt, String expectedColumns, String expectedResult) {
     ResultSet rs = session.execute(stmt);
     assertEquals(expectedColumns, rs.getColumnDefinitions().toString());
-    String actualResult = "";
-    for (Row row : rs) {
-      actualResult += row.toString();
-    }
-    assertEquals(expectedResult, actualResult);
+    assertEquals(expectedResult, resultSetToString(rs));
   }
 
   protected void assertQuery(String stmt, String expectedColumns, String expectedResult) {
