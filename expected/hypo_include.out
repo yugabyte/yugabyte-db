@@ -10,10 +10,11 @@ SELECT hypopg_reset();
 VACUUM ANALYZE hypo;
 -- Should not use hypothetical index
 -- Create normal index
-SELECT hypopg_create_index('CREATE INDEX ON hypo (id)');
-     hypopg_create_index      
-------------------------------
- (13719,<13719>btree_hypo_id)
+SELECT COUNT(*) AS NB
+FROM hypopg_create_index('CREATE INDEX ON hypo (id)');
+ nb 
+----
+  1
 (1 row)
 
 -- Should use hypothetical index using a regular Index Scan
@@ -32,10 +33,11 @@ SELECT hypopg_reset();
 (1 row)
 
 -- Create INCLUDE index
-SELECT hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val)');
-       hypopg_create_index        
-----------------------------------
- (13719,<13719>btree_hypo_id_val)
+SELECT COUNT(*) AS NB
+FROM hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val)');
+ nb 
+----
+  1
 (1 row)
 
 -- Should use hypothetical index using an Index Only Scan
