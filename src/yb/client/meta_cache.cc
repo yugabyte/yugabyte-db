@@ -136,6 +136,10 @@ std::atomic<int64_t> lookup_serial_{1};
 
 } // namespace
 
+int64_t TEST_GetLookupSerial() {
+  return lookup_serial_.load(std::memory_order_acquire);
+}
+
 ////////////////////////////////////////////////////////////
 
 RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
@@ -912,6 +916,7 @@ Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
     boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc) {
   if (VLOG_IS_ON(2)) {
+    VLOG_WITH_FUNC(2) << "lookup_rpc: " << AsString(lookup_rpc);
     for (const auto& loc : locations) {
       for (const auto& table_id : loc.table_ids()) {
         VLOG_WITH_FUNC(2) << loc.tablet_id() << ", " << table_id;
@@ -937,11 +942,39 @@ Status MetaCache::ProcessTabletLocations(
         UpdateTabletServerUnlocked(r.ts_info());
       }
 
+      VersionedTablePartitionListPtr colocated_table_partition_list;
+      if (loc.table_ids_size() > 1 && lookup_rpc && lookup_rpc->table()) {
+        // When table_ids_size() == 1 we only receive info for the single table from the master
+        // and we already have TableData initialized for it (this is done before sending an RPC to
+        // the master). And when table_ids_size() > 1, it means we got response for lookup RPC for
+        // co-located table and we can re-use TableData::partition_list from the table that was
+        // requested by MetaCache::LookupTabletByKey caller for other tables co-located with this
+        // one (since all co-located tables sharing the same set of tablets have the same table
+        // partition list and now we have list of them returned by the master).
+        const auto lookup_table_it = tables_.find(lookup_rpc->table()->id());
+        if (lookup_table_it != tables_.end()) {
+          colocated_table_partition_list = lookup_table_it->second.partition_list;
+        } else {
+          // We don't want to crash the server in that case for production, since this is not a
+          // correctness issue, but gives some performance degradation on first lookups for
+          // co-located tables.
+          // But we do want it to crash in debug, so we can more reliably catch this if it happens.
+          LOG(DFATAL) << Format(
+              "Internal error: got response for lookup RPC for co-located table, but MetaCache "
+              "table data wasn't initialized with partition list for this table. RPC: $0",
+              AsString(lookup_rpc));
+        }
+      }
+
       for (const std::string& table_id : loc.table_ids()) {
         auto& processed_table = processed_tables[table_id];
         std::map<PartitionKey, RemoteTabletPtr>* tablets_by_key = nullptr;
 
-        const auto table_it = tables_.find(table_id);
+        auto table_it = tables_.find(table_id);
+        if (table_it == tables_.end() && loc.table_ids_size() > 1 &&
+            colocated_table_partition_list) {
+          table_it = InitTableDataUnlocked(table_id, colocated_table_partition_list);
+        }
         if (table_it != tables_.end()) {
           auto& table_data = table_it->second;
 
@@ -1083,6 +1116,9 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
 
 std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocked(
     const TableId& table_id, const VersionedTablePartitionListPtr& partitions) {
+  VLOG_WITH_FUNC(4) << Format(
+      "MetaCache($0) initializing TableData ($1 tables) for table $2: $3",
+      static_cast<void*>(this), tables_.size(), table_id, tables_.count(table_id));
   return tables_.emplace(
       std::piecewise_construct, std::forward_as_tuple(table_id),
       std::forward_as_tuple(partitions)).first;
@@ -1747,7 +1783,7 @@ RemoteTabletPtr MetaCache::FastLookupTabletByKeyUnlocked(
   // Fast path: lookup in the cache.
   auto result = LookupTabletByKeyFastPathUnlocked(table_id, partition_start);
   if (result && result->HasLeader()) {
-    VLOG(4) << "Fast lookup: found tablet " << result->tablet_id();
+    VLOG(5) << "Fast lookup: found tablet " << result->tablet_id();
     return result;
   }
 
@@ -1790,6 +1826,8 @@ bool MetaCache::DoLookupTabletByKey(
     auto table_it = tables_.find(table->id());
     TableData* table_data;
     if (table_it == tables_.end()) {
+      VLOG_WITH_FUNC(4) << Format(
+          "MetaCache($0) missed table_id $1", static_cast<void*>(this), table->id());
       if (!IsUniqueLock(&lock)) {
         return false;
       }
@@ -1832,20 +1870,20 @@ bool MetaCache::DoLookupTabletByKey(
     int64_t expected = 0;
     if (!lookups_group->running_request_number.compare_exchange_strong(
             expected, request_no, std::memory_order_acq_rel)) {
-      VLOG_WITH_FUNC(4)
+      VLOG_WITH_FUNC(5)
           << "Lookup is already running for table: " << table->ToString()
           << ", partition_group_start: " << Slice(**partition_group_start).ToDebugHexString();
       return true;
     }
   }
 
-  VLOG_WITH_FUNC(4)
-      << "Start lookup for table: " << table->ToString()
-      << ", partition_group_start: " << Slice(**partition_group_start).ToDebugHexString();
-
   auto rpc = std::make_shared<LookupByKeyRpc>(
       this, table, VersionedPartitionGroupStartKey{*partition_group_start, partitions->version},
       request_no, deadline);
+  VLOG_WITH_FUNC(4)
+      << "Started lookup for table: " << table->ToString()
+      << ", partition_group_start: " << Slice(**partition_group_start).ToDebugHexString()
+      << ", rpc: " << AsString(rpc);
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
@@ -1882,7 +1920,7 @@ bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
     int64_t expected = 0;
     if (!full_table_lookups.running_request_number.compare_exchange_strong(
         expected, request_no, std::memory_order_acq_rel)) {
-      VLOG_WITH_FUNC(4)
+      VLOG_WITH_FUNC(5)
           << "Lookup is already running for table: " << table->ToString();
       return true;
     }
@@ -1903,7 +1941,7 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
                                   LookupTabletCallback callback) {
   const auto table_partition_list = table->GetVersionedPartitions();
   const auto partition_start = client::FindPartitionStart(table_partition_list, partition_key);
-  VLOG_WITH_FUNC(4) << "Table: " << table->ToString()
+  VLOG_WITH_FUNC(5) << "Table: " << table->ToString()
                     << ", partition_list_version: " << table_partition_list->version
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
                     << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
@@ -1963,11 +2001,11 @@ bool MetaCache::DoLookupTabletById(
     // Fast path: lookup in the cache.
     tablet = LookupTabletByIdFastPathUnlocked(tablet_id);
     if (tablet) {
-      VLOG(4) << "Fast lookup: candidate tablet " << AsString(tablet);
+      VLOG(5) << "Fast lookup: candidate tablet " << AsString(tablet);
       if (use_cache && tablet->HasLeader()) {
         // tablet->HasLeader() check makes MetaCache send RPC to master in case of no tablet with
         // tablet_id is found on all replicas.
-        VLOG(4) << "Fast lookup: found tablet " << tablet->tablet_id();
+        VLOG(5) << "Fast lookup: found tablet " << tablet->tablet_id();
         return true;
       }
       lookups_without_new_replicas = tablet->lookups_without_new_replicas();
@@ -1991,7 +2029,7 @@ bool MetaCache::DoLookupTabletById(
     int64_t expected = 0;
     if (!lookup->running_request_number.compare_exchange_strong(
             expected, request_no, std::memory_order_acq_rel)) {
-      VLOG_WITH_FUNC(4) << "Lookup already running for tablet: " << tablet_id;
+      VLOG_WITH_FUNC(5) << "Lookup already running for tablet: " << tablet_id;
       return true;
     }
   }
@@ -2009,7 +2047,7 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
                                  UseCache use_cache) {
-  VLOG_WITH_FUNC(4) << "(" << tablet_id << ", " << use_cache << ")";
+  VLOG_WITH_FUNC(5) << "(" << tablet_id << ", " << use_cache << ")";
 
   if (DoLookupTabletById<SharedLock<decltype(mutex_)>>(
           tablet_id, table, deadline, use_cache, &callback)) {
