@@ -144,8 +144,12 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
+    // DocPgsqlScanSpec objects stores key components as a pointers.
+    // They should be valid till `spec` object destruction.
+    // For this purpose the `empty_key_components` object is used, which lives longer than `spec`.
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, {} /* hashed_components */, {} /* range_components */,
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(doc_iter->Init(spec));
   }
