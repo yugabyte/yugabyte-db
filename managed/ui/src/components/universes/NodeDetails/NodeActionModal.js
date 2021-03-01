@@ -6,11 +6,46 @@ import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
 import { NodeAction } from '../../universes';
 
+const nodeActionExpectedResult = {
+  START: 'Live',
+  STOP: 'Stopped',
+  REMOVE: 'Unreachable',
+  RELEASE: 'Unreachable',
+  DELETE: 'Unreachable'
+};
+
 export default class NodeActionModal extends Component {
   static propTypes = {
     nodeInfo: PropTypes.object.isRequired,
     actionType: PropTypes.string
   };
+
+  pollNodeStatusUpdate = (universeUUID, actionType, nodeName, payload) => {
+    const { preformGetUniversePerNodeStatus, preformGetUniversePerNodeStatusResponse } = this.props;
+    this.interval = setTimeout(() => {
+      preformGetUniversePerNodeStatus(universeUUID).then((response) => {
+        if (response.payload && response.payload.data) {
+          const node = response.payload.data[nodeName];
+          if (
+            actionType === 'DELETE' ||
+            node.node_status === nodeActionExpectedResult[actionType]
+          ) {
+            clearInterval(this.interval);
+            preformGetUniversePerNodeStatusResponse(response.payload);
+            return;
+          }
+          preformGetUniversePerNodeStatusResponse(response.payload);
+          this.pollNodeStatusUpdate(universeUUID, actionType, nodeName, payload);
+        }
+      });
+    }, 1500);
+  };
+
+  componentWillUnmount() {
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+  }
 
   performNodeAction = () => {
     const {
@@ -21,7 +56,16 @@ export default class NodeActionModal extends Component {
       onHide
     } = this.props;
     const universeUUID = currentUniverse.data.universeUUID;
-    performUniverseNodeAction(universeUUID, nodeInfo.name, actionType);
+    performUniverseNodeAction(universeUUID, nodeInfo.name, actionType).then((response) => {
+      if (response.error !== true) {
+        this._getUniversePerNodeStatusResponse(
+          universeUUID,
+          actionType,
+          nodeInfo.name,
+          response.payload
+        );
+      }
+    });
     onHide();
     browserHistory.push('/universes/' + universeUUID + '/nodes');
   };
