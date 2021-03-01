@@ -1968,7 +1968,20 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
     while (i != tablets_blocked_from_lb_.end()) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, *i);
       if (tablet_peer) {
-          const auto& tablet = (*tablet_peer)->tablet();
+          const auto tablet = (*tablet_peer)->shared_tablet();
+          // If tablet is null, one of two things may be true:
+          // 1. TabletPeer::InitTabletPeer was not called yet
+          //
+          // Skip and keep tablet in tablets_blocked_from_lb_ till call InitTabletPeer.
+          //
+          // 2. TabletPeer::CompleteShutdown was called
+          //
+          // Tablet will be removed from tablets_blocked_from_lb_ with next GenerateTabletReport
+          // since tablet_peer will be removed from tablet_map_
+          if (tablet == nullptr) {
+            ++i;
+            continue;
+          }
           const std::string& tablet_id = tablet->tablet_id();
           if (!tablet->ShouldDisableLbMove()) {
             i = tablets_blocked_from_lb_.erase(i);
