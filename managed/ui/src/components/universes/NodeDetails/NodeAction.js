@@ -87,9 +87,9 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-link';
     } else if (actionType === 'START_MASTER') {
       btnIcon = 'fa fa-play-circle';
-    } else if (actionType === 'LIVE_QUERIES') {      
+    } else if (actionType === 'LIVE_QUERIES') {
       btnIcon = 'fa fa-search';
-    } else if (actionType === 'SLOW_QUERIES') {      
+    } else if (actionType === 'SLOW_QUERIES') {
       btnIcon = 'fa fa-signal';
     }
 
@@ -131,7 +131,8 @@ export default class NodeAction extends Component {
     } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
-      const isDisabled = disabled ||
+      const isDisabled =
+        disabled ||
         (actionType === 'STOP' && disableStop) ||
         (actionType === 'REMOVE' && disableRemove);
       return (
@@ -166,18 +167,26 @@ export default class NodeAction extends Component {
             />
           </Fragment>
         ) : null}
-        {!hideQueries &&
+        {!hideQueries && (
           <Fragment>
-            <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
-              disabled={disabled} onClick={this.handleLiveQueryClick}>
+            <MenuItem
+              key="live_queries_action_btn"
+              eventKey="live_queries_action_btn"
+              disabled={disabled}
+              onClick={this.handleLiveQueryClick}
+            >
               {this.getLabel('LIVE_QUERIES')}
             </MenuItem>
-            <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
-              disabled={disabled} onClick={this.handleSlowQueryClick}>
+            <MenuItem
+              key="slow_queries_action_btn"
+              eventKey="slow_queries_action_btn"
+              disabled={disabled}
+              onClick={this.handleSlowQueryClick}
+            >
               {this.getLabel('SLOW_QUERIES')}
             </MenuItem>
           </Fragment>
-        }
+        )}
       </DropdownButton>
     );
   }

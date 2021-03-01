@@ -31,7 +31,12 @@ export default class NodeDetailsTable extends Component {
         return <span>{cell}</span>;
       }
       const isMaster = type === 'master';
-      const href = getProxyNodeAddress(universeUUID, customer, row.privateIP, isMaster ? row.masterPort : row.tserverPort);
+      const href = getProxyNodeAddress(
+        universeUUID,
+        customer,
+        row.privateIP,
+        isMaster ? row.masterPort : row.tserverPort
+      );
       if (row.nodeAlive) {
         return (
           <div>
@@ -149,8 +154,9 @@ export default class NodeDetailsTable extends Component {
         customer.currentCustomer.data.features,
         'universes.actions'
       );
-      const hideQueries = !isNotHidden(customer.currentCustomer.data.features,
-        'universes.details.queries') || !row.isTServer;
+      const hideQueries =
+        !isNotHidden(customer.currentCustomer.data.features, 'universes.details.queries') ||
+        !row.isTServer;
 
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');
@@ -160,9 +166,10 @@ export default class NodeDetailsTable extends Component {
       }
 
       // get universe provider type to disable STOP and REMOVE actions for kubernetes pods (GH #6084)
-      const cluster = clusterType === 'primary'
-        ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
-        : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
+      const cluster =
+        clusterType === 'primary'
+          ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
+          : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
       const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
 
       return (
@@ -255,17 +262,16 @@ export default class NodeDetailsTable extends Component {
             >
               Processes
             </TableHeaderColumn>
-            {!this.props.isReadOnlyUniverse &&
-              !universePaused && (
-                <TableHeaderColumn
-                  dataField="nodeAction"
-                  className={'yb-actions-cell'}
-                  columnClassName={'yb-actions-cell'}
-                  dataFormat={getNodeAction}
-                >
-                  Action
-                </TableHeaderColumn>
-              )}
+            {!this.props.isReadOnlyUniverse && !universePaused && (
+              <TableHeaderColumn
+                dataField="nodeAction"
+                className={'yb-actions-cell'}
+                columnClassName={'yb-actions-cell'}
+                dataFormat={getNodeAction}
+              >
+                Action
+              </TableHeaderColumn>
+            )}
           </BootstrapTable>
         }
       />
