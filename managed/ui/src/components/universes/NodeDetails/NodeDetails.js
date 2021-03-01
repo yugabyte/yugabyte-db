@@ -126,20 +126,20 @@ export default class NodeDetails extends Component {
       const metricsData = nodesMetrics
         ? nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`]
         : {
-          active_tablets: null,
-          num_sst_files: null,
-          ram_used: null,
-          read_ops_per_sec: null,
-          system_tablets_leaders: null,
-          system_tablets_total: null,
-          time_since_hb: null,
-          total_sst_file_size: null,
-          uncompressed_sst_file_size: null,
-          uptime_seconds: null,
-          user_tablets_leaders: null,
-          user_tablets_total: null,
-          write_ops_per_sec: null
-        };
+            active_tablets: null,
+            num_sst_files: null,
+            ram_used: null,
+            read_ops_per_sec: null,
+            system_tablets_leaders: null,
+            system_tablets_total: null,
+            time_since_hb: null,
+            total_sst_file_size: null,
+            uncompressed_sst_file_size: null,
+            uptime_seconds: null,
+            user_tablets_leaders: null,
+            user_tablets_total: null,
+            write_ops_per_sec: null
+          };
       return {
         nodeIdx: nodeDetail.nodeIdx,
         name: nodeName,
