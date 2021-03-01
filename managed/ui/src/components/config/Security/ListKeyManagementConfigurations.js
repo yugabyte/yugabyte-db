@@ -39,7 +39,6 @@ export class ListKeyManagementConfigurations extends Component {
     const {
       configs,
       onCreate,
-      onDelete,
       modal: { showModal, visibleModal }
     } = this.props;
 
