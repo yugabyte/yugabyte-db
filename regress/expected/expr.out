@@ -4897,6 +4897,32 @@ AS (a_b_c agtype,  result agtype);
  6     | 12.0
 (1 row)
 
+-- with WITH clause
+SELECT * FROM cypher('group_by', $$MATCH(x:L) WITH x, count(x) AS c RETURN x.a + x.b + x.c + c$$)
+AS (result agtype);
+ result 
+--------
+ 7.0
+ 7.0
+ 7.0
+(3 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH(x:L) WITH x, count(x) AS c RETURN x.a + x.b + x.c + c + c$$)
+AS (result agtype);
+ result 
+--------
+ 8.0
+ 8.0
+ 8.0
+(3 rows)
+
+SELECT * FROM cypher('group_by', $$MATCH(x:L) WITH x.a + x.b + x.c AS v, count(x) as c RETURN v + c + c $$)
+AS (result agtype);
+ result 
+--------
+ 12.0
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('group_by', $$MATCH (x:L) RETURN x.a, x.a + count(*) + x.b + count(*) + x.c$$)
 AS (a agtype, result agtype);
