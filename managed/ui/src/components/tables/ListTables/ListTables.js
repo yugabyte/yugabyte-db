@@ -113,6 +113,7 @@ class ListTableGrid extends Component {
       customer: { currentCustomer }
     } = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
+    const universePaused = this.props.universe.currentUniverse?.data?.universeDetails?.universePaused;
     const getTableIcon = function (tableType) {
       if (tableType === 'YQL_TABLE_TYPE') {
         return 'YCQL';
@@ -307,14 +308,16 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
           Write
         </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField={'actions'}
-          columnClassName={'yb-actions-cell'}
-          width="10%"
-          dataFormat={formatActionButtons}
-        >
-          Actions
-        </TableHeaderColumn>
+        {!universePaused &&
+          <TableHeaderColumn
+            dataField={'actions'}
+            columnClassName={'yb-actions-cell'}
+            width="10%"
+            dataFormat={formatActionButtons}
+          >
+            Actions
+          </TableHeaderColumn>
+        }
       </BootstrapTable>
     );
     return <Fragment>{tableListDisplay}</Fragment>;

@@ -293,6 +293,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the information about the specified table.
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
+  CHECKED_STATUS GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                        GetTableSchemaResponsePB* resp,
+                                        bool get_fully_applied_indexes = false);
 
   // Get the information about the specified colocated databsae.
   CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,

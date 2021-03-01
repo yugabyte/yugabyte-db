@@ -20,7 +20,7 @@ Each of these aggregate functions is invoked by using the same syntax:
 - _or_ the `GROUP BY` syntax
 - _or_ the `OVER` syntax
 
-Only the simple invocation is illustrated in this section. See, for example, the sections [`GROUP BY` syntax](../avg-count-max-min-sum/#group-by-syntax) and [`OVER` syntax](../avg-count-max-min-sum/#over-syntax) in the section [`avg(), count(), max(), min(), sum()`](../function-syntax-semantics/avg-count-max-min-sum/) for how to use these syntax patterns.
+Only the simple invocation is illustrated in this section. See, for example, the sections [`GROUP BY` syntax](../avg-count-max-min-sum/#group-by-syntax) and [`OVER` syntax](../avg-count-max-min-sum/#over-syntax) in the section [`avg(), count(), max(), min(), sum()`](../avg-count-max-min-sum/) for how to use these syntax patterns.
 
 ## Background
 
@@ -182,7 +182,7 @@ real              double precision
 
 ## Example
 
-The example uses the function `normal_rand()`, brought by the [tablefunc](../../../extensions/#tablefunc) extension, to populate the test table:
+The example uses the function `normal_rand()`, brought by the [tablefunc](../../../../extensions/#tablefunc) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;

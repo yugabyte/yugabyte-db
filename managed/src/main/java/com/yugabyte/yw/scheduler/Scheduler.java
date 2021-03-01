@@ -191,9 +191,10 @@ public class Scheduler {
       return;
     }
     if (universe.getUniverseDetails().updateInProgress ||
-      universe.getUniverseDetails().backupInProgress) {
+        universe.getUniverseDetails().backupInProgress ||
+        universe.getUniverseDetails().universePaused) {
       LOG.warn("Cannot run Backup task since the universe {} is currently {}",
-        taskParams.universeUUID.toString(), "in a locked state");
+               taskParams.universeUUID.toString(), "in a locked/paused state");
       return;
     }
     Backup backup = Backup.create(customerUUID, taskParams);
@@ -228,10 +229,11 @@ public class Scheduler {
     }
     Map<String, String> config = universe.getConfig();
     if (universe.getUniverseDetails().updateInProgress || config.isEmpty() ||
-      config.get(Universe.TAKE_BACKUPS).equals("false") ||
-      universe.getUniverseDetails().backupInProgress) {
+        config.get(Universe.TAKE_BACKUPS).equals("false") ||
+        universe.getUniverseDetails().backupInProgress ||
+        universe.getUniverseDetails().universePaused) {
       LOG.warn("Cannot run MultiTableBackup task since the universe {} is currently {}",
-        taskParams.universeUUID.toString(), "in a locked state");
+               taskParams.universeUUID.toString(), "in a locked/paused state");
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);

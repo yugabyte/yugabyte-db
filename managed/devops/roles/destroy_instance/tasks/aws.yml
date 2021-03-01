@@ -18,7 +18,7 @@
   ec2_remote_facts:
     region: "{{ cloud_region }}"
     filters:
-      instance-state-name: "running"
+      instance-state-name: ["running", "stopped"]
       "tag:Name": "{{ instance_name }}"
       private-ip-address: "{{ private_ip }}"
       # Don't really need this, if the name is guaranteed unique.

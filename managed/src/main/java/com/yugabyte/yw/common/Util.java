@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -310,11 +311,13 @@ public class Util {
   }
 
   public static List<File> listFiles(Path backupDir, String pattern) throws IOException {
-    return StreamSupport.stream(
-      Files.newDirectoryStream(backupDir, pattern).spliterator(), false)
-      .map(Path::toFile)
-      .sorted(File::compareTo)
-      .collect(Collectors.toList());
+    try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(backupDir, pattern)) {
+      return StreamSupport.stream(
+        directoryStream.spliterator(), false)
+        .map(Path::toFile)
+        .sorted(File::compareTo)
+        .collect(Collectors.toList());
+    }
   }
 
   public static void moveFile(Path source, Path destination) throws IOException {

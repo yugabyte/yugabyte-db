@@ -294,31 +294,41 @@ public class PlatformReplicationManager {
     replicationHelper.exportPlatformInstances(config, remoteAddr);
   }
 
-  private void sync() {
+  public void oneOffSync() {
+    if (replicationHelper.isBackupScheduleEnabled()) {
+      this.sync();
+    }
+  }
+
+  private synchronized void sync() {
     HighAvailabilityConfig.list().forEach(config -> {
-      List<PlatformInstance> remoteInstances = config.getRemoteInstances();
-      // No point in taking a backup if there is no one to send it to.
-      if (remoteInstances.isEmpty()) {
-        LOG.debug("Skipping HA cluster sync...");
+      try {
+        List<PlatformInstance> remoteInstances = config.getRemoteInstances();
+        // No point in taking a backup if there is no one to send it to.
+        if (remoteInstances.isEmpty()) {
+          LOG.debug("Skipping HA cluster sync...");
 
-        return;
+          return;
+        }
+
+        // Create the platform backup.
+        if (!this.createBackup()) {
+          LOG.error("Error creating platform backup");
+
+          return;
+        }
+
+        // Update local last backup time if creating the backup succeeded.
+        config.getLocal().updateLastBackup();
+
+        // Sync data to remote address.
+        remoteInstances.forEach(this::syncToRemoteInstance);
+
+        // Remove locally created backups since they have already been sent to followers.
+        cleanupCreatedBackups();
+      } catch (Exception e) {
+        LOG.error("Error running sync for HA config {}", config.getUUID(), e);
       }
-
-      // Create the platform backup.
-      if (!this.createBackup()) {
-        LOG.error("Error creating platform backup");
-
-        return;
-      }
-
-      // Update local last backup time if creating the backup succeeded.
-      config.getLocal().updateLastBackup();
-
-      // Sync data to remote address.
-      remoteInstances.forEach(this::syncToRemoteInstance);
-
-      // Remove locally created backups since they have already been sent to followers.
-      cleanupCreatedBackups();
     });
   }
 
