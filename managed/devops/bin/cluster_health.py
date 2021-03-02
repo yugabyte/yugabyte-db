@@ -405,8 +405,8 @@ class NodeChecker():
         output = self._remote_check_output(remote_cmd).strip()
 
         errors = []
-        if not (output.startswith('Connected to local cluster at {}:{}'
-                                  .format(self.node, self.ycql_port)) or
+        if not ('Connected to local cluster at {}:{}'
+                                .format(self.node, self.ycql_port) in output or
                 "AuthenticationFailed('Remote end requires authentication.'" in output):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
@@ -432,17 +432,17 @@ class NodeChecker():
         ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
         if not self.enable_tls_client:
             user = "postgres"
-            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {}'.format(
+            remote_cmd = "{} -h {} -p {} -U {} -c \"\conninfo\"".format(
                 ysqlsh, self.node, self.ysql_port, user)
         else:
             user = "yugabyte"
-            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {} {}'.format(
+            remote_cmd = "{} -h {} -p {} -U {} {} -c \"\conninfo\"".format(
                 ysqlsh, self.node, self.ysql_port, user, '"sslmode=require"')
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
         if not (output.startswith('You are connected to database "{}"'.format(user)) or
-                "Password for user {}:".format(user)):
+                "Password for user {}:".format(user) in output):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
