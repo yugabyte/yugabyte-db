@@ -384,6 +384,12 @@ FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
 	RelationClose(rel);
 }
 
+static const char*
+GetDebugQueryString()
+{
+	return debug_query_string;
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -407,6 +413,7 @@ YBInitPostgresBackend(
 		YBCPgCallbacks callbacks;
 		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
+		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 

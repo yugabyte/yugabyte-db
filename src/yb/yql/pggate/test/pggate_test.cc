@@ -28,7 +28,7 @@ namespace yb {
 namespace pggate {
 namespace {
 
-extern "C" void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
+void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
   CHECK(false) << "Not implemented";
 }
 
@@ -48,6 +48,10 @@ void ClearCurrentTestYbMemctx() {
     // We assume the memory context has actually already been deleted.
     global_test_memctx = nullptr;
   }
+}
+
+const char* GetDebugQueryStringStub() {
+  return "GetDebugQueryString not implemented in test";
 }
 
 } // namespace
@@ -118,6 +122,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCPgCallbacks callbacks;
   callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
+  callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   YBCInitPgGate(type_table, count, callbacks);
 
   // Don't try to connect to tserver shared memory in pggate tests.

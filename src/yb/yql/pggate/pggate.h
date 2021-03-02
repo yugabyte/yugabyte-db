@@ -510,14 +510,14 @@ class PgApiImpl {
   // Local tablet-server shared memory segment handle.
   std::unique_ptr<tserver::TServerSharedObject> tserver_shared_object_;
 
+  YBCPgCallbacks pg_callbacks_;
+
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   // Mapping table of YugaByte and PostgreSQL datatypes.
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
-
-  YBCPgCallbacks pg_callbacks_;
 };
 
 }  // namespace pggate
