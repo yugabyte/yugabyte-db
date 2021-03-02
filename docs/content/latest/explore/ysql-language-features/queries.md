@@ -830,28 +830,23 @@ SELECT employee_no, name, years_service FROM employees
   WHERE years_service > (SELECT AVG (years_service) FROM employees);
 ```
 
-YSQL executes the subquery first, then obtains the result and passes it to the outer query, and finally  executes the outer query.
+YSQL executes the subquery first, obtains the result and passes it to the outer query, and finally  executes the outer query.
 
-You can also create subqueries using the `IN` operator in the `WHERE` clause.
+You can use a subquery that is an input of the `EXISTS` operator which returns true if the subquery returns any rows. The `EXISTS` operator returns false in cases where the subquery does not return any rows. The `EXISTS` operator does not access the content of the rows; it only needs to know the number of rows returned by the subquery. 
 
-The following example obtains employees who have the employee number between 1221 and 1223:
+The `EXISTS` operator has the following syntax:
 
-```
-SELECT
-	inventory.film_id
-FROM
-	rental
-INNER JOIN inventory ON inventory.inventory_id = rental.inventory_id
-WHERE
-	return_date BETWEEN '2005-05-29'
-AND '2005-05-30';
+```sql
+EXISTS (SELECT 1 FROM some_table WHERE condition);
 ```
 
+The following example applies the `EXISTS` operator to two tables:  `employees` and  `salary`. The example shows how to use the `EXISTS` operator on the `employee_no` column in a manner similar to an inner join. This query can return no more than one row for each row in the `employees` table, even though there are corresponding rows in the `salary` table.
 
-
-
-
-
+```sql
+SELECT name FROM employees
+  WHERE EXISTS (SELECT 1 FROM salary
+                  WHERE salary.employee_no = employees.employee_no);
+```
 
 ## Recursive Queries and CTEs
 
