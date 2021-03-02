@@ -153,6 +153,48 @@ message ImportSnapshotMetaResponsePB {
   repeated TableMetaPB tables_meta = 3;
 }
 
+message TableIdentifiersPB {
+  repeated TableIdentifierPB tables = 1;
+}
+
+message SnapshotScheduleFilterPB {
+  oneof filter {
+    TableIdentifiersPB tables = 1;
+  }
+}
+
+message SnapshotScheduleOptionsPB {
+  optional SnapshotScheduleFilterPB filter = 1;
+  optional uint64 interval_sec = 2; // interval for taking snapshot in seconds.
+  optional uint64 retention_duration_sec = 3; // how long store snapshots in seconds.
+}
+
+message CreateSnapshotScheduleRequestPB {
+  optional SnapshotScheduleOptionsPB options = 1;
+}
+
+message CreateSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes snapshot_schedule_id = 2;
+}
+
+message ListSnapshotSchedulesRequestPB {
+  // When snapshot_schedule_id is not specified, all schedules are listed.
+  optional bytes snapshot_schedule_id = 1;
+}
+
+message SnapshotScheduleInfoPB {
+  optional bytes id = 1;
+  optional SnapshotScheduleOptionsPB options = 2;
+}
+
+message ListSnapshotSchedulesResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated SnapshotScheduleInfoPB schedules = 2;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -162,4 +204,8 @@ service MasterBackupService {
   rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
   rpc DeleteSnapshot(DeleteSnapshotRequestPB) returns (DeleteSnapshotResponsePB);
   rpc ImportSnapshotMeta(ImportSnapshotMetaRequestPB) returns (ImportSnapshotMetaResponsePB);
+  rpc CreateSnapshotSchedule(CreateSnapshotScheduleRequestPB)
+      returns (CreateSnapshotScheduleResponsePB);
+  rpc ListSnapshotSchedules(ListSnapshotSchedulesRequestPB)
+      returns (ListSnapshotSchedulesResponsePB);
 }
