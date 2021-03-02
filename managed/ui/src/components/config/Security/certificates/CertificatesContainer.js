@@ -23,6 +23,9 @@ const mapDispatchToProps = (dispatch) => {
     showCertificateDetailsModal: () => {
       dispatch(openDialog('certificateDetailsModal'));
     },
+    showConfirmDeleteModal: () => {
+      dispatch(openDialog('deleteCertificateModal'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
