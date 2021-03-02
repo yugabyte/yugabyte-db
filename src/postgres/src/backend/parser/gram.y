@@ -346,6 +346,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <ival>	opt_lock lock_type cast_context
 %type <ival>	vacuum_option_list vacuum_option_elem
 				analyze_option_list analyze_option_elem
+%type <defelt>	drop_option
 %type <boolean>	opt_or_replace
 				opt_grant_grant_option opt_grant_admin_option
 				opt_nowait opt_if_exists opt_with_data
@@ -439,6 +440,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				TriggerTransitions TriggerReferencing
 				publication_name_list
 				vacuum_relation_list opt_vacuum_relation_list
+				drop_option_list
 				yb_split_points yb_split_point
 
 %type <list>	group_by_list
@@ -11137,7 +11139,7 @@ AlterDatabaseSetStmt:
 
 /*****************************************************************************
  *
- *		DROP DATABASE [ IF EXISTS ]
+ *		DROP DATABASE [ IF EXISTS ] dbname [ [ WITH ] ( options ) ]
  *
  * This is implicitly CASCADE, no need for drop behavior
  *****************************************************************************/
@@ -11147,6 +11149,7 @@ DropdbStmt: DROP DATABASE database_name
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $3;
 					n->missing_ok = false;
+					n->options = NULL;
 					$$ = (Node *)n;
 				}
 			| DROP DATABASE IF_P EXISTS database_name
@@ -11154,10 +11157,48 @@ DropdbStmt: DROP DATABASE database_name
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $5;
 					n->missing_ok = true;
+					n->options = NULL;
+					$$ = (Node *)n;
+				}
+			| DROP DATABASE database_name opt_with '(' drop_option_list ')'
+				{
+					DropdbStmt *n = makeNode(DropdbStmt);
+					n->dbname = $3;
+					n->missing_ok = false;
+					n->options = $6;
+					$$ = (Node *)n;
+				}
+			| DROP DATABASE IF_P EXISTS database_name opt_with '(' drop_option_list ')'
+				{
+					DropdbStmt *n = makeNode(DropdbStmt);
+					n->dbname = $5;
+					n->missing_ok = true;
+					n->options = $8;
 					$$ = (Node *)n;
 				}
 		;
 
+drop_option_list:
+			drop_option
+				{
+					$$ = list_make1((Node *) $1);
+				}
+			| drop_option_list ',' drop_option
+				{
+					$$ = lappend($1, (Node *) $3);
+				}
+		;
+
+/*
+ * Currently only the FORCE option is supported, but the syntax is designed
+ * to be extensible so that we can add more options in the future if required.
+ */
+drop_option:
+			FORCE
+				{
+					$$ = makeDefElem("force", NULL, @1);
+				}
+		;
 
 /*****************************************************************************
  *
