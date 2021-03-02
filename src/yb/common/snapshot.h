@@ -20,6 +20,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
 YB_STRONGLY_TYPED_UUID(TxnSnapshotRestorationId);
+YB_STRONGLY_TYPED_UUID(SnapshotScheduleId);
 
 } // namespace yb
 
