@@ -835,3 +835,11 @@ Indexes:
     "test_alter_column_type_with_index_a_idx" lsm (a HASH)
 
 DROP TABLE test_alter_column_type_with_index;
+-- Test #5543 by exercising cases where ALTER command fails due to constraint
+-- check validation, causing rollback of ALTER operation on DocDB.
+CREATE TABLE foobar (key text, value text);
+INSERT INTO foobar VALUES ('key', 'value');
+ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
+ERROR:  column "v2" contains null values
+ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
+DROP TABLE foobar;
