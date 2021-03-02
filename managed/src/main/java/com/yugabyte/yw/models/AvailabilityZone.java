@@ -13,10 +13,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
@@ -110,8 +107,20 @@ public class AvailabilityZone extends Model {
     return find.query().where().eq("region_uuid", regionUUID).findList();
   }
 
-  public static AvailabilityZone getByCode(String code) {
-    return find.query().where().eq("code", code).findOne();
+  public static Set<AvailabilityZone> getAllByCode(String code) {
+    return find.query().where().eq("code", code).findSet();
+  }
+
+  public static AvailabilityZone getByCode(Provider provider, String code) {
+    return maybeGetByCode(provider, code)
+      .orElseThrow(() -> new RuntimeException(
+        "AZ by code: " + code + " and provider " + provider.code + " NOT FOUND "));
+  }
+
+  public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {
+    return getAllByCode(code).stream()
+      .filter(az -> az.getProvider().uuid.equals(provider.uuid))
+      .findFirst();
   }
 
   public static AvailabilityZone get(UUID zoneUuid) {

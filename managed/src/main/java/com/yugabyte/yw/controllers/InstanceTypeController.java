@@ -76,7 +76,7 @@ public class InstanceTypeController extends AuthenticatedController {
           LOG.debug("Full list of instance types: {}. Filtering it based on offerings.",
             instanceTypesMap.keySet());
           Map<Region, Set<String>> azByRegionMap = filterByZoneCodes.stream()
-            .map(AvailabilityZone::getByCode)
+            .map(code -> AvailabilityZone.getByCode(provider, code))
             .collect(groupingBy(az -> az.region, mapping(az -> az.code, toSet())));
 
           LOG.debug("AZs looked up from db {}", azByRegionMap);

@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
-
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -28,54 +27,35 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.ImportUniverseFormData.State;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
-
-
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
-import play.mvc.*;
+import play.mvc.Http;
+import play.mvc.Result;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class ImportController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ImportController.class);
@@ -111,7 +91,7 @@ public class ImportController extends AuthenticatedController {
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
-        formFactory.form(ImportUniverseFormData.class).bindFromRequest();
+      formFactory.form(ImportUniverseFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
@@ -150,7 +130,7 @@ public class ImportController extends AuthenticatedController {
           return ApiResponse.success(results);
         default:
           return ApiResponse.error(BAD_REQUEST,
-                              "Unknown current state: " + importForm.currentState.toString());
+            "Unknown current state: " + importForm.currentState.toString());
       }
     }
   }
@@ -193,7 +173,7 @@ public class ImportController extends AuthenticatedController {
           // Get the list of masters.
           // Note that at this point, we have only added the masters into the cluster.
           Set<NodeDetails> masterNodes =
-              taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
+            taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
           // Wait for new masters to be responsive.
           createWaitForServersTasks(masterNodes, ServerType.MASTER, RPC_TIMEOUT_MS);
           // Run the task.
@@ -261,7 +241,7 @@ public class ImportController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid master addresses list.");
     }
 
-    masterAddresses = masterAddresses.replaceAll("\\s+","");
+    masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
     //---------------------------------------------------------------------------------------------
     // Get the user specified master node ips.
@@ -269,7 +249,7 @@ public class ImportController extends AuthenticatedController {
     Map<String, Integer> userMasterIpPorts = getMastersList(masterAddresses);
     if (userMasterIpPorts == null) {
       return ApiResponse.error(BAD_REQUEST, "Could not parse host:port from masterAddresseses: " +
-                               masterAddresses);
+        masterAddresses);
     }
 
     //---------------------------------------------------------------------------------------------
@@ -289,13 +269,13 @@ public class ImportController extends AuthenticatedController {
     try {
       if (null == universe) {
         universe = createNewUniverseForImport(customer, importForm,
-                                            Util.getNodePrefix(customer.getCustomerId(),
-                                                               universeName),
-                                            universeName, userMasterIpPorts);
+          Util.getNodePrefix(customer.getCustomerId(),
+            universeName),
+          universeName, userMasterIpPorts);
       }
       Provider provider = Provider.get(customer.uuid, importForm.providerType);
       Region region = Region.getByCode(provider, importForm.regionCode);
-      AvailabilityZone zone = AvailabilityZone.getByCode(importForm.zoneCode);
+      AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
       taskParams = universe.getUniverseDetails();
       // Update the universe object and refresh it.
       universe = addServersToUniverse(
@@ -338,9 +318,9 @@ public class ImportController extends AuthenticatedController {
   private void setImportedState(Universe universe, ImportedState newState) {
     UniverseUpdater updater = new UniverseUpdater() {
       public void run(Universe universe) {
-         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-         universeDetails.importedState = newState;
-         universe.setUniverseDetails(universeDetails);
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.importedState = newState;
+        universe.setUniverseDetails(universeDetails);
       }
     };
     Universe.saveDetails(universe.universeUUID, updater, false);
@@ -355,16 +335,16 @@ public class ImportController extends AuthenticatedController {
     String masterAddresses = importForm.masterAddresses;
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.put("error", "Valid universe uuid needs to be set instead of " +
-                           importForm.universeUUID);
+        importForm.universeUUID);
       return ApiResponse.error(BAD_REQUEST, results);
     }
-    masterAddresses = masterAddresses.replaceAll("\\s+","");
+    masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
     Universe universe = null;
     try {
       universe = Universe.get(importForm.universeUUID);
     } catch (RuntimeException re) {
-      String errMsg= "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
+      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
       LOG.error(errMsg);
       results.put("error", errMsg);
       return ApiResponse.error(BAD_REQUEST, results);
@@ -373,7 +353,7 @@ public class ImportController extends AuthenticatedController {
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
       results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
-                           ImportedState.MASTERS_ADDED.name());
+        ImportedState.MASTERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -403,7 +383,7 @@ public class ImportController extends AuthenticatedController {
     // Find the provider, region and zone. These should have been created during master info update.
     Provider provider = Provider.get(customer.uuid, importForm.providerType);
     Region region = Region.getByCode(provider, importForm.regionCode);
-    AvailabilityZone zone = AvailabilityZone.getByCode(importForm.zoneCode);
+    AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
     // Update the universe object and refresh it.
     universe = addServersToUniverse(
       tservers_list, taskParams, provider,
@@ -424,7 +404,7 @@ public class ImportController extends AuthenticatedController {
           subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
           // Get the list of tservers.
           Set<NodeDetails> tserverNodes =
-              taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
+            taskParams().getNodesInCluster(taskParams().getPrimaryCluster().uuid);
           // Wait for tservers to be responsive.
           createWaitForServersTasks(tserverNodes, ServerType.TSERVER);
           // Run the task.
@@ -479,9 +459,9 @@ public class ImportController extends AuthenticatedController {
 
   /**
    * Finalizes the universe in the database by:
-   *   - setting up Prometheus config for metrics.
-   *   - adding the universe to the active list of universes for this customer.
-   *   - checking if node_exporter is reachable on all the nodes.
+   * - setting up Prometheus config for metrics.
+   * - adding the universe to the active list of universes for this customer.
+   * - checking if node_exporter is reachable on all the nodes.
    */
   private Result finishUniverseImport(ImportUniverseFormData importForm,
                                       Customer customer,
@@ -495,7 +475,7 @@ public class ImportController extends AuthenticatedController {
     try {
       universe = Universe.get(importForm.universeUUID);
     } catch (RuntimeException re) {
-      String errMsg= "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
+      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
       LOG.error(errMsg);
       results.put("error", errMsg);
       return ApiResponse.error(BAD_REQUEST, results);
@@ -504,7 +484,7 @@ public class ImportController extends AuthenticatedController {
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {
       results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
-                           ImportedState.TSERVERS_ADDED.name());
+        ImportedState.TSERVERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -551,12 +531,12 @@ public class ImportController extends AuthenticatedController {
       ObjectNode resp = apiHelper.getHeaderStatus(basePage + "/metrics");
       if (resp.isNull() || !resp.get("status").asText().equals("OK")) {
         nodeExporterIPsToError.put(nodeIP,
-            resp.isNull() ? "Invalid response" : resp.get("status").asText());
+          resp.isNull() ? "Invalid response" : resp.get("status").asText());
       } else {
         String body = apiHelper.getBody(basePage);
         if (!body.contains(NODE_EXPORTER_RESP)) {
           nodeExporterIPsToError.put(nodeIP,
-              basePage + "response does not contain '" + NODE_EXPORTER_RESP + "'");
+            basePage + "response does not contain '" + NODE_EXPORTER_RESP + "'");
         }
       }
     }
@@ -597,9 +577,9 @@ public class ImportController extends AuthenticatedController {
    * appropriate flag (master/tserver) on the existing node.
    */
   private Universe addServersToUniverse(Map<String, Integer> tserverList,
-                                         UniverseDefinitionTaskParams taskParams,
-                                         Provider provider, Region region, AvailabilityZone zone,
-                                         boolean isMaster) {
+                                        UniverseDefinitionTaskParams taskParams,
+                                        Provider provider, Region region, AvailabilityZone zone,
+                                        boolean isMaster) {
     // Update the node details and persist into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -615,7 +595,7 @@ public class ImportController extends AuthenticatedController {
           if (node == null) {
             // If the node is not present, create the node details and add it.
             node = createAndAddNode(universeDetails, entry.getKey(), provider, region,
-                                                  zone, index, cluster.userIntent.instanceType);
+              zone, index, cluster.userIntent.instanceType);
 
             node.isMaster = isMaster;
           }
@@ -648,7 +628,7 @@ public class ImportController extends AuthenticatedController {
   /**
    * This method queries the master leader and returns a list of tserver ip addresses.
    * TODO: We need to get the number of nodes information also from the end user and check that
-   *       count matches what master leader provides, to ensure no unreachable/failed tservers.
+   * count matches what master leader provides, to ensure no unreachable/failed tservers.
    */
   private Map<String, Integer> getTServers(String masterAddresses, ObjectNode results) {
     Map<String, Integer> tservers_list = new HashMap<>();
@@ -713,19 +693,13 @@ public class ImportController extends AuthenticatedController {
       provider = Provider.create(customer.uuid, importForm.providerType, importForm.cloudName);
     }
     // Find the region by the code given, or create a new provider if one does not exist.
-    Region region = Region.getByCode(provider, importForm.regionCode);
-    if (region == null) {
-      // TODO: Find real coordinates instead of assuming somwhere in US west.
-      double defaultLat = 37;
-      double defaultLong = -121;
-      region = Region.create(
-        provider, importForm.regionCode, importForm.regionName, null, defaultLat, defaultLong);
-    }
+    Region region = getOrCreateRegion(importForm, provider);
     // Find the zone by the code given, or create a new provider if one does not exist.
-    AvailabilityZone zone = AvailabilityZone.getByCode(importForm.zoneCode);
-    if (zone == null) {
-      zone = AvailabilityZone.create(region, importForm.zoneCode, importForm.zoneName, null);
-    }
+    AvailabilityZone zone =
+      AvailabilityZone.maybeGetByCode(provider, importForm.zoneCode)
+        .orElseGet(() ->
+          AvailabilityZone.create(region, importForm.zoneCode, importForm.zoneName, null)
+        );
 
     // Create the universe definition task params.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -741,7 +715,7 @@ public class ImportController extends AuthenticatedController {
 
     // Set the various details in the user intent.
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
+      new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = provider.uuid.toString();
     userIntent.regionList = new ArrayList<UUID>();
@@ -756,7 +730,7 @@ public class ImportController extends AuthenticatedController {
       ConfigHelper.ConfigType.SoftwareVersion).get("version");
 
     InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
-                        0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
+      0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
 
     // Placement info for imports default to the current cluster.
     PlacementInfo placementInfo = new PlacementInfo();
@@ -792,6 +766,18 @@ public class ImportController extends AuthenticatedController {
 
     // Return the universe we just created.
     return Universe.create(taskParams, customer.getCustomerId());
+  }
+
+  private Region getOrCreateRegion(ImportUniverseFormData importForm, Provider provider) {
+    Region region = Region.getByCode(provider, importForm.regionCode);
+    if (region == null) {
+      // TODO: Find real coordinates instead of assuming somwhere in US west.
+      double defaultLat = 37;
+      double defaultLong = -121;
+      region = Region.create(
+        provider, importForm.regionCode, importForm.regionName, null, defaultLat, defaultLong);
+    }
+    return region;
   }
 
   // TODO: (Daniel) - Do I need to add communictionPorts here?
@@ -831,13 +817,13 @@ public class ImportController extends AuthenticatedController {
 
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
+      new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
     // Create an task pool which can handle an unbounded number of tasks, while using an initial set
     // of threads that get spawned upto TASK_THREADS limit.
     executor =
-        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
-                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
-                               namedThreadFactory);
+      new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
+        TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
+        namedThreadFactory);
     LOG.trace("Started Import Thread Pool.");
   }
 }
