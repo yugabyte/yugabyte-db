@@ -765,7 +765,8 @@ YBCCreateIndex(const char *indexName,
 
 static void
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
-                        int* col, bool* needsYBAlter)
+                        int* col, bool* needsYBAlter,
+                        YBCPgStatement* rollbackHandle)
 {
 	Oid relationId = RelationGetRelid(rel);
 	switch (cmd->subtype)
@@ -801,6 +802,20 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			ReleaseSysCache(typeTuple);
 			*needsYBAlter = true;
 
+			/*
+			 * Prepare the handle that will be used to rollback
+			 * this change at the DocDB side. This is an add column
+			 * statement, thus the equivalent rollback operation
+			 * will be to drop the column.
+			 */
+			if (*rollbackHandle == NULL)
+			{
+				HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
+												  relationId,
+												  rollbackHandle));
+			}
+			HandleYBStatus(YBCPgAlterTableDropColumn(*rollbackHandle,
+													 colDef->colname));
 			break;
 		}
 
@@ -947,7 +962,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 }
 
 YBCPgStatement
-YBCPrepareAlterTable(List** subcmds, int subcmds_size, Oid relationId)
+YBCPrepareAlterTable(List** subcmds,
+					 int subcmds_size,
+					 Oid relationId,
+					 YBCPgStatement *rollbackHandle)
 {
 	/* Appropriate lock was already taken */
 	Relation rel = relation_open(relationId, NoLock);
@@ -972,7 +990,7 @@ YBCPrepareAlterTable(List** subcmds, int subcmds_size, Oid relationId)
 		foreach(lcmd, subcmds[cmd_idx])
 		{
 			YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd), rel, handle,
-			                        &col, &needsYBAlter);
+			                        &col, &needsYBAlter, rollbackHandle);
 		}
 	}
 	relation_close(rel, NoLock);

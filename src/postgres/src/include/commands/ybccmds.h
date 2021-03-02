@@ -78,7 +78,10 @@ extern void YBCCreateIndex(const char *indexName,
 
 extern void YBCDropIndex(Oid relationId);
 
-extern YBCPgStatement YBCPrepareAlterTable(List** subcmds, int subcmds_size, Oid relationId);
+extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
+										   int subcmds_size,
+										   Oid relationId,
+										   YBCPgStatement *rollbackHandle);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 

@@ -367,7 +367,9 @@ static void ATController(AlterTableStmt *parsetree,
 			 Relation rel, List *cmds, bool recurse, LOCKMODE lockmode);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing, LOCKMODE lockmode);
-static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode);
+static void ATRewriteCatalogs(List **wqueue,
+							  LOCKMODE lockmode,
+							  YBCPgStatement *rollbackHandle);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
@@ -3762,10 +3764,29 @@ ATController(AlterTableStmt *parsetree,
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue, lockmode);
+	YBCPgStatement rollbackHandle = NULL;
+	/*
+	 * ATRewriteCatalogs also executes changes to DocDB.
+	 * If Phase 3 fails, rollbackHandle will specify how to rollback the
+	 * changes done to DocDB.
+	*/
+	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandle);
 
 	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(parsetree, &wqueue, lockmode);
+	PG_TRY();
+	{
+		ATRewriteTables(parsetree, &wqueue, lockmode);
+	}
+	PG_CATCH();
+	{
+		/* Rollback the DocDB changes. */
+		if (rollbackHandle)
+		{
+			YBCExecAlterTable(rollbackHandle, RelationGetRelid(rel));
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 }
 
 /*
@@ -4082,7 +4103,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
+ATRewriteCatalogs(List **wqueue,
+				  LOCKMODE lockmode,
+				  YBCPgStatement *rollbackHandle)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4098,7 +4121,10 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 	 */
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
-	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds, AT_NUM_PASSES, main_relid);
+	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds,
+														AT_NUM_PASSES,
+														main_relid,
+														rollbackHandle);
 
 	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
