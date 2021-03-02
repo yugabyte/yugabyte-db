@@ -122,9 +122,7 @@ class DataCenterConfiguration extends Component {
                   <KubernetesProviderConfigurationContainer type="tanzu" params={params} />
                 </Tab>
                 <Tab eventKey="openshift" title={openshiftTabContent} key="openshift-tab" unmountOnExit={true}>
-                  <div className="h4">
-                    Coming Soon! Stay tuned for Red Hat OpenShift integration!
-                  </div>
+                  <KubernetesProviderConfigurationContainer type="openshift" params={params} />
                 </Tab>
                 <Tab eventKey="k8s" title={k8sTabContent} key="k8s-tab" unmountOnExit={true}>
                   <KubernetesProviderConfigurationContainer type="k8s" params={params} />

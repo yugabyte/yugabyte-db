@@ -382,17 +382,22 @@
   display: none !important;
 }
 
-#cloud-config-tab-panel-tab-azure:before {
+#cloud-config-tab-panel-tab-azure:before,
+#cloud-config-tab-panel-tab-openshift:before {
   content: 'BETA';
   position: absolute;
-  padding: 3px 7px;
+  padding: 2px 6px;
   top: 0;
   right: 0;
   background-color: $YB_ORANGE;
   border-radius: 4px;
   color: $YB_BACKGROUND;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 10px;
+}
+
+#cloud-config-tab-panel-tab-openshift:before {
+  content: 'ALPHA';
 }
 
 .action-bar {
