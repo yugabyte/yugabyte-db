@@ -622,6 +622,7 @@ def main():
         print(report)
     else:
         logging.error("Invalid argument combination")
+        sys.exit(1)
 
 
 if __name__ == '__main__':
