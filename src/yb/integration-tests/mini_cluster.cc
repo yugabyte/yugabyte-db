@@ -671,7 +671,7 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
       MiniCluster* cluster, const TableId& table_id) {
   std::vector<tablet::TabletPeerPtr> result;
   for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    if (peer->tablet()->metadata()->tablet_data_state() !=
+    if (peer->tablet_metadata()->tablet_data_state() !=
         tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       result.push_back(peer);
     }
@@ -929,6 +929,20 @@ Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
   }
 
   return Status::OK();
+}
+
+Result<int> ServerWithLeaders(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto* server = cluster->mini_tablet_server(i)->server();
+    if (!server) {
+      continue;
+    }
+    auto* ts_manager = server->tablet_manager();
+    if (ts_manager->GetLeaderCount() != 0) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, "No tablet server with leaders");
 }
 
 }  // namespace yb

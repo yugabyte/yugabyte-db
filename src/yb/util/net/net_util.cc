@@ -297,7 +297,6 @@ Status HostPort::ParseStrings(const string& comma_sep_addrs,
       comma_sep_addrs, separator, strings::SkipEmpty());
   std::vector<HostPort> host_ports;
   for (string& addr_string : addr_strings) {
-    StripWhiteSpace(&addr_string);
     HostPort host_port;
     RETURN_NOT_OK(host_port.ParseString(addr_string, default_port));
     host_ports.push_back(host_port);

@@ -26,6 +26,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 
+
 using namespace std::literals;
 
 namespace yb {
@@ -141,7 +142,8 @@ struct PGConn::CopyData {
 Result<PGConn> PGConn::Connect(
     const HostPort& host_port,
     const std::string& db_name,
-    const std::string& user) {
+    const std::string& user,
+    bool simple_query_protocol) {
   auto conn_info = Format(
       "host=$0 port=$1 user=$2",
       host_port.host(),
@@ -150,10 +152,12 @@ Result<PGConn> PGConn::Connect(
   if (!db_name.empty()) {
     conn_info = Format("dbname=$0 $1", PqEscapeLiteral(db_name), conn_info);
   }
-  return Connect(conn_info);
+  return Connect(conn_info, simple_query_protocol);
 }
 
-Result<PGConn> PGConn::Connect(const std::string& conn_str, CoarseTimePoint deadline) {
+Result<PGConn> PGConn::Connect(const std::string& conn_str,
+                               CoarseTimePoint deadline,
+                               bool simple_query_protocol) {
   auto start = CoarseMonoClock::now();
   for (;;) {
     PGConnPtr result(PQconnectdb(conn_str.c_str()));
@@ -161,7 +165,7 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str, CoarseTimePoint dead
     if (status == ConnStatusType::CONNECTION_OK) {
       LOG(INFO) << "Connected to PG (" << conn_str << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
-      return PGConn(std::move(result));
+      return PGConn(std::move(result), simple_query_protocol);
     }
     auto now = CoarseMonoClock::now();
     if (now >= deadline) {
@@ -171,17 +175,20 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str, CoarseTimePoint dead
   }
 }
 
-PGConn::PGConn(PGConnPtr ptr) : impl_(std::move(ptr)) {
+PGConn::PGConn(PGConnPtr ptr, bool simple_query_protocol)
+    : impl_(std::move(ptr)), simple_query_protocol_(simple_query_protocol) {
 }
 
 PGConn::~PGConn() {
 }
 
-PGConn::PGConn(PGConn&& rhs) : impl_(std::move(rhs.impl_)) {
+PGConn::PGConn(PGConn&& rhs)
+    : impl_(std::move(rhs.impl_)), simple_query_protocol_(rhs.simple_query_protocol_) {
 }
 
 PGConn& PGConn::operator=(PGConn&& rhs) {
   impl_ = std::move(rhs.impl_);
+  simple_query_protocol_ = rhs.simple_query_protocol_;
   return *this;
 }
 
@@ -219,8 +226,9 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
 
 Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
   return CheckResult(
-      PGResultPtr(
-          PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1)),
+      PGResultPtr(simple_query_protocol_
+          ? PQexec(impl_.get(), command.c_str())
+          : PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1)),
       command);
 }
 

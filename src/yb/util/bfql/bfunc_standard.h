@@ -330,6 +330,112 @@ CHECKED_STATUS GetUuid(RTypePtr result) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// Map::Map
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+  auto *qlmap = result->mutable_map_value();
+  RSTATUS_DCHECK(params.size()%2 == 0, RuntimeError, "Unexpected argument count for map::map");
+  for (int i = 0; i < params.size(); i++) {
+    *qlmap->add_keys() = params[i]->value();
+    *qlmap->add_values() = params[++i]->value();
+  }
+  return Status::OK();
+}
+
+// Set::Set
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+  auto *qlset = result->mutable_set_value();
+  for (int i = 0; i < params.size(); i++) {
+    *qlset->add_elems() = params[i]->value();
+  }
+  return Status::OK();
+}
+
+// List::List
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS ListConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+  auto *qllist = result->mutable_list_value();
+  for (int i = 0; i < params.size(); i++) {
+    *qllist->add_elems() = params[i]->value();
+  }
+  return Status::OK();
+}
+
+// Map::Frozen
+template<typename PType>
+std::map<PType, PType> MapFromVector(const std::vector<PType*>& params) {
+  std::map<PType, PType> ordered_values;
+  for (int vidx = 0; vidx < params.size(); vidx++) {
+    int kidx = vidx++;
+    ordered_values[*params[kidx]] = *params[vidx];
+  }
+  return ordered_values;
+}
+
+template<typename PType>
+std::map<PType, PType> MapFromVector(const std::vector<std::shared_ptr<PType>>& params) {
+  std::map<PType, PType> ordered_values;
+  for (int vidx = 0; vidx < params.size(); vidx++) {
+    int kidx = vidx++;
+    ordered_values[*params[kidx]] = *params[vidx];
+  }
+  return ordered_values;
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS MapFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+  auto map_elems = MapFromVector(params);
+
+  auto *frozen_value = result->mutable_frozen_value();
+  for (auto &elem : map_elems) {
+    *frozen_value->add_elems() = elem.first.value();
+    *frozen_value->add_elems() = elem.second.value();
+  }
+  return Status::OK();
+}
+
+// Set::Frozen.
+template<typename PType>
+std::set<PType> SetFromVector(const std::vector<PType*>& params) {
+  std::set<PType> ordered_values;
+  for (int i = 0; i < params.size(); i++) {
+    ordered_values.insert(*params[i]);
+  }
+  return ordered_values;
+}
+
+template<typename PType>
+std::set<PType> SetFromVector(const std::vector<std::shared_ptr<PType>>& params) {
+  std::set<PType> ordered_values;
+  for (int i = 0; i < params.size(); i++) {
+    ordered_values.insert(*params[i]);
+  }
+  return ordered_values;
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+  auto set_elems = SetFromVector(params);
+
+  auto *frozen_value = result->mutable_frozen_value();
+  for (auto &elem : set_elems) {
+    *frozen_value->add_elems() = elem.value();
+  }
+  return Status::OK();
+}
+
+// List::Frozen.
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS ListFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+  auto *frozen_value = result->mutable_frozen_value();
+  for (int i = 0; i < params.size(); i++) {
+    *frozen_value->add_elems() = params[i]->value();
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 } // namespace bfql
 } // namespace yb

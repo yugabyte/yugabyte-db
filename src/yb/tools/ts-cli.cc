@@ -109,6 +109,8 @@ DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
+DEFINE_string(client_node_name, "", "Client node name.");
+
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
 // Check that the value of argc matches what's expected, otherwise return a
@@ -226,7 +228,9 @@ Status TsAdminClient::Init() {
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   auto messenger_builder = MessengerBuilder("ts-cli");
   if (!FLAGS_certs_dir_name.empty()) {
-    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir_name));
+    const std::string& cert_name = FLAGS_client_node_name;
+    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(
+        FLAGS_certs_dir_name, server::UseClientCerts(!cert_name.empty()), cert_name));
     server::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());

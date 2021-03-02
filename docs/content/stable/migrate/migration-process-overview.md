@@ -1,9 +1,8 @@
 ---
-title: Migration Process
-headerTitle: Migration Process
-linkTitle: Migration Process
-description: Overview of the migration process.
-block_indexing: true
+title: Migration process overview
+headerTitle: Migration process overview
+linkTitle: Migration process overview
+description: Overview of the process for migrating data and applications from other databases to YugabyteDB.
 menu:
   stable:
     identifier: migration-overview
@@ -13,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes the general migration process from various RDBMS to YugabyteDB (YSQL API). 
+This page describes the general migration process from other RDBMS to YugabyteDB (YSQL API).
 
-The process of migrating to YugabyteDB largely looks similar to the process of migrating an application to PostgreSQL. There are some minor differences between YugabyteDB and PostgreSQL, which are covered in detail in the section on [migrating from PostgreSQL to YugabyteDB](../migrate-from-postgresql). The high-level process of moving from any source database to YugabyteDB is outlined below.
+The process of migrating to YugabyteDB largely looks similar to the process of migrating an application to PostgreSQL. There are some minor differences between YugabyteDB and PostgreSQL, which are covered in detail in [Migrate from PostgreSQL to YugabyteDB](../migrate-from-postgresql). The high-level process of moving from any source database to YugabyteDB is outlined below.
 
 ### Step 1. Migrate DDL (schema)
 

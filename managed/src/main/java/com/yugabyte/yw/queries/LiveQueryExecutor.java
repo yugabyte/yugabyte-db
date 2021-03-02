@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.queries;
 
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +13,7 @@ import com.yugabyte.yw.models.MetricConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
+import play.api.Play;
 import play.libs.Json;
 
 import java.util.*;
@@ -22,25 +22,20 @@ import java.util.concurrent.Callable;
 public class LiveQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
 
-  public enum QueryApi {
-    YSQL,
-    YCQL
-  }
-
-  private ApiHelper apiHelper;
+  private final ApiHelper apiHelper;
   // hostname can be either IP address or DNS
   private String hostName;
   private String nodeName;
   private int port;
-  private QueryApi apiType;
+  private QueryHelper.QueryApi apiType;
 
-  public LiveQueryExecutor(ApiHelper apiHelper, String nodeName, String hostName,
-                           int port, QueryApi api) {
-    this.apiHelper = apiHelper;
+  public LiveQueryExecutor(String nodeName, String hostName,
+                           int port, QueryHelper.QueryApi api) {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
     this.apiType = api;
+    this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
   }
 
   @Override
@@ -48,7 +43,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     String url = String.format("http://%s:%d/rpcz", hostName, port);
     try {
       JsonNode response = apiHelper.getRequest(url);
-      if (apiType == QueryApi.YSQL) {
+      if (apiType == QueryHelper.QueryApi.YSQL) {
         return processYSQLRowData(response);
       } else {
         return processYCQLRowData(response);
@@ -57,7 +52,10 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
       LOG.error("Exception while fetching url: {}; message: {}", url, e.getStackTrace());
       ObjectNode errorJson = Json.newObject();
       errorJson.put("error", e.getMessage());
-      errorJson.put("type", apiType == QueryApi.YSQL ? "ysql" : "ycql");
+      errorJson.put("type", apiType == QueryHelper.QueryApi.YSQL ?
+        "ysql" :
+        "ycql"
+      );
       return errorJson;
     }
   }

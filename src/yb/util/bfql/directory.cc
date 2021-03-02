@@ -289,6 +289,18 @@ const vector<BFDecl> kBFDirectory = {
     TSOpcode::kToJson },
   { "ServerOperator", "server_tojson", "OPCODE_FROZEN_TO_JSON", JSONB, { FROZEN },
     TSOpcode::kToJson },
+
+  // Collection and UDT constructors.
+  { "MapConstructor", "Map::Map", "OPCODE_MAP_CONSTRUCTOR", MAP, { TYPEARGS } },
+  { "SetConstructor", "Set::Set", "OPCODE_SET_CONSTRUCTOR", SET, { TYPEARGS } },
+  { "ListConstructor", "List::List", "OPCODE_LIST_CONSTRUCTOR", LIST, { TYPEARGS } },
+  { "MapConstructor", "Udt::Udt", "OPCODE_UDT_CONSTRUCTOR", MAP, { TYPEARGS } },
+
+  // Collection and UDT frozen constructor.
+  { "MapFrozen", "Map::Frozen", "OPCODE_MAP_FROZEN", FROZEN, { TYPEARGS } },
+  { "SetFrozen", "Set::Frozen", "OPCODE_SET_FROZEN", FROZEN, { TYPEARGS } },
+  { "ListFrozen", "List::Frozen", "OPCODE_LIST_FROZEN", FROZEN, { TYPEARGS } },
+  { "ListFrozen", "Udt::Frozen", "OPCODE_UDT_FROZEN", FROZEN, { TYPEARGS } },
 };
 
 } // namespace bfql

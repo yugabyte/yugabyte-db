@@ -64,6 +64,7 @@ class CreateKubernetesConfiguration extends Component {
           name: zone.zoneLabel,
           config: {
             STORAGE_CLASS: zone.storageClasses || 'standard',
+            KUBENAMESPACE: zone.namespace || undefined,
             OVERRIDES: zone.zoneOverrides,
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined
           }

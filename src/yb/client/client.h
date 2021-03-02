@@ -588,10 +588,12 @@ class YBClient {
       const std::string& table_id, const int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
 
+  // partition_list_version is an output-only parameter.
   CHECKED_STATUS GetTablets(
       const YBTableName& table_name,
       const int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+      PartitionListVersion* partition_list_version,
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
@@ -709,6 +711,11 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
+      const std::shared_ptr<const YBTable>& table,
+      const std::string& partition_key,
+      CoarseTimePoint deadline);
 
   std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
       const std::shared_ptr<const YBTable>& table,

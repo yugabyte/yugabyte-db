@@ -3,7 +3,6 @@ title: array_fill()
 linkTitle: array_fill()
 headerTitle: array_fill()
 description: array_fill()
-block_indexing: true
 menu:
   stable:
     identifier: array-fill

@@ -3,9 +3,6 @@ title: Client drivers for YSQL API
 headerTitle: Client drivers for YSQL API
 linkTitle: Client drivers for YSQL API
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
-aliases:
-  - /stable/reference/drivers/postgresql-jdbc-driver/
-block_indexing: true
 menu:
   stable:
     identifier: ysql-client-libraries
@@ -19,17 +16,17 @@ The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds up
 
 For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
 
-Yugabyte and third party API client library drivers listed below are supported for developing applications that connect to and interact with the YSQL API.
+Yugabyte and third party client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For help using these drivers with YSQL, ask questions in the [Slack community](https://yugabyte-db.slack.com).
+For help using these drivers with YSQL, ask your questions in the [Slack community](https://yugabyte-db.slack.com).
 
-If you encounter an issue or want to file an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
+If you encounter an issue or have an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
 ## C
 
 ### libpq
 
-[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library also supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256) that was added in PostgreSQL 10.
+[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library also supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details and documentation, see [`libpq - C Library` ](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11, which YugabyteDB is based on.
 
@@ -38,7 +35,7 @@ For a tutorial on building a sample C application with `libpq`, see [Build a C a
 #### To install the libpq client library
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
-  
+
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
@@ -47,7 +44,7 @@ $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 
 ### libpqxx
 
-The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. `libpqxx` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256) that was added in [PostgreSQL 10](https://www.postgresql.org/docs/release/10.0/).
+The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. `libpqxx` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details and documentation, see [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
 
@@ -82,7 +79,7 @@ $ make install
 
 ### Npgsql
 
-[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256) that was added in [PostgreSQL 10](https://www.postgresql.org/docs/release/10.0/).
+[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [`libpq`](#libpq) and supports the [[SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
@@ -102,7 +99,7 @@ To install Npgsql in your Visual Studio project, follow the steps below.
 
 ### Go PostgreSQL driver (pq)
 
-The [Go PostgreSQL driver package (`pq`)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package.  `pq` is not based on the [`libpq`](#libpq) client library, but supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
+The [Go PostgreSQL driver package (`pq`)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package.  `pq` is not based on the [`libpq`](#libpq) client library, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Go application with `pq`, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
 
@@ -120,7 +117,7 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 ### PostgreSQL JDBC Driver (PgJDBC)
 
-The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official PostgreSQL driver. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
+The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/) and click **YSQL-JDBC**.
 
@@ -133,6 +130,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 ### YugabyteDB JDBC Driver [BETA]
 
 The [YugabyteDB JDBC Driver](https://jdbc.postgresql.org/) is based on the [PostgreSQL JDBC Driver (PgJDBC)](#postgresql-jdbc-driver) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC to add support for features important for distributed SQL databases created in YugabyteDB universes: cluster awareness, connection pooling, and load balancing.
+Like PgJDBC, the YugabyteDB JDBC driver is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details, see [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) in this section.
 
@@ -140,7 +138,7 @@ For details, see [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) in this sec
 
 ### node-postgres
 
-[`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256) that was added in [PostgreSQL 10](https://www.postgresql.org/docs/release/10.0/).
+[`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using node-postgres, see the [node-postgres documentation].
 
@@ -158,7 +156,7 @@ $ npm install pg
 
 ### php-pgsql
 
-The [`php-pgsql`](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. `php-pgsql` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
+The [`php-pgsql`](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. `php-pgsql` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Node.js application with `php-pgsql`, see [Build a Node.js application](../../../quick-start/build-apps/php/ysql/).
 
@@ -170,7 +168,7 @@ To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring] in 
 
 ### psycopg2
 
-[Psycopg](https://www.psycopg.org/) is the popular PostgreSQL database adapter for the Python programming language. `psycopg2` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256) that was added in [PostgreSQL 10](https://www.postgresql.org/docs/release/10.0/). 
+[Psycopg](https://www.psycopg.org/) is the popular PostgreSQL database adapter for the Python programming language. `psycopg2` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on using `psycopg2`, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
@@ -181,14 +179,32 @@ For a tutorial on building a sample Python application that uses `psycopg2`, see
 To install the `psycopg2` binary package, run the following pip install` command:
 
 ```sh
-$ pip3 install psycopg2
+$ pip install psycopg2
+```
+
+### aiopg
+
+[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP
+-3156/tulip) framework. It wraps
+ asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see
+  [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
+
+For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application
+](../../../quick-start/build-apps/python/ysql-aiopg).
+
+#### Install
+
+To install the `aio` package, run the following `pip3 install` command:
+
+```sh
+pip3 install aiopg
 ```
 
 ## Ruby
 
 ### pg
 
-[`pg`](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. `pg` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication protocol](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256).
+[`pg`](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. `pg` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Ruby application with `pg`, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
 

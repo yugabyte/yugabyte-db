@@ -3,7 +3,6 @@ title: do_clean_start.sql
 linkTitle: do_clean_start.sql
 headerTitle: do_clean_start.sql
 description: do_clean_start.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: do-clean-start

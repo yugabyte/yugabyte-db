@@ -143,6 +143,8 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   TableHandle table_;
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTest, ::testing::Bool());
+
 void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
                                                 kTableName.namespace_type()));
@@ -742,6 +744,9 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
   virtual int tablet_count() override { return 1; }
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMultipleServersOneTablet,
+                        ::testing::Bool());
+
 TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
@@ -904,6 +909,8 @@ class CDCServiceTestMultipleServers : public CDCServiceTest {
   virtual int server_count() override { return 2; }
   virtual int tablet_count() override { return 4; }
 };
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMultipleServers, ::testing::Bool());
 
 TEST_P(CDCServiceTestMultipleServers, TestListTablets) {
   CDCStreamId stream_id;
@@ -1333,6 +1340,8 @@ class CDCServiceTestMaxRentionTime : public CDCServiceTest {
   const int kMaxSecondsToRetain = 30;
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMaxRentionTime, ::testing::Bool());
+
 TEST_P(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
@@ -1398,6 +1407,9 @@ class CDCServiceTestDurableMinReplicatedIndex : public CDCServiceTest {
     CDCServiceTest::SetUp();
   }
 };
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestDurableMinReplicatedIndex,
+                        ::testing::Bool());
 
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDurable) {
   CDCStreamId stream_id;
@@ -1524,6 +1536,8 @@ class CDCLogAndMetaIndex : public CDCServiceTest {
   }
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCLogAndMetaIndex, ::testing::Bool());
+
 TEST_P(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   constexpr int kNStreams = 5;
 
@@ -1581,6 +1595,8 @@ class CDCLogAndMetaIndexReset : public CDCLogAndMetaIndex {
     CDCLogAndMetaIndex::SetUp();
   }
 };
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCLogAndMetaIndexReset, ::testing::Bool());
 
 // Test that when all the streams for a specific tablet have been deleted, the log and meta
 // cdc min replicated index is reset to max int64.
@@ -1683,6 +1699,7 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
   void GetFirstTabletIdAndLeaderPeer(TabletId* tablet_id, int* leader_idx, int timeout_secs);
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestThreeServers, ::testing::Bool());
 
 // Sometimes leadership takes a while. Keep retrying until timeout_secs seconds have elapsed.
 void CDCServiceTestThreeServers::GetFirstTabletIdAndLeaderPeer(TabletId* tablet_id,
@@ -1740,17 +1757,9 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
   LOG(INFO) << "Created cdc stream " << stream_id;
 
-  GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5);
-  LOG(INFO) << "GetChanges request completed successfully";
-
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  // Check that the index hasn't been updated in any of the followers.
+  // Check that the index hasn't been updated in any of the peers.
   for (int idx = 0; idx < server_count(); idx++) {
-    if (idx == leader_idx) {
-      // This TServer is shutdown for now.
-      continue;
-    }
-
     if (cluster_->mini_tablet_server(idx)->server()->tablet_manager()->
         LookupTablet(tablet_id, &tablet_peer)) {
       ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64>::max());
@@ -1779,9 +1788,6 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
     return !has_error;
   }, MonoDelta::FromSeconds(180), "Wait until cdc state table can take writes."));
 
-  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
-  LOG(INFO) << "Done sleeping";
-
   std::unique_ptr<CDCServiceProxy> cdc_proxy;
   ASSERT_OK(WaitFor([&](){
     for (int idx = 0; idx < server_count(); idx++) {
@@ -1799,6 +1805,9 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
     }
     return false;
   }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+
+  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
+  LOG(INFO) << "Done sleeping";
 
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 5);
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 5);

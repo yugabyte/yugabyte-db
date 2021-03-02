@@ -28,6 +28,8 @@ import com.yugabyte.yw.models.Universe;
 @RunWith(MockitoJUnitRunner.class)
 public class AlertManagerTest extends FakeDBApplication {
 
+  private static final String TEST_STATE = "test state";
+
   private static final String ALERT_TEST_MESSAGE = "Test message";
 
   private Customer defaultCustomer;
@@ -45,15 +47,17 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendEmail_DoesntFail_UniverseRemoved() throws MessagingException {
-    doTestSendEmail(UUID.randomUUID(), String.format("Common failure for customer '%s':\n%s.",
-        defaultCustomer.name, ALERT_TEST_MESSAGE));
+    doTestSendEmail(UUID.randomUUID(),
+        String.format("Common failure for customer '%s', state: %s\nFailure details:\n\n%s.",
+            defaultCustomer.name, TEST_STATE, ALERT_TEST_MESSAGE));
   }
 
   @Test
   public void testSendEmail_UniverseExists() throws MessagingException {
     Universe u = ModelFactory.createUniverse();
     doTestSendEmail(u.universeUUID,
-        String.format("Common failure for universe '%s':\n%s.", u.name, ALERT_TEST_MESSAGE));
+        String.format("Common failure for universe '%s', state: %s\nFailure details:\n\n%s.",
+            u.name, TEST_STATE, ALERT_TEST_MESSAGE));
   }
 
   private void doTestSendEmail(UUID universeUUID, String expectedContent)
@@ -68,7 +72,7 @@ public class AlertManagerTest extends FakeDBApplication {
         .thenReturn(Collections.singletonList(destination));
     when(emailHelper.getSmtpData(defaultCustomer.uuid)).thenReturn(smtpData);
 
-    am.sendEmail(alert, "test state");
+    am.sendEmail(alert, TEST_STATE);
 
     verify(emailHelper, times(1)).sendEmail(eq(defaultCustomer), anyString(), eq(destination),
         eq(smtpData),

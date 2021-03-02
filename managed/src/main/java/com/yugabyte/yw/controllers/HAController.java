@@ -12,10 +12,9 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -109,7 +108,7 @@ public class HAController extends AuthenticatedController {
       }
 
       // Stop the backup schedule.
-      replicationManager.stop();
+      replicationManager.stopAndDisable();
       HighAvailabilityConfig.delete(configUUID);
 
       return ok();

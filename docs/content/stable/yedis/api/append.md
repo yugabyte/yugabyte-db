@@ -2,14 +2,10 @@
 title: APPEND
 linkTitle: APPEND
 description: APPEND
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2010
-aliases:
-  - /stable/api/redis/append
-  - /stable/api/yedis/append
 isTocNested: true
 showAsideToc: true
 ---

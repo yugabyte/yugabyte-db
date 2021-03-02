@@ -2,14 +2,10 @@
 title: ZRANGEBYSCORE
 linkTitle: ZRANGEBYSCORE
 description: ZRANGEBYSCORE
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2520
-aliases:
-  - /stable/api/redis/zrangebyscore
-  - /stable/api/yedis/zrangebyscore
 isTocNested: true
 showAsideToc: true
 ---

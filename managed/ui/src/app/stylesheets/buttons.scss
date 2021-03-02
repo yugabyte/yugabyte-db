@@ -532,6 +532,11 @@ pre {
     background-color: #1890ff;
     border-color: #1890ff;
 
+    &.disabled {
+      background-color: $YB_GRAY_BORDER;
+      border-color: $YB_GRAY_BORDER;
+    }
+
     &:after {
       opacity: 1;
       -webkit-transform: rotate(45deg) scale(1) translate(-50%,-50%);

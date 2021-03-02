@@ -127,10 +127,11 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [zhaoalex](https://github.com/zhaoalex)
 * [dcomingore](https://github.com/dcomingore)
 * [dotyjim-work](https://github.com/dotyjim-work)
-* [rjw-41x] (https://github.com/rjw-41x
-* [med-yb](https://github.com/med-yb
+* [rjw-41x](https://github.com/rjw-41x)
+* [med-yb](https://github.com/med-yb)
 * [mahendranbhat](https://github.com/mahendranbhat)
 * [nishantSharma459](https://github.com/nishantSharma459)
 * [gaurav061](https://github.com/gaurav061)
 * [sudheer](https://github.com/psudheer21)
 * [fitcs01](https://github.com/fitcs01)
+* [mrajcevic01](https://github.com/mrajcevic01)

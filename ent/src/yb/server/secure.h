@@ -33,7 +33,7 @@ class SecureContext;
 
 namespace server {
 
-YB_DEFINE_ENUM(SecureContextType, (kServerToServer)(kClientToServer));
+YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
 
 string DefaultRootDir(const FsManager& fs_manager);
 
@@ -52,10 +52,14 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, rpc::MessengerBuilder* builder);
 
-Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
-    const std::string& certs_dir, const std::string& name = std::string());
+YB_STRONGLY_TYPED_BOOL(UseClientCerts);
 
-void ApplySecureContext(rpc::SecureContext* context, rpc::MessengerBuilder* builder);
+Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
+    const std::string& certs_dir, UseClientCerts use_client_certs,
+    const std::string& node_name = std::string(),
+    const std::string& required_uid = std::string());
+
+void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder);
 
 } // namespace server
 } // namespace yb

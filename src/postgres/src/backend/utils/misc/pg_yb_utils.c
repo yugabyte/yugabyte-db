@@ -349,24 +349,6 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 }
 
 void
-HandleYBStatusWithOwner(YBCStatus status,
-												YBCPgStatement ybc_stmt,
-												ResourceOwner owner)
-{
-	if (!status)
-		return;
-
-	if (ybc_stmt)
-	{
-		if (owner != NULL)
-		{
-			ResourceOwnerForgetYugaByteStmt(owner, ybc_stmt);
-		}
-	}
-	HandleYBStatus(status);
-}
-
-void
 HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 {
 	if (!status)
@@ -923,9 +905,9 @@ YBDecrementDdlNestingLevel(bool success,
 	}
 }
 
-static bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                        bool *is_catalog_version_increment,
-                                        bool *is_breaking_catalog_change)
+bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
+                                 bool *is_catalog_version_increment,
+                                 bool *is_breaking_catalog_change)
 {
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;

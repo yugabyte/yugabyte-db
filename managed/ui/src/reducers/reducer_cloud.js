@@ -5,6 +5,7 @@ import {
   GET_REGION_LIST_RESPONSE,
   GET_PROVIDER_LIST,
   GET_PROVIDER_LIST_RESPONSE,
+  GET_INSTANCE_TYPE_LIST_LOADING,
   GET_INSTANCE_TYPE_LIST,
   GET_INSTANCE_TYPE_LIST_RESPONSE,
   RESET_PROVIDER_LIST,
@@ -126,6 +127,8 @@ export default function (state = INITIAL_STATE, action) {
       }
       return setSuccessState(state, 'regions', _.sortBy(action.payload.data, 'name'));
 
+    case GET_INSTANCE_TYPE_LIST_LOADING:
+      return setLoadingState(state, 'instanceTypes');
     case GET_INSTANCE_TYPE_LIST:
       return setLoadingState(state, 'instanceTypes', []);
     case GET_INSTANCE_TYPE_LIST_RESPONSE:

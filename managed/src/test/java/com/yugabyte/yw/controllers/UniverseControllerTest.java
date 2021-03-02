@@ -589,6 +589,37 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testK8sUniverseCreateOneClusterPerNamespacedProviderFailure() {
+    Provider p = ModelFactory.kubernetesProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    az1.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
+    InstanceType i = InstanceType.upsert(p.code, "small", 10, 5.5,
+                                         new InstanceType.InstanceTypeDetails());
+
+    ModelFactory.createUniverse("K8sUniverse1", customer.getCustomerId(), CloudType.kubernetes);
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", "K8sUniverse2")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString());
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Only one universe can be created with providers having "
+                     + "KUBENAMESPACE set in the AZ config.");
+  }
+
+  @Test
   public void testUniverseUpdateWithInvalidParams() {
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
@@ -2341,5 +2372,91 @@ public class UniverseControllerTest extends WithApplication {
     assertEquals("", UniverseController.removeEnclosingDoubleQuotes(""));
     // Null string
     assertEquals(null, UniverseController.removeEnclosingDoubleQuotes(null));
+  }
+
+  @Test
+  public void testUniversePauseValidUUID() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    // Add the cloud info into the universe.
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = CloudType.aws;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Save the updates to the universe.
+    Universe.saveDetails(u.universeUUID, updater);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/pause";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Pause)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniversePauseInvalidUUID() {
+    UUID randomUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + "/pause";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertBadRequest(result, "No universe found with UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseResumeValidUUID() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    // Add the cloud info into the universe.
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = CloudType.aws;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Save the updates to the universe.
+    Universe.saveDetails(u.universeUUID, updater);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/resume";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Resume)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseResumeInvalidUUID() {
+    UUID randomUUID = UUID.randomUUID();
+    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + "/resume";
+    Result result = doRequestWithAuthToken("POST", url, authToken);
+    assertBadRequest(result, "No universe found with UUID: " + randomUUID);
+    assertAuditEntry(0, customer.uuid);
   }
 }

@@ -3,7 +3,6 @@ title: array_position() and array_positions()
 linkTitle: array_position(), array_positions()
 headerTitle: array_position() and array_positions()
 description: array_position() and array_positions()
-block_indexing: true
 menu:
   stable:
     identifier: array-position
@@ -15,7 +14,7 @@ These functions require that the to-be-searched array is one-dimensional. They r
 
 Create _"view v"_ now. The examples below use it.
 ```plpgsql
-create view v as
+create or replace view v as
 select array[
     'sun', -- 1
     'mon', -- 2

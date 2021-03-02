@@ -369,7 +369,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
 }
 
 TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKeyScan) {
-  constexpr int kNumRows = 1000;
+  constexpr int kNumRows = 10000;
   constexpr int kDeleteRangeLow = 100;
   constexpr int kDeleteRangeHigh = 200;
 
@@ -390,7 +390,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
         vector<int>({1, row_num, 0, row_num}),
         HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
   }
-  auto get_num_visited_rows = [&]() {
+  auto get_num_rocksdb_iter_moves = [&]() {
     auto num_next = regular_db_options().statistics->getTickerCount(
       rocksdb::Tickers::NUMBER_DB_NEXT);
     auto num_seek = regular_db_options().statistics->getTickerCount(
@@ -398,7 +398,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
     return num_next + num_seek;
   };
 
-  auto visited_rows_before_delete = get_num_visited_rows();
+  auto rocksdb_iter_moves_before_delete = get_num_rocksdb_iter_moves();
 
   // Delete a subset of the partition
   yb::QLWriteRequestPB ql_writereq_pb;
@@ -416,15 +416,17 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
           HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0),
           kNonTransactionalOperationContext);
 
-  // During deletion, we expect to visit each docdb row in range plus the first row out of range. In
-  // this case, there is a docdb row for the liveness column and a docdb row for the value for each
-  // cql row.
+  // During deletion, we expect to move the RocksDB iterator *at most* once per docdb row in range,
+  // plus once for the first docdb row out of range. We say *at most*, because it's possible to have
+  // various combinations of Next() vs. Seek() calls. This simply tests that we do not have more
+  // than the maximum allowed based on the schema and the restriction that we should not scan
+  // outside the boundaries of the relevant deletion range.
   auto num_cql_rows_in_range = kDeleteRangeHigh - kDeleteRangeLow + 1;
-  auto num_docdb_rows_per_cql_row = 2;
-  auto num_docdb_rows_in_range = num_cql_rows_in_range * num_docdb_rows_per_cql_row;
-  ASSERT_EQ(
-      get_num_visited_rows() - visited_rows_before_delete,
-      num_docdb_rows_in_range + 1);
+  auto max_num_rocksdb_moves_per_cql_row = 3;
+  auto max_num_rocksdb_iter_moves = num_cql_rows_in_range * max_num_rocksdb_moves_per_cql_row;
+  ASSERT_LE(
+      get_num_rocksdb_iter_moves() - rocksdb_iter_moves_before_delete,
+      max_num_rocksdb_iter_moves + 1);
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {

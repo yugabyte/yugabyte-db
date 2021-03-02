@@ -3,7 +3,6 @@ title: do_populate_results.sql
 linkTitle: do_populate_results.sql
 headerTitle: do_populate_results.sql
 description: do_populate_results.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: do-populate-results

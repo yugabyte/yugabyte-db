@@ -2,17 +2,12 @@
 title: Deploy on Amazon Elastic Kubernetes Service (EKS) using Helm Chart
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Use Helm Chart to deploy a single-zone Kubernetes cluster on Amazon Elastic Kubernetes Service (EKS).
-block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz
     name: Amazon EKS
     identifier: k8s-eks-1
     weight: 622
-aliases:
-  - /stable/deploy/kubernetes/eks/
-  - /stable/deploy/kubernetes/eks/helm-chart/
-  - /stable/deploy/kubernetes/single-zone/eks/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -21,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/eks/helm-chart" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/eks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>

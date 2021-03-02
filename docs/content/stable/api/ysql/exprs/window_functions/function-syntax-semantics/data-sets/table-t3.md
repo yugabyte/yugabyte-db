@@ -2,8 +2,7 @@
 title: table t3
 linkTitle: table t3
 headerTitle: Create and populate table t3
-description: Creates and populate table t3 with data that allows the demonstration of the YSQL's window functions.
-block_indexing: true
+description: Creates and populate table t3 with data that allows the demonstration of the YSQL window functions.
 menu:
   stable:
     identifier: table-t3
