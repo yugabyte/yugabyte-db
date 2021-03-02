@@ -14,7 +14,7 @@
 #include "yb/master/restoration_state.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
