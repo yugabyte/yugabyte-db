@@ -559,6 +559,15 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
+    
+    // In case where TServer process reboots, we need to reload the wal file size into the metric,
+    // otherwise we do nothing
+    if (metrics_ && metrics_->wal_size->value() == 0) {
+      std::for_each(segments.begin(), segments.end(),
+                    [this](const auto& segment) {
+                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
+    }
+
   }
 
   if (durable_wal_write_) {
@@ -599,6 +608,7 @@ Status Log::CloseCurrentSegment() {
   footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
 
   auto status = active_segment_->WriteFooterAndClose(footer_builder_);
+
   if (status.ok() && metrics_) {
       metrics_->wal_size->IncrementBy(active_segment_->Size());
   } 
