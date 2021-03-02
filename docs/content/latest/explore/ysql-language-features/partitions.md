@@ -30,7 +30,7 @@ YSQL supports the following types of partitioning:
 
 ## Declarative Table Partitioning
 
-YSQL allows you to specify how exactly to divide a table. You provide a partitioning method and partition key consisting of a list of columns or expressions. The divided table is called a partitioned table, and the resulting tables are called partitions. When you insert rows into a partitioned table, they are redirected to a partition depending on the value of the partition key.
+YSQL allows you to specify how exactly to divide a table. You provide a partitioning method and partition key consiting of a list of columns or expressions. The devided table is called a partitioned table, and the resulting tables are called partitions. When you insert rows into a partitioned table, they are redirected to a partition depending on the value of the partition key.
 
 You can partition partitions, in which case they woud have their own distinct indexes, constraints, and default values.
 

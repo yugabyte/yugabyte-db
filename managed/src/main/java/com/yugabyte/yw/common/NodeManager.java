@@ -20,6 +20,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -70,7 +72,9 @@ public class NodeManager extends DevopsBase {
     Precheck,
     Tags,
     InitYSQL,
-    Disk_Update
+    Disk_Update,
+    Pause,
+    Resume,
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -609,16 +613,37 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
         AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
-        commandArgs.add("--instance_type");
-        commandArgs.add(taskParam.instanceType);
-        commandArgs.add("--node_ip");
-        commandArgs.add(taskParam.nodeIP);
+        commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
         if (taskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(taskParam));
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         break;
       }
+      case Pause: {
+          if (!(nodeTaskParam instanceof PauseServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
+          }
+          PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
+          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
+        case Resume: {
+          if (!(nodeTaskParam instanceof ResumeServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
+          }
+          ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
+          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
       case Control: {
         if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
@@ -676,8 +701,15 @@ public class NodeManager extends DevopsBase {
       }
     }
     commandArgs.add(nodeTaskParam.nodeName);
-
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
       commandArgs, getCloudArgs(nodeTaskParam));
+  }
+
+  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType){
+    commandArgs.add("--instance_type");
+    commandArgs.add(instanceType);
+    commandArgs.add("--node_ip");
+    commandArgs.add(nodeIP);
+    return commandArgs;
   }
 }

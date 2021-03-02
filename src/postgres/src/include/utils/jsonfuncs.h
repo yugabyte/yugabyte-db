@@ -56,6 +56,8 @@ extern text *transform_json_string_values(text *json, void *action_state,
 										  JsonTransformStringValuesAction transform_action);
 
 /* JSON text manipulation functions */
+extern int json_get_int_value(text *json, char *key);
+
 extern text *get_json_array_element(text *json, int index);
 
 extern int get_json_array_length(text *json);

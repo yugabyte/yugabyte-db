@@ -7,13 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.SlowQueriesParams;
 import com.yugabyte.yw.models.MetricConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
+import play.api.Play;
 import play.libs.Json;
 
 import java.util.*;
@@ -22,8 +22,7 @@ import java.util.concurrent.Callable;
 public class SlowQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
 
-  @Inject
-  ApiHelper apiHelper;
+  private final ApiHelper apiHelper;
   // hostname can be either IP address or DNS
   private String hostName;
   private String nodeName;
@@ -34,6 +33,7 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
+    this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
   }
 
   @Override

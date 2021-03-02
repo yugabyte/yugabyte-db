@@ -53,7 +53,7 @@ showAsideToc: true
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 or 3 installed. 
+1. Verify that you have Python 2 or 3 installed. 
 
     ```sh
     $ python --version
@@ -63,7 +63,7 @@ showAsideToc: true
     Python 3.7.3
     ```
 
-3. `wget` or `curl` is available.
+1. `wget` or `curl` is available.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
@@ -73,7 +73,7 @@ showAsideToc: true
     $ brew install wget
     ```
 
-4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
     $ launchctl limit maxfiles
@@ -125,17 +125,17 @@ showAsideToc: true
 
 ## Download YugabyteDB
 
-Download the YugabyteDB `tar.gz` file using the following `wget` command.
+1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
-```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.5.1.0-darwin.tar.gz
-```
+    ```sh
+    $ wget https://downloads.yugabyte.com/yugabyte-2.5.2.0-darwin.tar.gz
+    ```
 
-To unpack the archive file and change to the YugabyteDB home directory, run the following command.
+1. Extract the package and then change directories to the YugabyteDB home.
 
-```sh
-$ tar xvfz yugabyte-2.5.1.0-darwin.tar.gz && cd yugabyte-2.5.1.0/
-```
+    ```sh
+    $ tar xvfz yugabyte-2.5.2.0-darwin.tar.gz && cd yugabyte-2.5.2.0/
+    ```
 
 ## Configure
 

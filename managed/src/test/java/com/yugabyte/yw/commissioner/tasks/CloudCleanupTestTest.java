@@ -18,6 +18,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -47,11 +48,11 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     }
 
     zones.forEach(zone -> {
-      AvailabilityZone az = AvailabilityZone.getByCode(zone);
+      Optional<AvailabilityZone> az = AvailabilityZone.maybeGetByCode(defaultProvider, zone);
       if (exists) {
-        assertNotNull(az);
+        assertTrue(az.isPresent());
       } else {
-        assertNull(az);
+        assertFalse(az.isPresent());
       }
     });
   }

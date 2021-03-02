@@ -138,9 +138,6 @@ class PgApiImpl {
 
   void DeleteStatement(PgStatement *handle);
 
-  // Remove all values and expressions that were bound to the given statement.
-  CHECKED_STATUS ClearBinds(PgStatement *handle);
-
   // Search for type_entity.
   const YBCPgTypeEntity *FindTypeEntity(int type_oid);
 
@@ -330,7 +327,6 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-  CHECKED_STATUS DmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
       YBCPgExpr attr_value_end);
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,

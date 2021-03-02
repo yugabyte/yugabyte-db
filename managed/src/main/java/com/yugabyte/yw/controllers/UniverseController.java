@@ -3,6 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -15,8 +18,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import java.io.File;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -24,6 +30,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.*;
@@ -46,6 +53,8 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
+import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -115,6 +124,12 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   YcqlQueryExecutor ycqlQueryExecutor;
+
+  @Inject
+  private NodeUniverseManager nodeUniverseManager;
+
+  @Inject
+  private RuntimeConfigFactory runtimeConfigFactory;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -756,6 +771,49 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that downloads the log files for a particular node in a universe.  Synchronized due to
+   * potential race conditions.
+   * @param customerUUID ID of custoemr
+   * @param universeUUID ID of universe
+   * @param nodeName name of the node
+   * @return tar file of the tserver and master log files (if the node is a master server).
+   */
+  public synchronized
+    Result downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName)
+    throws IOException {
+    Universe universe;
+    NodeDetails node;
+    String storagePath, tarFileName, targetFile;
+    ShellResponse response;
+
+    LOG.debug("Retrieving logs for " + nodeName);
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+    node = universe.getNode(nodeName);
+    storagePath = runtimeConfigFactory.staticApplicationConf()
+      .getString("yb.storage.path");
+    tarFileName = nodeName + "-support_package.tar.gz";
+    targetFile = storagePath + "/" + tarFileName;
+    response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
+
+    if (response.code != 0) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+    }
+
+    File file = new File(targetFile);
+    InputStream is = new FileInputStream(file);
+    file.delete();
+
+    // return file to client
+    response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
+    return ok(is).as("application/x-compressed");
+  }
+
+
+  /**
    * API that queues a task to update/edit a universe of a given customer.
    * This does not wait for the completion.
    *
@@ -1032,6 +1090,90 @@ public class UniverseController extends AuthenticatedController {
     }
     return Results.status(OK, universe.toJson());
   }
+
+  public Result pause(UUID customerUUID, UUID universeUUID) {
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+    Customer customer = Customer.get(customerUUID);
+
+    LOG.info("Pause universe, customer uuid: {}, universe: {} [ {} ] ",
+            customerUUID, universe.name, universeUUID);
+
+    // Create the Commissioner task to pause the universe.
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.universeUUID = universeUUID;
+    // There is no staleness of a pause request. Perform it even if the universe has changed.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.customerUUID = customerUUID;
+    // Submit the task to pause the universe.
+    TaskType taskType = TaskType.PauseUniverse;
+
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info("Submitted pause universe for " + universeUUID + ", task uuid = " + taskUUID);
+
+    // Add this task uuid to the user universe.
+    CustomerTask.create(customer,
+      universe.universeUUID,
+      taskUUID,
+      CustomerTask.TargetType.Universe,
+      CustomerTask.TaskType.Pause,
+      universe.name);
+
+    LOG.info("Paused universe " + universeUUID + " for customer [" + customer.name + "]");
+
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    return ApiResponse.success(response);
+
+  }
+
+
+  public Result resume(UUID customerUUID, UUID universeUUID) {
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+    Customer customer = Customer.get(customerUUID);
+
+    LOG.info("Resume universe, customer uuid: {}, universe: {} [ {} ] ",
+            customerUUID, universe.name, universeUUID);
+
+    // Create the Commissioner task to resume the universe.
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.universeUUID = universeUUID;
+    // There is no staleness of a resume request. Perform it even if the universe has changed.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.customerUUID = customerUUID;
+    // Submit the task to resume the universe.
+    TaskType taskType = TaskType.ResumeUniverse;
+
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info("Submitted resume universe for " + universeUUID + ", task uuid = " + taskUUID);
+
+    // Add this task uuid to the user universe.
+    CustomerTask.create(customer,
+      universe.universeUUID,
+      taskUUID,
+      CustomerTask.TargetType.Universe,
+      CustomerTask.TaskType.Resume,
+      universe.name);
+
+    LOG.info("Resumed universe " + universeUUID + " for customer [" + customer.name + "]");
+
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
+    Audit.createAuditEntry(ctx(), request(), taskUUID);
+    return ApiResponse.success(response);
+
+  }
+
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
 

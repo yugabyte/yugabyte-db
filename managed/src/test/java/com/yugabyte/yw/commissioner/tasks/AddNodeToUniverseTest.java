@@ -146,7 +146,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = version;
     taskParams.nodeName = nodeName;
     taskParams.universeUUID = universe.universeUUID;
-    taskParams.azUuid = AvailabilityZone.getByCode(AZ_CODE).uuid;
+    taskParams.azUuid = AvailabilityZone.getByCode(defaultProvider, AZ_CODE).uuid;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
       return waitForTask(taskUUID);

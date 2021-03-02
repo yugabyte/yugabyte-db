@@ -68,6 +68,9 @@ message ChangeMetadataRequestPB {
 
   // Used for alter schema on a non-primary table (e.g. colocated user table).
   optional bytes alter_table_id = 12;
+
+  // Used to update schema of a colocated user table upon backfill completion.
+  optional bytes backfill_done_table_id = 13;
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
