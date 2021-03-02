@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import { Dropdown, MenuItem, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { useSlowQueriesApi, filterBySearchTokens } from './queriesHelper';
+import { useSlowQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
