@@ -1680,7 +1680,8 @@ Status ClusterAdminClient::ModifyPlacementInfo(
                                                             strings::SkipEmpty());
     if (replica_block.size() > 2) {
       return STATUS(InvalidCommand, "The number of replicas need to be specified alongside the"
-        "placement info following a single colon. Block: " + placement_info_split[iter] + " is invalid");
+        "placement info following a single colon. Block: " +
+        placement_info_split[iter] + " is invalid");
     }
     auto pb = live_replicas->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(block[0]);
