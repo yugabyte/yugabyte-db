@@ -9,10 +9,9 @@ import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { YBButtonLink } from '../common/forms/fields';
-import { useLiveQueriesApi, filterBySearchTokens } from './queriesHelper';
+import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
-
 import './LiveQueries.scss';
 
 const dropdownColKeys = {
@@ -123,7 +122,7 @@ const LiveQueriesComponent = ({ location }) => {
   useEffect(() => {
     // Default to showing YSQL if YSQL tables are present
     if (!type) {
-      if (ysqlQueries.length) {
+      if (ysqlQueries.length) {        
         setType('YSQL');
       } else if (ycqlQueries.length) {
         setType('YCQL');
@@ -145,7 +144,7 @@ const LiveQueriesComponent = ({ location }) => {
   }, [searchInput, searchTokens]);
 
   const getTserverLink = (cell, row) => {
-    const tserverPort = currentUniverse?.data?.universeDetails.communicationPorts.tserverHttpPort;
+    const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
     const href = getProxyNodeAddress(universeUUID, customer, row.privateIp, tserverPort);
 
     return (

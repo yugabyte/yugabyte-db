@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment } from 'react';
+import React from 'react';
 import { Link } from 'react-router';
 import { maxBy } from 'lodash';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { useSlowQueriesApi } from '../../queries/queriesHelper';
+import { useSlowQueriesApi } from '../../queries/helpers/queriesHelper';
 import { Highlighter } from '../../../helpers/Highlighter';
 import './MetricsPanel.scss';
 
