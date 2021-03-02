@@ -2824,10 +2824,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   TRACE("Wrote table to system table");
 
-  // For index table, insert index info in the indexed table.  However, for backwards compatibility,
-  // don't insert index info for YSQL tables when index backfill is disabled.
-  if ((req.has_index_info() || req.has_indexed_table_id()) &&
-      (index_backfill_enabled || !is_pg_table)) {
+  // For index table, insert index info in the indexed table.
+  if ((req.has_index_info() || req.has_indexed_table_id())) {
     if (index_backfill_enabled && !req.skip_index_backfill()) {
       if (is_pg_table) {
         // YSQL: start at some permission before backfill.  The real enforcement happens with
