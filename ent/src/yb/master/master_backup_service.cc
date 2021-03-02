@@ -16,6 +16,13 @@
 #include "yb/master/master.h"
 #include "yb/master/master_service_base-internal.h"
 
+#define YB_MASTER_BACKUP_SERVICE_FORWARD_METHOD(r, data, method) \
+  void MasterBackupServiceImpl::method(const BOOST_PP_CAT(method, RequestPB)* req, \
+                                       BOOST_PP_CAT(method, ResponsePB)* resp, \
+                                       rpc::RpcContext rpc) { \
+    HandleIn(req, resp, &rpc, &enterprise::CatalogManager::method); \
+  }
+
 namespace yb {
 namespace master {
 
@@ -26,41 +33,7 @@ MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
       MasterServiceBase(server) {
 }
 
-void MasterBackupServiceImpl::CreateSnapshot(const CreateSnapshotRequestPB* req,
-                                             CreateSnapshotResponsePB* resp,
-                                             RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateSnapshot);
-}
-
-void MasterBackupServiceImpl::ListSnapshots(const ListSnapshotsRequestPB* req,
-                                            ListSnapshotsResponsePB* resp,
-                                            RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshots);
-}
-
-void MasterBackupServiceImpl::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
-                                                       ListSnapshotRestorationsResponsePB* resp,
-                                                       RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshotRestorations);
-}
-
-void MasterBackupServiceImpl::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
-                                              RestoreSnapshotResponsePB* resp,
-                                              RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::RestoreSnapshot);
-}
-
-void MasterBackupServiceImpl::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
-                                             DeleteSnapshotResponsePB* resp,
-                                             RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteSnapshot);
-}
-
-void MasterBackupServiceImpl::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                                 ImportSnapshotMetaResponsePB* resp,
-                                                 RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ImportSnapshotMeta);
-}
+BOOST_PP_SEQ_FOR_EACH(YB_MASTER_BACKUP_SERVICE_FORWARD_METHOD, ~, YB_MASTER_BACKUP_SERVICE_METHODS)
 
 } // namespace master
 } // namespace yb

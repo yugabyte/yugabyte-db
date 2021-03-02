@@ -32,6 +32,7 @@ class EncryptionManager;
 
 class AddUniverseKeysRequestPB;
 class AddUniverseKeysResponsePB;
+class CreateSnapshotScheduleRequestPB;
 class GetUniverseKeyRegistryRequestPB;
 class GetUniverseKeyRegistryResponsePB;
 class HasUniverseKeyInMemoryRequestPB;
@@ -43,6 +44,7 @@ class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
 class ListSnapshotsResponsePB;
 class ListSnapshotRestorationsResponsePB;
+class ListSnapshotSchedulesResponsePB;
 class SnapshotCoordinatorContext;
 class SnapshotState;
 class SysRowEntries;

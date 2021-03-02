@@ -255,6 +255,7 @@ message SysRowEntry {
     SYS_CONFIG = 9;
     CDC_STREAM = 10;
     UNIVERSE_REPLICATION = 11;
+    SNAPSHOT_SCHEDULE = 12;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot

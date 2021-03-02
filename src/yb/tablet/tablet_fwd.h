@@ -38,6 +38,7 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class Operation;
 class SnapshotCoordinator;
 class SnapshotOperationState;
 class SplitOperationState;

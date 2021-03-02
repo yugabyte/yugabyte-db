@@ -71,6 +71,7 @@ class SnapshotState : public StateWithTablets {
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
+  bool ShouldUpdate(const SnapshotState& other) const;
 
  private:
   bool IsTerminalFailure(const Status& status) override;

@@ -700,7 +700,8 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
       case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT:
+      case SysRowEntry::SNAPSHOT:  FALLTHROUGH_INTENDED;
+      case SysRowEntry::SNAPSHOT_SCHEDULE:
         FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
     }
   }
@@ -1604,6 +1605,26 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
   VLOG(1) << "Deleting snapshot: " << snapshot->id()
           << " PB: " << l->mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
+}
+
+Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
+                                              CreateSnapshotScheduleResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(*req, rpc->GetClientDeadline()));
+  resp->set_snapshot_schedule_id(id.data(), id.size());
+  return Status::OK();
+}
+
+Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
+                                             ListSnapshotSchedulesResponsePB* resp,
+                                             rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+
+  return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
