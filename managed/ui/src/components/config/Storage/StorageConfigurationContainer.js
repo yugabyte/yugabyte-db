@@ -12,6 +12,7 @@ import {
   deleteCustomerConfigResponse
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
+import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -26,6 +27,10 @@ const mapDispatchToProps = (dispatch) => {
   return {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        }
         return dispatch(addCustomerConfigResponse(response.payload));
       });
     },
