@@ -5,10 +5,7 @@ linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
 headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
-aliases:
-  - /develop/
 section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: develop
@@ -17,6 +14,7 @@ menu:
 ---
 
 <div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
@@ -93,6 +91,7 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
+
   </div>
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">

@@ -93,8 +93,7 @@ public class TestReturnsClause extends BaseCQLTest {
     checkReturnStatus("UPDATE test_returns_status SET vl[2] = 'a' where h = 1 and r = 1",
                       columns,
                       false /* applied */,
-                      "Unable to replace items into list, expecting index 2, " +
-                          "reached end of list with size 0",
+                      "Unable to replace items in empty list.",
                       "NULL", "NULL", "NULL", "NULL");
 
     // Test success statement.

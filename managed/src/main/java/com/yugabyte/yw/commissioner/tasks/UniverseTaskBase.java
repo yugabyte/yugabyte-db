@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -55,17 +56,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess) {
-    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false);
+    return getLockingUniverseUpdater(expectedUniverseVersion, checkSuccess, false, false);
   }
 
   private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion,
                                                     boolean checkSuccess,
-                                                    boolean isForceUpdate) {
+                                                    boolean isForceUpdate,
+                                                    boolean isResumeOrDelete) {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         verifyUniverseVersion(expectedUniverseVersion, universe);
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        if (universeDetails.universePaused && !isResumeOrDelete) {
+          String msg = "UserUniverse " + taskParams().universeUUID + " is currently paused";
+          LOG.error(msg);
+          throw new RuntimeException(msg);
+        }
         // If this universe is already being edited, fail the request.
         if (!isForceUpdate && universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
@@ -202,14 +209,46 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *                                version. -1 implies always lock the universe.
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        false,
+        false
+    );
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true, 
+        false, 
+        isResumeOrDelete
+    );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
   public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
     LOG.info("Force lock universe {} at version {}.", taskParams().universeUUID,
              expectedUniverseVersion);
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true, true);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        true,
+        false
+    );
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  public Universe forceLockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
+    LOG.info("Force lock universe {} at version {}.", taskParams().universeUUID,
+             expectedUniverseVersion);
+    UniverseUpdater updater = getLockingUniverseUpdater(
+        expectedUniverseVersion,
+        true,
+        true,
+        isResumeOrDelete
+    );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
@@ -227,10 +266,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void unlockUniverseForUpdate() {
+    unlockUniverseForUpdate(null);
+  }
+
+  public void unlockUniverseForUpdate(String error) {
     if (!universeLocked) {
       LOG.warn("Unlock universe called when it was not locked.");
       return;
     }
+    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
@@ -244,6 +288,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = false;
+        universeDetails.errorString = err;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -300,11 +345,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Create a task to create default alert definitions on a universe.
+   */
+  public SubTaskGroup createUnivCreateAlertDefinitionsTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("FinalizeUniverseUpdate", executor);
+    CreateAlertDefinitions task = new CreateAlertDefinitions();
+    task.initialize(taskParams());
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to destroy nodes and adds it to the task queue.
    *
-   * @param nodes : a collection of nodes that need to be removed
+   * @param nodes         : a collection of nodes that need to be removed
    * @param isForceDelete if this is true, ignore ansible errors
-   * @param deleteNode if true, the node info is deleted from the universe db.
+   * @param deleteNode    if true, the node info is deleted from the universe db.
    */
   public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes,
                                                boolean isForceDelete,
@@ -312,10 +369,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
-      // a clean state to delete the node. Log it and skip the node.
-      if (node.cloudInfo.private_ip == null) {
+      // a clean state to delete the node. Log it, free up the onprem node
+      // so that the client can use the node instance to create another universe.
+      if (node.cloudInfo.private_ip == null){
         LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node delete.",
                                node.nodeName));
+        if (node.cloudInfo.cloud.equals(
+            com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
+          try {
+            NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
+            providerNode.clearNodeDetails();
+          } catch (Exception ex) {
+            LOG.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
+          }
+        }
         continue;
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
@@ -345,6 +412,88 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
+
+  
+  /**
+   * Creates a task list to pause the nodes and adds to the task queue.
+   *
+   * @param nodes : a collection of nodes that need to be paused.
+   */
+  public SubTaskGroup createPauseServerTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PauseServer", executor);
+    for (NodeDetails node : nodes) {
+      // Check if the private ip for the node is set. If not, that means we don't have
+      // a clean state to pause the node. Log it and skip the node.
+      if (node.cloudInfo.private_ip == null) {
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping pause.",
+                               node.nodeName));
+        continue;
+      }
+      PauseServer.Params params = new PauseServer.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().deviceInfo;
+      // Set the region name to the proper provider code so we can use it in the cloud API calls.
+      params.azUuid = node.azUuid;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the instance type
+      params.instanceType = node.cloudInfo.instance_type;
+      // Assign the node IP to pause the node.
+      params.nodeIP = node.cloudInfo.private_ip;
+      // Create the task to pause the server.
+      PauseServer task = new PauseServer();
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      // Add it to the task list.
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }  
+
+
+    
+  /**
+   * Creates a task list to resume nodes and adds it to the task queue.
+   *
+   * @param nodes : a collection of nodes that need to be resumed.
+   */
+  public SubTaskGroup createResumeServerTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ResumeServer", executor);
+    for (NodeDetails node : nodes) {
+      // Check if the private ip for the node is set. If not, that means we don't have
+      // a clean state to resume the node. Log it and skip the node.
+      if (node.cloudInfo.private_ip == null) {
+        LOG.warn(String.format("Node %s doesn't have a private IP. Skipping node resume.",
+                               node.nodeName));
+        continue;
+      }
+      ResumeServer.Params params = new ResumeServer.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().deviceInfo;
+      // Set the region name to the proper provider code so we can use it in the cloud API calls.
+      params.azUuid = node.azUuid;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the instance type
+      params.instanceType = node.cloudInfo.instance_type;
+      // Assign the node IP to resume the nodes.
+      params.nodeIP = node.cloudInfo.private_ip;
+      // Create the task to resume the server.
+      ResumeServer task = new ResumeServer();
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      // Add it to the task list.
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }  
+  
 
   /**
    * Create tasks to update the state of the nodes.
@@ -1082,6 +1231,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return exists;
   }
 
+  // Perform preflight checks on the given node.
+  public String performPreflightCheck(NodeDetails node, NodeTaskParams taskParams) {
+    // Create the process to fetch information about the node from the cloud provider.
+    NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
+    LOG.info("Running preflight checks for node {}.", taskParams.nodeName);
+    ShellResponse response = nodeManager.nodeCommand(
+        NodeManager.NodeCommandType.Precheck, taskParams);
+    if (response.code == 0) {
+      JsonNode responseJson = Json.parse(response.message);
+      for (JsonNode nodeContent: responseJson) {
+        if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
+          String errString = "Failed preflight checks for node "
+            + taskParams.nodeName + ":\n" + response.message;
+          LOG.error(errString);
+          return response.message;
+        }
+      }
+    }
+    return null;
+  }
+
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
@@ -1152,7 +1322,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Whether to increment the universe/cluster config version. Skip incrementing version if the
-   * task updating the universe metadata is create/destroy universe
+   * task updating the universe metadata is create/destroy/pause/resume universe
    *
    * @return true if we should increment the version, false otherwise
    */
@@ -1168,7 +1338,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     return !(task.getTarget().equals(CustomerTask.TargetType.Universe) &&
       (task.getType().equals(CustomerTask.TaskType.Create) ||
-        task.getType().equals(CustomerTask.TaskType.Delete)));
+        task.getType().equals(CustomerTask.TaskType.Delete) ||
+        task.getType().equals(CustomerTask.TaskType.Pause) ||
+        task.getType().equals(CustomerTask.TaskType.Resume)));
   }
 
   private synchronized static int getClusterConfigVersion(UUID universeUUID) {

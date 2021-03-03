@@ -81,7 +81,7 @@ If the snapshot creation is not complete, reuse this command until the state sho
 4. Create the backup of the YSQL metadata by running the following `ysql_dump --create` command:
 
 ```sh
-ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <output_file_path>
+ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
 ```
 
 A backup is created of the YSQL metadata, including the schema.
@@ -117,7 +117,7 @@ mkdir snapshot
 ```
 
 ```sh
-cp test.snapshot ysql.snapshot snapshot/
+cp test.snapshot ysql.schema.sql snapshot/
 ```
 
 8. Copy the tablet snapshots into the directory.
@@ -164,7 +164,7 @@ Let’s destroy the existing cluster, create a new cluster and import the snapsh
 1. Import the YSQL metadata.
 
 ```sh
-./bin/ysqlsh -h 127.0.0.1 --echo-all --file=snapshot/ysql.snapshot
+./bin/ysqlsh -h 127.0.0.1 --echo-all --file=snapshot/ysql.schema.sql
 ```
 
 2. Import the snapshot metadata.
@@ -210,6 +210,11 @@ cp -r snapshot/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/0d4b4935-2c95-4
 ```sh
 cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
 ```
+{{< note title="Note" >}}
+
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+
+{{< /note >}}
 
 4. Restore the snapshot.
 

@@ -35,18 +35,18 @@ Only Linux-based systems are supported by Replicated at this point. This Linux O
 
 The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
-- **Permissions necessary for Internet-connected host**
+**Permissions necessary for an Internet-connected host**
 
-- Connectivity to the Internet, either directly or via a http proxy
+- Connectivity to the Internet, either directly or via an HTTP proxy
 - Ability to install and configure [docker-engine](https://docs.docker.com/engine/)
 - Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry
 - Ability to pull Yugabyte container images from [Quay.io](https://quay.io/) container registry, this will be done by Replicated automatically
 
-- **Permissions necessary for airgapped host**
+**Permissions necessary for an airgapped host**
 
-An “airgapped” host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
+An _airgapped_ host has no path to inbound or outbound Internet traffic at all. For such hosts, the installation is performed as a `sudo` user.
 
-- **Additional requirements**
+**Additional requirements**
 
 For airgapped hosts, a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
@@ -69,8 +69,6 @@ The data node software is packaged into the Yugabyte Platform application. Yugab
 
 The YugabyteDB Admin Console creates a passwordless SSH connection to interact with the data nodes. It needs to have the access key file (like a PEM file) uploaded into it using the YugabyteDB Admin Console. The setup on each of the data nodes to configure password-less SSH is documented [here](../../deploy/#private-cloud-or-on-premises-data-centers).
 
-A REST API is also exposed by the YugabyteDB Admin Console to the end users in addition to the UI as another means of interacting with the data platform.
-
 ## Would we have access to the database machines that get spawned in public clouds?
 
 Yes, you would have access to all machines spawned. The machines are spawned by YugaWare. YugaWare runs on your machine in your AWS region/data center. If you have configured YugaWare to work with any public cloud like AWS or GCP, it will spawn YugabyteDB nodes using your credentials on your behalf. These machines run in your account, but are created and managed by YugaWare on your behalf. You can log on to these machines anytime, and YugaWare will additionally show you some stats graphed into a built in dashboard either per node or per universe.
@@ -86,7 +84,7 @@ You would need:
 
 Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships some synthetic load-testers with the product, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, nothing like it!
 
-## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up? 
+## Can we control the properties (such as VPC, IOPS, tenancy etc.) of the machines YugaWare is spinning up?
 
 Yes, you can control what Yugabyte Platform is spinning up. For example:
 
@@ -95,3 +93,7 @@ Yes, you can control what Yugabyte Platform is spinning up. For example:
 - You to choose dedicated IOPs EBS drives on AWS and specify the number of dedicated IOPS you need.  
 
 In general, we are be able to fill the gaps quickly if we are missing some features. But as a catch all, Yugabyte Platform allows creating these machines out of band and import these as "on-premise" install.  
+
+## How do I report a security vulnerability?
+
+Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.

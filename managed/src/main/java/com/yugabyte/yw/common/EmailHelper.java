@@ -22,13 +22,13 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
+import com.typesafe.config.Config;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.config.RuntimeConfig;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
@@ -109,7 +109,7 @@ public class EmailHelper {
   Properties smtpDataToProperties(Customer customer, SmtpData smtpData) {
     Properties prop = new Properties();
     try {
-      RuntimeConfig<Customer> runtimeConfig = configFactory.forCustomer(customer);
+      Config runtimeConfig = configFactory.forCustomer(customer);
 
       // According to official Java documentation all the parameters should be added
       // as String.
@@ -209,7 +209,7 @@ public class EmailHelper {
     if (smtpConfig != null) {
       smtpData = Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
     } else {
-      RuntimeConfig<Customer> runtimeConfig = configFactory.forCustomer(customer);
+      Config runtimeConfig = configFactory.forCustomer(customer);
       smtpData = new SmtpData();
       smtpData.smtpUsername = runtimeConfig.getString("yb.health.ses_email_username");
       smtpData.smtpPassword = runtimeConfig.getString("yb.health.ses_email_password");

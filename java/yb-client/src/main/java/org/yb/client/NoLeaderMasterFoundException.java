@@ -60,7 +60,7 @@ public final class NoLeaderMasterFoundException extends RecoverableException {
    * have failed, to aid in debugging the issue. If the list is non-empty, each exception's
    * 'toString()' message is appended to 'msg' and the last exception is used as the
    * cause for the exception.
-   * @param msg A message detailing why this exception occured.
+   * @param msg A message detailing why this exception occurred.
    * @param causes List of exceptions encountered when retrieving registration from individual
    *               masters.
    * @return An instantiated NoLeaderMasterFoundException which can be thrown.

@@ -936,6 +936,7 @@ stmt :
 			| DropOwnedStmt
 			| DropRoleStmt
 			| DropStmt
+			| DropTableSpaceStmt
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
@@ -1011,7 +1012,6 @@ stmt :
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ImportForeignSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4067,7 +4067,7 @@ ConstraintElem:
 				opt_c_include opt_definition OptConsTableSpace  ExclusionWhereClause
 				ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "EXCLUDE constraint", 1129);
+					parser_ybc_signal_unsupported(@1, "EXCLUDE constraint", 3944);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_EXCLUSION;
 					n->location = @1;
@@ -4314,7 +4314,7 @@ OptTableGroup:
 		;
 
 OptTableSpace:
-	     		TABLESPACE name { parser_ybc_signal_unsupported(@1, "TABLESPACE", 1129); $$ = $2; }
+	     		TABLESPACE name { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -4871,7 +4871,6 @@ OptTableSpaceOwner: OWNER RoleSpec		{ $$ = $2; }
 
 DropTableSpaceStmt: DROP TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "DROP TABLESPACE", 1153);
 					DropTableSpaceStmt *n = makeNode(DropTableSpaceStmt);
 					n->tablespacename = $3;
 					n->missing_ok = false;
@@ -4879,7 +4878,6 @@ DropTableSpaceStmt: DROP TABLESPACE name
 				}
 				|  DROP TABLESPACE IF_P EXISTS name
 				{
-					parser_ybc_signal_unsupported(@1, "DROP TABLESPACE", 1153);
 					DropTableSpaceStmt *n = makeNode(DropTableSpaceStmt);
 					n->tablespacename = $5;
 					n->missing_ok = true;
@@ -11940,9 +11938,6 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->whereClause = $6;
 					n->returningList = $7;
 					n->withClause = $1;
-					if (n->withClause != NULL) {
-						parser_ybc_not_support(@1, "WITH clause");
-					}
 					$$ = (Node *)n;
 				}
 		;

@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import java.lang.ReflectiveOperationException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,17 +8,13 @@ import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.models.*;
 import io.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
-
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExtraMigration;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.MetricConfig;
-import com.yugabyte.yw.models.Provider;
 
 import play.Application;
 import play.Configuration;
@@ -44,7 +39,7 @@ public class AppInit {
                  ConfigHelper configHelper, ReleaseManager releaseManager,
                  AWSInitializer awsInitializer, CustomerTaskManager taskManager,
                  YamlWrapper yaml, ExtraMigrationManager extraMigrationManager,
-                 TaskGarbageCollector taskGC, PlatformBackupManager platformBackupManager
+                 TaskGarbageCollector taskGC, PlatformReplicationManager replicationManager
   ) throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -91,10 +86,10 @@ public class AppInit {
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+          for (InstanceType instanceType : InstanceType.findByProvider(provider,
+            application.config())) {
             if (instanceType.instanceTypeDetails != null &&
-                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -131,9 +126,8 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
 
-      // TODO: (Daniel) - Integrate this with runtime settings once #5975 has landed
-      // Start periodic platform backups
-      platformBackupManager.start();
+      // Startup platform HA.
+      replicationManager.init();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

@@ -3,14 +3,10 @@ title: Integer and counter data types [YCQL]
 headerTitle: Integer and counter data types
 linkTitle: Integer and counter
 description: There are several different data types for integers of different value ranges. Integers can be set, inserted, incremented, and decremented.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1420
-aliases:
-  - /stable/api/cassandra/type_int
-  - /stable/api/ycql/type_int
 isTocNested: true
 showAsideToc: true
 ---

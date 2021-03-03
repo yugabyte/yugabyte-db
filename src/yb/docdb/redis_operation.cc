@@ -235,11 +235,9 @@ Result<RedisValue> GetRedisValue(
     return RedisValue{REDIS_TYPE_NONE};
   }
 
-  bool has_expired = false;
-  CHECK_OK(HasExpiredTTL(data.exp.write_ht, data.exp.ttl,
-                         iterator->read_time().read, &has_expired));
-  if (has_expired)
+  if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iterator->read_time().read)) {
     return RedisValue{REDIS_TYPE_NONE};
+  }
 
   if (exp)
     *exp = data.exp;
@@ -1190,11 +1188,11 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
 
   if (request_.pop_request().side() == REDIS_SIDE_LEFT) {
     indices.push_back(1);
-    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceRedisInList(doc_path, indices, new_value,
         data.read_time, data.deadline, redis_query_id(), Direction::kForward, 0, &value));
   } else {
     indices.push_back(card);
-    RETURN_NOT_OK(data.doc_write_batch->ReplaceInList(doc_path, indices, new_value,
+    RETURN_NOT_OK(data.doc_write_batch->ReplaceRedisInList(doc_path, indices, new_value,
         data.read_time, data.deadline, redis_query_id(), Direction::kBackward, card + 1, &value));
   }
 

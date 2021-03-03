@@ -18,13 +18,13 @@ Before trying the code in this section, make sure that you have created the supp
 
 - The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers#cr-actors-movies-edges-table-and-proc-sql)
 
-- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to chose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
+- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to choose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
 All of the `.sql` scripts that this section presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
-[Download `recursive-with-case-studies.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-with-case-studies/recursive-with-case-studies.zip).
+[Download `recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip).
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start the master-script that invokes all the child scripts that jointly instantiate the synthetic actors and movies data set and compute the Bacon Numbers on it. Simply start it in `ysqlsh`. You can run it time and again. It always finishes silently. You can see the report that it produces on a dedicated spool directory and confirm that your report is identical to the reference copy that is delivered in the zip-file.
 {{< /tip >}}
@@ -35,9 +35,7 @@ Here is a depiction of the synthetic data that this section uses:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-1.jpg)
 
-It has six nodes and nine edges.
-
-Before trying any of the code in this section, make sure that you have installed all the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Then use this script to insert the synthetic data:
+It has six nodes and nine edges. Use this script to insert the synthetic data:
 
 ##### `insert-synthetic-data.sql`
 
@@ -169,7 +167,7 @@ This is the result:
  Twelfth Night
 ```
 
-List the edges that have _"node_1 < node_1"_:
+List the edges that have _"node_1 < node_2"_:
 
 ```plpgsql
 select
@@ -227,7 +225,7 @@ Again, you see the expected nine edges:
  Steve  | James  | King Lear
 ```
 
-Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the `WITH` clause recursive substatement that finds the paths.
+Each result shows the same set of six nodes and nine edges that you see in the picture above. The section [Finding the paths in a general undirected cyclic graph](../../traversing-general-graphs/undirected-cyclic-graph/) explained that this denormalized representation of the edges in an undirected cyclic graph allows the most straightforward implementation of the recursive CTE that finds the paths.
 
 ## Find the paths
 
@@ -304,7 +302,7 @@ The five paths are highlighted in red here:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-2.jpg)
 
-Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to the produced by invoking in _without_ early pruning and then deriving the shortest paths:
+Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to that produced by invoking in _without_ early pruning and then deriving the shortest paths:
 
 ```plpgsql
 call find_paths('Emily', true);
@@ -327,7 +325,7 @@ This is the result:
       2             3   Emily > Chloe > Helen
       3             3   Emily > James > Steve
 ```
-The first and second result both contain _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
+The first result and the second result each contains _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
 
 ## Decorate the path edges with the list of movies that brought each edge
 

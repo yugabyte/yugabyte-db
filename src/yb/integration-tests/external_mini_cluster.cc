@@ -250,7 +250,9 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   const auto common_extra_flags = {
       "--enable_tracing"s,
       Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes),
-      (opts.log_to_file ? "--alsologtostderr"s : "--logtostderr"s)
+      (opts.log_to_file ? "--alsologtostderr"s : "--logtostderr"s),
+      (IsTsan() ? "--rpc_slow_query_threshold_ms=20000"s :
+          "--rpc_slow_query_threshold_ms=10000"s)
   };
   for (auto* extra_flags : {&opts_.extra_master_flags, &opts_.extra_tserver_flags}) {
     // Common default extra flags are inserted in the beginning so that they can be overridden by

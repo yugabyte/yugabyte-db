@@ -71,7 +71,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     rpc::MessengerBuilder messenger_builder("cdc-consumer");
 
     local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
-        "", "", server::SecureContextType::kServerToServer, &messenger_builder));
+        "", "", server::SecureContextType::kInternal, &messenger_builder));
 
     local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
   }
@@ -274,7 +274,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
             }
 
             auto secure_context_result = server::SetupSecureContext(
-                dir, "", "", server::SecureContextType::kServerToServer, &messenger_builder);
+                dir, "", "", server::SecureContextType::kInternal, &messenger_builder);
             if (!secure_context_result.ok()) {
               LOG(WARNING) << "Could not create secure context for " << uuid
                          << ": " << secure_context_result.status().ToString();

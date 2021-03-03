@@ -85,6 +85,9 @@ public class TableManager extends DevopsBase {
         backupTableParams = (BackupTableParams) taskParams;
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
+        if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
+          commandArgs.add("--ysql_enable_auth");
+        }
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
           if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
             for (int listIndex = 0; listIndex < backupTableParams.tableNameList.size(); listIndex++) {
@@ -234,6 +237,10 @@ public class TableManager extends DevopsBase {
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
     commandArgs.add(customerConfig.name.toLowerCase());
+    if(customerConfig.name.toLowerCase().equals("nfs")) {
+      commandArgs.add("--nfs_storage_path");
+      commandArgs.add(customerConfig.getData().get("BACKUP_LOCATION").asText());
+    }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));

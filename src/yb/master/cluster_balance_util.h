@@ -362,7 +362,7 @@ class PerTableLoadState {
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
       }
-      if (replica.second.processing_parent_data) {
+      if (replica.second.should_disable_lb_move) {
         RETURN_NOT_OK(AddParentDataTablet(tablet_id, ts_uuid));
         VLOG(1) << "Replica might have non relevant data: " << replica.second.ToString();
       } else {

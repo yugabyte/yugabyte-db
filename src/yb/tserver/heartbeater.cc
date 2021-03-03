@@ -382,6 +382,23 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
 
+  // Include the hybrid time of this tablet server in the heartbeat.
+  auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
+  if (hybrid_clock) {
+    req.set_ts_hybrid_time(hybrid_clock->Now().ToUint64());
+    // Also include the physical clock time of this tablet server in the heartbeat.
+    Result<PhysicalTime> now = hybrid_clock->physical_clock()->Now();
+    if (!now.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Failed to read clock: " << now.status();
+      req.set_ts_physical_time(0);
+    } else {
+      req.set_ts_physical_time(now->time_point);
+    }
+  } else {
+    req.set_ts_hybrid_time(0);
+    req.set_ts_physical_time(0);
+  }
+
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     master::TSHeartbeatResponsePB resp;

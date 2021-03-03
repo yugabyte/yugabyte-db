@@ -17,7 +17,6 @@ import javax.persistence.*;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -54,6 +53,12 @@ public class CustomerTask extends Model {
   public enum TaskType {
     @EnumValue("Create")
     Create,
+    
+    @EnumValue("Pause")
+    Pause,
+
+    @EnumValue("Resume")
+    Resume,
 
     @EnumValue("Update")
     Update,
@@ -115,12 +120,19 @@ public class CustomerTask extends Model {
     DisableEncryptionAtRest,
 
     @EnumValue("StartMaster")
-    StartMaster;
+    StartMaster,
+
+    @EnumValue("CreateAlertDefinitions")
+    CreateAlertDefinitions;
 
     public String toString(boolean completed) {
       switch (this) {
         case Create:
           return completed ? "Created " : "Creating ";
+        case Pause:
+          return completed ? "Paused " : "Pausing ";
+        case Resume:
+          return completed ? "Resumed " : "Resuming ";
         case Update:
           return completed ? "Updated " : "Updating ";
         case Delete:
@@ -150,6 +162,8 @@ public class CustomerTask extends Model {
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:
           return completed ? "Started Master process on " : "Starting Master process on ";
+        case CreateAlertDefinitions:
+          return completed ? "Created alert definitions " : "Creating alert definitions ";
         default:
           return null;
       }

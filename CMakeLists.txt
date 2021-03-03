@@ -72,8 +72,11 @@ else()
   set(BUILD_TESTS ON)
 endif()
 
-message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
 parse_build_root_basename()
+if("${YB_BUILD_TYPE}" STREQUAL "")
+  message(FATAL_ERROR "YB_BUILD_TYPE still not set after parse_build_root_basename")
+endif()
+message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
@@ -192,14 +195,17 @@ endif()
 
 INIT_COMPILER_TYPE_FROM_BUILD_ROOT()
 
-# TODO: this is complicated by the fact that we are trying to build third-party dependencies
-# here if necessary, and that the compiler is sometimes (e.g. Clang 7 with the Linuxbrew-based
-# setup) part of thoise third-party dependencies. Therefore, we don't yet know the exact compiler
-# version. If we know that we are not using a third-party setup where we build our own Clang,
-# we include the CompilerInfo module early.
+# TODO: this is complicated by the fact that we are trying to build third-party dependencies here if
+# necessary, and that the compiler is sometimes part of those third-party dependencies (e.g. Clang 7
+# with the Linuxbrew-based setup). Therefore, we don't yet know the exact compiler version. If we
+# know that we are not using a third-party setup where we build our own Clang, or if we are not
+# planning to invoke the third-party dependency build from here, we include the CompilerInfo module
+# early. We also always do that on macOS where we only use Clang.
 
 set(INCLUDE_COMPILER_INFO_EARLY FALSE)
-if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" OR NOT REBUILD_THIRDPARTY)
+if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" OR
+   NOT REBUILD_THIRDPARTY OR
+   APPLE)
   set(INCLUDE_COMPILER_INFO_EARLY TRUE)
 endif()
 if(INCLUDE_COMPILER_INFO_EARLY)
@@ -488,8 +494,7 @@ if (IS_CLANG)
   if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0" AND APPLE)
     ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
   endif()
-elseif("${COMPILER_FAMILY}" MATCHES "^gcc.*$")
-  # These flags are not understood by some versions.
+elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
   ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
@@ -748,7 +753,6 @@ add_subdirectory(src/yb/consensus)
 add_subdirectory(src/yb/master)
 add_subdirectory(src/yb/client)
 add_subdirectory(src/yb/integration-tests)
-add_subdirectory(src/yb/benchmarks)
 add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)

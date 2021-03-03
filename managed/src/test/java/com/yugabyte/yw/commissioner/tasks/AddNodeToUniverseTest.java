@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -57,6 +58,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
+  ShellResponse preflightSuccess;
   YBClient mockClient;
   ModifyMasterClusterConfigBlacklist modifyBL;
 
@@ -105,6 +107,10 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    preflightSuccess = new ShellResponse();
+    preflightSuccess.message = "{\"test\": true}";
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
+      .thenReturn(preflightSuccess);
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
   }
 
@@ -265,7 +271,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     mockWaits(mockClient, 3);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -281,7 +287,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 4);
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -306,7 +312,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, DEFAULT_NODE_NAME);
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, DEFAULT_NODE_NAME, 4);
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
         .collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -324,7 +330,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, "yb-tserver-0");
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, "yb-tserver-0", 4);
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
         .collect(Collectors.groupingBy(w -> w.getPosition()));

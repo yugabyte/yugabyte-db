@@ -88,7 +88,7 @@ class PgsqlWriteOperation :
   CHECKED_STATUS ApplyInsert(
       const DocOperationApplyData& data, IsUpsert is_upsert = IsUpsert::kFalse);
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data, const bool is_persist_needed);
   CHECKED_STATUS ApplyTruncateColocated(const DocOperationApplyData& data);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,

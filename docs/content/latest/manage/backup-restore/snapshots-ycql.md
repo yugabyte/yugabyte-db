@@ -281,11 +281,9 @@ After importing the `metadata file`, you see the following changes:
 
 Using these IDs, you can restore the previous `.snapshot` folders to the new paths.
 
-# todo add sample!
+{{< note title="Note" >}}
 
-{{< note title="Tip" >}}
-
-For each tablet, you need to copy the snapshots folder on all replicas.
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
 
 {{< /note >}}
 

@@ -48,6 +48,7 @@ ADD_YB_LIBRARY(yb_docdb_encoding
         )
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
 
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
@@ -80,6 +81,7 @@ set(DOCDB_SRCS
         redis_operation.cc
         shared_lock_manager.cc
         subdocument.cc
+        subdoc_reader.cc
         value.cc
         kv_debug.cc
         )

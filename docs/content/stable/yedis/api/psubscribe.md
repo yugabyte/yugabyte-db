@@ -2,14 +2,10 @@
 title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2554
-aliases:
-  - /stable/api/redis/psubscribe
-  - /stable/api/yedis/psubscribe
 isTocNested: true
 showAsideToc: true
 ---

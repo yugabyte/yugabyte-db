@@ -14,11 +14,13 @@
 #ifndef YB_DOCDB_DOC_WRITE_BATCH_H
 #define YB_DOCDB_DOC_WRITE_BATCH_H
 
+#include "yb/common/hybrid_time.h"
 #include "yb/util/enums.h"
 
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/doc_path.h"
@@ -26,6 +28,7 @@
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
+#include "yb/util/monotime.h"
 
 namespace rocksdb {
 class DB;
@@ -150,7 +153,7 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
-  CHECKED_STATUS ReplaceInList(
+  CHECKED_STATUS ReplaceRedisInList(
       const DocPath &doc_path,
       const std::vector<int>& indices,
       const std::vector<SubDocument>& values,
@@ -161,22 +164,17 @@ class DocWriteBatch {
       const int64_t start_index = 0,
       std::vector<string>* results = nullptr,
       MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl,
-      bool is_cql = false);
+      MonoDelta write_ttl = Value::kMaxTtl);
 
   CHECKED_STATUS ReplaceCqlInList(
       const DocPath &doc_path,
-      const std::vector<int>& indices,
-      const std::vector<SubDocument>& values,
+      const int index,
+      const SubDocument& value,
       const ReadHybridTime& read_ht,
       const CoarseTimePoint deadline,
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl) {
-    return ReplaceInList(doc_path, indices, values, read_ht, deadline, query_id,
-                         Direction::kForward, /* start index */ 0, /* results */ nullptr,
-                         default_ttl, write_ttl, /* is_cql */ true);
-  }
+      MonoDelta write_ttl = Value::kMaxTtl);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
@@ -252,10 +250,13 @@ class DocWriteBatch {
 };
 
 // Converts a RocksDB WriteBatch to a string.
+// line_prefix is the prefix to be added to each line of the result. Could be used for indentation.
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
     StorageDbType storage_db_type,
-    BinaryOutputFormat binary_output_format);
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    const std::string& line_prefix);
 
 }  // namespace docdb
 }  // namespace yb

@@ -15,6 +15,7 @@
 #ifndef YB_TABLET_TABLET_SPLITTER_H
 #define YB_TABLET_TABLET_SPLITTER_H
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -35,7 +36,10 @@ class TabletSplitter {
 
   // Implementation should apply tablet split Raft operation.
   // state is a context of operation to apply.
-  virtual CHECKED_STATUS ApplyTabletSplit(SplitOperationState* state) = 0;
+  // If raft_log is specified - it will be used as a source tablet Raft log (during tablet bootstrap
+  // tablet peer's Raft consensus is not yet initialized, so we pass raft_log explicitly).
+  virtual CHECKED_STATUS ApplyTabletSplit(
+      SplitOperationState* state, log::Log* raft_log = nullptr) = 0;
 };
 
 }  // namespace tablet

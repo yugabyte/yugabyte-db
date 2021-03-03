@@ -26,7 +26,7 @@ export const RegionListField: FC = () => {
   const provider = watch('provider');
   const { isFetching, data } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
-    api.getRegionsList,
+    () => api.getRegionsList(provider?.uuid),
     {
       enabled: !!provider?.uuid, // make sure query won't run when there's no provider defined
       onSuccess: (regions) => {

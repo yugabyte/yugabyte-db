@@ -155,7 +155,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
-            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
         auto shift = RandomUniformInt(-10, 10);
         std::chrono::milliseconds change(1 << std::abs(shift));
         if (shift < 0) {
@@ -183,7 +183,7 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
-            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
         server::SkewedClock::DeltaTime time_delta;
         if (iteration & 1) {
           time_delta = server::SkewedClock::DeltaTime();
@@ -254,7 +254,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     auto* tserver = cluster_->mini_tablet_server(0)->server();
     auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
     auto skewed_clock =
-        std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+        std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
     auto old_delta = skewed_clock->SetDelta(duration);
     std::this_thread::sleep_for(1s);
     skewed_clock->SetDelta(old_delta);

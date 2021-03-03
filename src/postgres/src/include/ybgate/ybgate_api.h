@@ -129,6 +129,14 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno, uint
  */
 YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
 
+/*
+ * Given a 'datum' of array type, split datum into individual elements of type 'type' and store
+ * the result in 'result_datum_array', with number of elements in 'nelems'. This will error out
+ * if 'type' doesn't match the type of the individual elements in 'datum'. Memory for
+ * 'result_datum_array' will be allocated in this function itself, pre-allocation is not needed.
+ */
+YbgStatus YbgSplitArrayDatum(uint64_t datum, int type, uint64_t **result_datum_array, int *nelems);
+
 #ifdef __cplusplus
 }
 #endif

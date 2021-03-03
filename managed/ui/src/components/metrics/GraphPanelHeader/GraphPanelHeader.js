@@ -227,7 +227,7 @@ class GraphPanelHeader extends Component {
   nodeItemChanged = (event) => {
     const newParams = this.state;
     newParams.nodeName = event.target.value;
-    this.setState({ nodeName: event.target.value });
+    this.setState({ nodeName: event.target.value, currentSelectedNode:event.target.value });
     this.updateUrlQueryParams(newParams);
   };
 
@@ -270,19 +270,25 @@ class GraphPanelHeader extends Component {
   };
 
   render() {
-    const { origin } = this.props;
+    const {
+      origin,
+      universe: { currentUniverse }
+    } = this.props;
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
         <span className="graph-filter-custom">
           <DateTimePicker
-            value={this.state.startMoment.toDate()}
+            placeholder = 'MMM dd, yyyy, hh:mm a'
+            defaultValue={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()}
           />
           &ndash;
           <DateTimePicker
-            value={this.state.endMoment.toDate()}
+            placeholder = 'MMM dd, yyyy, hh:mm a'
+            defaultValue={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()}
             min={this.state.startMoment.toDate()}
@@ -354,9 +360,9 @@ class GraphPanelHeader extends Component {
                     btnClass="btn btn-default refresh-btn"
                     onClick={this.refreshGraphQuery}
                   />
-                  {liveQueriesLink && 
+                  {liveQueriesLink && !universePaused &&
                     <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
-                      <i className="fa fa-search" /> See Live Queries
+                      <i className="fa fa-search" /> See Queries
                     </Link>
                   }
                 </div>
@@ -366,10 +372,12 @@ class GraphPanelHeader extends Component {
                   <div id="reportrange" className="pull-right">
                     {datePicker}
                     <Dropdown id="graph-filter-dropdown" pullRight={true}>
-                      <Dropdown.Toggle>
-                        <i className="fa fa-clock-o"></i>&nbsp;
-                        {this.state.filterLabel}
-                      </Dropdown.Toggle>
+                      {!universePaused &&
+                        <Dropdown.Toggle>
+                          <i className="fa fa-clock-o"></i>&nbsp;
+                          {this.state.filterLabel}
+                        </Dropdown.Toggle>
+                      }
                       <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                     </Dropdown>
                   </div>

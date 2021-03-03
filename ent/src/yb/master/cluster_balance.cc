@@ -94,20 +94,22 @@ Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* mov
   return false;
 }
 
-void ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
-  auto l = tablet->table()->LockForRead();
+Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
   const Options* options_ent = GetEntState()->GetEntOptions();
-  if (options_ent->type == LIVE &&
-      l->data().pb.has_replication_info() &&
-      l->data().pb.replication_info().has_live_replicas()) {
-    pb->CopyFrom(l->data().pb.replication_info().live_replicas());
-  } else if (options_ent->type == READ_ONLY &&
+  if (options_ent->type == LIVE) {
+    const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
+    pb->CopyFrom(replication_info.live_replicas());
+    return Status::OK();
+  }
+  auto l = tablet->table()->LockForRead();
+  if (options_ent->type == READ_ONLY &&
       l->data().pb.has_replication_info() &&
       !l->data().pb.replication_info().read_replicas().empty()) {
     pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->data().pb.replication_info()));
   } else {
     pb->CopyFrom(GetClusterPlacementInfo());
   }
+  return Status::OK();
 }
 
 Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
@@ -116,7 +118,7 @@ Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   if (!state_->placement_by_table_.count(table_id)) {
     PlacementInfoPB pb;
     {
-      PopulatePlacementInfo(tablet, &pb);
+      RETURN_NOT_OK(PopulatePlacementInfo(tablet, &pb));
     }
     state_->placement_by_table_[table_id] = std::move(pb);
   }

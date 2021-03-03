@@ -2,14 +2,10 @@
 title: INCR
 linkTitle: INCR
 description: INCR
-block_indexing: true
 menu:
   stable:
     parent: api-yedis
     weight: 2210
-aliases:
-  - /stable/api/redis/incr
-  - /stable/api/yedis/incr
 isTocNested: true
 showAsideToc: true
 ---

@@ -19,7 +19,7 @@ public class UserTaskDetails {
     Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
-    PreflightChecks(true),
+    PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
@@ -77,6 +77,12 @@ public class UserTaskDetails {
 
     // Starting Node
     StartingNode,
+
+    // Pausing universe
+    PauseUniverse,
+
+    // Resuming universe
+    ResumeUniverse,
 
     // Start master and tserver processes on a node
     StartingNodeProcesses,
@@ -149,20 +155,6 @@ public class UserTaskDetails {
 
     // Rotate Node Certs.
     RotatingCert;
-
-    private boolean alwaysRunAll;
-
-    SubTaskGroupType() {
-      this.alwaysRunAll = false;
-    }
-
-    SubTaskGroupType(boolean alwaysRunAll) {
-      this.alwaysRunAll = alwaysRunAll;
-    }
-
-    public boolean getAlwaysRunAll() {
-      return this.alwaysRunAll;
-    }
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -350,6 +342,14 @@ public class UserTaskDetails {
         title = "Updating number of nodes";
         description = "Update number of nodes.";
         break;
+      case PauseUniverse:
+          title = "Pause Universe";
+          description = "Pause the universe.";
+          break;
+      case ResumeUniverse:
+          title = "Resume Universe";
+          description = "Resume the universe.";
+          break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
         return null;

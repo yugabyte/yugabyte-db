@@ -96,6 +96,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // operation.
   public boolean updateSucceeded = true;
 
+  // This tracks whether the universe is in the paused state or not.
+  public boolean universePaused = false;
+
   // The next cluster index to be used when a new read-only cluster is added.
   public int nextClusterIndex = 1;
 
@@ -139,6 +142,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   public enum ClusterType {
     PRIMARY, ASYNC
+  }
+
+  /**
+   * Allowed states for an exposing service of a universe
+   */
+  public enum ExposingServiceState {
+    NONE, // Default, and means the universe was created before addition of the flag.
+    EXPOSED,
+    UNEXPOSED
   }
 
   /**
@@ -282,6 +294,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean enableVolumeEncryption = false;
 
     public boolean enableIPV6 = false;
+
+    // Flag to use if we need to deploy a loadbalancer/some kind of
+    // exposing service for the cluster.
+    // Defaults to NONE since that was the behavior before.
+    // NONE for k8s means it was enabled, NONE for VMs means disabled.
+    // Can eventually be used when we create loadbalancer services for
+    // our cluster deployments.
+    // Setting at user intent level since it can be unique across types of clusters.
+    public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
 
     public String awsArnString;
 

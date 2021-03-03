@@ -214,10 +214,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG(INFO) << "Tablet server successfully started.";
 
   std::unique_ptr<CallHome> call_home;
-  if (FLAGS_callhome_enabled) {
-    call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
-    call_home->ScheduleCallHome();
-  }
+  call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
+  call_home->ScheduleCallHome();
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {

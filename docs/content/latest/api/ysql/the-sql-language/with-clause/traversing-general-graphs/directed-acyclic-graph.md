@@ -1,8 +1,8 @@
 ---
-title: Using a WITH clause recursive substatement to traverse a directed acyclic graph
+title: Using a recursive CTE to traverse a directed acyclic graph
 headerTitle: Finding the paths in a directed acyclic graph
 linkTitle: directed acyclic graph
-description: This section shows how to use a WITH clause recursive substatement to traverse a directed acyclic graph.
+description: This section shows how to use a recursive CTE to traverse a directed acyclic graph.
 menu:
   latest:
     identifier: directed-acyclic-graph
@@ -39,7 +39,7 @@ Now create a simpler implementation of _"find_paths()"_ that omits the cycle pre
 ```plpgsql
 drop procedure if exists find_paths(text) cascade;
 
-create procedure find_paths(seed in text)
+create procedure find_paths(start_node in text)
   language plpgsql
 as $body$
 begin
@@ -51,17 +51,15 @@ begin
 
   with
     recursive paths(path) as (
-      select array[seed, node_2]
+      select array[start_node, node_2]
       from edges
-      where
-      node_1 = seed
+      where node_1 = start_node
 
       union all
 
       select p.path||e.node_2
-      from edges e, paths p
-      where
-      e.node_1 = terminal(p.path)
+      from edges e
+      inner join paths p on e.node_1 = terminal(p.path)
       )
   insert into raw_paths(path)
   select path
@@ -73,7 +71,7 @@ $body$;
 Find all the paths from _"n1"_ and create the filtered subset of shortest paths to the distinct terminal nodes:
 
 ```plpgsql
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 call restrict_to_shortest_paths('raw_paths', 'shortest_paths');
 ```
 
@@ -130,7 +128,7 @@ begin
     select distinct node_1 from edges
     where node_1 <> 'n1')
   loop
-    call find_paths(seed => node);
+    call find_paths(start_node => node);
     call restrict_to_shortest_paths('raw_paths', 'shortest_paths', append=>true);
   end loop;
 end;

@@ -136,6 +136,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.pg_prefix = None
         self.build_type = None
         self.postgres_src_dir = None
+        self.pg_config_root = None
         self.compiler_type = None
         self.env_vars_for_build_stamp = set()
 
@@ -198,6 +199,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.build_stamp_path = os.path.join(self.pg_build_root, 'build_stamp')
         self.pg_prefix = os.path.join(self.build_root, 'postgres')
         self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
+        self.pg_config_root = os.path.join(self.build_root, 'postgres', 'bin', 'pg_config')
         self.compiler_type = self.args.compiler_type
         self.openssl_include_dir = self.args.openssl_include_dir
         self.openssl_lib_dir = self.args.openssl_lib_dir
@@ -245,7 +247,6 @@ class PostgresBuilder(YbBuildToolBase):
         is_make_step = step == 'make'
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
-        self.set_env_var('YB_BUILD_ROOT', self.build_root)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
@@ -538,7 +539,8 @@ class PostgresBuilder(YbBuildToolBase):
 
         compile_commands_files = []
 
-        work_dirs = [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib')]
+        work_dirs = [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib'),
+                     os.path.join(self.pg_build_root, 'third-party-extensions')]
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
@@ -554,13 +556,18 @@ class PostgresBuilder(YbBuildToolBase):
 
                 run_program(['chmod', 'u+x', make_script_path])
 
+                pg_config = []
+                if 'third-party-extensions' in work_dir:
+                    pg_config = ['PG_CONFIG=' + self.pg_config_root]
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
 
                 make_result = run_program(
-                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True, error_ok=True
+                    make_cmd + pg_config, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
+                    error_ok=True
                 )
+
                 if make_result.failure():
                     make_result.print_output_to_stdout()
                     raise RuntimeError("PostgreSQL compilation failed")
@@ -571,8 +578,8 @@ class PostgresBuilder(YbBuildToolBase):
                             "generating the compilation database", work_dir)
                 else:
                     run_program(
-                        'make install', stdout_stderr_prefix='make_install',
-                        cwd=work_dir, shell=True, error_ok=True
+                        'make install' + ' ' + ''.join(pg_config),
+                        stdout_stderr_prefix='make_install', cwd=work_dir, shell=True, error_ok=True
                     ).print_output_and_raise_error_if_failed()
                     logging.info("Successfully ran make in the %s directory", work_dir)
 

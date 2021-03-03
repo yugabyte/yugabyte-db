@@ -85,32 +85,26 @@ public class ShellProcessHandler {
             LOG.debug("Starting proc (full cmd) - {} - logging stdout={}, stderr={}",
                 fullCommand, tempOutputFile.getAbsolutePath(),
                 tempErrorFile.getAbsolutePath());
-            Process process = pb.start();
-            String processOutput = "";
-            String processError = "";
-            StringBuilder outSb = new StringBuilder();
-            StringBuilder errSb = new StringBuilder();
-            BufferedReader outputStream = new BufferedReader(
-                new InputStreamReader(new FileInputStream(tempOutputFile)));
-            BufferedReader errorStream = new BufferedReader(
-                new InputStreamReader(new FileInputStream(tempErrorFile)));
-            while (!process.waitFor(1, TimeUnit.SECONDS)) {
-                appendStream(outputStream, outSb, logCmdOutput);
-                appendStream(errorStream, errSb, logCmdOutput);
-            }
-            appendStream(outputStream, outSb, logCmdOutput);
-            appendStream(errorStream, errSb, logCmdOutput);
-            outputStream.close();
-            errorStream.close();
-            processOutput = outSb.toString().trim();
-            processError = errSb.toString().trim();
-            if (logCmdOutput) {
-                LOG.debug("Proc stdout | " + processOutput);
-                LOG.debug("Proc stderr | " + processError);
-            }
 
-            response.code = process.exitValue();
-            response.message = (response.code == 0) ? processOutput : processError;
+            Process process = pb.start();
+            waitForProcessExit(process, tempOutputFile, tempErrorFile);
+            try (
+              FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
+              InputStreamReader outputReader = new InputStreamReader(outputInputStream);
+              BufferedReader outputStream = new BufferedReader(outputReader);
+              FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
+              InputStreamReader errorReader = new InputStreamReader(errorInputStream);
+              BufferedReader errorStream = new BufferedReader(errorReader)
+              ) {
+              String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
+              String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
+              if (logCmdOutput) {
+                LOG.debug("Proc stdout for '{}' | {}", response.description, processOutput);
+                LOG.debug("Proc stderr for '{}' | {}", response.description, processError);
+              }
+              response.code = process.exitValue();
+              response.message = (response.code == 0) ? processOutput : processError;
+            }
         } catch (IOException | InterruptedException e) {
             response.code = -1;
             LOG.error("Exception running command", e);
@@ -145,18 +139,39 @@ public class ShellProcessHandler {
         return run(command, extraEnvVars, true /*logCommandOutput*/, description);
     }
 
-    private static void appendStream(
-        BufferedReader br,
-        StringBuilder sb,
-        boolean logCmdOutput) throws IOException {
+    private static void waitForProcessExit(
+      Process process,
+      File outFile,
+      File errFile
+    ) throws IOException, InterruptedException {
+      try (
+        FileInputStream outputInputStream = new FileInputStream(outFile);
+        InputStreamReader outputReader = new InputStreamReader(outputInputStream);
+        FileInputStream errInputStream = new FileInputStream(errFile);
+        InputStreamReader errReader = new InputStreamReader(errInputStream);
+        BufferedReader outputStream = new BufferedReader(outputReader);
+        BufferedReader errorStream = new BufferedReader(errReader)
+      ) {
+        while (!process.waitFor(1, TimeUnit.SECONDS)) {
+          tailStream(outputStream);
+          tailStream(errorStream);
+        }
+        // check for any remaining lines
+        tailStream(outputStream);
+        tailStream(errorStream);
+      }
+    }
+
+    private static void tailStream(
+        BufferedReader br) throws IOException {
 
         String line = null;
+        // Note: technically, this readLine can pick up incomplete lines as we race
+        // with the process output being appended to this file but for the purposes
+        // of logging, it is ok to log partial lines.
         while ((line = br.readLine()) != null) {
-            sb.append(line + System.lineSeparator());
-            if (logCmdOutput) {
-                if (line.contains("[app]")) {
-                    LOG.info(line);
-                }
+            if (line.contains("[app]")) {
+                LOG.info(line);
             }
         }
     }

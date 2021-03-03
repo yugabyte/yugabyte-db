@@ -3,7 +3,6 @@ title: Use DbSchema with YugabyteDB YSQL
 headerTitle: DbSchema
 linkTitle: DbSchema
 description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: dbschema

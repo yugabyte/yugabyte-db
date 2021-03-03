@@ -127,6 +127,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
@@ -193,6 +194,12 @@ DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
              "how far we have processed the rows.");
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
+
+DEFINE_bool(yql_allow_compatible_schema_versions, true,
+            "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
+            "of the server's schema, but is determined to be compatible with the current version.");
+TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
+TAG_FLAG(yql_allow_compatible_schema_versions, runtime);
 
 DEFINE_bool(disable_alter_vs_write_mutual_exclusion, false,
              "A safety switch to disable the changes from D8710 which makes a schema "
@@ -1235,7 +1242,11 @@ void Tablet::WriteToRocksDB(
     LOG_WITH_PREFIX(INFO)
         << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
         << " RocksDB:\n" << docdb::WriteBatchToString(
-            *write_batch, storage_db_type, BinaryOutputFormat::kEscapedAndHex);
+            *write_batch,
+            storage_db_type,
+            BinaryOutputFormat::kEscapedAndHex,
+            WriteBatchOutputFormat::kArrow,
+            "  " + LogPrefix(storage_db_type));
   }
 }
 
@@ -1322,6 +1333,22 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
+template <typename Request>
+bool IsSchemaVersionCompatible(uint32_t current_version, const Request& request) {
+  if (request.schema_version() == current_version) {
+    return true;
+  }
+
+  if (request.is_compatible_with_previous_version() &&
+      request.schema_version() == current_version + 1) {
+    DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? " " : "Not ")
+             << " Accepting request that is ahead of us by 1 version " << yb::ToString(request);
+    return FLAGS_yql_allow_compatible_schema_versions;
+  }
+
+  return false;
+}
+
 //--------------------------------------------------------------------------------------------------
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
@@ -1334,14 +1361,15 @@ Status Tablet::HandleQLReadRequest(
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
-  if (metadata()->schema_version() != ql_read_request.schema_version()) {
+  if (!IsSchemaVersionCompatible(metadata()->schema_version(), ql_read_request)) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-    result->response.set_error_message(
-        Format("schema version mismatch for table $0: expected $1, got $2",
-               metadata()->table_id(),
-               metadata()->schema_version(),
-               ql_read_request.schema_version()));
+    result->response.set_error_message(Format(
+        "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+        metadata()->table_id(),
+        metadata()->schema_version(),
+        ql_read_request.schema_version(),
+        ql_read_request.is_compatible_with_previous_version()));
     return Status::OK();
   }
 
@@ -1423,17 +1451,19 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
     QLResponsePB* resp = operation->response()->add_ql_response_batch();
-    if (table_info->schema_version != req->schema_version()) {
-      DVLOG(3) << " On " << table_info->table_name
+    if (!IsSchemaVersionCompatible(table_info->schema_version, *req)) {
+      DVLOG(1) << " On " << table_info->table_name
                << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
                << table_info->schema_version << " vs req's : " << req->schema_version()
-               << " for " << yb::ToString(req);
+               << " is req compatible with prev version: "
+               << req->is_compatible_with_previous_version() << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(
-          Format("schema version mismatch for table $0: expected $1, got $2",
-                 table_info->table_id,
-                 table_info->schema_version,
-                 req->schema_version()));
+      resp->set_error_message(Format(
+          "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+          table_info->table_id,
+          table_info->schema_version,
+          req->schema_version(),
+          req->is_compatible_with_previous_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
@@ -1849,6 +1879,7 @@ void Tablet::KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> op
 //--------------------------------------------------------------------------------------------------
 
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
+  TRACE(__func__);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     operation->state()->CompleteWithStatus(
         STATUS(NotSupported, "Transaction status table does not support write"));
@@ -2074,15 +2105,16 @@ Status Tablet::RemoveTable(const std::string& table_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone() {
-  auto table_info = metadata_->primary_table_info();
+Status Tablet::MarkBackfillDone(const TableId& table_id) {
+  auto table_info = table_id.empty() ?
+    metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
                         << table_info->schema.ToString();
   const vector<DeletedColumn> empty_deleted_cols;
   Schema new_schema = Schema(table_info->schema);
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
-      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version);
+      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
   return metadata_->Flush();
 }
 
@@ -2837,9 +2869,11 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           [self = shared_from_this(), now](const Result<HybridTime>& result) {
             if (!result.ok()) {
               self->InvokeCallback(result.status());
+              TRACE("self->InvokeCallback");
               return;
             }
             self->NonTransactionalConflictsResolved(now, *result);
+            TRACE("self->NonTransactionalConflictsResolved");
           });
       return Status::OK();
     }
@@ -2871,9 +2905,11 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
         [self = shared_from_this()](const Result<HybridTime>& result) {
           if (!result.ok()) {
             self->InvokeCallback(result.status());
+            TRACE("self->InvokeCallback");
             return;
           }
           self->TransactionalConflictsResolved();
+          TRACE("self->NonTransactionalConflictsResolved");
         });
 
     return Status::OK();
@@ -3047,8 +3083,44 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
   return ScopedRWOperation(&write_ops_being_submitted_counter_);
 }
 
-bool Tablet::StillHasParentDataAfterSplit() {
+Result<bool> Tablet::StillHasParentDataAfterSplit() {
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_operation);
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
+}
+
+bool Tablet::MightStillHaveParentDataAfterSplit() {
+  auto res = StillHasParentDataAfterSplit();
+  if (!res.ok()) {
+    LOG(WARNING) << "Failed to call StillHasParentDataAfterSplit: " << res.ToString();
+    return true;
+  }
+  return res.get();
+}
+
+bool Tablet::ShouldDisableLbMove() {
+  auto still_has_parent_data_result = StillHasParentDataAfterSplit();
+  if (still_has_parent_data_result.ok()) {
+    return still_has_parent_data_result.get();
+  }
+  // If this call failed, one of three things may be true:
+  // 1. We are in the middle of a tablet shutdown.
+  //
+  // In this case, what we report is not of much consequence, as the load balancer shouldn't try to
+  // move us anyways. We choose to return false.
+  //
+  // 2. We are in the middle of a TRUNCATE.
+  //
+  // In this case, any concurrent attempted LB move should fail before trying to move data,
+  // since the RocksDB instances are destroyed. On top of that, we do want to allow the LB to move
+  // this tablet after the TRUNCATE completes, so we should return false.
+  //
+  // 3. We are in the middle of an AlterSchema operation. This is only true for tablets belonging to
+  //    colocated tables.
+  //
+  // In this case, we want to disable tablet moves. We conservatively return true for any failure
+  // if the tablet is part of a colocated table.
+  return metadata_->schema()->has_pgtable_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
@@ -3340,7 +3412,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (StillHasParentDataAfterSplit()) {
+  if (VERIFY_RESULT(StillHasParentDataAfterSplit())) {
     post_split_compaction_task_pool_token_ = get_token_for_compaction();
     return post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));

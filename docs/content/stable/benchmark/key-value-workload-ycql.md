@@ -5,10 +5,6 @@ linkTitle: Key-value workload
 description: Benchmark YCQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
-aliases:
-  - /stable/benchmark/performance/
-  - /stable/benchmark/key-value-workload
-block_indexing: true
 menu:
   stable:
     identifier: key-value-workload-1-ycql
@@ -103,7 +99,7 @@ $ java -jar ./yb-sample-apps.jar  \
 Name    | Observation
 --------|------
 Write Ops/sec | ~90k
-Read Latency | ~2.5-3.0 ms/op
+Write Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
 
 ## Run the read-heavy key-value workload
