@@ -199,7 +199,7 @@ public class Provider extends Model {
    * @param code
    * @return
    */
-  public static List<Provider> getbyCode(String code) {
+  public static List<Provider> getByCode(String code) {
     return find.query().where().eq("code", code).findList();
   }
 

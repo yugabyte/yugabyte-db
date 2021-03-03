@@ -57,6 +57,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 
 public class CloudProviderController extends AuthenticatedController {
   private final Config config;
+
   @Inject
   public CloudProviderController(Config config) {
     this.config = config;
@@ -142,10 +143,9 @@ public class CloudProviderController extends AuthenticatedController {
       }
       NodeInstance.deleteByProvider(providerUUID);
 
-      int providersCount = Provider.getbyCode(provider.code).size();
-      // Delete Intance type only if 1 provider with code.
-      // More than 1 provider can have shared instance type so we can't delete it.
-      // as instance type are shred acrossed providers
+      int providersCount = Provider.getByCode(provider.code).size();
+      // Instance type has been shared across providers.
+      // We can’t delete instance types if multiple providers exist with the same provider code.
       if (providersCount == 1) {
         InstanceType.deleteInstanceTypesForProvider(provider, config);
       }

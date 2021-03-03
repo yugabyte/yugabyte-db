@@ -423,7 +423,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithIntsnceType() {
+  public void testDeleteProviderWithInstanceType() {
     Provider p = ModelFactory.onpremProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
 
