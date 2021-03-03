@@ -333,10 +333,10 @@ case $operation in
         if [[ ! -z "$skip_wait" ]]
         then
             echo "Universe create requested successfully. "
-            printf "Use $task_id as task id to get status of universe."
+            echo "Use $task_id as task id to get status of universe."
         else
             echo "Universe create requested successfully. "
-            printf "Use $task_id as task id to get status of universe."
+            echo "Use $task_id as task id to get status of universe."
             TaskStatus ${task_id} ${customer_uuid} "Universe Creation successfully."
         fi
         ;;
@@ -450,10 +450,10 @@ case $operation in
                 if [[ ! -z "$skip_wait" ]]
                 then
                     echo "Universe delete requested successfully."
-                    printf "Use $task_id as task id to get status of universe."
+                    echo "Use $task_id as task id to get status of universe."
                 else
                     echo "Universe delete requested successfully."
-                    printf "Use $task_id as task id to get status of universe."
+                    echo "Use $task_id as task id to get status of universe."
                     TaskStatus ${task_id} ${customer_uuid} "Universe Deletion successfully."
                 fi
                 ;;
@@ -464,7 +464,8 @@ case $operation in
         if [[ -z "$task_id" ]]
         then
             echo "Task id required to get task status"
-            printf" Use \`-t|--task <task_id>\` to pass task_id.\n"
+            printf " Use \`-t|--task <task_id>\` to pass task_id.\n"
+            exit
         fi
         TaskStatus ${task_id} ${customer_uuid} "Task completed successfully."
         ;;
