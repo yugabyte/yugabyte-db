@@ -23,6 +23,7 @@
 #include <gflags/gflags.h>
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
+#include "yb/util/string_case.h"
 #include "boost/date_time/gregorian/gregorian.hpp"
 #include "boost/date_time/c_local_time_adjustor.hpp"
 #include "boost/date_time/local_time/local_time.hpp"
@@ -325,6 +326,36 @@ Result<string> DateTime::TimeToString(int64_t time) {
 
 int64_t DateTime::TimeNow() {
   return (TimestampNow().ToInt64() % kDayInMicroSeconds) * 1000;
+}
+
+//------------------------------------------------------------------------------------------------
+Result<int64_t> DateTime::IntervalFromString(const std::string& str) {
+  std::string strLower;
+  yb::ToLowerCase(str, &strLower);
+  /* See Postgres: DecodeInterval() in datetime.c */
+  vector<std::regex> regexes {
+      // ISO 8601: '3d 4h 5m 6s'
+      // Abbreviated Postgres: '3 d 4 hrs 5 mins 6 secs'
+      // Traditional Postgres: '3 days 4 hours 5 minutes 6 seconds'
+      regex("(?:(\\d) ?d(?:ay)?s?)? *(?:(\\d) ?h(?:ou)?r?s?)? *"
+            "(?:(\\d) ?m(?:in(?:ute)?s?)?)? *(?:(\\d) ?s(?:ec(?:ond)?s?)?)?"),
+      // SQL Standard: 'D H:M:S'
+      regex("(?:(\\d) )?(\\d{1,2}):(\\d{1,2}):(\\d{1,2})")
+  };
+  // Try each regex to see if one matches.
+  for (const auto& reg : regexes) {
+    std::smatch m;
+    if (std::regex_match(strLower, m, reg)) {
+      // All regex's have the name 4 capture groups, in order.
+      const int day = m.str(1).empty() ? 0 : stoi(m.str(1));
+      const int hours = m.str(2).empty() ? 0 : stoi(m.str(2));
+      const int minutes = m.str(3).empty() ? 0 : stoi(m.str(3));
+      const int seconds = m.str(4).empty() ? 0 : stoi(m.str(4));
+      // Convert to microseconds.
+      return 1000000L * (seconds + (60 * (minutes + 60 * (hours + 24 * day))));
+    }
+  }
+  return STATUS(InvalidArgument, "Invalid interval", "Wrong format of input string");
 }
 
 //------------------------------------------------------------------------------------------------

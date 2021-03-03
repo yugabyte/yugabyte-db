@@ -3750,7 +3750,6 @@ ATController(AlterTableStmt *parsetree,
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
-	Oid		   relid = RelationGetRelid(rel);
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -3762,28 +3761,9 @@ ATController(AlterTableStmt *parsetree,
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
-	/*
-	 * Prepare the YB alter statement handle -- need to call this before the
-	 * system catalogs are changed below (since it looks up table metadata).
-	 */
-	YBCPgStatement handle = NULL;
-	if (IsYBRelation(rel))
-	{
-		handle = YBCPrepareAlterTable(parsetree, rel, relid);
-	}
-
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode);
 
-	/*
-	 * Execute the YB alter table (if needed).
-	 * Must call this after syscatalog updates succeed (e.g. dependencies are
-	 * checked) since we do not support rollback of YB alter operations yet.
-	 */
-	if (handle)
-	{
-		YBCExecAlterTable(handle, relid);
-	}
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(parsetree, &wqueue, lockmode);
 }
@@ -4108,6 +4088,19 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 	ListCell   *ltab;
 
 	/*
+	 * Prepare the YB alter statement handle -- need to call this before the
+	 * system catalogs are changed below (since it looks up table metadata).
+	 *
+	 * One wqueue entry corresponds to one relation, "main" one occupying
+	 * the first slot.
+	 *
+	 * In future we might want to process all relations.
+	 */
+	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
+	Oid               main_relid = info->relid;
+	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds, AT_NUM_PASSES, main_relid);
+
+	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
 	 * needed because we may have to propagate work from one table to another
 	 * (specifically, ALTER TYPE on a foreign key's PK has to dispatch the
@@ -4116,6 +4109,20 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 	 */
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
+		/*
+		 * Execute the YB alter table (if needed).
+		 *
+		 * Must call this after syscatalog updates succeed (e.g. dependencies are
+		 * checked) since we do not support rollback of YB alter operations yet.
+		 *
+		 * However, we must also do this before we start adding indexes because
+		 * the column in question might not be there yet.
+		 */
+		if (pass == AT_PASS_ADD_INDEX && handle)
+		{
+			YBCExecAlterTable(handle, main_relid);
+		}
+
 		/* Go through each table that needs to be processed */
 		foreach(ltab, *wqueue)
 		{

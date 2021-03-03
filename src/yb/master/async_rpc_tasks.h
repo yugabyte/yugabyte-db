@@ -417,9 +417,11 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
 class AsyncBackfillDone : public AsyncAlterTable {
  public:
-  AsyncBackfillDone(
-      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
-      : AsyncAlterTable(master, callback_pool, tablet) {}
+  AsyncBackfillDone(Master* master,
+                    ThreadPool* callback_pool,
+                    const scoped_refptr<TabletInfo>& tablet,
+                    const std::string& table_id)
+      : AsyncAlterTable(master, callback_pool, tablet), table_id_(table_id) {}
 
   Type type() const override { return ASYNC_BACKFILL_DONE; }
 
@@ -427,6 +429,8 @@ class AsyncBackfillDone : public AsyncAlterTable {
 
  private:
   bool SendRequest(int attempt) override;
+
+  const std::string table_id_;
 };
 
 class AsyncCopartitionTable : public RetryingTSRpcTask {

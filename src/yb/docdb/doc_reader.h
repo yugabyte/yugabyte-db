@@ -24,7 +24,6 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
@@ -37,6 +36,8 @@
 
 namespace yb {
 namespace docdb {
+
+class IntentAwareIterator;
 
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
@@ -61,44 +62,15 @@ struct GetSubDocumentData {
   // The TTL and hybrid time are return values external to the SubDocument
   // which occasionally need to be accessed for TTL calculation.
   mutable Expiration exp;
-  bool return_type_only = false;
 
-  // Represent bounds on the first and last subkey to be considered.
-  const SliceKeyBound* low_subkey = &SliceKeyBound::Invalid();
-  const SliceKeyBound* high_subkey = &SliceKeyBound::Invalid();
-
-  // Represent bounds on the first and last ranks to be considered.
-  const IndexBound* low_index = &IndexBound::Empty();
-  const IndexBound* high_index = &IndexBound::Empty();
-  // Maximum number of children to add for this subdocument (0 means no limit).
-  int32_t limit = 0;
-  // Only store a count of the number of records found, but don't store the records themselves.
-  bool count_only = false;
-  // Stores the count of records found, if count_only option is set.
-  mutable size_t record_count = 0;
   // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
   // times of records belonging to the table.
   DocHybridTime* table_tombstone_time;
 
-  GetSubDocumentData Adjusted(
-      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
-    GetSubDocumentData result(subdoc_key, result_, doc_found_);
-    result.deadline_info = deadline_info;
-    result.exp = exp;
-    result.return_type_only = return_type_only;
-    result.low_subkey = low_subkey;
-    result.high_subkey = high_subkey;
-    result.low_index = low_index;
-    result.high_index = high_index;
-    result.limit = limit;
-    return result;
-  }
-
   std::string ToString() const {
-    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
+    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 table_tombstone_time: $3 }",
                   SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, low_subkey, high_subkey, table_tombstone_time);
+                  exp.write_ht, table_tombstone_time);
   }
 };
 

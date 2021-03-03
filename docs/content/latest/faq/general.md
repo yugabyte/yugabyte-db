@@ -55,9 +55,9 @@ YugabyteDB feature highlights are listed below.
 
 ### Global data consistency
 
-- [Global data distribution](../../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
+- [Global data distribution](../../explore/multi-region-deployments/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
-- [Auto-sharding and auto-rebalancing](../../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
+- [Auto-sharding and auto-rebalancing](../../explore/linear-scalability/sharding-data/) to ensure uniform load across all nodes even for very large clusters.
 
 ### Cloud native
 
@@ -239,7 +239,7 @@ YugabyteDB has had the following major releases:
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
-Releases, including upcoming releases, are outlined on the [Releases Overview](/releases/releases-overview) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+Releases, including upcoming releases, are outlined on the [Releases Overview](/latest/releases/releases-overview) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
 
 ## Can I deploy YugabyteDB to production?
 

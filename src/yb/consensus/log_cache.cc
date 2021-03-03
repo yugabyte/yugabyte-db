@@ -299,7 +299,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
-  while (remaining_space > 0 && next_index < to_index) {
+  while (remaining_space >= 0 && next_index < to_index) {
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
@@ -329,15 +329,13 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
         auto current_message_size = TotalByteSizeForMessage(*msg);
         remaining_space -= current_message_size;
-        if (remaining_space >= 0 || result.messages.empty()) {
-          result.messages.push_back(msg);
-          result.read_from_disk_size += current_message_size;
-          next_index++;
-        } else {
-          result.have_more_messages = true;
+        if (remaining_space < 0 && !result.messages.empty()) {
+          break;
         }
+        result.messages.push_back(msg);
+        result.read_from_disk_size += current_message_size;
+        next_index++;
       }
-
     } else {
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
@@ -353,7 +351,6 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         auto current_message_size = TotalByteSizeForMessage(*msg);
         remaining_space -= current_message_size;
         if (remaining_space < 0 && !result.messages.empty()) {
-          result.have_more_messages = true;
           break;
         }
 
@@ -362,6 +359,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       }
     }
   }
+  result.have_more_messages = remaining_space < 0;
 
   return result;
 }

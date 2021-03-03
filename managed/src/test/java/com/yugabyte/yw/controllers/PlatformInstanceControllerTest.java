@@ -23,8 +23,7 @@ import play.mvc.Result;
 
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static play.test.Helpers.contentAsString;
@@ -192,5 +191,13 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertBadRequest(deleteResult, "Follower platform instance cannot delete platform instances");
   }
 
-  // TODO: (Daniel) - Add test coverage for promoteInstance(...) in #6507
+  @Test
+  public void testInvalidAddress() {
+    JsonNode haConfigJson = createHAConfig();
+    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com::abc", true, false);
+    assertBadRequest(createResult, "");
+    JsonNode node = Json.parse(contentAsString(createResult));
+    assertErrorNodeValue(node, "address", "Invalid URL provided");
+  }
 }

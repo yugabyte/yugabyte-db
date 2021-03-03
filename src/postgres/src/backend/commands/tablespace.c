@@ -113,33 +113,62 @@ validatePlacementConfiguration(const char *value)
 		return;
 	}
 
-	text *json_array = cstring_to_text(value);
+	text *placement_info = cstring_to_text(value);
+	text *json_array = json_get_value(placement_info, "placement_blocks");
+	if (json_array == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Required key \"placement_blocks\" not found")));
+	}
 	const int length = get_json_array_length(json_array);
 	if (length < 1) {
-		ereport(ERROR,(errmsg("Invalid number of placement policies %d", length)));
+		ereport(ERROR,
+				(errmsg("Invalid number of placement blocks %d", length)));
 		return;
 	}
-	char *keys[4] = {"cloud", "region", "zone", "min_number_of_replicas"};
+
+	char *keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
+	int sum_min_replicas = 0;
 	for (int i = 0; i < length; ++i) {
 		text *json_element = get_json_array_element(json_array, i);
 
-		// Each element in the array is a placement configuration.
-		// Verify that each such configuration contains all the keys in 'keys'
-		// and contains no extraneous keys.
+		/*
+		 *  Each element in the array is a placement configuration. Verify that
+		 *  each such configuration contains all the keys in 'keys' and
+		 *  contains no extraneous keys.
+		 */
 		validate_json_object_keys(json_element, keys, 4);
 
-		// Validate that min replicas is a valid value.
-		char *min_replicas_str = text_to_cstring(json_get_value(json_element, keys[3]));
-		const int min_replicas = atoi(min_replicas_str);
-		if (min_replicas <= 0)
-		{
-			ereport(ERROR,
+		/*
+		 * Find the aggregate of min_num_replicas.
+		 */
+		const int min_replicas = json_get_int_value(json_element, keys[3]);
+		sum_min_replicas += min_replicas;
+	}
+
+	/* Find the total replication factor */
+	int num_replicas = json_get_int_value(placement_info, "num_replicas");
+
+	/* Verify that num_replicas is valid. */
+	if (sum_min_replicas > num_replicas)
+	{
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Invalid value for \"min_number_of_replicas\" key"),
-				errdetail("Found %s but min_replicas_for_block should be "
-					" an integer > 0", min_replicas_str)));
-				return;
-		}
+				 errmsg("Invalid value for \"num_replicas\" key"),
+				 errdetail("num_replicas: %d is lesser than the total of "
+						   "min_num_replicas fields %d", num_replicas,
+						   sum_min_replicas)));
+	}
+	if (sum_min_replicas < num_replicas)
+	{
+		ereport(NOTICE,
+				(errmsg("num_replicas is %d, and the total min_num_replicas "
+					    "fields is %d. The location of the additional %d "
+					    "replicas among the specified zones will be decided "
+					    "dynamically based on the cluster load", num_replicas,
+					    sum_min_replicas, num_replicas - sum_min_replicas)));
+
 	}
 }
 
@@ -519,6 +548,19 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE,
 					   tablespacename);
 
+	/* Check for pg_shdepend entries depending on this tablespace */
+	char	  *detail;
+	char	  *detail_log;
+	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
+								&detail, &detail_log))
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				 errmsg("tablespace \"%s\" cannot be dropped "
+						"because some objects depend on it",
+						tablespacename),
+				 errdetail_internal("%s", detail),
+				 errdetail_log("%s", detail_log)));
+
 	/* DROP hook for the tablespace being removed */
 	InvokeObjectDropHook(TableSpaceRelationId, tablespaceoid, 0);
 
@@ -547,49 +589,55 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
 	/*
-	 * Try to remove the physical infrastructure.
+	 * For YB clusters there are no directories associated with a tablespace.
+	 * Hence no need to clean up any physical infrastructure.
 	 */
-	if (!destroy_tablespace_directories(tablespaceoid, false))
+	if (IsYugaByteEnabled())
 	{
 		/*
-		 * Not all files deleted?  However, there can be lingering empty files
-		 * in the directories, left behind by for example DROP TABLE, that
-		 * have been scheduled for deletion at next checkpoint (see comments
-		 * in mdunlink() for details).  We could just delete them immediately,
-		 * but we can't tell them apart from important data files that we
-		 * mustn't delete.  So instead, we force a checkpoint which will clean
-		 * out any lingering files, and try again.
-		 *
-		 * XXX On Windows, an unlinked file persists in the directory listing
-		 * until no process retains an open handle for the file.  The DDL
-		 * commands that schedule files for unlink send invalidation messages
-		 * directing other PostgreSQL processes to close the files.  DROP
-		 * TABLESPACE should not give up on the tablespace becoming empty
-		 * until all relevant invalidation processing is complete.
+		 * Try to remove the physical infrastructure.
 		 */
-		RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 		if (!destroy_tablespace_directories(tablespaceoid, false))
 		{
-			/* Still not empty, the files must be important then */
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("tablespace \"%s\" is not empty",
-							tablespacename)));
+			/*
+			 * Not all files deleted?  However, there can be lingering empty files
+			 * in the directories, left behind by for example DROP TABLE, that
+			 * have been scheduled for deletion at next checkpoint (see comments
+			 * in mdunlink() for details).  We could just delete them immediately,
+			 * but we can't tell them apart from important data files that we
+			 * mustn't delete.  So instead, we force a checkpoint which will clean
+			 * out any lingering files, and try again.
+			 *
+			 * XXX On Windows, an unlinked file persists in the directory listing
+			 * until no process retains an open handle for the file.  The DDL
+			 * commands that schedule files for unlink send invalidation messages
+			 * directing other PostgreSQL processes to close the files.  DROP
+			 * TABLESPACE should not give up on the tablespace becoming empty
+			 * until all relevant invalidation processing is complete.
+			 */
+			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
+			if (!destroy_tablespace_directories(tablespaceoid, false))
+			{
+				/* Still not empty, the files must be important then */
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("tablespace \"%s\" is not empty",
+								tablespacename)));
+			}
+		}
+
+		/* Record the filesystem change in XLOG */
+		{
+			xl_tblspc_drop_rec xlrec;
+
+			xlrec.ts_id = tablespaceoid;
+
+			XLogBeginInsert();
+			XLogRegisterData((char *) &xlrec, sizeof(xl_tblspc_drop_rec));
+
+			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP);
 		}
 	}
-
-	/* Record the filesystem change in XLOG */
-	{
-		xl_tblspc_drop_rec xlrec;
-
-		xlrec.ts_id = tablespaceoid;
-
-		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xl_tblspc_drop_rec));
-
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP);
-	}
-
 	/*
 	 * Note: because we checked that the tablespace was empty, there should be
 	 * no need to worry about flushing shared buffers or free space map
@@ -726,6 +774,16 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 static bool
 destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 {
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * For Yugabyte clusters, tablespaces are not directories.
+		 * They are logical groupings of tables to specify options
+		 * like geo-placement. Thus destroying directories is not
+		 * applicable for YB clusters.
+		 */
+		return true;
+	}
 	char	   *linkloc;
 	char	   *linkloc_with_version_dir;
 	DIR		   *dirdesc;

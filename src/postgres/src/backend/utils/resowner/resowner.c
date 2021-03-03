@@ -128,8 +128,6 @@ typedef struct ResourceOwnerData
 	ResourceArray dsmarr;		/* dynamic shmem segments */
 	ResourceArray jitarr;		/* JIT contexts */
 
-	ResourceArray ybstmtarr;    /* YugaByte statement handles */
-
 	/* We can remember up to MAX_RESOWNER_LOCKS references to local locks. */
 	int			nlocks;			/* number of owned locks */
 	LOCALLOCK  *locks[MAX_RESOWNER_LOCKS];	/* list of owned locks */
@@ -448,9 +446,6 @@ ResourceOwnerCreate(ResourceOwner parent, const char *name)
 	ResourceArrayInit(&(owner->dsmarr), PointerGetDatum(NULL));
 	ResourceArrayInit(&(owner->jitarr), PointerGetDatum(NULL));
 
-	if (IsYugaByteEnabled())
-		ResourceArrayInit(&(owner->ybstmtarr), PointerGetDatum(NULL));
-
 	return owner;
 }
 
@@ -674,21 +669,6 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 				PrintFileLeakWarning(res);
 			FileClose(res);
 		}
-
-		if (IsYugaByteEnabled())
-		{
-			/* Ditto for YugaByte statements */
-			while (ResourceArrayGetAny(&(owner->ybstmtarr), &foundres))
-			{
-				YBCPgStatement	res =
-					(YBCPgStatement) DatumGetPointer(foundres);
-
-				if (isCommit)
-					PrintYugaByteStmtLeakWarning(res);
-
-				ResourceOwnerForgetYugaByteStmt(owner, res);
-			}
-		}
 	}
 
 	/* Let add-on modules get a chance too */
@@ -721,7 +701,6 @@ ResourceOwnerDelete(ResourceOwner owner)
 	Assert(owner->filearr.nitems == 0);
 	Assert(owner->dsmarr.nitems == 0);
 	Assert(owner->jitarr.nitems == 0);
-	Assert(owner->ybstmtarr.nitems == 0);
 	Assert(owner->nlocks == 0 || owner->nlocks == MAX_RESOWNER_LOCKS + 1);
 
 	/*
@@ -749,7 +728,6 @@ ResourceOwnerDelete(ResourceOwner owner)
 	ResourceArrayFree(&(owner->filearr));
 	ResourceArrayFree(&(owner->dsmarr));
 	ResourceArrayFree(&(owner->jitarr));
-	ResourceArrayFree(&(owner->ybstmtarr));
 
 	pfree(owner);
 }
@@ -1326,49 +1304,4 @@ ResourceOwnerForgetJIT(ResourceOwner owner, Datum handle)
 	if (!ResourceArrayRemove(&(owner->jitarr), handle))
 		elog(ERROR, "JIT context %p is not owned by resource owner %s",
 			 DatumGetPointer(handle), owner->name);
-}
-
-/*
- * Make sure there is room for at least one more entry in a ResourceOwner's
- * dynamic shmem segment reference array.
- *
- * This is separate from actually inserting an entry because if we run out
- * of memory, it's critical to do so *before* acquiring the resource.
- */
-void
-ResourceOwnerEnlargeYugaByteStmts(ResourceOwner owner)
-{
-	ResourceArrayEnlarge(&(owner->ybstmtarr));
-}
-
-/*
- * Remember that a YugaByte statement is owned by a ResourceOwner
- *
- * Caller must have previously done ResourceOwnerEnlargeYugaByteStmts()
- */
-void
-ResourceOwnerRememberYugaByteStmt(ResourceOwner owner, YBCPgStatement yb_stmt)
-{
-	ResourceArrayAdd(&(owner->ybstmtarr), PointerGetDatum(yb_stmt));
-}
-
-/*
- * Forget that a YugaByte statement is owned by a ResourceOwner
- */
-void
-ResourceOwnerForgetYugaByteStmt(ResourceOwner owner, YBCPgStatement yb_stmt)
-{
-	if (!ResourceArrayRemove(&(owner->ybstmtarr), PointerGetDatum(yb_stmt)))
-		elog(ERROR, "YugaByte statement %p is not owned by resource owner %s",
-			 yb_stmt, owner->name);
-}
-
-/*
- * Debugging subroutine
- */
-static void
-PrintYugaByteStmtLeakWarning(YBCPgStatement yb_stmt)
-{
-	elog(WARNING, "YugaByte statement leak: statement %p still referenced",
-		 yb_stmt);
 }

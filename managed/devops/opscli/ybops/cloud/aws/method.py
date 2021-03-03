@@ -123,9 +123,21 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
+        filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["stopped", "running"]
+                }
+            ]
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip,
+            filters=filters
+        )
         if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
+            logging.error("Host {} does not exist.".format(args.search_pattern))
             return
 
         self.extra_vars.update({
@@ -135,6 +147,67 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         })
 
         super(AwsDestroyInstancesMethod, self).callback(args)
+
+
+class AwsPauseInstancesMethod(AbstractInstancesMethod):
+    """
+    Subclass for stopping an instance in AWS, we fetch the host info
+    and call the stop_instance method.
+    """
+    def __init__(self, base_command):
+        super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
+        
+    def add_extra_args(self):
+        super(AwsPauseInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to pause.")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip
+        )
+       
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+
+        self.cloud.stop_instance(host_info)
+
+
+class AwsResumeInstancesMethod(AbstractInstancesMethod):
+    """
+    Subclass for resuming an instance in AWS, we fetch the host info
+    and call the start_instance method.
+    """
+    def __init__(self, base_command):
+        super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
+        
+    def add_extra_args(self):
+        super(AwsResumeInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to resume.")
+
+    def callback(self, args):
+        filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["stopped"]
+                }
+            ]
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip,
+            filters=filters
+        )
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+        self.cloud.start_instance(host_info)
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

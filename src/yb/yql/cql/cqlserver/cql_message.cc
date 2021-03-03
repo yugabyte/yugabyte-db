@@ -1530,9 +1530,16 @@ RowsResultResponse::~RowsResultResponse() {
 }
 
 void RowsResultResponse::SerializeResultBody(faststring* mesg) const {
+  // CQL ROWS Response = <metadata><rows_count><rows_content>
   SerializeRowsMetadata(
       RowsMetadata(result_->table_name(), result_->column_schemas(),
                    result_->paging_state(), skip_metadata_), mesg);
+
+  // The <rows_count> (4 bytes) must be in the response in any case, so the 'rows_data()'
+  // string in the result must contain it.
+  LOG_IF(DFATAL, result_->rows_data().size() < 4)
+      << "Absent rows_count for the CQL ROWS Result Response (rows_data: "
+      << result_->rows_data().size() << " bytes, expected >= 4)";
   mesg->append(result_->rows_data());
 }
 

@@ -63,6 +63,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                     ImportSnapshotMetaResponsePB* resp);
 
+  CHECKED_STATUS CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
+                                        CreateSnapshotScheduleResponsePB* resp,
+                                        rpc::RpcContext* rpc);
+
+  CHECKED_STATUS ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
+                                       ListSnapshotSchedulesResponsePB* resp,
+                                       rpc::RpcContext* rpc);
+
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 

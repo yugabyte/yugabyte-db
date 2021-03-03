@@ -99,6 +99,7 @@ auto SetupRequest(const T& op, const YBSchema& schema) {
   req->set_request_id(0);
   req->set_query_id(reinterpret_cast<int64_t>(op.get()));
   req->set_schema_version(schema.version());
+  req->set_is_compatible_with_previous_version(schema.is_compatible_with_previous_version());
   return req;
 }
 
@@ -193,7 +194,8 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
   session_ = client->NewSession();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
+  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(
+      table->name(), /* max_tablets = */ 0, &tablets, /* partition_list_version =*/nullptr));
   if (tablets.size() == 0) {
     table_ = nullptr;
     return;

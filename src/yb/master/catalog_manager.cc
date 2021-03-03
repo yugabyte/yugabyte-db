@@ -280,11 +280,11 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_int32(ysql_backfill_is_create_table_done_delay_ms, 0,
+DEFINE_int32(yql_is_create_index_done_delay_ms, 0,
     "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
     " index in the master index map.");
-TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, hidden);
-TAG_FLAG(ysql_backfill_is_create_table_done_delay_ms, runtime);
+TAG_FLAG(yql_is_create_index_done_delay_ms, hidden);
+TAG_FLAG(yql_is_create_index_done_delay_ms, runtime);
 
 DEFINE_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
@@ -347,7 +347,7 @@ DEFINE_double(heartbeat_safe_deadline_ratio, .20,
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
-DEFINE_int32(partitions_vtable_cache_refresh_secs, 30,
+DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
              "Amount of time to wait before refreshing the system.partitions cached vtable.");
 
 DEFINE_int32(txn_table_wait_min_ts_count, 1,
@@ -1240,6 +1240,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
       auto l = table->LockForWrite();
       SchemaToPB(schema, l->mutable_data()->pb.mutable_schema());
       l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
+      l->mutable_data()->pb.set_updates_only_index_permissions(false);
 
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), term));
@@ -1874,6 +1875,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->CopyFrom(index_info);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  l->mutable_data()->pb.set_updates_only_index_permissions(false);
   l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
                                Substitute("Alter table version=$0 ts=$1",
                                           l->mutable_data()->pb.version(),
@@ -2141,7 +2143,9 @@ Status CatalogManager::DeleteTablet(
 
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
-  DeleteTabletAndSendRequests(tablet_info, "Tablet deleted upon request at " + LocalTimeAsString());
+  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
+      { tablet_info }, "Tablet deleted upon request at " + LocalTimeAsString()));
+
   return Status::OK();
 }
 
@@ -3215,21 +3219,24 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
   // 4. For index table:
-  //   a. If backfill is enabled, check if an index is present in indexed table's index map.
-  //   b. Otherwise check if alter schema is done on the indexed table as well.
-  // TODO(alex, amit): While (4.a) sounds like it should be enabled for both YSQL and YCQL,
-  //    currently it makes YCQL index backfill unstable - which is indicated by intermittent
-  //    failures of various tests under CppCassandraDriverTest - mostly TestCreateIndex.
+  // YCQL only needs to wait for the index to be added to the table's index map, since the
+  // expectation is that the backfill will be completed asynchronously. i.e. create-index does not
+  // wait for it. However, for YSQL index tables:
+  //   a. If backfill is enabled, wait until the index is present in indexed table's index map.
+  //   b. Otherwise wait until the alter schema is done on the indexed table as well.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
-    if (pb.table_type() == PGSQL_TABLE_TYPE &&
-        IsUserCreatedTable(*table) &&
-        IsIndexBackfillEnabled(pb.table_type(),
-                               pb.schema().table_properties().is_transactional())) {
+    if (pb.table_type() == YQL_TABLE_TYPE ||
+        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table) &&
+         IsIndexBackfillEnabled(
+             pb.table_type(), pb.schema().table_properties().is_transactional()))) {
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
-      const Status s = GetTableSchema(&get_schema_req, &get_schema_resp);
+      const bool get_fully_applied_indexes = true;
+      const Status s = GetTableSchemaInternal(&get_schema_req,
+                                              &get_schema_resp,
+                                              get_fully_applied_indexes);
       if (!s.ok()) {
         resp->mutable_error()->Swap(get_schema_resp.mutable_error());
         return s;
@@ -3243,13 +3250,11 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
           // consistency issues.  It should now be fixed, but it still exists for now because the
           // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
           // and the gflag.
-          SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_backfill_is_create_table_done_delay_ms));
+          SleepFor(MonoDelta::FromMilliseconds(FLAGS_yql_is_create_index_done_delay_ms));
           break;
         }
       }
     } else {
-      // TODO(alex, amit): We probably should be fine doing something like (a) case here, since we
-      //                   shouldn't care if other indexes are being created
       IsAlterTableDoneRequestPB alter_table_req;
       IsAlterTableDoneResponsePB alter_table_resp;
       alter_table_req.mutable_table()->set_table_id(indexed_table_id);
@@ -3370,7 +3375,8 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SYS_CONFIG:
+      case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::SNAPSHOT_SCHEDULE:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
     }
@@ -3739,9 +3745,7 @@ Status CatalogManager::BackfillIndex(
   }
 
   return MultiStageAlterTable::StartBackfillingData(
-      this,
-      indexed_table,
-      index_info_pb);
+      this, indexed_table, index_info_pb, boost::none);
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
@@ -3802,6 +3806,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
       indexes->DeleteSubrange(i, 1);
 
       indexed_table_data.pb.set_version(indexed_table_data.pb.version() + 1);
+      // TODO(Amit) : Is this compatible with the previous version?
+      indexed_table_data.pb.set_updates_only_index_permissions(false);
       indexed_table_data.set_state(SysTablesEntryPB::ALTERING,
                                    Substitute("Alter table version=$0 ts=$1",
                                               indexed_table_data.pb.version(),
@@ -3904,7 +3910,7 @@ Status CatalogManager::DeleteTableInternal(
 
   for (const scoped_refptr<TableInfo> &table : tables) {
     // Send a DeleteTablet() request to each tablet replica in the table.
-    DeleteTabletsAndSendRequests(table);
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     if (IsColocatedUserTable(*table)) {
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
@@ -4430,6 +4436,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // different path and it's not processed here).
   if (!req->has_wal_retention_secs()) {
     table_pb.set_version(table_pb.version() + 1);
+    table_pb.set_updates_only_index_permissions(false);
   }
   table_pb.set_next_column_id(next_col_id);
   l->mutable_data()->set_state(
@@ -4528,7 +4535,7 @@ Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     std::lock_guard<LockType> l(lock_);
 
     auto& table_pb = table_write_lock->mutable_data()->pb;
-    table_pb.set_partitions_version(table_pb.partitions_version() + 1);
+    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
     // If we crash here - we will have new partitions version with the same set of tablets which
@@ -4572,6 +4579,30 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
+  // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
+  // For YQL tables, we will return the "set of indexes" being applied instead of the ones
+  // that are fully completed.
+  // For PGSQL (and other) tables we want to return the fully applied schema.
+  const bool get_fully_applied_indexes = table->GetTableType() != TableType::YQL_TABLE_TYPE;
+  return GetTableSchemaInternal(req, resp, get_fully_applied_indexes);
+}
+
+Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                              GetTableSchemaResponsePB* resp,
+                                              bool get_fully_applied_indexes) {
+  VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<TableInfo> table;
+
+  // Lookup the table and verify if it exists.
+  TRACE("Looking up table");
+  RETURN_NOT_OK(FindTable(req->table(), &table));
+  if (table == nullptr) {
+    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
   TRACE("Locking table");
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
@@ -4581,6 +4612,12 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // schema that has reached every TS.
     DCHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->data().pb.fully_applied_schema());
+  } else {
+    // There's no AlterTable, the regular schema is "fully applied".
+    resp->mutable_schema()->CopyFrom(l->data().pb.schema());
+  }
+
+  if (get_fully_applied_indexes && l->data().pb.has_fully_applied_schema()) {
     resp->set_version(l->data().pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
     if (l->data().pb.has_fully_applied_index_info()) {
@@ -4597,8 +4634,6 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
             << ":\n"
             << yb::ToString(l->data().pb.indexes());
   } else {
-    // There's no AlterTable, the regular schema is "fully applied".
-    resp->mutable_schema()->CopyFrom(l->data().pb.schema());
     resp->set_version(l->data().pb.version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
     if (l->data().pb.has_index_info()) {
@@ -4611,6 +4646,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
             << ":\n"
             << yb::ToString(l->data().pb.indexes());
   }
+  resp->set_is_compatible_with_previous_version(l->data().pb.updates_only_index_permissions());
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
   if (IsReplicationInfoSet(l->data().pb.replication_info())) {
     resp->mutable_replication_info()->CopyFrom(l->data().pb.replication_info());
@@ -6337,7 +6373,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
-    DeleteTabletsAndSendRequests(table);
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -7314,19 +7350,21 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
   return Status::OK();
 }
 
-void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+Status CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table) {
+  // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
-    return;
+    return Status::OK();
   }
 
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
+  std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->tablet_id() < rhs->tablet_id();
+  });
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
+  RETURN_NOT_OK(DeleteTabletListAndSendRequests(tablets, deletion_msg));
 
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    DeleteTabletAndSendRequests(tablet, deletion_msg);
-  }
   if (IsColocatedParentTable(*table)) {
     SharedLock<LockType> catalog_lock(lock_);
     colocated_tablet_ids_map_.erase(table->namespace_id());
@@ -7338,18 +7376,47 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
     }
     tablegroup_tablet_ids_map_.erase(table->namespace_id());
   }
+  return Status::OK();
 }
 
-void CatalogManager::DeleteTabletAndSendRequests(
-    const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg) {
-  LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
-  DeleteTabletReplicas(tablet.get(), deletion_msg);
+Status CatalogManager::DeleteTabletListAndSendRequests(
+    const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg) {
+  vector<pair<scoped_refptr<TabletInfo>, unique_ptr<TabletInfo::lock_type>>> tablets_and_locks;
 
-  auto tablet_lock = tablet->LockForWrite();
-  tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-  CHECK_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term()));
-  tablet_lock->Commit();
-  LOG(INFO) << "Deleted tablet " << tablet->tablet_id();
+  // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
+  for (const auto& tablet : tablets) {
+    auto tablet_lock = tablet->LockForWrite();
+    tablets_and_locks.push_back({tablet, std::move(tablet_lock)});
+  }
+
+  // Mark the tablets as deleted.
+  for (const auto& tablet_and_lock : tablets_and_locks) {
+    auto& tablet = tablet_and_lock.first;
+    auto& tablet_lock = tablet_and_lock.second;
+
+    LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
+    DeleteTabletReplicas(tablet.get(), deletion_msg);
+
+    tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+  }
+
+  // Update all the tablet states in raft in bulk.
+  vector<TabletInfo*> tablet_infos;
+  tablet_infos.reserve(tablets_and_locks.size());
+  for (auto& tab : tablets_and_locks) {
+    tablet_infos.push_back(tab.first.get());
+  }
+  RETURN_NOT_OK(sys_catalog_->UpdateItems(tablet_infos, leader_ready_term()));
+
+  // Commit the change.
+  for (const auto& tablet_and_lock : tablets_and_locks) {
+    auto& tablet = tablet_and_lock.first;
+    auto& tablet_lock = tablet_and_lock.second;
+
+    tablet_lock->Commit();
+    LOG(INFO) << "Deleted tablet " << tablet->tablet_id();
+  }
+  return Status::OK();
 }
 
 void CatalogManager::SendDeleteTabletRequest(
@@ -8330,7 +8397,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   }
 
   resp->set_table_type(l->data().pb.table_type());
-  resp->set_partitions_version(l->data().pb.partitions_version());
+  resp->set_partition_list_version(l->data().pb.partition_list_version());
 
   return Status::OK();
 }

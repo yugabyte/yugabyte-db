@@ -87,6 +87,19 @@
         margin-left: 7px;
       }
     }
+    .chk-show-deleted-backups {
+      margin: 8px 16px;
+      float: right;
+      width: max-content;
+      display: flex;
+      justify-content: center;
+
+      label {
+        margin: 0 16px;
+        position: relative;
+        top:2px;
+      }
+    }
   }
 
   .backup-action-btn-group > * {
