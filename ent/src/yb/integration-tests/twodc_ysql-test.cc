@@ -103,7 +103,7 @@ using master::MiniMaster;
 using tserver::MiniTabletServer;
 using tserver::enterprise::CDCConsumer;
 
-using pgwrapper::AsString;
+using pgwrapper::ToString;
 using pgwrapper::GetInt32;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
@@ -349,8 +349,8 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
         return false;
       }
       for (int i = 0; i < PQntuples(producer_results.get()); ++i) {
-        auto prod_val = EXPECT_RESULT(AsString(producer_results.get(), i, 0));
-        auto cons_val = EXPECT_RESULT(AsString(consumer_results.get(), i, 0));
+        auto prod_val = EXPECT_RESULT(ToString(producer_results.get(), i, 0));
+        auto cons_val = EXPECT_RESULT(ToString(consumer_results.get(), i, 0));
         if (prod_val != cons_val) {
           return false;
         }

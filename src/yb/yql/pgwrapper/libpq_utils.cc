@@ -438,7 +438,7 @@ Result<std::string> GetString(PGresult* result, int row, int column) {
   return std::string(value, len);
 }
 
-Result<std::string> AsString(PGresult* result, int row, int column) {
+Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid INT8OID = 20;
   constexpr Oid INT4OID = 23;
   constexpr Oid TEXTOID = 25;
@@ -472,7 +472,7 @@ void LogResult(PGresult* result) {
       if (col) {
         line += ", ";
       }
-      line += CHECK_RESULT(AsString(result, row, col));
+      line += CHECK_RESULT(ToString(result, row, col));
     }
     LOG(INFO) << line;
   }
