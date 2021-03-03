@@ -167,7 +167,9 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
 }
 
 std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(schema_, range_bounds_.get(), lower_bound, include_static_columns_);
+  return GetRangeKeyScanSpec(
+      schema_, nullptr /* prefixed_range_components */,
+      range_bounds_.get(), lower_bound, include_static_columns_);
 }
 
 namespace {

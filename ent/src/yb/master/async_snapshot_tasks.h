@@ -16,7 +16,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/async_ts_rpc_tasks.h"
-#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/tserver/backup.pb.h"
 
