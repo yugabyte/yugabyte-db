@@ -7532,11 +7532,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		elog(ERROR, "adding primary key to a partitioned table "
 		            "is not yet implemented");
 
-	/* TODO: Implement this after tablespaces are implemented in #1153 */
-	if ((*mutable_rel)->rd_rel->reltablespace)
-		elog(ERROR, "adding primary key to a table with a tablespace "
-		            "is not yet implemented");
-
 	if ((*mutable_rel)->rd_rel->relhasrules)
 		elog(ERROR, "adding primary key to a table with rules "
 		            "is not yet implemented");
