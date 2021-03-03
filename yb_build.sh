@@ -1199,7 +1199,7 @@ fi
 
 set_build_root
 find_or_download_thirdparty
-detect_brew
+detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
 
 if ! using_default_thirdparty_dir && [[ ${NO_REBUILD_THIRDPARTY:-0} != "1" ]]; then

@@ -262,7 +262,7 @@ export BUILD_ROOT
 
 find_or_download_thirdparty
 validate_thirdparty_dir
-detect_brew
+detect_toolchain
 log_thirdparty_and_toolchain_details
 find_make_or_ninja_and_update_cmake_opts
 

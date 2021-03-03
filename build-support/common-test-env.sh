@@ -1063,7 +1063,7 @@ set_sanitizer_runtime_options() {
         "$YB_THIRDPARTY_DIR/installed/bin"
         "$YB_THIRDPARTY_DIR/clang-toolchain/bin"
       )
-      # When building with clang10 or clang11, normally $YB_RESOLVED_CC_COMPILER would contain the
+      # When building with clang10 or clang11, normally $YB_RESOLVED_C_COMPILER would contain the
       # path of clang within LLVM's bin directory.
       if [[ -z ${cc_executable:-} ]]; then
         find_compiler_by_type

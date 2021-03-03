@@ -132,7 +132,7 @@ fi
 
 find_or_download_thirdparty
 log_thirdparty_and_toolchain_details
-detect_brew
+detect_toolchain
 
 set_common_test_paths
 add_brew_bin_to_path
