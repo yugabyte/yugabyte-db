@@ -20,13 +20,19 @@ import {
   isEmptyObject,
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
+import { BackupList } from './BackupList';
 
 const storageConfigTypes = {
   NFS: {
     title: 'NFS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'NFS_CONFIGURATION_NAME',
+        label: 'Configuration Name',
+        placeHolder: 'Configuration Name'
+      },
+      {
+        id: 'NFS_BACKUP_LOCATION',
         label: 'NFS Storage Path',
         placeHolder: 'NFS Storage Path'
       }
@@ -36,7 +42,12 @@ const storageConfigTypes = {
     title: 'GCS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'GCS_CONFIGURATION_NAME',
+        label: 'Configuration Name',
+        placeHolder: 'Configuration Name'
+      },
+      {
+        id: 'GCS_BACKUP_LOCATION',
         label: 'GCS Bucket',
         placeHolder: 'GCS Bucket'
       },
@@ -51,14 +62,19 @@ const storageConfigTypes = {
     title: 'Azure Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'AZ_CONFIGURATION_NAME',
+        label: 'Configuration Name',
+        placeHolder: 'Configuration Name'
+      },
+      {
+        id: 'AZ_BACKUP_LOCATION',
         label: 'Container URL',
         placeHolder: 'Container URL'
       },
       {
         id: 'AZURE_STORAGE_SAS_TOKEN',
         label: 'SAS Token',
-        placeholder: 'SAS Token'
+        placeHolder: 'SAS Token'
       }
     ]
   }
@@ -86,6 +102,20 @@ const getTabTitle = (configName) => {
 };
 
 class StorageConfiguration extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      listview: {
+        s3: true,
+        nfs: true,
+        gcs: true,
+        az: true
+      },
+      iamRoleEnabled: false
+    };
+  }
+
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
@@ -99,10 +129,12 @@ class StorageConfiguration extends Component {
         key={configNameFormatted + '-tab'}
         unmountOnExit={true}
       >
-        <Row className="config-section-header" key={configNameFormatted}>
-          <Col lg={8}>{configFields}</Col>
-          {configControls && <Col lg={4}>{configControls}</Col>}
-        </Row>
+        {!this.state.listview[configNameFormatted] &&
+          <Row className="config-section-header" key={configNameFormatted}>
+            <Col lg={8}>{configFields}</Col>
+            {configControls && <Col lg={4}>{configControls}</Col>}
+          </Row>
+        }
       </Tab>
     );
   };
@@ -115,31 +147,48 @@ class StorageConfiguration extends Component {
         values[key] = values[key].trim();
     });
     let dataPayload = { ...values };
+    let configName = "";
 
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
       case 'nfs':
+        configName = dataPayload['NFS_CONFIGURATION_NAME'];
+        dataPayload['BACKUP_LOCATION'] = dataPayload['NFS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
         break;
 
       case 'gcs':
-        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
+        configName = dataPayload['GCS_CONFIGURATION_NAME'];
+        dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
+        dataPayload = _.pick(dataPayload, [
+          'BACKUP_LOCATION',
+          'GCS_CREDENTIALS_JSON'
+        ]);
         break;
 
       case 'az':
-        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
+        configName = dataPayload['AZ_CONFIGURATION_NAME'];
+        dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
+        dataPayload = _.pick(dataPayload, [
+          'BACKUP_LOCATION',
+          'AZURE_STORAGE_SAS_TOKEN'
+        ]);
         break;
 
       default:
         if (values['IAM_INSTANCE_PROFILE']) {
+          configName = dataPayload['AWS_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'IAM_INSTANCE_PROFILE'
           ]);
         } else {
-           dataPayload = _.pick(dataPayload, [
+          configName = dataPayload['AWS_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
+          dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
@@ -153,6 +202,7 @@ class StorageConfiguration extends Component {
       .addCustomerConfig({
         type: 'STORAGE',
         name: type,
+        configName: configName,
         data: dataPayload
       })
       .then((resp) => {
@@ -183,6 +233,32 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  // This method will enable the create backup form.
+  createBackupConfig = (activeTab) => {
+    this.setState({
+      listview: {
+        ...this.state.listview,
+        [activeTab]: false
+      }
+    });
+  };
+
+  // This method will enable the backup list view.
+  showListView = (activeTab) => {
+    this.setState({
+      listview: {
+        ...this.state.listview,
+        [activeTab]: true
+      }
+    });
+  };
+
+  // This method will disbale the access key and secret key
+  // field if IAM role is enabled.
+  iamInstanceToggle = (event) => {
+    this.setState({ iamRoleEnabled: event.target.checked });
+  };
+
   render() {
     const {
       handleSubmit,
@@ -190,6 +266,13 @@ class StorageConfiguration extends Component {
       addConfig: { loading },
       customerConfigs
     } = this.props;
+    const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
+    const config = this.getConfigByType(activeTab, customerConfigs);
+    const backupListData = customerConfigs.data.filter((list) => {
+      if (activeTab === list.name.toLowerCase()) {
+        return list;
+      }
+    });
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
     }
@@ -203,113 +286,39 @@ class StorageConfiguration extends Component {
           eventKey={'s3'}
           title={getTabTitle('S3')}
           key={'s3-tab'}
-          unmountOnExit={true}>
-          <AwsStorageConfiguration
-            {...this.props}
-            deleteStorageConfig={this.deleteStorageConfig}
-          />
+          unmountOnExit={true}
+        >
+          {!this.state.listview.s3 &&
+            <AwsStorageConfiguration
+              {...this.props}
+              deleteStorageConfig={this.deleteStorageConfig}
+              iamRoleEnabled={this.state.iamRoleEnabled}
+              iamInstanceToggle={this.iamInstanceToggle}
+            />
+          }
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
-        const config = customerConfigs.data.find((config) => config.name === configName);
-        if (isDefinedNotNull(config)) {
-          const configData = [];
-          const storageConfig = storageConfigTypes[config.name];
-          if (!isDefinedNotNull(storageConfig)) {
-            return;
-          }
-          const fieldAttrs = storageConfigTypes[config.name]['fields'];
-          for (const configItem in config.data) {
-            const configAttr = fieldAttrs.find((item) => item.id === configItem);
-            if (isDefinedNotNull(configAttr)) {
-              configData.push({ name: configAttr.label, data: config.data[configItem] });
-            }
-          }
-
-          const configFields = [];
-          const configTemplate = storageConfigTypes[configName];
-          configTemplate.fields.forEach((field) => {
-            const value = config.data[field.id];
-            configFields.push(
-              <Row className="config-provider-row" key={configName + field.id}>
-                <Col lg={2}>
-                  <div className="form-item-custom-label">{field.label}</div>
-                </Col>
-                <Col lg={10}>
-                  <Field
-                    name={field.id}
-                    placeHolder={field.placeHolder}
-                    input={{ value: value, disabled: isDefinedNotNull(value) }}
-                    component={YBTextInputWithLabel}
-                  />
-                </Col>
-              </Row>
-            );
-          });
-
-          const configControls = (
-            <div className="action-bar">
-              {config.inUse && (
-                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
-                  placement="top"
-                >
-                  <span className="disable-delete fa-stack fa-2x">
-                    <i className="fa fa-trash-o fa-stack-1x"></i>
-                    <i className="fa fa-ban fa-stack-2x"></i>
-                  </span>
-                </YBInfoTip>
-              )}
-              <YBButton
-                btnText={'Delete Configuration'}
-                disabled={config.inUse || submitting || loading || isEmptyObject(config)}
-                btnClass={'btn btn-default'}
-                onClick={
-                  isDefinedNotNull(config)
-                    ? this.showDeleteConfirmModal.bind(this, config.name)
-                    : () => {}
-                }
-              />
-              {isDefinedNotNull(config) && (
-                <YBConfirmModal
-                  name="delete-storage-config"
-                  title={'Confirm Delete'}
-                  onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
-                  currentModal={'delete' + config.name + 'StorageConfig'}
-                  visibleModal={this.props.visibleModal}
-                  hideConfirmModal={this.props.hideDeleteStorageConfig}
-                >
-                  Are you sure you want to delete {config.name} Storage Configuration?
-                </YBConfirmModal>
-              )}
-            </div>
+        const configFields = [];
+        const config = storageConfigTypes[configName];
+        config.fields.forEach((field) => {
+          configFields.push(
+            <Row className="config-provider-row" key={configName + field.id}>
+              <Col lg={2}>
+                <div className="form-item-custom-label">{field.label}</div>
+              </Col>
+              <Col lg={10}>
+                <Field
+                  name={field.id}
+                  placeHolder={field.placeHolder}
+                  component={YBTextInputWithLabel}
+                />
+              </Col>
+            </Row>
           );
-
-          configs.push(this.wrapFields(configFields, configName, configControls));
-        } else {
-          const configFields = [];
-          const config = storageConfigTypes[configName];
-          config.fields.forEach((field) => {
-            configFields.push(
-              <Row className="config-provider-row" key={configName + field.id}>
-                <Col lg={2}>
-                  <div className="form-item-custom-label">{field.label}</div>
-                </Col>
-                <Col lg={10}>
-                  <Field
-                    name={field.id}
-                    placeHolder={field.placeHolder}
-                    component={YBTextInputWithLabel}
-                  />
-                </Col>
-              </Row>
-            );
-          });
-          configs.push(this.wrapFields(configFields, configName));
-        }
+        });
+        configs.push(this.wrapFields(configFields, configName));
       });
-
-      const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
-      const config = this.getConfigByType(activeTab, customerConfigs);
 
       return (
         <div className="provider-config-container">
@@ -321,17 +330,31 @@ class StorageConfiguration extends Component {
               className="config-tabs"
               routePrefix="/config/backup/"
             >
+              {this.state.listview[activeTab] &&
+                <BackupList
+                  activeTab={activeTab}
+                  data={backupListData}
+                  onCreateBackup={() => this.createBackupConfig(activeTab)}
+                />
+              }
+
               {configs}
             </YBTabsPanel>
 
-            <div className="form-action-button-container">
-              <YBButton
-                btnText={'Save'}
-                btnClass={'btn btn-orange'}
-                disabled={submitting || loading || isNonEmptyObject(config)}
-                btnType="submit"
-              />
-            </div>
+            {!this.state.listview[activeTab] &&
+              <div className="form-action-button-container">
+                <YBButton
+                  btnText='Save'
+                  btnClass='btn btn-orange'
+                  btnType="submit"
+                />
+                <YBButton
+                  btnText='Cancel'
+                  btnClass='btn btn-orange'
+                  onClick={() => this.showListView(activeTab)}
+                />
+              </div>
+            }
           </form>
         </div>
       );

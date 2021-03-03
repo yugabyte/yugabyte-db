@@ -11,53 +11,52 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
 const required = value => value ? undefined : 'This field is required.';
 
 class AwsStorageConfiguration extends Component {
-  state = {
-    iamRoleEnabled: false
-  };
-
-  iamInstanceToggle = (event) => {
-    this.setState({ iamRoleEnabled: event.target.checked });
-  };
-
   render() {
     const {
       customerConfigs,
       submitting,
       addConfig: { loading },
       deleteStorageConfig,
-      showDeleteStorageConfig
+      showDeleteStorageConfig,
+      iamInstanceToggle,
+      iamRoleEnabled
     } = this.props;
-    const { iamRoleEnabled } = this.state;
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
-    const allowKeyEdits = !isEmptyObject(s3Config) || iamRoleEnabled;
+
     return (
       <Row className="config-section-header" key={'s3'}>
         <Col lg={9}>
+          <Row className="config-provider-row" key={'configuration-name'}>
+            <Col lg={2}>
+              <div className="form-item-custom-label">Configuration Name</div>
+            </Col>
+            <Col lg={9}>
+              <Field
+                name="AWS_CONFIGURATION_NAME"
+                placeHolder="Configuration Name"
+                component={YBTextInputWithLabel}
+                validate={required}
+              />
+            </Col>
+            <Col lg={1} className="config-zone-tooltip">
+              <YBInfoTip
+                title="Configuration Name"
+                content="The backup configuration name is required."
+              />
+            </Col>
+          </Row>
           <Row className="config-provider-row" key={'s3-iam-instance-profile'}>
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
             </Col>
             <Col lg={9}>
-              {!isEmptyObject(s3Config) ? (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  input={{
-                    name: 'IAM_INSTANCE_PROFILE',
-                    value: config['IAM_INSTANCE_PROFILE']
-                  }}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                  isReadOnly
-                />
-              ) : (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  onToggle={this.iamInstanceToggle}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                />
-              )}
+              <Field
+                name="IAM_INSTANCE_PROFILE"
+                component={YBToggle}
+                onToggle={iamInstanceToggle}
+                subLabel="Whether to use instance's IAM role for S3 backup."
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-aws-access-key-id'}>
@@ -65,14 +64,11 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Key</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
+              {iamRoleEnabled ? (
                 <Field
                   name="AWS_ACCESS_KEY_ID"
                   placeHolder="AWS Access Key"
-                  input={{
-                    value: config['AWS_ACCESS_KEY_ID'] || '',
-                    disabled: allowKeyEdits
-                  }}
+                  input={{ disabled: iamRoleEnabled }}
                   component={YBTextInputWithLabel}
                 />
               ) : (
@@ -90,14 +86,11 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
+              {iamRoleEnabled ? (
                 <Field
                   name="AWS_SECRET_ACCESS_KEY"
                   placeHolder="AWS Access Secret"
-                  input={{
-                    value: config['AWS_SECRET_ACCESS_KEY'] || '',
-                    disabled: allowKeyEdits
-                  }}
+                  input={{ disabled: iamRoleEnabled }}
                   component={YBTextInputWithLabel}
                 />
               ) : (
@@ -115,24 +108,18 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">S3 Bucket</div>
             </Col>
             <Col lg={9}>
-              {!isEmptyObject(s3Config) ? (
-                <Field
-                  name="BACKUP_LOCATION"
-                  placeHolder="S3 Bucket"
-                  input={{
-                    value: config['BACKUP_LOCATION'],
-                    disabled: !isEmptyObject(s3Config)
-                  }}
-                  component={YBTextInputWithLabel}
-                />
-              ) : (
-                <Field
-                  name="BACKUP_LOCATION"
-                  placeHolder="S3 Bucket"
-                  component={YBTextInputWithLabel}
-                  validate={required}
-                />
-              )}
+              <Field
+                name="AWS_BACKUP_LOCATION"
+                placeHolder="s3://S3 Bucket"
+                component={YBTextInputWithLabel}
+                validate={required}
+              />
+            </Col>
+            <Col lg={1} className="config-zone-tooltip">
+              <YBInfoTip
+                title="S3 Bucket"
+                content="S3 bucket format: s3://bucket_name."
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-backup-host-base'}>
@@ -140,23 +127,11 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">S3 Bucket Host Base</div>
             </Col>
             <Col lg={9}>
-              {!isEmptyObject(s3Config) ? (
-                <Field
-                  name="AWS_HOST_BASE"
-                  placeHolder="s3.amazonaws.com"
-                  input={{
-                    value: config['AWS_HOST_BASE'],
-                    disabled: !isEmptyObject(s3Config)
-                  }}
-                  component={YBTextInputWithLabel}
-                />
-              ) : (
-                <Field
-                  name="AWS_HOST_BASE"
-                  placeHolder="s3.amazonaws.com"
-                  component={YBTextInputWithLabel}
-                />
-              )}
+              <Field
+                name="AWS_HOST_BASE"
+                placeHolder="s3.amazonaws.com"
+                component={YBTextInputWithLabel}
+              />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
