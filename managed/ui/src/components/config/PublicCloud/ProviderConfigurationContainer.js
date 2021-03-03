@@ -56,6 +56,9 @@ const mapDispatchToProps = (dispatch) => {
             toast.success('Successfully created AWS Provider!');
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
+        } else {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
         }
       });
     },
