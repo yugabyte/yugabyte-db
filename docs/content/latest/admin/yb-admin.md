@@ -45,14 +45,14 @@ $ ./bin/yb-admin --help
 - [Table](#table-commands)
 - [Backup and snapshot](#backup-and-snapshot-commands)
 - [Deployment topology](#deployment-topology-commands)
-  - [Multi-zone and multi-region](#multi-zone-and-multi-region-commands)
-  - [Master-follower](#master-follower-commands)
-  - [Read replica](#read-replica-commands)
+    - [Multi-zone and multi-region](#multi-zone-and-multi-region-commands)
+    - [Master-follower](#master-follower-commands)
+    - [Read replica](#read-replica-commands)
+- [Security](#security-commands)
+    - [Encryption at rest](#encryption-at-rest-commands)
 - [Change data capture (CDC)](#change-data-capture-cdc-commands)
 - [Decommissioning](#decommissioning-commands)
 - [Rebalancing](#rebalancing-commands)
-- [Security](#security-commands)
-  - [Encryption at rest](#encryption-at-rest-commands)
 
 ---
 
@@ -677,11 +677,11 @@ yb-admin -master_addresses <master-addresses> delete_snapshot <snapshot_id>
 
 ---
 
-### Deployment topology commands
+<a name="deployment-topology-commands"></a>
 
-#### Multi-zone and multi-region commands
+### Multi-zone and multi-region deployment commands
 
-##### modify_placement_info
+#### modify_placement_info
 
 Modifies the placement information (cloud, region, and zone) for a deployment.
 
@@ -710,7 +710,7 @@ You can verify the new placement information by running the following `curl` com
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-##### set_preferred_zones
+#### set_preferred_zones
 
 Sets the preferred availability zones (AZs) and regions.
 
@@ -829,9 +829,9 @@ replication_info {
 }
 ```
 
-#### Master-follower commands
+### Master-follower deployment commands
 
-##### setup_universe_replication
+#### setup_universe_replication
 
 **Syntax**
 
@@ -903,9 +903,9 @@ yb-admin -master_addresses <master-addresses> set_universe_replication_enabled <
 - *producer_universe_uuid*: The UUID of the producer universe.
 - `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
-#### Read replica commands
+### Read replica deployment commands
 
-##### add_read_replica_placement_info
+#### add_read_replica_placement_info
 
 Add a read replica cluster to the master configuration.
 
