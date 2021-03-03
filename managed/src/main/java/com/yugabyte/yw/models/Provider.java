@@ -193,6 +193,16 @@ public class Provider extends Model {
     return getConfig().get("AWS_HOSTED_ZONE_NAME");
   }
 
+
+  /**
+   * Get all Providers by code without customer uuid.
+   * @param code
+   * @return
+   */
+  public static List<Provider> getbyCode(String code) {
+    return find.query().where().eq("code", code).findList();
+  }
+
   // Update host zone if for aws provider
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
     Map<String, String> currentProviderConfig = getConfig();
