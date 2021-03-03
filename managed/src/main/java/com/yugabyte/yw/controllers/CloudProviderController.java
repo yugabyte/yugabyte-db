@@ -178,7 +178,8 @@ public class CloudProviderController extends AuthenticatedController {
           case "aws":
             CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
             if (cloudAPI != null && !cloudAPI.isValidCreds(config, requestBody.get("region")
-                .textValue().replace('-', '_'))) {
+                .textValue())) {
+              provider.delete();
               return ApiResponse.error(BAD_REQUEST, "Invalid AWS Credentials.");
             }
             String hostedZoneId = provider.getAwsHostedZoneId();
