@@ -1,7 +1,7 @@
 ---
-title: Connect remote clients to Kubernetes clusters
-headerTitle: Connect clients to Kubernetes clusters
-linkTitle: Connect clients
+title: Connect Remote Clients to Kubernetes Clusters
+headerTitle: Connect Clients to Kubernetes Clusters
+linkTitle: Connect Clients
 description: Connect remote clients to YugabyteDB clusters deployed within Kubernetes.
 menu:
   latest:
@@ -15,13 +15,13 @@ showAsideToc: true
 
 ## Introduction
 
-This document describes the different options to connect to a Yugabyte cluster deployed within Kubernetes.
+This document describes options to connect to a Yugabyte cluster deployed within Kubernetes.
 
 ## Prerequisites
 
-You must have set up a Yugabyte cluster according to the [Kubernetes deployment instructions.](../../kubernetes).
+You must have a Yugabyte cluster set up according to the [Kubernetes deployment instructions.](../../kubernetes)
 
-## Connecting from within the Kubernetes cluster
+## Connecting from Within the Kubernetes Cluster
 
 An application that is deployed within the Kubernetes cluster should use the Service DNS name `yb-tservers.<namespace>.svc.cluster.local` to discover server endpoints. This DNS entry has multiple `A` records, one for each tserver pod, so that clients can randomize queries across different endpoints.
 
@@ -50,7 +50,7 @@ ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 
 Note that although tables are [internally sharded](../../../architecture/concepts/yb-tserver/) across multiple tserver pods, every tserver pod has the ability to process any query, irrespective of its actual tablet assignment.
 
-## Connecting externally
+## Connecting Externally
 
 An application that is deployed outside the Kubernetes cluster should use the external LoadBalancer IP address to connect to the cluster. Connections to the load balancer IP address are randomly routed to one of the tserver pods behind the yb-tservers service.
 
@@ -92,7 +92,7 @@ Forwarding from 127.0.0.1:7000 -> 7000
 Forwarding from [::1]:7000 -> 7000
 ```
 
-## Connecting externally to a Minikube cluster
+## Connecting Externally to a Minikube Cluster
 
 When the Kubernetes cluster is set up using [Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/), an external IP address is not available by default for the LoadBalancer endpoints. To enable the load balancer IP address, run the command `minikube tunnel`. For details, see [LoadBalancer access](https://minikube.sigs.k8s.io/docs/handbook/accessing/#loadbalancer-access).
 
@@ -110,13 +110,13 @@ Status:
         loadbalancer emulator: no errors
 ```
 
-## Connecting TLS Secured YugabyteDB cluster deployed by Helm Charts
+## Connecting TLS-Secured YugabyteDB Cluster Deployed by Helm Charts
 
 To start a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the steps at [Google Kubernetes Service (GKE) - Helm Chart](/latest/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command-line.
 
 For example, `helm install yugabyte --namespace yb-demo --name yb-demo --set=tls.enabled=true`.
 
-### Connect from within the Kubernetes cluster
+### Connect from Within the Kubernetes Cluster
 
 Copy the following `yb-client.yaml` and use the `kubectl create -f yb-client.yaml` command to create a pod with auto-mounted client certificates.
 
@@ -178,20 +178,11 @@ $ kubectl delete pod yb-client -n yb-demo
 pod "yb-client" deleted
 ```
 
-### Connect externally
+### Connect Externally
 
-To connect externally to a TLS-enabled YugabyteDB helm cluster, first download the client certificates locally from the Kubernetes cluster's secrets.
+The following example shows a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service`, as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). 
 
-```sh
-$ mkdir $(pwd)/certs
-$ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.root\.crt}' | base64 --decode > $(pwd)/certs/root.crt
-$ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yugabytedb\.crt}' | base64 --decode > $(pwd)/certs/yugabytedb.crt
-$ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yugabytedb\.key}' | base64 --decode > $(pwd)/certs/yugabytedb.key
-```
-
-Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service` as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). 
-
-Use the following command to verify the connection.
+Use the following command to verify the connection:
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-client:latest ysqlsh -h <External_Cluster_IP> "sslmode=require"
@@ -204,9 +195,9 @@ You are connected to database "yugabyte" as user "yugabyte" on host "35.200.205.
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 ```
 
-Here is an example of a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
+The following example shows a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
 
-To verify the connection, use the following `docker run` command.
+To verify the connection, use the following `docker run` command:
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
