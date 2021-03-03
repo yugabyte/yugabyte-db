@@ -918,6 +918,148 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
+  public void testDMLInTranactionWith2Indexes() throws Exception {
+    // Create table with 2 secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn (k int primary key, v1 int, v2 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_txn_by_v1 on test_txn (v1);");
+    session.execute("create index test_txn_by_v2 on test_txn (v2);");
+
+    session.execute("begin transaction" +
+                    "  insert into test_txn (k, v1) values (1, 101);" +
+                    "  insert into test_txn (k, v2) values (1, 201);" +
+                    "end transaction;");
+    // Verify the rows.
+    assertQuery("select * from test_txn;", "Row[1, 101, 201]");
+    assertQuery("select * from test_txn_by_v1;", "Row[1, 101]");
+    assertQuery("select * from test_txn_by_v2;", "Row[1, 201]");
+    // Verify rows can be selected by the index columns.
+    assertQuery("select * from test_txn where v1 = 101;", "Row[1, 101, 201]");
+    assertQuery("select * from test_txn where v2 = 201;", "Row[1, 101, 201]");
+  }
+
+  @Test
+  public void testTransactionWithPKCrossing() throws Exception {
+    // Create 2 tables with a secondary index and verify they can be updated in the one transaction.
+    session.execute("CREATE TABLE tbl_many_to_one (id TEXT, type TEXT, value TEXT, " +
+                    "ts TIMESTAMP, ver BIGINT, PRIMARY KEY (id, type)) " +
+                    "WITH CLUSTERING ORDER BY (type ASC) " +
+                    "AND default_time_to_live = 0 AND transactions = {'enabled': 'true'};");
+    session.execute("CREATE INDEX inx_many_to_one ON tbl_many_to_one (value, type, id) " +
+                    "WITH CLUSTERING ORDER BY (type ASC, id ASC);");
+
+    session.execute("CREATE TABLE tbl_one_to_one (id TEXT, type TEXT, value TEXT, " +
+                    "ts TIMESTAMP, ver BIGINT, PRIMARY KEY (id, type)) " +
+                    "WITH CLUSTERING ORDER BY (type ASC) " +
+                    "AND default_time_to_live = 0 AND transactions = {'enabled': 'true'};");
+    session.execute("CREATE UNIQUE INDEX inx_one_to_one ON tbl_one_to_one (value, type) " +
+                    "INCLUDE (id) WITH CLUSTERING ORDER BY (type ASC);");
+
+    session.execute(
+        "BEGIN TRANSACTION" +
+        // Update tbl_many_to_one & inx_many_to_one.
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('000', 'TP1', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('000', 'TP1', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('111', 'TP2', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        // Update tbl_one_to_one & inx_one_to_one.
+        "  INSERT INTO tbl_one_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('222', 'TP3', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "END TRANSACTION;");
+    // Verify the rows in the indexes.
+    assertQuery("SELECT * FROM inx_many_to_one;",
+                "Row[000, TP1, V]Row[111, TP2, V]");
+    assertQuery("SELECT * FROM inx_one_to_one;",
+                "Row[222, TP3, V]");
+    // Verify the rows in the tables.
+    assertQuery("SELECT * FROM tbl_many_to_one;",
+                "Row[111, TP2, V, NULL, 1616617181129]Row[000, TP1, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_one_to_one;",
+                "Row[222, TP3, V, NULL, 1616617181129]");
+    // Verify rows can be selected by the index columns.
+    assertQuery("SELECT * FROM tbl_many_to_one WHERE value = 'V' AND type = 'TP1' AND id = '000';",
+                "Row[000, TP1, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_many_to_one WHERE value = 'V' AND type = 'TP2' AND id = '111';",
+                "Row[111, TP2, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_one_to_one WHERE value = 'V' AND type = 'TP3';",
+                "Row[222, TP3, V, NULL, 1616617181129]");
+  }
+
+  protected String getInsertIntoIndexesStr(int baseValue) throws Exception {
+    String s = "";
+    for (int i = 1; i <= 9; ++i) {
+      s += String.format("  insert into test_txn (k, v%d) values (%d, %d);", i, 1, baseValue + i);
+    }
+    return s;
+  }
+
+  protected void verifyRows(int baseValue) throws Exception {
+    String resultStr = "Row[1";
+    for (int i = 1; i <= 9; ++i) {
+      resultStr += String.format(", %d", baseValue + i);
+      // Verify rows in the indexes.
+      assertQuery(String.format("select * from test_txn_by_v%d;", i),
+                  String.format("Row[%d, %d]", 1, baseValue + i));
+    }
+    resultStr += "]";
+
+    // Verify the main table.
+    assertQuery("select * from test_txn;", resultStr);
+
+    for (int i = 1; i <= 9; ++i) {
+      // Verify rows can be selected by the index columns.
+      assertQuery(String.format("select * from test_txn where v%d = %d;", i, baseValue + i),
+                  resultStr);
+    }
+  }
+
+  protected void doTestDMLInTranactionWith9Indexes(boolean testAbort) throws Exception {
+    // Create table with secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn (k int primary key, " +
+                    "v1 int, v2 int, v3 int, v4 int, v5 int, v6 int, v7 int, v8 int, v9 int) " +
+                    "with transactions = {'enabled' : true}");
+    for (int i = 1; i <= 9; ++i) {
+      session.execute(String.format("create index test_txn_by_v%d on test_txn (v%d)", i, i));
+    }
+
+    session.execute("begin transaction" +
+                    getInsertIntoIndexesStr(10) +
+                    "end transaction;");
+    verifyRows(10);
+
+    String transStr = "begin transaction" +
+                      getInsertIntoIndexesStr(10) +
+                      // Repeat again for different values.
+                      getInsertIntoIndexesStr(20);
+    if (testAbort) {
+      // ABORT the transaction.
+      transStr += "  insert into test_txn (k, v1) values (1, 101) if not exists else error;";
+      runInvalidStmt(transStr + "end transaction;",
+                     "Execution Error. Condition on table test_txn was not satisfied.");
+      verifyRows(10);
+    } else {
+      session.execute(transStr + "end transaction;");
+      verifyRows(20);
+    }
+  }
+
+  @Test
+  public void testDMLInTranactionWith9Indexes() throws Exception {
+    doTestDMLInTranactionWith9Indexes(false);
+  }
+
+  @Test
+  public void testDMLInAbortedTranactionWith9Indexes() throws Exception {
+    doTestDMLInTranactionWith9Indexes(true);
+  }
+
+  @Test
   public void testSelectAll() throws Exception {
     // Create a table with index.
     session.execute("create table test_all (k int primary key, v1 int, v2 int) " +
