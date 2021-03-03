@@ -25,3 +25,12 @@
   vars:
     sshd:
       Port: "{{ custom_ssh_port }}"
+      # Disable empty password and root login.
+      # https://github.com/yugabyte/yugabyte-db/issues/7415
+      PermitRootLogin: no
+      PermitEmptyPasswords: no
+      # Disable all authentication methods except `publickey`.
+      PasswordAuthentication: no
+      ChallengeResponseAuthentication: no
+      KbdInteractiveAuthentication: no
+      AuthenticationMethods: 'publickey'
