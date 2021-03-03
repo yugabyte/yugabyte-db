@@ -499,6 +499,7 @@ export default class ClusterFields extends Component {
       this.setState({ maxNumNodes: numNodesAvailable });
     }
   }
+
   componentDidUpdate(prevProps, prevState) {
     const {
       universe: { currentUniverse, universeConfigTemplate },
@@ -876,62 +877,31 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-            this.reloadInstanceTypes();
-          });
+          this.props.submitConfigureUniverse(universeTaskParams);
         }
       } else {
         // Create flow
         if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
-          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-            this.reloadInstanceTypes();
-          });
+          this.props.submitConfigureUniverse(universeTaskParams);
         } else {
           const currentClusterConfiguration = getClusterByType(
             universeConfigTemplate.data.clusters,
             clusterType
           );
           if (!isDefinedNotNull(currentClusterConfiguration)) {
-            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-              this.reloadInstanceTypes();
-            });
+            this.props.submitConfigureUniverse(universeTaskParams);
           } else if (
             !areIntentsEqual(
               getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
               currentClusterConfiguration.userIntent
             )
           ) {
-            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-              this.reloadInstanceTypes();
-            });
+            this.props.submitConfigureUniverse(universeTaskParams);
           }
         }
       }
     }
   }
-
-  // fetch instance types with respect to selected availability zones (AZ)
-  reloadInstanceTypes = () => {
-    const {
-      universe: { universeConfigTemplate },
-      clusterType,
-      getInstanceTypeListItems
-    } = this.props;
-
-    const cluster = clusterType === 'async'
-      ? getReadOnlyCluster(universeConfigTemplate.data.clusters)
-      : getPrimaryCluster(universeConfigTemplate.data.clusters);
-
-    // AZs are available as part of universeConfigTemplate store record only
-    if (cluster) {
-      const provider = cluster.userIntent.provider;
-      const zones = cluster.placementInfo.cloudList[0].regionList
-        .flatMap(item => item.azList)
-        .map(item => item.name);
-
-      getInstanceTypeListItems(provider, zones);
-    }
-  };
 
   configureUniverseNodeList() {
     const {
@@ -1625,7 +1595,6 @@ export default class ClusterFields extends Component {
           maxNumNodes={this.state.maxNumNodes}
           currentProvider={this.getCurrentProvider(currentProviderUUID)}
           isKubernetesUniverse={this.state.isKubernetesUniverse}
-          reloadInstanceTypes={this.reloadInstanceTypes}
         />
         {showPlacementStatus && placementStatus}
       </div>

@@ -89,20 +89,19 @@ export default class AZSelectorTable extends Component {
     } else {
       currentTemplate.clusterOperation = 'EDIT';
     }
-    this.props.submitConfigureUniverse(currentTemplate).then(() => {
-      this.props.reloadInstanceTypes();
-    });
+    this.props.submitConfigureUniverse(currentTemplate);
   };
 
-  handleAZChange(oldZoneId, newZoneId) {
+  handleAZChange(oldZoneId, newZoneId, azList) {
     const {
       universe: { universeConfigTemplate }
     } = this.props;
-    const currentAZState = [...this.state.azItemState];
+    const currentAZState = _.cloneDeep(this.state.azItemState);
     const universeTemplate = _.clone(universeConfigTemplate.data);
     if (!currentAZState.some((azItem) => azItem.value === newZoneId)) {
-      const item = currentAZState.find(item => item.value === oldZoneId);
-      item.value = newZoneId;
+      const itemToUpdate = currentAZState.find(item => item.value === oldZoneId);
+      itemToUpdate.value = newZoneId;
+      itemToUpdate.name = azList.find(item => item.uuid === newZoneId)?.name;
       this.updatePlacementInfo(currentAZState, universeTemplate);
     }
   }
@@ -112,7 +111,7 @@ export default class AZSelectorTable extends Component {
       universe: { currentPlacementStatus, universeConfigTemplate }
     } = this.props;
     const universeTemplate = _.clone(universeConfigTemplate.data);
-    const currentAZState = [...this.state.azItemState];
+    const currentAZState = _.cloneDeep(this.state.azItemState);
     const replicationFactor = currentPlacementStatus.replicationFactor;
     const item = currentAZState.find(item => item.value === zoneId);
     const originalValue = item.count;
@@ -138,7 +137,7 @@ export default class AZSelectorTable extends Component {
     const {
       universe: { universeConfigTemplate }
     } = this.props;
-    const currentAZState = [...this.state.azItemState];
+    const currentAZState = _.cloneDeep(this.state.azItemState);
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const item = currentAZState.find(item => item.value === zoneId);
     item.isAffinitized = !item.isAffinitized;
@@ -177,9 +176,10 @@ export default class AZSelectorTable extends Component {
     });
     numNodesChangedViaAzList(totalNodesInConfig);
 
-    const cluster = clusterType === 'primary'
-      ? getPrimaryCluster(universeConfigTemplate.clusters)
-      : getReadOnlyCluster(universeConfigTemplate.clusters);
+    const cluster =
+      clusterType === 'primary'
+        ? getPrimaryCluster(universeConfigTemplate.clusters)
+        : getReadOnlyCluster(universeConfigTemplate.clusters);
 
     if (
       (currentProvider.code !== 'onprem' || totalNodesInConfig <= maxNumNodes) &&
@@ -248,9 +248,7 @@ export default class AZSelectorTable extends Component {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'CREATE';
         newTaskParams.resetAZConfig = false;
-        this.props.submitConfigureUniverse(newTaskParams).then(() => {
-          this.props.reloadInstanceTypes();
-        });
+        this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
         newTaskParams.currentClusterType = clusterType.toUpperCase();
@@ -273,9 +271,7 @@ export default class AZSelectorTable extends Component {
             newTaskParams.resetAZConfig = true;
           }
         }
-        this.props.submitConfigureUniverse(newTaskParams).then(() => {
-          this.props.reloadInstanceTypes();
-        });
+        this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {
           error: {
@@ -354,6 +350,7 @@ export default class AZSelectorTable extends Component {
           uniConfigArray.forEach((configArrayItem) => {
             if (configArrayItem.value === azItem.uuid) {
               groupsArray.push({
+                name: azItem.name,
                 value: azItem.uuid,
                 count: configArrayItem.count,
                 isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized
@@ -473,7 +470,48 @@ export default class AZSelectorTable extends Component {
   }
 
   componentDidMount() {
-    this.props.reloadInstanceTypes();
+    this.reloadInstanceTypes();
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    // detect change in AZ selection (no matter who initiated it - user or configure response)
+    // only zone changes matters, so skip any other fields
+    const oldAZNormalized = prevState.azItemState.map(item => item.value).sort();
+    const newAZNormalized = this.state.azItemState.map(item => item.value).sort();
+
+    if (!_.isEqual(oldAZNormalized, newAZNormalized)) {
+      this.reloadInstanceTypes();
+    }
+  }
+
+  reloadInstanceTypes() {
+    const {
+      universe: { universeConfigTemplate, currentUniverse },
+      clusterType,
+      type,
+      currentProvider,
+      getInstanceTypeListItems
+    } = this.props;
+
+    let provider = null;
+    if (type === 'Create') {
+      const cluster = getClusterByType(universeConfigTemplate.data?.clusters, clusterType);
+      const clusterProvider = cluster?.userIntent?.provider;
+      const storeProvider = currentProvider?.uuid;
+
+      // skip update when providers don't match as it's middle of the provider change process
+      if (storeProvider && clusterProvider && storeProvider === clusterProvider) {
+        provider = storeProvider;
+      }
+    } else {
+      const cluster = getClusterByType(currentUniverse.data?.universeDetails?.clusters, clusterType);
+      provider = cluster?.userIntent?.provider;
+    }
+
+    if (provider) {
+      const zones = this.state.azItemState.map(item => item.name);
+      getInstanceTypeListItems(provider, zones);
+    }
   }
 
   render() {
@@ -529,9 +567,10 @@ export default class AZSelectorTable extends Component {
       if (unusedAZList.length) {
         const count = this.props.type === "Edit" ? 1 : 0;
         const newAZState = [
-          ...this.state.azItemState,
+          ..._.cloneDeep(this.state.azItemState),
           {
             count: count,
+            name: unusedAZList[0].name,
             value: unusedAZList[0].uuid,
             isAffinitized: true
           }
@@ -554,7 +593,13 @@ export default class AZSelectorTable extends Component {
                   component={YBControlledSelect}
                   options={azListOptions}
                   selectVal={azGroupItem.value}
-                  onInputChanged={(event) => this.handleAZChange(azGroupItem.value, event.target.value)}
+                  onInputChanged={(event) =>
+                    this.handleAZChange(
+                      azGroupItem.value,
+                      event.target.value,
+                      azListForSelectedRegions
+                    )
+                  }
                 />
               </Col>
               <Col xs={4}>
@@ -609,17 +654,17 @@ export default class AZSelectorTable extends Component {
           {isNonEmptyArray(azListForSelectedRegions) &&
             azList.length < replicationFactor &&
             azList.length < azListForSelectedRegions.length && (
-            <Row>
-              <Col xs={4}>
-                <YBButton
-                  btnText="Add Zone"
-                  btnIcon="fa fa-plus"
-                  btnClass={'btn btn-orange universe-form-add-az-btn'}
-                  onClick={addNewAZField}
-                />
-              </Col>
-            </Row>
-          )}
+              <Row>
+                <Col xs={4}>
+                  <YBButton
+                    btnText="Add Zone"
+                    btnIcon="fa fa-plus"
+                    btnClass={'btn btn-orange universe-form-add-az-btn'}
+                    onClick={addNewAZField}
+                  />
+                </Col>
+              </Row>
+            )}
         </div>
       );
     }
