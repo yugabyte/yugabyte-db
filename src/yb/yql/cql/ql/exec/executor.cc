@@ -1876,7 +1876,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     }
 
     // If the transaction is ready to commit, apply child transaction results if any.
-    if (exec_context_->HasTransaction() && !exec_context_->HasPendingOperations()) {
+    if (exec_context_->HasTransaction() && !tnode_context->HasPendingOperations()) {
       const QLResponsePB& response = op->response();
       if (response.has_child_transaction_result()) {
         const auto& result = response.child_transaction_result();
