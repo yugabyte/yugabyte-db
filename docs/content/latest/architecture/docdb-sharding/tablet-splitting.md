@@ -279,9 +279,11 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 The following known limitations are planned to be resolved in upcoming releases:
 
-* During tablet splitting, client applications may get an error from the driver and need to retry the request.
-* Colocated tables cannot be split.
+* During tablet splitting, client applications may get an error from the driver and need to retry the request. [#5854](https://github.com/yugabyte/yugabyte-db/issues/5854)
+* Colocated tables cannot be split. [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463)
+* Tablet splitting should be disabled during an index backfill. [#6704](https://github.com/yugabyte/yugabyte-db/issues/6704)
+* Cross cluster replication currently does not work with tablet splitting. [#5373](https://github.com/yugabyte/yugabyte-db/issues/5373)
 
-To follow the tablet splitting work-in-progress, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 {{< /note >}}
