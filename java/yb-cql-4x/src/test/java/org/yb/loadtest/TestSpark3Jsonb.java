@@ -89,7 +89,7 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
 
       String query = "SELECT id, address, get_json_object(phone, '$.key[1].m[2].b') as key " +
                     "FROM mycatalog.test.person " +
-                    "WHERE get_json_object(phone, '$.phone') >= '1500' order by id";
+                    "WHERE get_json_string(phone, '$.key[1].m[2].b') = '400' order by id limit 2";
 
       Dataset<Row> explain_rows = spark.sql("EXPLAIN " + query);
       Iterator<Row> iterator = explain_rows.toLocalIterator();
@@ -101,7 +101,9 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       String explain_text = explain_sb.toString();
       logger.info("plan is " + explain_text);
       // check that column pruning works
-      assertTrue(explain_text.contains("id,address,phone->'phone',phone->'key'->1->'m'->2->'b'"));
+      assertTrue(explain_text.contains("id,address,phone->'key'->1->'m'->2->'b'"));
+      // check that jsonb column filter is pushed down
+      assertTrue(explain_text.contains("Cassandra Filters: [[phone->'key'->1->'m'->2->>'b' ="));
 
       Dataset<Row> rows = spark.sql(query);
 
