@@ -441,8 +441,8 @@ class NodeChecker():
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database "{}"'.format(user)) or
-                "Password for user {}:".format(user) in output):
+        if not (output.startswith('You are connected to database') or
+                "Password for user" in output):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
