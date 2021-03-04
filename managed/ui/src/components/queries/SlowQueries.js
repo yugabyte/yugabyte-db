@@ -108,7 +108,7 @@ const SlowQueriesComponent = ({ location }) => {
   const handleRowSelect = (row, isSelected) => {
     if (isSelected) {
       setSelectedRow([row.queryid]);
-    } else if (!isSelected && row.id === selectedRow[0].id) {
+    } else if (!isSelected && row.queryid === selectedRow[0]) {
       setSelectedRow([]);
     }
     return true;

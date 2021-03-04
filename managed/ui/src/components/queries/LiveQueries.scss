@@ -101,7 +101,7 @@
     z-index: 9999;
     top: 0;
     right: 0;
-    border-left: 1px solid $YB_BACKGROUND;
+    border-left: 1px solid darken($YB_BACKGROUND, 10%);
     max-height: 100%;
     transition: right 0.5s ease-in-out;
 
@@ -112,19 +112,21 @@
       .side-panel__icon--close {
         position: absolute;
         top: 0;
-        left: 20px;
-        padding: 10px 0;
+        right: 20px;
+        padding: 20px 0;
         cursor: pointer;
+
+        .fa {
+          font-size: 20px;
+        }
       }
 
       .side-panel__title {
-        padding-top: 35px;
+        padding: 20px 20px 20px 30px;
         color: $YB_ORANGE;
-        border-bottom: 4px solid $YB_ORANGE;
+        border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
         flex: 1 0 33%;
-        max-width: 200px;
-        text-align: center;
-        padding-bottom: 16px;
+        text-align: left;
         font-weight: 700;
       }
     }
@@ -153,6 +155,8 @@
 
         li {
           display: flex;
+          border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
+          padding: 7px 0 3px 0;
 
           span {
             margin-left: auto;

@@ -285,7 +285,7 @@ const LiveQueriesComponent = ({ location }) => {
   const handleRowSelect = (row, isSelected) => {
     if (isSelected) {
       setSelectedRow([row.id]);
-    } else if (!isSelected && row.id === selectedRow[0].id) {
+    } else if (!isSelected && row.id === selectedRow[0]) {
       setSelectedRow([]);
     }
     return true;
