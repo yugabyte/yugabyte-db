@@ -13,7 +13,9 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section covers the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays and composite types. The [JSONB document data type](../../json-support/jsonb-ysql) is covered in a separate section.
+This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types. 
+
+The [JSONB document data type](../../json-support/jsonb-ysql) is described in a separate section.
 
 ## Strings
 
@@ -377,6 +379,52 @@ yugabyte=# SELECT (item).name FROM on_hand WHERE (item).price > 0.99;
 
 ## Range Types
 
-Range data types represent a range of values of an element type, and is known as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values which can be within, before, or after a value range.
+Range data types represent a range of values of an element type. Range types are usually referred to as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values which can be within, before, or after a value range.
 
-Range types are useful because they represent many element values in a single range value, and because concepts such as overlapping ranges can be expressed clearly. The use of time and date ranges for scheduling purposes is the clearest example; but price ranges, measurement ranges from an instrument, and so forth can also be useful.
+YSQL supports the following range types:
+
+- `tsrange`, which corresponds to range of timestamp without time zone.
+- `tstzrange`, which corresponds to range of timestamp with time zone.
+
+The following example shows how to provide a range of time for an employee's vacation:
+
+```sql
+CREATE TABLE employees (employee_no int, vacation tsrange);
+
+INSERT INTO employees VALUES
+    (1227, '[2020-01-01 8:30, 2020-02-02 5:30)');
+```
+
+A non-empty range has a lower bound and an upper bound, with everything between these values included in the range. An inclusive bound indicated by square brackets includes the boundary itself in the range, whereas an exclusive bound indicated by braces excludes the boundary from the range. That is, in the preceding example, the first timestamp is included in the range, and the second timestamp is excluded. If the lower bound is omitted, everything less than the upper bound is included in the range, and if the upper bound is omitted, then everything greater than the lower bound is included in the range. If you omit both bounds, all values of the element type are in the range.
+
+The following is a syntax of an input for a range value, where *empty* is a representation of a range that does not contain anything:
+
+```sql
+(lowerbound, upperbound)
+
+(lowerbound, upperbound]
+
+[lowerbound, upperbound)
+
+[lowerbound, upperbound]
+
+empty
+```
+
+*lowerbound* could be a string of a valid input for the subtype or empty if there is no lower bound. The same logic is applicable to *upperbound*. You can enclose bound values in double quotes, which is a requirement in cases when the value includes parentheses, brackets, commas, double quotes, backslashes. To define an empty-string value, you use `""` (not providing anything is interpreted as defing  an infinite bound). You may use whitespaces before and after values, but not between the parentheses or brackets, as this is interpreted as part of the lower or upper bound value.
+
+You can create a range type using a constructor function named identically to the range type. The constructor functions typically have two or three arguments, with the former constructing a range in standard form (lower bound inclusive, upper bound exclusive), and the latter constructing a range with bounds specified by the third argument (one of strings "`()`", "`(]`", "`[)`", or "`[]`"). The following example shows the constructor with a lower bound, upper bound, and text argument:
+
+```sql
+SELECT tsrange(2020-01-01 8:30, 2020-02-02 5:30 '(]');
+```
+
+YSQL allows you to impose exclusion constraints, such as non-overlapping constraints, on range types. The following example creates a table containing data on the employee vacation ranges and prevents overlapping dates from being entered in the table at the same time:
+
+```sql
+CREATE TABLE vacations (
+    during tsrange,
+    EXCLUDE USING gist (during WITH &&)
+);
+```
+
