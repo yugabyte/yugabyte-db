@@ -821,7 +821,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			 * can be a useful way of reducing switchover time when using
 			 * various forms of replication.
 			 */
-			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
+			RequestCheckpoint(CHECKPOINT_CAUSE_CLIENT | CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
 			break;
 
