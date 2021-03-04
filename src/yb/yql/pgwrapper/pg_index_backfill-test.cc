@@ -868,7 +868,12 @@ TEST_F_EX(PgIndexBackfillTest,
 
   // Index scan to verify contents of index table.
   const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  ASSERT_OK(WaitFor(
+      [this, &query] {
+        return conn_->HasIndexScan(query);
+      },
+      kIndexStateFlagsUpdateGracePeriod + kIndexStateFlagsUpdateDelay,
+      "Wait for IndexScan"));
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   int lines = PQntuples(res.get());
   ASSERT_EQ(1, lines);
@@ -969,7 +974,12 @@ TEST_F_EX(PgIndexBackfillTest,
         "WITH j_idx AS (SELECT * FROM $0 ORDER BY j) SELECT j FROM j_idx WHERE i = $1",
         kTableName,
         key);
-    ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+    ASSERT_OK(WaitFor(
+        [this, &query] {
+          return conn_->HasIndexScan(query);
+        },
+        kIndexStateFlagsUpdateGracePeriod + kIndexStateFlagsUpdateDelay,
+        "Wait for IndexScan"));
     PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
     int lines = PQntuples(res.get());
     ASSERT_EQ(1, lines);
@@ -1228,6 +1238,68 @@ TEST_F_EX(PgIndexBackfillTest,
     Status s = result.status();
     FAIL() << "unexpected status: " << s;
   }
+}
+
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(IndexScanVisibility),
+          PgIndexBackfillSlow) {
+  ExternalTabletServer* diff_ts = cluster_->tablet_server(1);
+  // Make sure default tserver is 0.  At the time of writing, this is set in
+  // PgWrapperTestBase::SetUp.
+  ASSERT_NE(pg_ts, diff_ts);
+
+  LOG(INFO) << "Create connection to run CREATE INDEX";
+  PGConn create_index_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  LOG(INFO) << "Create connection to the same tablet server as the one running CREATE INDEX";
+  PGConn same_ts_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
+  PGConn diff_ts_conn = ASSERT_RESULT(PGConn::Connect(
+      HostPort(diff_ts->bind_host(), diff_ts->pgsql_rpc_port()),
+      kDatabaseName));
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+
+  thread_holder_.AddThreadFunctor([this, &same_ts_conn, &diff_ts_conn] {
+    LOG(INFO) << "Begin select thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kIndexName));
+
+    LOG(INFO) << "Load DocDB table/index schemas to pggate cache for the other connections";
+    ASSERT_RESULT(same_ts_conn.FetchFormat("SELECT * FROM $0 WHERE i = 2", kTableName));
+    ASSERT_RESULT(diff_ts_conn.FetchFormat("SELECT * FROM $0 WHERE i = 2", kTableName));
+  });
+
+  LOG(INFO) << "Create index...";
+  ASSERT_OK(create_index_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+  ASSERT_TRUE(thread_holder_.stop_flag())
+      << "select thread did not finish by the time CREATE INDEX ended";
+  CoarseTimePoint start_time = CoarseMonoClock::Now();
+
+  LOG(INFO) << "Check for index scan...";
+  const std::string query = Format("SELECT * FROM $0 WHERE i = 2", kTableName);
+  // The session that ran CREATE INDEX should immediately be ready for index scan.
+  ASSERT_TRUE(ASSERT_RESULT(create_index_conn.HasIndexScan(query)));
+  // Eventually, the other sessions should see the index as public.  They may take some time because
+  // they don't know about the latest catalog update until
+  // 1. master sends catalog version through heartbeat to tserver
+  // 2. tserver shares catalog version to postgres through shared memory
+  // Another avenue to learn that the index is public is to send a request to tserver and get a
+  // schema version mismatch on the indexed table.  Since HasIndexScan uses EXPLAIN, it doesn't hit
+  // tserver, so postgres will be unaware until catalog version is updated in shared memory.  Expect
+  // 0s-1s since default heartbeat period is 1s (see flag heartbeat_interval_ms).
+  ASSERT_OK(WaitFor(
+      [&query, &same_ts_conn, &diff_ts_conn]() -> Result<bool> {
+        bool same_ts_has_index_scan = VERIFY_RESULT(same_ts_conn.HasIndexScan(query));
+        bool diff_ts_has_index_scan = VERIFY_RESULT(diff_ts_conn.HasIndexScan(query));
+        LOG(INFO) << "same_ts_has_index_scan: " << same_ts_has_index_scan
+                  << ", "
+                  << "diff_ts_has_index_scan: " << diff_ts_has_index_scan;
+        return same_ts_has_index_scan && diff_ts_has_index_scan;
+      },
+      kIndexStateFlagsUpdateGracePeriod + kIndexStateFlagsUpdateDelay,
+      "Wait for IndexScan"));
+  LOG(INFO) << "It took " << yb::ToString(CoarseMonoClock::Now() - start_time)
+            << " for other sessions to notice that the index became public";
 }
 
 // Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.
