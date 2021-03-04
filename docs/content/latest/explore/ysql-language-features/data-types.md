@@ -391,8 +391,8 @@ The following example shows how to provide a range of time for an employee's vac
 ```sql
 CREATE TABLE employees (employee_no int, vacation tsrange);
 
-INSERT INTO employees VALUES
-    (1227, '[2020-01-01 8:30, 2020-02-02 5:30)');
+INSERT INTO employees 
+  VALUES (1227, '[2020-01-01 8:30, 2020-02-02 5:30)');
 ```
 
 A non-empty range has a lower bound and an upper bound, with everything between these values included in the range. An inclusive bound indicated by square brackets includes the boundary itself in the range, whereas an exclusive bound indicated by braces excludes the boundary from the range. That is, in the preceding example, the first timestamp is included in the range, and the second timestamp is excluded. If the lower bound is omitted, everything less than the upper bound is included in the range, and if the upper bound is omitted, then everything greater than the lower bound is included in the range. If you omit both bounds, all values of the element type are in the range.
