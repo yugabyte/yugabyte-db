@@ -13,6 +13,7 @@ import javax.persistence.Id;
 import javax.persistence.OneToMany;
 
 import io.ebean.annotation.DbJson;
+import com.google.common.collect.ImmutableSet;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -52,6 +53,8 @@ public class Provider extends Model {
 
   @Column(nullable = false)
   public UUID customerUUID;
+
+  public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
 
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
@@ -185,18 +188,18 @@ public class Provider extends Model {
     return find.byId(providerUuid);
   }
 
-  public String getAwsHostedZoneId() {
-    return getConfig().get("AWS_HOSTED_ZONE_ID");
+  public String getHostedZoneId() {
+    return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
   public String getAwsHostedZoneName() {
     return getConfig().get("AWS_HOSTED_ZONE_NAME");
   }
 
-  // Update host zone if for aws provider
+  // Update host zone.
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
     Map<String, String> currentProviderConfig = getConfig();
-    currentProviderConfig.put("AWS_HOSTED_ZONE_ID", hostedZoneId);
+    currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("AWS_HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
     this.save();
