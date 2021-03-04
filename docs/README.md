@@ -74,6 +74,13 @@ Follow these steps if this is the first time you are setting up to work on the d
 >
 > Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
 
+Note:
+For Catalina, an additional step maybe necessary to make sure xcode-select is pointing to the Xcode Developer directory using a command like this:
+
+```
+xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+
 Then:
 
 Fork the yugabyte-db GitHub repository and create a local clone of your fork with a command like this:
