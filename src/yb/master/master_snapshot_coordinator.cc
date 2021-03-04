@@ -23,6 +23,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/restoration_state.h"
+#include "yb/master/snapshot_coordinator_context.h"
+#include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/sys_catalog_writer.h"
 
@@ -50,10 +52,15 @@ namespace master {
 namespace {
 
 void SubmitWrite(
-    docdb::KeyValueWriteBatchPB&& write_batch, SnapshotCoordinatorContext* context) {
+    docdb::KeyValueWriteBatchPB&& write_batch, SnapshotCoordinatorContext* context,
+    const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
   tserver::WriteRequestPB empty_write_request;
   auto state = std::make_unique<tablet::WriteOperationState>(
       /* tablet= */ nullptr, &empty_write_request);
+  if (synchronizer) {
+    state->set_completion_callback(std::make_unique<
+        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
+  }
   auto& request = *state->mutable_request();
   *request.mutable_write_batch() = std::move(write_batch);
   auto operation = std::make_unique<tablet::WriteOperation>(
@@ -200,7 +207,7 @@ class MasterSnapshotCoordinator::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
-      return LoadSnapshot(id, data);
+      return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
     });
   }
 
@@ -226,25 +233,35 @@ class MasterSnapshotCoordinator::Impl {
                   << AsString(sub_doc_key.doc_key().range_group());;
     }
 
-    if (first_key.GetInt32() != SysRowEntry::SNAPSHOT) {
-      return Status::OK();
+    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT) {
+      return DoApplyWrite<SysSnapshotEntryPB>(
+          sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
     }
 
+    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT_SCHEDULE) {
+      return DoApplyWrite<SnapshotScheduleOptionsPB>(
+          sub_doc_key.doc_key().range_group()[1].GetString(), value, &schedules_);
+    }
+
+    return Status::OK();
+  }
+
+  template <class Pb, class Map>
+  CHECKED_STATUS DoApplyWrite(const std::string& id_str, const Slice& value, Map* map) {
     docdb::Value decoded_value;
     RETURN_NOT_OK(decoded_value.Decode(value));
 
     auto value_type = decoded_value.primitive_value().value_type();
-    const auto& id_str = sub_doc_key.doc_key().range_group()[1].GetString();
 
     if (value_type == docdb::ValueType::kTombstone) {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto id = TryFullyDecodeTxnSnapshotId(id_str);
-      if (!id) {
-        LOG(WARNING) << "Unable to decode snapshot id: " << id_str;
+      auto id = TryFullyDecodeUuid(id_str);
+      if (id.is_nil()) {
+        LOG(WARNING) << "Unable to decode id: " << id_str;
         return Status::OK();
       }
-      bool erased = snapshots_.erase(id) != 0;
-      LOG_IF(DFATAL, !erased) << "Unknown shapshot tombstoned: " << id;
+      bool erased = map->erase(typename Map::key_type(id)) != 0;
+      LOG_IF(DFATAL, !erased) << "Unknown entry tombstoned: " << id;
       return Status::OK();
     }
 
@@ -256,7 +273,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    return LoadSnapshot(id_str, decoded_value.primitive_value().GetString());
+    return LoadEntry<Pb>(id_str, decoded_value.primitive_value().GetString(), map);
   }
 
   CHECKED_STATUS ListSnapshots(
@@ -368,6 +385,34 @@ class MasterSnapshotCoordinator::Impl {
     return restoration_id;
   }
 
+  Result<SnapshotScheduleId> CreateSchedule(
+      const CreateSnapshotScheduleRequestPB& req, CoarseTimePoint deadline) {
+    auto synchronizer = std::make_shared<Synchronizer>();
+
+    SnapshotScheduleState schedule(&context_, req);
+
+    docdb::KeyValueWriteBatchPB write_batch;
+    RETURN_NOT_OK(schedule.StoreToWriteBatch(&write_batch));
+    SubmitWrite(std::move(write_batch), &context_, synchronizer);
+    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
+
+    return schedule.id();
+  }
+
+  CHECKED_STATUS ListSnapshotSchedules(
+      const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (snapshot_schedule_id.IsNil()) {
+      for (const auto& p : schedules_) {
+        RETURN_NOT_OK(p.second->ToPB(resp->add_schedules()));
+      }
+      return Status::OK();
+    }
+
+    SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(snapshot_schedule_id));
+    return schedule.ToPB(resp->add_schedules());
+  }
+
   void Start() {
     poller_.Start(&context_.Scheduler(), FLAGS_snapshot_coordinator_poll_interval_ms * 1ms);
   }
@@ -377,39 +422,34 @@ class MasterSnapshotCoordinator::Impl {
   }
 
  private:
-  CHECKED_STATUS LoadSnapshot(const Slice& id, const Slice& data) REQUIRES(mutex_) {
-    VLOG(2) << __func__ << "(" << id.ToDebugString() << ", " << data.ToDebugString() << ")";
+  template <class Pb, class Map>
+  CHECKED_STATUS LoadEntry(const Slice& id_slice, const Slice& data, Map* map) REQUIRES(mutex_) {
+    VLOG(2) << __func__ << "(" << id_slice.ToDebugString() << ", " << data.ToDebugString() << ")";
 
-    auto snapshot_id = TryFullyDecodeTxnSnapshotId(id);
-    if (!snapshot_id) {
+    auto id = TryFullyDecodeUuid(id_slice);
+    if (id.is_nil()) {
       return Status::OK();
     }
-    auto metadata = VERIFY_RESULT(pb_util::ParseFromSlice<SysSnapshotEntryPB>(data));
-    return LoadSnapshot(snapshot_id, metadata);
+    auto metadata = VERIFY_RESULT(pb_util::ParseFromSlice<Pb>(data));
+    return LoadEntry(typename Map::key_type(id), metadata, map);
   }
 
-  CHECKED_STATUS LoadSnapshot(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data)
+  template <class Pb, class Map>
+  CHECKED_STATUS LoadEntry(
+      const typename Map::key_type& id, const Pb& data, Map* map)
       REQUIRES(mutex_) {
-    VLOG(1) << __func__ << "(" << snapshot_id << ", " << data.ShortDebugString() << ")";
+    VLOG(1) << __func__ << "(" << id << ", " << data.ShortDebugString() << ")";
 
-    auto snapshot = std::make_unique<SnapshotState>(&context_, snapshot_id, data);
+    auto new_entry = std::make_unique<typename Map::mapped_type::element_type>(&context_, id, data);
 
-    auto it = snapshots_.find(snapshot_id);
-    if (it == snapshots_.end()) {
-      snapshots_.emplace(snapshot_id, std::move(snapshot));
+    auto it = map->find(id);
+    if (it == map->end()) {
+      map->emplace(id, std::move(new_entry));
+    } else if (it->second->ShouldUpdate(*new_entry)) {
+      it->second = std::move(new_entry);
     } else {
-      // Backward compatibility mode
-      if (snapshot->version() == 0) {
-        snapshot->SetVersion(it->second->version() + 1);
-      }
-      if (it->second->version() < snapshot->version()) {
-        // If we have several updates for single snapshot, they are loaded in chronological order.
-        // So latest update should be picked.
-        it->second = std::move(snapshot);
-      } else {
-        LOG(INFO) << __func__ << " ignore because of version check, existing: "
-                  << it->second->ToString() << ", loaded: " << snapshot->ToString();
-      }
+      LOG(INFO) << __func__ << " ignore because of version check, existing: "
+                << it->second->ToString() << ", loaded: " << new_entry->ToString();
     }
 
     return Status::OK();
@@ -430,6 +470,16 @@ class MasterSnapshotCoordinator::Impl {
     if (it == restorations_.end()) {
       return STATUS(NotFound, "Could not find restoration", restoration_id.ToString(),
                     MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+    return *it->second;
+  }
+
+  Result<SnapshotScheduleState&> FindSnapshotSchedule(
+      const SnapshotScheduleId& id) REQUIRES(mutex_) {
+    auto it = schedules_.find(id);
+    if (it == schedules_.end()) {
+      return STATUS(NotFound, "Could not find snapshot schedule", id.ToString(),
+                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
     }
     return *it->second;
   }
@@ -519,6 +569,8 @@ class MasterSnapshotCoordinator::Impl {
                      TxnSnapshotIdHash> snapshots_ GUARDED_BY(mutex_);
   std::unordered_map<TxnSnapshotRestorationId, std::unique_ptr<RestorationState>,
                      TxnSnapshotRestorationIdHash> restorations_ GUARDED_BY(mutex_);
+  std::unordered_map<SnapshotScheduleId, std::unique_ptr<SnapshotScheduleState>,
+                     SnapshotScheduleIdHash> schedules_ GUARDED_BY(mutex_);
   rpc::Poller poller_;
 };
 
@@ -562,6 +614,16 @@ Status MasterSnapshotCoordinator::ListRestorations(
     const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
     ListSnapshotRestorationsResponsePB* resp) {
   return impl_->ListRestorations(restoration_id, snapshot_id, resp);
+}
+
+Result<SnapshotScheduleId> MasterSnapshotCoordinator::CreateSchedule(
+    const CreateSnapshotScheduleRequestPB& request, CoarseTimePoint deadline) {
+  return impl_->CreateSchedule(request, deadline);
+}
+
+Status MasterSnapshotCoordinator::ListSnapshotSchedules(
+    const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp) {
+  return impl_->ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 Status MasterSnapshotCoordinator::Load(tablet::Tablet* tablet) {

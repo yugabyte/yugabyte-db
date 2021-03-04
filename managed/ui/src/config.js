@@ -56,6 +56,7 @@ export const KUBERNETES_PROVIDERS = [
   // keep deprecated PKS to properly show existing PKS providers in the list, if any
   { code: "pks", name: "Pivotal Container Service" },
   { code: "tanzu", name: "VMware Tanzu" },
+  { code: "openshift", name: "Red Hat OpenShift" },
   { code: "gke", name: "Google Container Engine" },
   { code: "aks", name: "Azure Container Service" },
   { code: "eks", name: "Elastic Container Service" },
