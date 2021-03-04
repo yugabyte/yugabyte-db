@@ -58,7 +58,7 @@ export default class NodeActionModal extends Component {
     const universeUUID = currentUniverse.data.universeUUID;
     performUniverseNodeAction(universeUUID, nodeInfo.name, actionType).then((response) => {
       if (response.error !== true) {
-        this._getUniversePerNodeStatusResponse(
+        this.pollNodeStatusUpdate(
           universeUUID,
           actionType,
           nodeInfo.name,
