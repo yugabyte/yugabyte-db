@@ -15,7 +15,7 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
-    AzureAccessCommand, AzureQueryCommand
+    AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, create_resource_group
 
 
@@ -40,6 +40,7 @@ class AzureCloud(AbstractCloud):
         self.add_subcommand(AzureNetworkCommand())
         self.add_subcommand(AzureAccessCommand())
         self.add_subcommand(AzureQueryCommand())
+        self.add_subcommand(AzureDnsCommand())
 
     def network_bootstrap(self, args):
         # Each region code maps to dictionary containing
@@ -154,3 +155,15 @@ class AzureCloud(AbstractCloud):
 
     def update_disk(self, args):
         raise YBOpsRuntimeError("Update Disk not implemented for Azure")
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().list_dns_record_set(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().create_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().edit_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
