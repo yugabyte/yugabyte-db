@@ -49,7 +49,7 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 SSH_RETRY_LIMIT = 20
 DEFAULT_SSH_PORT = 22
 # Timeout in seconds.
-SSH_TIMEOUT = 15
+SSH_TIMEOUT = 45
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
@@ -58,6 +58,9 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+
+# TTL in seconds for how long DNS records will be cached.
+DNS_RECORD_SET_TTL = 5
 
 
 class ReleasePackage(object):

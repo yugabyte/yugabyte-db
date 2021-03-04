@@ -221,8 +221,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
     UniverseUpdater updater = getLockingUniverseUpdater(
         expectedUniverseVersion,
-        true, 
-        false, 
+        true,
+        false,
         isResumeOrDelete
     );
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
@@ -413,7 +413,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  
+
   /**
    * Creates a task list to pause the nodes and adds to the task queue.
    *
@@ -451,10 +451,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
-  }  
+  }
 
 
-    
+
   /**
    * Creates a task list to resume nodes and adds it to the task queue.
    *
@@ -492,8 +492,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
-  }  
-  
+  }
+
 
   /**
    * Create tasks to update the state of the nodes.
@@ -1036,12 +1036,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       DnsManager.DnsCommandType eventType, boolean isForceDelete, CloudType providerType,
       String provider, String universeName) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateDnsEntry", executor);
-    if (!providerType.equals(CloudType.aws)) {
+    if (!Provider.HostedZoneEnabledProviders.contains(providerType.toString())) {
       return subTaskGroup;
     }
     Provider p = Provider.get(UUID.fromString(provider));
     // TODO: shared constant with javascript land?
-    String hostedZoneId = p.getConfig().get("AWS_HOSTED_ZONE_ID");
+    String hostedZoneId = p.getHostedZoneId();
     if (hostedZoneId == null || hostedZoneId.isEmpty()) {
       return subTaskGroup;
     }

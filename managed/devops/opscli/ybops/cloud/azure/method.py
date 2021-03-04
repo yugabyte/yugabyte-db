@@ -187,3 +187,65 @@ class AzureQueryUltraMethod(AbstractMethod):
         self.parser.add_argument("--regions", nargs='+')
         self.parser.add_argument("--folder", required=True,
                                  help="Folder to write region ultra disk json.")
+
+
+class AbstractDnsMethod(AbstractMethod):
+    def __init__(self, base_command, method_name):
+        super(AbstractDnsMethod, self).__init__(base_command, method_name)
+        self.ip_list = []
+        self.naming_info_required = True
+
+    def add_extra_args(self):
+        super(AbstractDnsMethod, self).add_extra_args()
+        self.parser.add_argument("--hosted_zone_id", required=True,
+                                 help="The ID of the Azure private DNS zone.")
+        self.parser.add_argument("--domain_name_prefix", required=self.naming_info_required,
+                                 help="The prefix to create the RecordSet with, in your Zone.")
+        self.parser.add_argument("--node_ips", required=self.naming_info_required,
+                                 help="The CSV of the node IPs to associate to this DNS entry.")
+
+    def preprocess_args(self, args):
+        super(AbstractDnsMethod, self).preprocess_args(args)
+        if args.node_ips:
+            self.ip_list = args.node_ips.split(',')
+
+
+class AzureCreateDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureCreateDnsEntryMethod, self).__init__(base_command, "create")
+
+    def callback(self, args):
+        self.cloud.create_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class AzureEditDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureEditDnsEntryMethod, self).__init__(base_command, "edit")
+
+    def callback(self, args):
+        self.cloud.edit_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class AzureDeleteDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureDeleteDnsEntryMethod, self).__init__(base_command, "delete")
+
+    def callback(self, args):
+        self.cloud.delete_dns_record_set(args.hosted_zone_id, args.domain_name_prefix)
+
+
+class AzureListDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureListDnsEntryMethod, self).__init__(base_command, "list")
+        self.naming_info_required = False
+
+    def callback(self, args):
+        try:
+            result = self.cloud.list_dns_record_set(args.hosted_zone_id)
+            print(json.dumps({
+                'name': result.name
+            }))
+        except Exception as e:
+            print(json.dumps({'error': repr(e)}))

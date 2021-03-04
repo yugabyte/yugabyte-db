@@ -25,6 +25,7 @@ auth0-python==3.0.0
 awscli==1.11.1
 azure-common==1.1.25
 azure-mgmt-compute==12.1.0
+azure-mgmt-privatedns==0.1.0
 azure-mgmt-network==10.2.0
 azure-mgmt-resource==10.0.0
 boto>=2.42.0

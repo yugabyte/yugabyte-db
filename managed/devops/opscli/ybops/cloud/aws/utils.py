@@ -15,7 +15,7 @@ import os
 import re
 
 from ipaddress import ip_network
-from ybops.utils import get_or_create, get_and_cleanup
+from ybops.utils import get_or_create, get_and_cleanup, DNS_RECORD_SET_TTL
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
 
@@ -1042,7 +1042,7 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
             'ResourceRecordSet': {
                 'Name': "{}.{}".format(domain_name_prefix, hosted_zone_name),
                 'Type': 'A',
-                'TTL': 5,
+                'TTL': DNS_RECORD_SET_TTL,
                 'ResourceRecords': records
             }
         }]

@@ -592,7 +592,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
     assertNotNull(provider);
-    assertEquals("1234", provider.getAwsHostedZoneId());
+    assertEquals("1234", provider.getHostedZoneId());
     assertEquals("test", provider.getAwsHostedZoneName());
     assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
     assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));

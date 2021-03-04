@@ -153,7 +153,7 @@ public class ProviderTest extends FakeDBApplication {
     Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon",
         ImmutableMap.of("AWS_HOSTED_ZONE_ID", "some_id", "AWS_HOSTED_ZONE_NAME", "some_name"));
     assertNotNull(provider.uuid);
-    assertEquals("some_id", provider.getAwsHostedZoneId());
+    assertEquals("some_id", provider.getHostedZoneId());
     assertEquals("some_name", provider.getAwsHostedZoneName());
   }
 
@@ -161,8 +161,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testGetAwsHostedZoneWithNoData() {
     Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
     assertNotNull(provider.uuid);
-    assertNull(provider.getAwsHostedZoneId());
-    assertNull(provider.getAwsHostedZoneId());
+    assertNull(provider.getHostedZoneId());
   }
 
   @Test
