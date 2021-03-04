@@ -61,7 +61,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().where()
+    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().setMaxRows(2000).where()
       .eq("customer_uuid", customerUUID)
       .orderBy("create_time desc");
 
