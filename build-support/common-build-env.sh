@@ -1523,7 +1523,11 @@ get_build_worker_list() {
     # (new lines, spaces, etc.) has to be treated the same way.
     #
     # shellcheck disable=SC2207
-    build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+    if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
+      build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
+    else
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+    fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
           "waiting for $DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC sec."
