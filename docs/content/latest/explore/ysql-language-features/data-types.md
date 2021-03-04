@@ -383,8 +383,13 @@ Range data types represent a range of values of an element type. Range types are
 
 YSQL supports the following range types:
 
-- `tsrange`, which corresponds to range of timestamp without time zone.
-- `tstzrange`, which corresponds to range of timestamp with time zone.
+- `tsrange`, which corresponds to a range of `timestamp without time zone`.
+- `tstzrange`, which corresponds to a range of `timestamp with time zone`.
+- `daterange`, which corresponds to a range of `date`.
+- `int4range`, which corresponds to a range of `integer`.
+- `int8range`, which corresponds to a range of `biginteger`.
+- `numrange`, which corresponds to a range of `numeric`.
+- User-defined types.
 
 The following example shows how to provide a range of time for an employee's vacation:
 
@@ -416,15 +421,15 @@ empty
 You can create a range type using a constructor function named identically to the range type. The constructor functions typically have two or three arguments, with the former constructing a range in standard form (lower bound inclusive, upper bound exclusive), and the latter constructing a range with bounds specified by the third argument (one of strings "`()`", "`(]`", "`[)`", or "`[]`"). The following example shows the constructor with a lower bound, upper bound, and text argument:
 
 ```sql
-SELECT tsrange(2020-01-01 8:30, 2020-02-02 5:30 '(]');
+SELECT numrange(3.0, 10.0, '(]');
 ```
 
-YSQL allows you to impose exclusion constraints, such as non-overlapping constraints, on range types. The following example creates a table containing data on the employee vacation ranges and prevents overlapping dates from being entered in the table at the same time:
+In addition to using built-in range types, you can define your own custom ones. The following example shows how to define a range type of subtype `text` and use it in a `SELECT` statement:
 
 ```sql
-CREATE TABLE vacations (
-    during tsrange,
-    EXCLUDE USING gist (during WITH &&)
-);
+CREATE TYPE textrange 
+  AS RANGE (subtype = text);
+
+SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
