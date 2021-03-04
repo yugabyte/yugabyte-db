@@ -11,11 +11,9 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
+from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
-
-from collections import defaultdict
-
-from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key, wait_for_ssh
+from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL
 from ybops.common.exceptions import YBOpsRuntimeError
 
 import logging
@@ -30,6 +28,7 @@ RESOURCE_GROUP = os.environ.get("AZURE_RG")
 SUBNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/networkSecurityGroups/{}"
 VNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}"
+PRIVATE_DNS_ZONE_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/privateDnsZones/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     "ultrassd_lrs": "UltraSSD_LRS"}
@@ -43,6 +42,7 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
     "serviceFamily eq 'Compute' " \
     "and serviceName eq 'Virtual Machines' and priceType eq 'Consumption' " \
     "and armRegionName eq '{}'"
+PRIVATE_DNS_ZONE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
 
 
 def get_credentials():
@@ -288,6 +288,7 @@ class AzureCloudAdmin():
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
         self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
+        self.dns_client = PrivateDnsManagementClient(self.credentials, SUBSCRIPTION_ID)
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
@@ -671,7 +672,48 @@ class AzureCloudAdmin():
 
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
-        return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
+        return {"private_ip": public_ip, "public_ip": public_ip, "region": region,
                 "zone": "{}-{}".format(region, zone), "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name}
+
+    def list_dns_record_set(self, dns_zone_id):
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        if not zone_info:
+            return PRIVATE_DNS_ZONE_ID_FORMAT_STRING.format(
+                SUBSCRIPTION_ID, RESOURCE_GROUP, dns_zone_id)
+        return self.dns_client.private_zones.get(
+            zone_info.group('resource_group'), zone_info.group('zone_name'))
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
+        # Setting if_none_match="*" will cause this to error if a record with the name exists.
+        return self.dns_client.record_sets.create_or_update(if_none_match="*", **parameters)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
+        return self.dns_client.record_sets.update(**parameters)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
+        return self.dns_client.record_sets.delete(**parameters)
+
+    def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        rg = zone_info.group('resource_group')
+        zone_name = zone_info.group('zone_name')
+        args = {
+            "resource_group_name": rg,
+            "private_zone_name": zone_name,
+            "record_type": "A",
+            "relative_record_set_name": "{}.{}".format(domain_name_prefix, zone_name),
+        }
+
+        if ip_list is not None:
+            params = {
+                "ttl": DNS_RECORD_SET_TTL,
+                "arecords": [{"ipv4_address": ip} for ip in ip_list]
+            }
+            args["parameters"] = params
+
+        return args
