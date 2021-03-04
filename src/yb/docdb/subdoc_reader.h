@@ -65,6 +65,33 @@ class SubDocumentReader {
   const Expiration inherited_expiration_;
 };
 
+// This class is responsible for initializing TTL and overwrite metadata based on parent rows, and
+// then initializing and returning SubDocumentReader's which will produce SubDocument instances.
+class SubDocumentReaderBuilder {
+ public:
+  SubDocumentReaderBuilder(IntentAwareIterator* iter, DeadlineInfo* deadline_info);
+
+  // Updates expiration/overwrite data by scanning all parents of this Builder's
+  // target_subdocument_key.
+  CHECKED_STATUS InitObsolescenceInfo(
+      DocHybridTime table_tombstone_time, Expiration table_expiration,
+      const Slice& root_doc_key, const Slice& target_subdocument_key);
+
+  // Does NOT seek. This method assumes the caller has seeked iter to the key corresponding to
+  // projection. It will return a SubDocumentReader which will read the key currently pointed to,
+  // assuming the iterator is seeked to the key corresponding to sub_doc_key. Use of this method
+  // without explicit seeking to sub_doc_key by the caller is not supported.
+  Result<std::unique_ptr<SubDocumentReader>> Build(const KeyBytes& sub_doc_key);
+
+ private:
+  CHECKED_STATUS UpdateWithParentWriteInfo(const Slice& parent_key_without_ht);
+
+  IntentAwareIterator* iter_;
+  DeadlineInfo* deadline_info_;
+  DocHybridTime highest_ancestor_write_time_ = DocHybridTime::kMin;
+  Expiration inherited_expiration_;
+};
+
 }  // namespace docdb
 }  // namespace yb
 
