@@ -2,11 +2,13 @@
 // 
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
 
-import React from 'react'
-import { Button, DropdownButton, MenuItem } from 'react-bootstrap'
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table'
-import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox'
-import { YBPanelItem } from '../../panels'
+import React from 'react';
+import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
+import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { YBConfirmModal } from '../../modals';
+import { YBPanelItem } from '../../panels';
 
 // Data format for configuration name column.
 const getBackupConfigName = (cell, row) => {
@@ -23,21 +25,59 @@ const getBackupLocation = (cell, row) => {
   return row.data.BACKUP_LOCATION;
 };
 
+// 
+const handleDeleteBackupConfig = () => {
+  console.log('delete modal');
+};
+
 // This method will return all the necessary actions
 // for the give list.
-const foramtConfigActions = (cell, row) => {
+const foramtConfigActions = (cell, row, onEdit) => {
+  const inUse = row.inUse;
+  const configName = row.data.CONFIGURATION_NAME;
+
   return (
     <DropdownButton
-      className="btn btn-default"
+      className="backup-config-actions btn btn-default"
       title="Actions"
       id="bg-nested-dropdown"
       pullRight
     >
-      <MenuItem>
-        <i className="fa fa-info-circle"></i> Delete Configuration
+      <MenuItem onClick={() => onEdit(row)}>
+        <i className="fa fa-pencil"></i> Edit Configuration
+      </MenuItem>
+      <MenuItem
+        onClick={handleDeleteBackupConfig}
+        disabled={inUse}>
+        {!inUse &&
+          <><i className="fa fa-trash"></i> Delete Configuration</>
+        }
+
+        {inUse &&
+          <YBInfoTip content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+            placement="top"
+          >
+            <span className="disable-delete">
+              <i className="fa fa-ban"></i> Delete Configuration
+            </span>
+          </YBInfoTip>
+        }
+
+        {/* {!inUse &&
+          <YBConfirmModal
+            name="delete-storage-config"
+            title='Confirm Delete'
+          // onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
+            currentModal={'delete' + configName + 'StorageConfig'}
+          // visibleModal={this.props.visibleModal}
+          // hideConfirmModal={this.props.hideDeleteStorageConfig}
+          >
+            Are you sure you want to delete {configName} Storage Configuration?
+          </YBConfirmModal>
+        } */}
       </MenuItem>
       <MenuItem>
-        <i className="fa fa-download"></i> Show Universes
+        <i className="fa fa-eye"></i> Show Universes
       </MenuItem>
     </DropdownButton>
   );
@@ -61,6 +101,7 @@ const header = (currTab, onCreateBackup) => (
 
 function BackupList(props) {
   const currTab = props.activeTab.toUpperCase();
+  const onEdit = props.onEditConfig;
 
   return (
     <div>
@@ -103,9 +144,9 @@ function BackupList(props) {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={foramtConfigActions}
+                dataFormat={(cell, row) => foramtConfigActions(cell, row, onEdit)}
                 columnClassName="yb-actions-cell"
-                width="120px"
+                className="yb-actions-cell"
               >
                 Actions
               </TableHeaderColumn>

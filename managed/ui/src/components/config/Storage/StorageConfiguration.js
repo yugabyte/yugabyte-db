@@ -21,6 +21,8 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import { BackupList } from './BackupList';
+import { EditBackupList } from './EditBackupList';
+import { CreateBackup } from './CreateBackup';
 
 const storageConfigTypes = {
   NFS: {
@@ -111,6 +113,24 @@ class StorageConfiguration extends Component {
         nfs: true,
         gcs: true,
         az: true
+      },
+      editView: {
+        s3: {
+          isEdited: false,
+          data: {}
+        },
+        nfs: {
+          isEdited: false,
+          data: {}
+        },
+        gcs: {
+          isEdited: false,
+          data: {}
+        },
+        az: {
+          isEdited: false,
+          data: {}
+        }
       },
       iamRoleEnabled: false
     };
@@ -233,6 +253,31 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  // This method will enable the edit config form.
+  editBackupConfig = (row, activeTab) => {
+    const tab = activeTab.toUpperCase();
+    const data = {
+      ...row.data,
+      'inUse': row.inUse,
+      [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
+      [`${tab}_CONFIGURATION_NAME`]: row.data.CONFIGURATION_NAME,
+    };
+
+    this.setState({
+      listview: {
+        ...this.state.listview,
+        [activeTab]: false
+      },
+      editView: {
+        ...this.state.editView,
+        [activeTab]: {
+          isEdited: true,
+          data: data
+        }
+      }
+    });
+  };
+
   // This method will enable the create backup form.
   createBackupConfig = (activeTab) => {
     this.setState({
@@ -249,6 +294,13 @@ class StorageConfiguration extends Component {
       listview: {
         ...this.state.listview,
         [activeTab]: true
+      },
+      editView: {
+        ...this.state.editView,
+        [activeTab]: {
+          isEdited: false,
+          data: {}
+        }
       }
     });
   };
@@ -273,6 +325,7 @@ class StorageConfiguration extends Component {
         return list;
       }
     });
+
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
     }
@@ -299,25 +352,35 @@ class StorageConfiguration extends Component {
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
-        const configFields = [];
-        const config = storageConfigTypes[configName];
-        config.fields.forEach((field) => {
-          configFields.push(
-            <Row className="config-provider-row" key={configName + field.id}>
-              <Col lg={2}>
-                <div className="form-item-custom-label">{field.label}</div>
-              </Col>
-              <Col lg={10}>
-                <Field
-                  name={field.id}
-                  placeHolder={field.placeHolder}
-                  component={YBTextInputWithLabel}
-                />
-              </Col>
-            </Row>
-          );
-        });
-        configs.push(this.wrapFields(configFields, configName));
+        if (this.state.editView[activeTab]?.isEdited) {
+          const configFields = [];
+          const configTemplate = storageConfigTypes[configName];
+          configTemplate.fields.forEach((field) => {
+            const value = this.state.editView[activeTab].data;
+            configFields.push(
+              <EditBackupList
+                key={field.id}
+                configName={configName}
+                data={value}
+                field={field}
+              />
+            );
+          });
+          configs.push(this.wrapFields(configFields, configName));
+        } else {
+          const configFields = [];
+          const config = storageConfigTypes[configName];
+          config.fields.forEach((field) => {
+            configFields.push(
+              <CreateBackup
+                key={field.id}
+                configName={configName}
+                field={field}
+              />
+            );
+          });
+          configs.push(this.wrapFields(configFields, configName));
+        }
       });
 
       return (
@@ -335,13 +398,15 @@ class StorageConfiguration extends Component {
                   activeTab={activeTab}
                   data={backupListData}
                   onCreateBackup={() => this.createBackupConfig(activeTab)}
+                  onEditConfig={(row) => this.editBackupConfig(row, activeTab)}
                 />
               }
 
               {configs}
             </YBTabsPanel>
 
-            {!this.state.listview[activeTab] &&
+            {(!this.state.listview[activeTab] ||
+              this.state.editView[activeTab].isEdited) &&
               <div className="form-action-button-container">
                 <YBButton
                   btnText='Save'
