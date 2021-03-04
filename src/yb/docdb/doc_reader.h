@@ -28,8 +28,9 @@
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value.h"
+#include "yb/docdb/subdoc_reader.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
 
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -105,6 +106,60 @@ yb::Status GetSubDocument(
     const TransactionOperationContextOpt& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
+
+// This class reads SubDocument instances for a given table. The caller should initialize with
+// UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
+// constructed with SeekFwdSuffices::kTrue assume, for the lifetime of the instance, that the
+// provided IntentAwareIterator is either pointed to a requested row, or before it, or that row does
+// not exist. Care should be taken to ensure this assumption is not broken for callers independently
+// modifying the provided IntentAwareIterator.
+class DocDBTableReader {
+ public:
+  DocDBTableReader(
+      IntentAwareIterator* iter, DeadlineInfo* deadline_info, SeekFwdSuffices seek_fwd_suffices);
+
+  // Updates expiration/overwrite data based on table tombstone time. If provided pointer is null,
+  // this method is a no-op. Else if provided pointer points to an invalid value, AND the table is a
+  // colocated table as indicated by the provided root_doc_key, this method will attempt to read the
+  // table tombstone time from RocksDB. Else, this method will simply use the provided table
+  // tombstone time to pass update the TTL/overwrite info passed to the eventually created
+  // SubDocumentReader.
+  CHECKED_STATUS UpdateTableTombstoneTime(
+      const Slice& root_doc_key, DocHybridTime* table_tombstone_time);
+
+  void SetTableTtl(Expiration table_ttl);
+
+  // Read into the provided SubDocument* the data at sub_doc_key. Return false if no such doc is
+  // found.
+  Result<bool> Get(const KeyBytes& sub_doc_key, SubDocument* result);
+
+  // For each value in projection, read into the provided SubDocument* a child Subdocument
+  // corresponding to the data at the key formed by appending the projection value to the end of the
+  // provided sub_doc_key. If found, the result will be a SubDocument rooted at sub_doc_key with
+  // children at each p in projection where a child was found. If no children are found, this method
+  // returns false.
+  Result<bool> Get(
+      const Slice& sub_doc_key, const std::vector<PrimitiveValue>* projection, SubDocument* result);
+
+ private:
+  // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
+  // at that row.
+  CHECKED_STATUS InitForKey(const Slice& sub_doc_key);
+
+  // Helper which seeks to the provided subdoc_key, respecting the semantics of this instances
+  // seek_fwd_suffices_ flag.
+  void SeekTo(const Slice& subdoc_key);
+
+  // Owned by caller.
+  IntentAwareIterator* iter_;
+  // Owned by caller.
+  DeadlineInfo* deadline_info_;
+  const SeekFwdSuffices seek_fwd_suffices_;
+  DocHybridTime table_tombstone_time_ = DocHybridTime::kMin;
+  Expiration table_expiration_;
+
+  SubDocumentReaderBuilder subdoc_reader_builder_;
+};
 
 }  // namespace docdb
 }  // namespace yb

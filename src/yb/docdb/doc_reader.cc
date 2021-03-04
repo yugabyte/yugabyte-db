@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -41,102 +42,6 @@ using yb::HybridTime;
 namespace yb {
 namespace docdb {
 
-// ------------------------------------------------------------------------------------------------
-// Standalone functions
-// ------------------------------------------------------------------------------------------------
-
-namespace {
-
-// If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
-// max_overwrite_time, we update max_overwrite_time, and result_value (unless it is nullptr).
-// If there is a TTL with write time later than the write time in expiration, it is updated with
-// the new write time and TTL, unless its value is kMaxTTL.
-// When the TTL found is kMaxTTL and it is not a merge record, then it is assumed not to be
-// explicitly set. Because it does not override the default table ttl, exp, which was initialized
-// to the table ttl, is not updated.
-// Observe that exp updates based on the first record found, while max_overwrite_time updates
-// based on the first non-merge record found.
-// This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
-// also.
-// Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
-// time.
-// TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
-// It could be a simple value as well, not necessarily kTombstone or kObject.
-Status FindLastWriteTime(
-    IntentAwareIterator* iter,
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    Expiration* exp,
-    Value* result_value = nullptr) {
-  Slice value;
-  DocHybridTime doc_ht = *max_overwrite_time;
-  RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &doc_ht, &value));
-  if (!iter->valid()) {
-    return Status::OK();
-  }
-
-  uint64_t merge_flags = 0;
-  MonoDelta ttl;
-  ValueType value_type;
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &ttl));
-  if (value_type == ValueType::kInvalid) {
-    return Status::OK();
-  }
-
-  // We update the expiration if and only if the write time is later than the write time
-  // currently stored in expiration, and the record is not a regular record with default TTL.
-  // This is done independently of whether the row is a TTL row.
-  // In the case that the always_override flag is true, default TTL will not be preserved.
-  Expiration new_exp = *exp;
-  if (doc_ht.hybrid_time() >= exp->write_ht) {
-    // We want to keep the default TTL otherwise.
-    if (ttl != Value::kMaxTtl || merge_flags == Value::kTtlFlag || exp->always_override) {
-      new_exp.write_ht = doc_ht.hybrid_time();
-      new_exp.ttl = ttl;
-    } else if (exp->ttl.IsNegative()) {
-      new_exp.ttl = -new_exp.ttl;
-    }
-  }
-
-  // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
-  // original value/init marker.
-  if (merge_flags == Value::kTtlFlag) {
-    DocHybridTime new_ht;
-    RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
-
-    // There could be a case where the TTL row exists, but the value has been
-    // compacted away. Then, it is treated as a Tombstone written at the time
-    // of the TTL row.
-    if (!iter->valid() && !new_exp.ttl.IsNegative()) {
-      new_exp.ttl = -new_exp.ttl;
-    } else {
-      ValueType value_type;
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
-      // Because we still do not know whether we are seeking something expired,
-      // we must take the max_overwrite_time as if the value were not expired.
-      doc_ht = new_ht;
-    }
-  }
-
-  if ((value_type == ValueType::kTombstone || value_type == ValueType::kInvalid) &&
-      !new_exp.ttl.IsNegative()) {
-    new_exp.ttl = -new_exp.ttl;
-  }
-  *exp = new_exp;
-
-  if (doc_ht > *max_overwrite_time) {
-    *max_overwrite_time = doc_ht;
-    VLOG(4) << "Max overwritten time for " << key_without_ht.ToDebugHexString() << ": "
-            << *max_overwrite_time;
-  }
-
-  if (result_value)
-    RETURN_NOT_OK(result_value->Decode(value));
-
-  return Status::OK();
-}
-
-}  // namespace
 
 yb::Status GetSubDocument(
     const DocDB& doc_db,
@@ -170,98 +75,114 @@ yb::Status GetSubDocument(
                   db_iter->read_time().ToString());
 
   // The latest time at which any prefix of the given key was overwritten.
-  DocHybridTime max_overwrite_ht(DocHybridTime::kMin);
   VLOG(4) << "GetSubDocument(" << data << ")";
-
-  SubDocKey found_subdoc_key;
-  auto dockey_size =
-      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::kWholeDocKey));
-
-  Slice key_slice(data.subdocument_key.data(), dockey_size);
-
-  // Check ancestors for init markers, tombstones, and expiration, tracking the expiration and
-  // corresponding most recent write time in exp, and the general most recent overwrite time in
-  // max_overwrite_ht.
-  //
-  // First, check for an ancestor at the ID level: a table tombstone.  Currently, this is only
-  // supported for YSQL colocated tables.  Since iterators only ever pertain to one table, there is
-  // no need to create a prefix scope here.
-  if (data.table_tombstone_time && *data.table_tombstone_time == DocHybridTime::kInvalid) {
-    // Only check for table tombstones if the table is colocated, as signified by the prefix of
-    // kPgTableOid.
-    // TODO: adjust when fixing issue #3551
-    if (key_slice[0] == ValueTypeAsChar::kPgTableOid) {
-      // Seek to the ID level to look for a table tombstone.  Since this seek is expensive, cache
-      // the result in data.table_tombstone_time to avoid double seeking for the lifetime of the
-      // DocRowwiseIterator.
-      DocKey empty_key;
-      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::kUpToId));
-      db_iter->Seek(empty_key);
-      Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
-      RETURN_NOT_OK(FindLastWriteTime(
-          db_iter,
-          empty_key.Encode(),
-          &max_overwrite_ht,
-          &data.exp,
-          &doc_value));
-      if (doc_value.value_type() == ValueType::kTombstone) {
-        SCHECK_NE(max_overwrite_ht, DocHybridTime::kInvalid, Corruption,
-                  "Invalid hybrid time for table tombstone");
-        *data.table_tombstone_time = max_overwrite_ht;
-      } else {
-        *data.table_tombstone_time = DocHybridTime::kMin;
-      }
-    } else {
-      *data.table_tombstone_time = DocHybridTime::kMin;
-    }
-  } else if (data.table_tombstone_time) {
-    // Use the cached result.  Don't worry about exp as YSQL does not support TTL, yet.
-    max_overwrite_ht = *data.table_tombstone_time;
-  }
-  // Second, check the descendants of the ID level.
-  IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
-  if (seek_fwd_suffices) {
-    db_iter->SeekForward(key_slice);
-  } else {
-    db_iter->Seek(key_slice);
-  }
-  {
-    auto temp_key = data.subdocument_key;
-    temp_key.remove_prefix(dockey_size);
-    for (;;) {
-      auto decode_result = VERIFY_RESULT(SubDocKey::DecodeSubkey(&temp_key));
-      if (!decode_result) {
-        break;
-      }
-      RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp));
-      key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
-    }
-  }
-
-  // By this point, key_slice is the DocKey and all the subkeys of subdocument_key. Check for
-  // init-marker / tombstones at the top level; update max_overwrite_ht.
-  Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
-  RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp, &doc_value));
+  DocDBTableReader doc_reader(db_iter, data.deadline_info, seek_fwd_suffices);
+  RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(
+      data.subdocument_key, data.table_tombstone_time));
+  doc_reader.SetTableTtl(data.exp);
 
   *data.result = SubDocument();
 
   if (projection == nullptr) {
-    KeyBytes subdoc_key_copy(data.subdocument_key);
-    SubDocumentReader reader(
-      subdoc_key_copy, db_iter, data.deadline_info, max_overwrite_ht, data.exp);
-    RETURN_NOT_OK(reader.Get(data.result));
-    *data.doc_found = data.result->value_type() != ValueType::kInvalid
-                   && data.result->value_type() != ValueType::kTombstone;
-    return Status::OK();
+    // TODO - investigate whether we can avoid this copy. Would require changing SubDocumentReader
+    // to take a Slice in the constructor instead of KeyBytes. Avoiding this copy may not be useful
+    // at all, though, if we end up pulling this logic up further.
+    const KeyBytes full_subdoc_key_copy(data.subdocument_key);
+    *data.doc_found = VERIFY_RESULT(doc_reader.Get(full_subdoc_key_copy, data.result));
+  } else {
+    *data.doc_found = VERIFY_RESULT(doc_reader.Get(data.subdocument_key, projection, data.result));
   }
+
+  return Status::OK();
+}
+
+DocDBTableReader::DocDBTableReader(
+    IntentAwareIterator* iter,
+    DeadlineInfo* deadline_info,
+    SeekFwdSuffices seek_fwd_suffices)
+    : iter_(iter),
+      deadline_info_(deadline_info),
+      seek_fwd_suffices_(seek_fwd_suffices),
+      subdoc_reader_builder_(iter_, deadline_info_) {}
+
+void DocDBTableReader::SetTableTtl(Expiration table_ttl) {
+  table_expiration_ = table_ttl;
+}
+
+Status DocDBTableReader::UpdateTableTombstoneTime(
+    const Slice& root_doc_key, DocHybridTime* table_tombstone_time) {
+  if (table_tombstone_time != nullptr && root_doc_key[0] == ValueTypeAsChar::kPgTableOid) {
+    // Update table_tombstone_time based on what is written to RocksDB if its not already set.
+    // Otherwise, just accept its value.
+    // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
+    // time read at a previous invocation of this same code. If instead the DocRowwiseIterator owned
+    // an instance of SubDocumentReaderBuilder, and this method call was hoisted up to that level,
+    // passing around this table_tombstone_time would no longer be necessary.
+    if (*table_tombstone_time == DocHybridTime::kInvalid) {
+      DocKey table_id;
+      RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
+      iter_->Seek(table_id);
+
+      Slice value;
+      auto table_id_encoded = table_id.Encode();
+      DocHybridTime doc_ht = DocHybridTime::kMin;
+
+      RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
+      ValueType value_type;
+      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
+      if (value_type == ValueType::kTombstone) {
+        SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
+                  "Invalid hybrid time for table tombstone");
+        table_tombstone_time_ = doc_ht;
+      }
+      *table_tombstone_time = table_tombstone_time_;
+    } else {
+      table_tombstone_time_ = *table_tombstone_time;
+    }
+  }
+  return Status::OK();;
+}
+
+CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
+  auto dockey_size =
+      VERIFY_RESULT(DocKey::EncodedSize(sub_doc_key, DocKeyPart::kWholeDocKey));
+  const Slice root_doc_key(sub_doc_key.data(), dockey_size);
+  SeekTo(root_doc_key);
+  RETURN_NOT_OK(subdoc_reader_builder_.InitObsolescenceInfo(
+      table_tombstone_time_, table_expiration_, root_doc_key, sub_doc_key));
+  return Status::OK();
+}
+
+void DocDBTableReader::SeekTo(const Slice& subdoc_key) {
+  if (seek_fwd_suffices_) {
+    iter_->SeekForward(subdoc_key);
+  } else {
+    iter_->Seek(subdoc_key);
+  }
+}
+
+Result<bool> DocDBTableReader::Get(const KeyBytes& sub_doc_key, SubDocument* result) {
+  RETURN_NOT_OK(InitForKey(sub_doc_key));
+  SeekTo(sub_doc_key);
+  auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(sub_doc_key));
+
+  RETURN_NOT_OK(reader->Get(result));
+  return result->value_type() != ValueType::kInvalid &&
+         result->value_type() != ValueType::kTombstone;
+}
+
+Result<bool> DocDBTableReader::Get(
+    const Slice& sub_doc_key, const vector<PrimitiveValue>* projection, SubDocument* result) {
+  RETURN_NOT_OK(InitForKey(sub_doc_key));
+
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
   KeyBytes key_bytes;
   // Preallocate some extra space to avoid allocation for small subkeys.
-  key_bytes.Reserve(data.subdocument_key.size() + kMaxBytesPerEncodedHybridTime + 32);
-  key_bytes.AppendRawBytes(data.subdocument_key);
+  key_bytes.Reserve(sub_doc_key.size() + kMaxBytesPerEncodedHybridTime + 32);
+  key_bytes.AppendRawBytes(sub_doc_key);
   const size_t subdocument_key_size = key_bytes.size();
-  *data.doc_found = false;
+  bool doc_found = false;
   for (const PrimitiveValue& subkey : *projection) {
     // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
     // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
@@ -269,24 +190,20 @@ yb::Status GetSubDocument(
     subkey.AppendToKey(&key_bytes);
     key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
     // This seek is to initialize the iterator for BuildSubDocument call.
-    IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
-    db_iter->SeekForward(&key_bytes);
+    iter_->SeekForward(&key_bytes);
     SubDocument descendant;
-    SubDocumentReader reader(
-        key_bytes, db_iter, data.deadline_info, max_overwrite_ht, data.exp);
-    RETURN_NOT_OK(reader.Get(&descendant));
-    *data.doc_found = *data.doc_found || (
+    auto reader = VERIFY_RESULT(subdoc_reader_builder_.Build(key_bytes));
+    RETURN_NOT_OK(reader->Get(&descendant));
+    doc_found = doc_found || (
         descendant.value_type() != ValueType::kInvalid
         && descendant.value_type() != ValueType::kTombstone);
-    data.result->SetChild(subkey, std::move(descendant));
+    result->SetChild(subkey, std::move(descendant));
 
     // Restore subdocument key by truncating the appended subkey.
     key_bytes.Truncate(subdocument_key_size);
   }
-  // Make sure the iterator is placed outside the whole document in the end.
-  key_bytes.Truncate(dockey_size);
-  db_iter->SeekOutOfSubDoc(&key_bytes);
-  return Status::OK();
+  iter_->SeekOutOfSubDoc(sub_doc_key);
+  return doc_found;
 }
 
 }  // namespace docdb

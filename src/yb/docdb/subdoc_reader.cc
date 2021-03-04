@@ -692,5 +692,62 @@ Status SubDocumentReader::Get(SubDocument* result) {
   return Status::OK();
 }
 
+SubDocumentReaderBuilder::SubDocumentReaderBuilder(
+    IntentAwareIterator* iter, DeadlineInfo* deadline_info)
+    : iter_(iter), deadline_info_(deadline_info) {}
+
+Result<std::unique_ptr<SubDocumentReader>> SubDocumentReaderBuilder::Build(
+    const KeyBytes& sub_doc_key) {
+  return std::make_unique<SubDocumentReader>(
+      sub_doc_key, iter_, deadline_info_, highest_ancestor_write_time_,
+      inherited_expiration_);
+}
+
+Status SubDocumentReaderBuilder::InitObsolescenceInfo(
+    DocHybridTime table_tombstone_time, Expiration table_expiration,
+    const Slice& root_doc_key, const Slice& target_subdocument_key) {
+  highest_ancestor_write_time_ = table_tombstone_time;
+  inherited_expiration_ = table_expiration;
+
+  // Look at ancestors to collect ttl/write-time metadata.
+  IntentAwareIteratorPrefixScope prefix_scope(root_doc_key, iter_);
+  Slice temp_key = target_subdocument_key;
+  Slice prev_iter_key = temp_key.Prefix(root_doc_key.size());
+  temp_key.remove_prefix(root_doc_key.size());
+  for (;;) {
+    // for each iteration of this loop, we consume another piece of the subdoc key path
+    auto decode_result = VERIFY_RESULT(SubDocKey::DecodeSubkey(&temp_key));
+    if (!decode_result) {
+      // Stop once key_slice has consumed all subdoc keys and FindLastWriteTime has been called
+      // with all but the last subdoc key
+      break;
+    }
+    RETURN_NOT_OK(UpdateWithParentWriteInfo(prev_iter_key));
+    prev_iter_key = Slice(prev_iter_key.data(), temp_key.data() - prev_iter_key.data());
+  }
+  DCHECK_EQ(prev_iter_key, target_subdocument_key);
+  return UpdateWithParentWriteInfo(target_subdocument_key);
+}
+
+Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
+    const Slice& parent_key_without_ht) {
+  Slice value;
+  DocHybridTime doc_ht = highest_ancestor_write_time_;
+  RETURN_NOT_OK(iter_->FindLatestRecord(parent_key_without_ht, &doc_ht, &value));
+  uint64_t merge_flags = 0;
+  MonoDelta value_ttl;
+  ValueType value_type;
+  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &value_ttl));
+
+  if (!iter_->valid() || value_type == ValueType::kInvalid) {
+    // TODO -- see if we can remove this (https://github.com/yugabyte/yugabyte-db/issues/7487).
+    return Status::OK();
+  }
+
+  inherited_expiration_ = GetNewExpiration(inherited_expiration_, value_ttl, doc_ht);
+  highest_ancestor_write_time_ = std::max(doc_ht, highest_ancestor_write_time_);
+  return Status::OK();
+}
+
 }  // namespace docdb
 }  // namespace yb
