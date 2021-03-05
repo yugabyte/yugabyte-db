@@ -1288,6 +1288,50 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
   ASSERT_OK(conn2.CommitTransaction());
 }
 
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted colocated table. This is a regression test for #6096.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
+  const std::string kDatabaseName = "testdb";
+  constexpr int kTimeoutSecs = 30;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+  ASSERT_OK(conn_new.Execute("INSERT INTO foo VALUES (10)"));
+
+  // Flush tablets; requests from here on will be replayed from the WAL during bootstrap.
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSecs,
+      false /* is_compaction */));
+
+  // ALTER requires foo's table id to be in the TS raft metadata
+  ASSERT_OK(conn_new.Execute("ALTER TABLE foo ADD c char"));
+  ASSERT_OK(conn_new.Execute("ALTER TABLE foo RENAME COLUMN c to d"));
+  // but DROP will remove foo's table id from the TS raft metadata
+  ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
+  ASSERT_OK(conn_new.Execute("CREATE TABLE bar (c char)"));
+
+  // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
+  // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
+  ASSERT_NO_FATALS(cluster_->tablet_server(0)->Shutdown());
+
+  LOG(INFO) << "Start tserver";
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(0),
+      MonoDelta::FromSeconds(60)));
+
+  // Ensure the rest of the WAL replayed successfully.
+  PGConn conn_after = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+  ASSERT_EQ(res, 0);
+}
+
 class PgLibPqTablegroupTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Enable tablegroup beta feature

@@ -1410,6 +1410,14 @@ class TabletBootstrap {
 
     ChangeMetadataOperationState operation_state(request);
 
+    // If table id isn't in metadata, ignore the replay as the table might've been dropped.
+    auto table_info = meta_->GetTableInfo(operation_state.table_id());
+    if (!table_info.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Table ID " << operation_state.table_id()
+          << " not found in metadata, skipping this ChangeMetadataRequest";
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(tablet_->CreatePreparedChangeMetadata(
         &operation_state, request->has_schema() ? &schema : nullptr));
 
