@@ -382,7 +382,7 @@ class AwsCloud(AbstractCloud):
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args):
+    def start_instance(self, args, ssh_port):
         ec2 = boto3.resource('ec2',  args["region"])
         try:
             instance = ec2.Instance(id=args["id"])
@@ -395,7 +395,7 @@ class AwsCloud(AbstractCloud):
             while retry_count < 25:
                 time.sleep(5)
                 retry_count = retry_count + 1
-                result = sock.connect_ex((args["private_ip"], 22))
+                result = sock.connect_ex((args["private_ip"], ssh_port))
                 if result == 0:
                     break
             sock.close()
