@@ -50,6 +50,12 @@ The following table lists the primitive and compound data types in YSQL.
 | `polygon` <sup>1</sup> | | Closed geometric path |
 | [`real`](type_numeric) | [`float4`](type_numeric) | Floating-point number (4 bytes) |
 | [`smallint`](type_numeric) | [`int2`](type_numeric) | Signed two-byte integer |
+| [`int4range`](type_range#synopsis) | `integer` range | |
+| [`int8range`](type_range#synopsis) | `bigint` range | |
+| [`numrange`](type_range#synopsis) | `numeric` range | |
+| [`tsrange`](type_range#synopsis) | `timestamp without time zone` range | |
+| [`tstzrange`](type_range#synopsis) | `timestamp with time zone` range | |
+| [`daterange`](type_range#synopsis) | `date` range | |
 | [`smallserial`](type_serial) | [`serial2`](type_serial) | Autoincrementing two-byte integer |
 | [`serial`](type_serial) | [`serial4`](type_serial) | Autoincrementing four-byte integer |
 | [`text`](type_character) | | Variable-length character string |
