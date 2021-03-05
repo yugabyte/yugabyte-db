@@ -124,11 +124,11 @@ public class CertificateControllerTest extends FakeDBApplication {
     List<UUID> result_uuids = new ArrayList<>();
     List<String> result_labels = new ArrayList<>();
     for (LinkedHashMap e : certs) {
-      if (e.get("uuid").toString().equals(test_certs_uuids.get(0).toString())){
+      if (e.get("uuid").toString().equals(test_certs_uuids.get(0).toString())) {
           assertEquals(e.get("inUse"), true);
           assertNotEquals(e.get("universeDetails"), new ArrayList<>());
         }
-        else{
+        else {
           assertEquals(e.get("inUse"), false);
           assertEquals(e.get("universeDetails"), new ArrayList<>());
       }
