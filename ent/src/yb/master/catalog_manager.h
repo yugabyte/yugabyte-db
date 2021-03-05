@@ -238,6 +238,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
+  Result<SysRowEntries> CollectEntries(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table) override;
+
+  server::Clock* Clock() override;
+
   const Schema& schema() override;
 
   void Submit(std::unique_ptr<tablet::Operation> operation) override;
