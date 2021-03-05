@@ -156,6 +156,10 @@ The following string functions are supported:
  - LPAD
  - LTRIM
  - NLSSORT
+ - REGEXP_COUNT
+ - REGEXP_INSTR
+ - REGEXP_LIKE
+ - REGEXP_SUBSTR
  - RPAD
  - RTRIM
  - SUBSTR
@@ -569,7 +573,200 @@ SELECT col1,col2 FROM t3 ORDER BY NLSSORT(col2,'da_DK.UTF8');
 
 ----
 
-#### 5.2.8 RPAD
+#### 5.2.8 REGEXP_COUNT
+
+**Description**
+
+Searches a string for a regular expression, and returns a count of the matches.
+
+**Syntax**
+
+![REGEXP_COUNT]( gif/REGEXP_COUNT.gif) 
+
+**General rules**
+
+ - REGEXP_COUNT returns the number of times *pattern* occurs in a source *string*. It returns an integer indicating the number of occurrences of *pattern*. If no match is found, then the function returns 0.
+ - The search starts from the specified start position *startPos* in *string*, default starts from the beginning of *string*.
+ - *startPos* is a positive integer, negative values to search from the end of *string* are not allowed.
+ - *flags* is a character expression that lets you change the default matching behavior of the function.
+   The value of *flags* can include one or more of the following characters:
+   - 'i': case-insensitive matching.
+   - 'c': case-sensitive and accent-sensitive matching.
+   - 'n': the period (.) match the newline character. By default the period does not match the newline character.
+   - 'm': treats the source string as multiple lines.
+   - 'x': ignores whitespace characters. By default, whitespace characters match themselves.
+   If you omit *flags*, then:
+   - The default is case and accent sensitivity.
+   - A period (.) does not match the newline character.
+   - The source string is treated as a single line.
+
+**Example**
+
+~~~
+SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d') FROM DUAL;
+ regexp_count 
+--------------
+            0
+(1 row)
+
+SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d', 1, 'm') FROM DUAL;
+ regexp_count 
+--------------
+            0
+(1 row)
+
+SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d', 1, 'n') FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_COUNT('a'||CHR(10)||'d', '^d$', 1, 'm') FROM DUAL;
+ regexp_count 
+--------------
+            1
+(1 row)
+~~~
+
+----
+
+#### 5.2.9 REGEXP_INSTR
+
+**Description**
+
+Returns the beginning or ending position within the string where the match for a pattern was located.
+
+**Syntax**
+
+![REGEXP_INSTR]( gif/REGEXP_INSTR.gif) 
+
+**General rules**
+
+ - REGEXP_INSTR returns an integer indicating the beginning or ending position of the matched substring, depending on the value of the *return_opt* argument. If no match is found, then the function returns 0. 
+ - The search starts from the specified start position *startPos* in *string*, default starts from the beginning of *string*.
+ - *startPos* is a positive integer, negative values to search from the end of *string* are not allowed.
+ - *occurrence* is a positive integer indicating which occurrence of *pattern* in *string* should be search for. The default is 1, meaning the first occurrence of *pattern* in *string*.
+ - *return_opt* lets you specify what should be returned in relation to the occurrence:
+    - 0, the position of the first character of the occurrence is returned. This is the default.
+    - 1, the position of the character following the occurrence is returned.
+ - *flags* is a character expression that lets you change the default matching behavior of the function.  See [REGEXP_COUNT](#REGEXP_COUNT) for detailed information.
+ - For a *pattern* with capture group, *group* is a positive integer indicating which capture group in *pattern* shall be returned by the function. Capture groups can be nested, they are numbered in order in which their left parentheses appear in *pattern*. If *group* is zero, then the position of the entire substring that matches the pattern is returned. If *group* value exceed the number of capture groups in *pattern*, the function returns zero. A null *group* value returns *NULL*. The default value for *group* is zero.
+
+**Example**
+
+~~~
+SELECT REGEXP_INSTR('1234567890', '(123)(4(56)(78))') FROM DUAL;
+ regexp_instr 
+--------------
+            1
+(1 row)
+
+SELECT REGEXP_INSTR('1234567890', '(4(56)(78))', 3) FROM DUAL;
+ regexp_instr 
+--------------
+            4
+(1 row)
+
+SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6) FROM DUAL;
+ regexp_instr 
+--------------
+           37
+
+(1 row)
+
+SELECT REGEXP_INSTR('199 Oretax Prayers, Riffles Stream, CA', '[S|R|P][[:alpha:]]{6}', 3, 2, 1) FROM DUAL;
+ regexp_instr 
+--------------
+           28
+(1 row)
+~~~
+
+----
+
+#### 5.2.10 REGEXP_LIKE
+
+**Description**
+
+Condition in the WHERE clause of a query, causing the query to return rows that match the given pattern.
+
+**Syntax**
+
+![REGEXP_LIKE]( gif/REGEXP_LIKE.gif) 
+
+**General rules**
+
+ - REGEXP_LIKE is similar to the LIKE condition, except it performs regular expression matching instead of the simple pattern matching performed by LIKE.
+ - Returns a boolean, *true* when *pattern* match in *string*, *false* otherwise.
+ - *flags* is a character expression that lets you change the default matching behavior of the function. See [REGEXP_COUNT](#REGEXP_COUNT) for detailed information.
+
+**Example**
+
+~~~
+SELECT REGEXP_LIKE('a'||CHR(10)||'d', 'a.d', 'm') FROM DUAL;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+SELECT REGEXP_LIKE('a'||CHR(10)||'d', 'a.d', 'n') FROM DUAL;
+ regexp_like 
+-------------
+ t
+(1 row)
+~~~
+
+----
+
+#### 5.2.11 REGEXP_SUBSTR
+
+**Description**
+
+Returns the string that matches the pattern specified in the call to the function.
+
+**Syntax**
+
+![REGEXP_SUBSTR]( gif/REGEXP_SUBSTR.gif) 
+
+**General rules**
+
+ - REGEXP_SUBSTR returns the matched substring resulting from matching a POSIX regular expression pattern to a string. If no match is found, then the function returns *NULL*. 
+ - The search starts from the specified start position *startPos* in *string*, default starts from the beginning of *string*.
+ - *startPos* is a positive integer, negative values to search from the end of *string* are not allowed.
+ - *occurrence* is a positive integer indicating which occurrence of *pattern* in *string* should be search for. The default is 1, meaning the first occurrence of *pattern* in *string*.
+ - *flags* is a character expression that lets you change the default matching behavior of the function.  See [REGEXP_COUNT](#REGEXP_COUNT) for detailed information.
+ - For a *pattern* with capture group, *group* is a positive integer indicating which capture group in *pattern* shall be returned by the function. Capture groups can be nested, they are numbered in order in which their left parentheses appear in *pattern*. If *group* is zero, then the position of the entire substring that matches the pattern is returned. If *group* value exceed the number of capture groups in *pattern*, the function returns *NULL*. A null *group* value returns *NULL*. The default value for *group* is zero.
+
+**Example**
+
+~~~
+SELECT REGEXP_SUBSTR('number of your street, zipcode town, FR', ',[^,]+') FROM DUAL;
+ regexp_substr  
+----------------
+ , zipcode town
+(1 row)
+
+SELECT regexp_substr('number of your street, zipcode town, FR', ',[^,]+', 24) FROM DUAL;
+ regexp_substr 
+---------------
+ , FR
+(1 row)
+
+SELECT regexp_substr('number of your street, zipcode town, FR', ',[^,]+', 1, 2) FROM DUAL;
+ regexp_substr 
+---------------
+ , FR
+(1 row)
+
+SELECT regexp_substr('1234567890 1234567890', '(123)(4(56)(78))', 1, 1, 'i', 0) FROM DUAL;
+ regexp_substr 
+---------------
+ 12345678
+(1 row)
+~~~
+
+----
+
+#### 5.2.12 RPAD
 **Description**
 
 Right-pads a string to a specified length with a sequence of characters.
@@ -630,7 +827,7 @@ SELECT RPAD('abc',10,'a') FROM DUAL;
 
 ----
 
-#### 5.2.9 RTRIM
+#### 5.2.13 RTRIM
 
 **Description**
 
@@ -692,7 +889,7 @@ SELECT RTRIM('aabcab','ab') FROM DUAL;
 
 ----
 
-#### 5.2.10 SUBSTR
+#### 5.2.14 SUBSTR
 
 **Description**
 
@@ -770,7 +967,7 @@ SELECT SUBSTR('ABCDEFG',-5,4) "Substring" FROM DUAL;
 ----
 
 
-#### 5.2.11 SUBSTRB
+#### 5.2.15 SUBSTRB
 
 **Description**
 
