@@ -433,3 +433,4 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
+For more information on rage types, see [Range Data Types](https://docs.yugabyte.com/latest/api/ysql/datatypes/type_range/). 
