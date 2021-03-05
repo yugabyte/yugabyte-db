@@ -33,7 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -287,22 +289,16 @@ public class PlatformReplicationHelper {
       } else {
         this.switchPrometheusToStandalone();
       }
-    } catch (Exception ignored) {}
+    } catch (Exception ignored) {
+    }
   }
 
   boolean exportBackups(HighAvailabilityConfig config, String clusterKey,
-                                String remoteInstanceAddr, File backupFile) {
-    try {
-      remoteClientFactory.getClient(clusterKey, remoteInstanceAddr).syncBackups(
-        config.getLeader().getAddress(),
-        config.getLocal().getAddress(), // sender is same as leader for now.
-        backupFile);
-      return true;
-    } catch (Exception exception) {
-      LOG.error(String.format("Error exporting backup instances to remote instance %s",
-        remoteInstanceAddr), exception);
-      return false;
-    }
+                        String remoteInstanceAddr, File backupFile) {
+    return remoteClientFactory.getClient(clusterKey, remoteInstanceAddr).syncBackups(
+      config.getLeader().getAddress(),
+      config.getLocal().getAddress(), // sender is same as leader for now.
+      backupFile);
   }
 
   void cleanupBackups(List<File> backups, int numToRetain) {
