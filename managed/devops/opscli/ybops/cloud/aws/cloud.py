@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import socket
+import time
 
 from botocore.utils import InstanceMetadataFetcher
 from botocore.credentials import InstanceMetadataProvider
@@ -387,5 +388,16 @@ class AwsCloud(AbstractCloud):
             instance = ec2.Instance(id=args["id"])
             instance.start()
             instance.wait_until_running()
+            # The OS boot up may take some time,
+            # so retry untill the instance allowes SSH connection to it via port 22.
+            retry_count = 0
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            while retry_count < 25:
+                time.sleep(5)
+                retry_count = retry_count + 1
+                result = sock.connect_ex((args["private_ip"], 22))
+                if result == 0:
+                    break
+            sock.close()
         except ClientError as e:
             logging.error(e)
