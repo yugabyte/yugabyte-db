@@ -449,7 +449,7 @@ public class NodeManagerTest extends FakeDBApplication {
         break;
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params)params;
-        if (cloud.equals(Common.CloudType.aws)) {
+        if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
           expectedCommand.add("--instance_tags");
           // The quotes in format is needed here, so cannot use instanceTags.toString().
           expectedCommand.add("{\"Cust\":\"Test\"}");
@@ -1298,7 +1298,7 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
-      if (t.cloudType.equals(Common.CloudType.aws)) {
+      if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
         ApiUtils.insertInstanceTags(univUUID);
         setInstanceTags(params);
       }
@@ -1316,7 +1316,7 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
-      if (t.cloudType.equals(Common.CloudType.aws)) {
+      if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
         ApiUtils.insertInstanceTags(univUUID);
         setInstanceTags(params);
         params.deleteTags = "Remove,Also";
