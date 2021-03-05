@@ -370,9 +370,9 @@ public class PlatformReplicationManager {
     return false;
   }
 
-  public void switchPrometheusFromFederated() {
+  public void switchPrometheusToStandalone() {
     try {
-      this.replicationHelper.switchPrometheusFromFederated();
+      this.replicationHelper.switchPrometheusToStandalone();
     } catch (Exception e) {
       LOG.error("Could not switch prometheus config from federated", e);
     }
