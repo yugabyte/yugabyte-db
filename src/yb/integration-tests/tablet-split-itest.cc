@@ -751,7 +751,7 @@ TEST_F(TabletSplitITest, TestInitiatesCompactionAfterSplit) {
   ASSERT_GE(pre_split_bytes_written, post_split_bytes_read);
 }
 
-TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
+TEST_F(TabletSplitITest, TestLoadBalancerAndSplit) {
   constexpr auto kNumRows = 10000;
 
   // Keep tablets without compaction after split.
@@ -765,7 +765,7 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
 
   auto test_table_id = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName)).table_id;
   // Verify that heartbeat contains flag should_disable_lb_move for all tablets of the test
-  // table on each tserver to have after split
+  // table on each tserver to have after split.
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     if (!server) { // Server is shut down.
@@ -789,7 +789,7 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
     }
   }
 
-  // Wait for the flag should_disable_lb_move to be propagated to master through heartbeat
+  // Wait for the flag should_disable_lb_move to be propagated to master through heartbeat.
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
 
   // Add new tserver in to force load balancer moves.
@@ -798,7 +798,10 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(newts + 1));
   const auto newts_uuid = cluster_->mini_tablet_server(newts)->server()->permanent_uuid();
 
-  // Verify none test table replica on the new tserver
+  // Wait for the LB run.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  // Verify none test table replica on the new tserver.
   scoped_refptr<master::TableInfo> tbl_info = catalog_manager()->GetTableInfo(test_table_id);
   vector<scoped_refptr<master::TabletInfo>> tablets;
   tbl_info->GetAllTablets(&tablets);
@@ -812,11 +815,11 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
   }
   EXPECT_FALSE(foundReplica);
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = false;
+  // Verify that custom placement info is honored when tablets are splitted.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->mini_master(),
+                                            cluster_->mini_tablet_server(1)));
 
-  ASSERT_NO_FATALS(WaitForTestTableTabletsCompactionFinish(5s * kTimeMultiplier));
-
-  // Wait for test table replica on the new tserver
+  // Wait for test table replica on the new tserver.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
                         tbl_info = catalog_manager()->GetTableInfo(test_table_id);
                         tbl_info->GetAllTablets(&tablets);
@@ -830,6 +833,10 @@ TEST_F(TabletSplitITest, TestHeartbeatAfterSplit) {
                       }
                       return foundReplica;
                     }, 60s * kTimeMultiplier, "WaitForLBToBeProcessed"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = false;
+
+  ASSERT_NO_FATALS(WaitForTestTableTabletsCompactionFinish(5s * kTimeMultiplier));
 }
 
 // Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock

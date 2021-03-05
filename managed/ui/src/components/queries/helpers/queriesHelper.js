@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { fetchLiveQueries, fetchSlowQueries } from '../../actions/universe';
+import { fetchLiveQueries, fetchSlowQueries } from '../../../actions/universe';
 
 export const useLiveQueriesApi = ({ universeUUID }) => {
   const [ycqlQueries, setYCQLQueryRowData] = useState([]);
@@ -8,7 +8,7 @@ export const useLiveQueriesApi = ({ universeUUID }) => {
   const [errors, setErrors] = useState({});
   
   const handleQueryResponse = (response) => {
-    const { error, data } = response;    
+    const { error, data } = response;
     if (!error) {
       const allErrors = {};
       if ('ysql' in data) {
@@ -52,8 +52,8 @@ export const useLiveQueriesApi = ({ universeUUID }) => {
 export const useSlowQueriesApi = ({ universeUUID }) => {
   const [ysqlQueries, setYSQLQueryRowData] = useState([]);
   const [errors, setErrors] = useState({});
-
-  const handleQueryResponse = (response) => {
+  
+  const handleQueryResponse = (response) => {    
     const { data } = response;
     if (!data.error) {
       const allErrors = {};

@@ -126,14 +126,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "restore_snapshot", " <snapshot_id>",
+      "restore_snapshot", " <snapshot_id> [<timestamp>]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 3 && args.size() != 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-
         const string snapshot_id = args[2];
-        RETURN_NOT_OK_PREPEND(client->RestoreSnapshot(snapshot_id),
+        const string timestamp = (args.size() == 4) ? args[3] : "";
+        RETURN_NOT_OK_PREPEND(client->RestoreSnapshot(snapshot_id, timestamp),
                               Substitute("Unable to restore snapshot $0", snapshot_id));
         return Status::OK();
       });

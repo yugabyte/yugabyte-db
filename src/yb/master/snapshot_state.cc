@@ -15,13 +15,10 @@
 
 #include "yb/common/transaction_error.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
-#include "yb/docdb/primitive_value.h"
 
 #include "yb/master/master_error.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/tserver/backup.pb.h"
 
@@ -36,21 +33,9 @@ DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
 namespace yb {
 namespace master {
 
-namespace {
-
-Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
-  return context->schema().ColumnIdByName(kSysCatalogTableColMetadata);
-}
-
-} // namespace
-
 Result<docdb::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
-  docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(SysRowEntry::SNAPSHOT),
-                          docdb::PrimitiveValue(id.AsSlice().ToBuffer()) });
-  docdb::SubDocKey sub_doc_key(
-      doc_key, docdb::PrimitiveValue(VERIFY_RESULT(MetadataColumnId(context))));
-  return sub_doc_key.Encode();
+  return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
 }
 
 SnapshotState::SnapshotState(
@@ -152,6 +137,14 @@ bool SnapshotState::IsTerminalFailure(const Status& status) {
     return true;
   }
   return false;
+}
+
+bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
+  // Backward compatibility mode
+  int other_version = other.version() == 0 ? version() + 1 : other.version();
+  // If we have several updates for single snapshot, they are loaded in chronological order.
+  // So latest update should be picked.
+  return version() < other_version;
 }
 
 } // namespace master
