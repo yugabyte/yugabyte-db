@@ -15,7 +15,7 @@ import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
-import AssociatedUniverse from '../../../common/associatedUniverse/AssociatedUniverse';
+import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -89,7 +89,8 @@ class Certificates extends Component {
   state = {
     showSubmitting: false,
     selectedCert: {},
-    associatedUniverses: []
+    associatedUniverses: [],
+    isVisibleModal: false
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -188,15 +189,23 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            // this.getAssociatedUniverseList(payload?.universeDetails);
-            this.setState({ associatedUniverses: [...payload?.universeDetails] })
-            this.props.showassociatedUniversesModal();
+            this.setState({
+              associatedUniverses: [...payload?.universeDetails],
+              isVisibleModal: true
+            });
           }}
         >
           <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
       </DropdownButton>
     );
+  };
+
+  /**
+   * Close the modal by setting the local flag.
+   */
+  closeModal = () => {
+    this.setState({ isVisibleModal: false });
   };
 
   render() {
@@ -206,7 +215,7 @@ class Certificates extends Component {
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting, associatedUniverses } = this.state;
+    const { showSubmitting, associatedUniverses, isVisibleModal } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data.map((cert) => {
@@ -310,10 +319,10 @@ class Certificates extends Component {
                 certificate={this.state.selectedCert}
               />
               <AssociatedUniverse
-                visible={showModal && visibleModal === 'associatedUniversesModalCert'}
-                onHide={this.props.closeModal}
+                visible={isVisibleModal}
+                onHide={this.closeModal}
                 associatedUniverses={associatedUniverses}
-                title= 'Certificate'
+                title="Certificate"
               />
             </Fragment>
           }

@@ -5,12 +5,13 @@ import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
-import AssociatedUniverse from '../../common/associatedUniverse/AssociatedUniverse';
+import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
-    associatedUniverses: []
-  }
+    associatedUniverses: [],
+    isVisibleModal: false
+  };
 
   actionList = (item, row) => {
     const { configUUID, in_use, universeDetails } = row.metadata;
@@ -25,8 +26,7 @@ export class ListKeyManagementConfigurations extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.setState({ associatedUniverses: [...universeDetails] });
-            this.props.showassociatedUniversesModal();
+            this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
           }}
         >
           <i className="fa fa-eye"></i> Show Universes
@@ -35,14 +35,20 @@ export class ListKeyManagementConfigurations extends Component {
     );
   };
 
+  /**
+   * Close the modal by setting the local flag
+   */
+  closeModal = () => {
+    this.setState({ isVisibleModal: false });
+  };
+
   render() {
     const {
       configs,
       onCreate,
-      modal: { showModal, visibleModal }
     } = this.props;
 
-    const { associatedUniverses } = this.state;
+    const { associatedUniverses, isVisibleModal } = this.state;
 
     const showConfigProperties = (item, row) => {
       const displayed = [];
@@ -132,8 +138,8 @@ export class ListKeyManagementConfigurations extends Component {
                 />
               </BootstrapTable>
               <AssociatedUniverse
-                visible={showModal && visibleModal === 'associatedUniversesModalKMS'}
-                onHide={this.props.closeModal}
+                visible={isVisibleModal}
+                onHide={this.closeModal}
                 associatedUniverses={associatedUniverses}
                 title="KMS Provider"
               />

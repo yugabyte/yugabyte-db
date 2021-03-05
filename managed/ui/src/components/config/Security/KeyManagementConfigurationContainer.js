@@ -61,14 +61,6 @@ const mapDispatchToProps = (dispatch) => {
         .catch((err) => {
           console.error(err)
         });
-    },
-
-    showassociatedUniversesModal: () => {
-      dispatch(openDialog('associatedUniversesModalKMS'));
-    },
-    
-    closeModal: () => {
-      dispatch(closeDialog());
     }
   };
 };

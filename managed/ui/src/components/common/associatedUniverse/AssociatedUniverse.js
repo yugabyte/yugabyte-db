@@ -4,68 +4,62 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 import './AssociatedUniverse.scss';
 
-function AssociatedUniverse(props) {
-  const { onHide, associatedUniverses, visible, title } = props;
-  /**
-   * Returns the decorated status.
-   * @param universeStatus status of universe.
-   */
-  const modifyStatus = (item,row) => {
-
-    // TODO: Modify this logic when status prop is added from backend.
-    const universeStatus = row.universePaused
-      ? 'Paused'
-      : row.updateSucceeded && !row.updateInProgress
+/**
+ * Returns the decorated status.
+ * @param universeStatus status of universe.
+ */
+const modifyStatus = (item, row) => {
+  // TODO: Modify this logic when status prop is added from backend.
+  const universeStatus = row.universePaused
+    ? 'Paused'
+    : row.updateSucceeded && !row.updateInProgress
       ? 'Ready'
       : 'Error';
-    switch (universeStatus) {
-      case 'Ready':
-        return (
-          <div className="universe-status associated-universe-status good">
-            <i className="fa fa-check-circle associated-universe-icon" />
-            {universeStatus && <span>{universeStatus}</span>}
-          </div>
-        );
-      case 'Error':
-        return (
-          <div className="universe-status associated-universe-status bad">
-            <i className="fa fa-warning associated-universe-icon" />
-            {universeStatus && <span>{universeStatus}</span>}
-          </div>
-        );
-      case 'Paused':
-        return (
-          <div className="universe-status associated-universe-status paused">
-            <i className="fa fa-pause-circle-o associated-universe-icon" />
-            {universeStatus && <span>{universeStatus}</span>}
-          </div>
-        );
-      default:
-        return (
-          <div>
-            {universeStatus}
-          </div>
-        );
-    }
-  };
+  switch (universeStatus) {
+    case 'Ready':
+      return (
+        <div className="universe-status associated-universe-status good">
+          <i className="fa fa-check-circle associated-universe-icon" />
+          {universeStatus && <span>{universeStatus}</span>}
+        </div>
+      );
+    case 'Error':
+      return (
+        <div className="universe-status associated-universe-status bad">
+          <i className="fa fa-warning associated-universe-icon" />
+          {universeStatus && <span>{universeStatus}</span>}
+        </div>
+      );
+    case 'Paused':
+      return (
+        <div className="universe-status associated-universe-status paused">
+          <i className="fa fa-pause-circle-o associated-universe-icon" />
+          {universeStatus && <span>{universeStatus}</span>}
+        </div>
+      );
+    default:
+      return <div>{universeStatus}</div>;
+  }
+};
 
-  /**
-   * Returns the universe name with router link.
-   * @param universeName - Name of the universe.
-   */
-  const getUniverseLink = (universeName, row) => {
-    return (
-      <div>
-        <Link to={`/universes/${row.uuid}`}>{universeName}</Link>
-      </div>
-    );
-  };
+/**
+ * Returns the universe name with router link.
+ * @param universeName - Name of the universe.
+ */
+const getUniverseLink = (universeName, row) => {
+  return (
+    <div>
+      <Link to={`/universes/${row.uuid}`}>{universeName}</Link>
+    </div>
+  );
+};
 
+export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title }) => {
   return (
     <YBModal
       visible={visible}
       onHide={onHide}
-      submitLabel={'Close'}
+      submitLabel='Close'
       onFormSubmit={onHide}
       title={`Universes using this ${title}`}
     >
@@ -102,6 +96,4 @@ function AssociatedUniverse(props) {
       )}
     </YBModal>
   );
-}
-
-export default AssociatedUniverse;
+};
