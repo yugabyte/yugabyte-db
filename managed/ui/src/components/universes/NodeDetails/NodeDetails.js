@@ -61,7 +61,8 @@ export default class NodeDetails extends Component {
         universePerNodeMetrics,
         universeMasterLeader
       },
-      customer
+      customer,
+      providers
     } = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
@@ -186,6 +187,7 @@ export default class NodeDetails extends Component {
           clusterType="primary"
           customer={customer}
           currentUniverse={currentUniverse}
+          providers={providers}
         />
         {readOnlyCluster && (
           <NodeDetailsTable
@@ -196,6 +198,7 @@ export default class NodeDetails extends Component {
             clusterType="readonly"
             customer={customer}
             currentUniverse={currentUniverse}
+            providers={providers}
           />
         )}
       </Fragment>
