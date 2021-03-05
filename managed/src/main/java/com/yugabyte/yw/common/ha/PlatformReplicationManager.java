@@ -28,10 +28,11 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
-
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -191,7 +192,8 @@ public class PlatformReplicationManager {
         try {
           // Clear out any old backups.
           this.cleanupReceivedBackups(new URL(i.getAddress()), 0);
-        } catch (MalformedURLException ignored) {}
+        } catch (MalformedURLException ignored) {
+        }
       });
     // Mark the failover timestamp.
     config.updateLastFailover();
@@ -359,14 +361,18 @@ public class PlatformReplicationManager {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
     if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
-      if (uploadedFile.renameTo(saveAsFile.toFile())) {
+      try {
+        Util.moveFile(uploadedFile.toPath(), saveAsFile);
         LOG.debug("Store platform backup received from leader {} via {} as {}.",
           leader.toString(), sender.toString(), saveAsFile);
         return true;
+      } catch (IOException ioException) {
+        LOG.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
       }
+    } else {
+      LOG.error("Could create folder {} to store platform backup received from leader {} via {}",
+        replicationDir, leader.toString(), sender.toString());
     }
-    LOG.error("Could not store platform backup received from leader {} via {} as {}",
-      leader.toString(), sender.toString(), saveAsFile);
     return false;
   }
 
