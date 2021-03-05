@@ -55,6 +55,8 @@ public class Provider extends Model {
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
+  public static final Set<Common.CloudType> InstanceTagsEnabledProviders = ImmutableSet.of(
+    Common.CloudType.aws, Common.CloudType.azu);
 
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
