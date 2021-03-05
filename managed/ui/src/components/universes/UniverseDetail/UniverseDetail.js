@@ -129,9 +129,11 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
 
-    return !getPromiseState(rollingUpgrade).isLoading() &&
-      updateAvailable &&
-      !(showModal && visibleModal === 'softwareUpgradesModal');
+    return (
+      !getPromiseState(rollingUpgrade).isLoading() &&
+      (updateAvailable !== 0) &&
+      !(showModal && visibleModal === 'softwareUpgradesModal')
+    );
   };
 
   stripQueryParams = () => {
