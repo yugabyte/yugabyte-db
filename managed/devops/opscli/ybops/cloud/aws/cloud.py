@@ -389,7 +389,7 @@ class AwsCloud(AbstractCloud):
             instance.start()
             instance.wait_until_running()
             # The OS boot up may take some time,
-            # so retry untill the instance allowes SSH connection to it via port 22.
+            # so retry untill the instance allows SSH connection to it via port 22.
             retry_count = 0
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             while retry_count < 25:
