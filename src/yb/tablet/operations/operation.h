@@ -449,6 +449,25 @@ class WeakSynchronizerOperationCompletionCallback : public OperationCompletionCa
   std::weak_ptr<Synchronizer> synchronizer_;
 };
 
+template <class Functor>
+class FunctorOperationCompletionCallback : public OperationCompletionCallback {
+ public:
+  explicit FunctorOperationCompletionCallback(Functor&& functor)
+      : functor_(std::move(functor)) {}
+
+  void OperationCompleted() override {
+    functor_(status());
+  }
+
+ private:
+  Functor functor_;
+};
+
+template <class Functor>
+auto MakeFunctorOperationCompletionCallback(Functor&& functor) {
+  return std::make_unique<FunctorOperationCompletionCallback<Functor>>(std::move(functor));
+}
+
 }  // namespace tablet
 }  // namespace yb
 

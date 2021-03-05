@@ -40,8 +40,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
-      CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
 
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 

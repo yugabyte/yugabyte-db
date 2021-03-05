@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
 #define YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -23,6 +24,14 @@
 
 namespace yb {
 namespace master {
+
+struct SnapshotScheduleOperation {
+  SnapshotScheduleId schedule_id;
+  SnapshotScheduleFilterPB filter;
+  TxnSnapshotId snapshot_id;
+};
+
+using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
 
 class SnapshotScheduleState {
  public:
@@ -41,14 +50,22 @@ class SnapshotScheduleState {
     return true;
   }
 
+  void PrepareOperations(
+      HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
+  void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
+
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
-  CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb);
+  CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
  private:
   SnapshotCoordinatorContext& context_;
   SnapshotScheduleId id_;
   SnapshotScheduleOptionsPB options_;
+
+  // When snapshot is being created for this schedule, this field contains id of this snapshot.
+  // To prevent creating other snapshots during that time.
+  TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
 };
 
 } // namespace master

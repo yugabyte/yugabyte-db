@@ -59,6 +59,10 @@ class SnapshotState : public StateWithTablets {
     return snapshot_hybrid_time_;
   }
 
+  const SnapshotScheduleId& schedule_id() const {
+    return schedule_id_;
+  }
+
   int version() const {
     return version_;
   }
@@ -79,6 +83,9 @@ class SnapshotState : public StateWithTablets {
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
   SysRowEntries entries_;
+  // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
+  // schedule id. Otherwise it will be nil.
+  SnapshotScheduleId schedule_id_;
   int version_;
 };
 

@@ -24,6 +24,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
@@ -56,6 +58,11 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
+  virtual Result<SysRowEntries> CollectEntries(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table) = 0;
+
   virtual const Schema& schema() = 0;
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
@@ -63,6 +70,8 @@ class SnapshotCoordinatorContext {
   virtual rpc::Scheduler& Scheduler() = 0;
 
   virtual bool IsLeader() = 0;
+
+  virtual server::Clock* Clock() = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };
