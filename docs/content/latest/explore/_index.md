@@ -94,6 +94,19 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+  <div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-language-features/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Query Optimization</div>
+      </div>
+      <div class="body">
+        Optimize query performance
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="follower-reads/">
       <div class="head">

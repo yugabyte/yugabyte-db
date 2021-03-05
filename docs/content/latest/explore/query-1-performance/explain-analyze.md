@@ -3,13 +3,13 @@ title: Analyzing Queries with EXPLAIN
 linkTitle: Analyzing Queries with EXPLAIN
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
-  - /explore/ysql-language-features/query-1-performance/explain-analyze/
+  - /latest/explore/query-1-performance/explain-analyze/
 headerTitle: Analyzing Queries with EXPLAIN
 image: /images/section_icons/index/develop.png
 menu:
   latest:
-    identifier: explain-analyze
-    parent: query-1-performance
+    identifier: explore-query-1-performance-explain-analyze
+    parent: explore-query-1-performance
     weight: 566
 isTocNested: true
 showAsideToc: true
