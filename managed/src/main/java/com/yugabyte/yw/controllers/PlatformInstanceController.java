@@ -216,7 +216,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       replicationManager.start();
 
       // Finally, switch the prometheus configuration to read from swamper targets directly.
-      replicationManager.switchPrometheusFromFederated();
+      replicationManager.switchPrometheusToStandalone();
 
       return ok();
     } catch (Exception e) {
