@@ -32,7 +32,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -259,9 +258,14 @@ public class PlatformReplicationManager {
     String clusterKey = config.getClusterKey();
     File recentBackup;
     recentBackup = getMostRecentBackup();
-    return recentBackup != null && replicationHelper.exportBackups(
+    boolean result = recentBackup != null && replicationHelper.exportBackups(
       config, clusterKey, remoteInstance.getAddress(), recentBackup) &&
       remoteInstance.updateLastBackup();
+    if (!result) {
+      LOG.error("Error sending platform backup to " + remoteInstance.getAddress());
+    }
+
+    return result;
   }
 
   private File getMostRecentBackup() {
@@ -281,13 +285,6 @@ public class PlatformReplicationManager {
     // Ensure that the remote instance is demoted if this instance is the most current leader.
     if (!replicationHelper.demoteRemoteInstance(remoteInstance)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
-
-      return;
-    }
-
-    // Send the platform backup to the remote instance.
-    if (!this.sendBackup(remoteInstance)) {
-      LOG.error("Error sending platform backup to " + remoteAddr);
 
       return;
     }
@@ -323,11 +320,16 @@ public class PlatformReplicationManager {
         // Update local last backup time if creating the backup succeeded.
         config.getLocal().updateLastBackup();
 
-        // Sync data to remote address.
-        remoteInstances.forEach(this::syncToRemoteInstance);
+        // Send the platform backup to the remote instances.
+        List<PlatformInstance> instancesToUpdate = remoteInstances.stream()
+          .filter(this::sendBackup)
+          .collect(Collectors.toList());
 
         // Remove locally created backups since they have already been sent to followers.
         cleanupCreatedBackups();
+
+        // Sync cluster data to remote address that successfully received the backup.
+        instancesToUpdate.forEach(this::syncToRemoteInstance);
       } catch (Exception e) {
         LOG.error("Error running sync for HA config {}", config.getUUID(), e);
       }
