@@ -385,6 +385,7 @@ const SlowQueriesComponent = ({ location }) => {
           <div className="slow-queries__table">            
             <BootstrapTable
               data={displayedQueries}
+              pagination
               search
               searchPlaceholder="Filter by query text"
               multiColumnSearch
