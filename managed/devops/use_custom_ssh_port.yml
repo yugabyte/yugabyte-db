@@ -15,6 +15,9 @@
     # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
     - name: 'install python 2.x'
       raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
+    - name: Install policycoreutils-python
+      raw: "yum install -y policycoreutils-python"
+      when: machine_image is match(".*centos-7-v20210217")
   roles:
     - ansible-sshd
   vars:
