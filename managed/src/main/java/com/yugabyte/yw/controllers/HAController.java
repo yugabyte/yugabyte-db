@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -105,6 +106,12 @@ public class HAController extends AuthenticatedController {
       HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
       if (config == null) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+      }
+
+      PlatformInstance localInstance = config.getLocal();
+      if (localInstance != null && !localInstance.getIsLeader()) {
+        // Revert prometheus from federated mode.
+        replicationManager.switchPrometheusToStandalone();
       }
 
       // Stop the backup schedule.

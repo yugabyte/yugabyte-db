@@ -264,7 +264,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  void switchPrometheusFromFederated() throws Exception {
+  void switchPrometheusToStandalone() throws Exception {
     File configFile = this.getPrometheusConfigFile();
     File configDir = configFile.getParentFile();
     File previousConfigFile = new File(configDir, "previous_prometheus.yml");
@@ -285,7 +285,7 @@ public class PlatformReplicationHelper {
         URL leaderAddr = new URL(haConfig.getLeader().getAddress());
         this.switchPrometheusToFederated(leaderAddr);
       } else {
-        this.switchPrometheusFromFederated();
+        this.switchPrometheusToStandalone();
       }
     } catch (Exception ignored) {}
   }
