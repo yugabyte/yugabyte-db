@@ -81,12 +81,19 @@ class AzureCloud(AbstractCloud):
         for region, metadata in perRegionMetadata.items():
             self.get_admin().network(metadata).cleanup(region)
 
-    def create_instance(self, args, adminSSH):
+    def create_or_update_instance(self, args, adminSSH, tags_to_remove=None):
         vmName = args.search_pattern
         region = args.region
         zoneParts = args.zone.split('-')
         zone = zoneParts[1] if len(zoneParts) > 1 else None
-        logging.info("[app] About to create Azure VM {} in {}/{}.".format(vmName, region, zone))
+        logging.info("[app] Creating/Updating Azure VM {} in {}/{}.".format(vmName, region, zone))
+
+        # Reject removing internal tags.
+        if tags_to_remove and "yb-server-type" in tags_to_remove.split(","):
+            raise YBOpsRuntimeError(
+                "Was asked to remove tags: {}, which contain internal tags: yb-server-type".format(
+                    tags_to_remove
+                ))
 
         subnet = args.cloud_subnet
         numVolumes = args.num_volumes
@@ -98,11 +105,13 @@ class AzureCloud(AbstractCloud):
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
-        nicId = self.get_admin().create_nic(vmName, vnet, subnet, zone, nsg, region, public_ip)
-        self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
-                                   instanceType, adminSSH, nsg, image, volType, args.type,
-                                   region, nicId)
-        logging.info("[app] Created Azure VM {}.".format(vmName, region, zone))
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        nicId = self.get_admin().create_or_update_nic(
+            vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
+        self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
+                                             instanceType, adminSSH, nsg, image, volType,
+                                             args.type, region, nicId, tags)
+        logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -167,3 +176,9 @@ class AzureCloud(AbstractCloud):
 
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
+
+    def modify_tags(self, args):
+        instance = self.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)

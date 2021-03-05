@@ -22,6 +22,7 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -227,7 +228,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
 
       // We only deal with AWS instance tags.
-      if (!userIntent.providerType.equals(CloudType.aws) ||
+      if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType) ||
           userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
       }
@@ -417,12 +418,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public Map<String, String> getInstanceTagsForInstanceOps() {
       Map<String, String> retTags = new HashMap<String, String>();
-      if (!providerType.equals(Common.CloudType.aws)) {
+      if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
         return retTags;
       }
 
       retTags.putAll(instanceTags);
-      retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
+      if (providerType.equals(Common.CloudType.aws)) {
+        // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
+        retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
+      }
 
       return retTags;
     }

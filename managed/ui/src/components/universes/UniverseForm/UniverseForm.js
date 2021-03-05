@@ -403,7 +403,7 @@ class UniverseForm extends Component {
             return { name: tserverFlag.name, value: tserverFlag.value.trim() };
           });
 
-        if (currentProvider === 'aws') {
+        if (currentProvider === 'aws' || currentProvider === 'azu') {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
               return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);

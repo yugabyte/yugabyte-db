@@ -939,7 +939,8 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      this.getCurrentProvider(currentProviderUUID).code === 'aws'
+      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
+        this.getCurrentProvider(currentProviderUUID).code === 'azu')
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1626,22 +1627,24 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      tagsArray = (
-        <Row>
-          <Col md={12}>
-            <h4>User Tags</h4>
-          </Col>
-          <Col md={6}>
-            <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.instanceTags`}
-              flagType="tag"
-              operationType="Create"
-              isReadOnly={false}
-            />
-          </Col>
-        </Row>
-      );
+      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+        tagsArray = (
+          <Row>
+            <Col md={12}>
+              <h4>User Tags</h4>
+            </Col>
+            <Col md={6}>
+              <FieldArray
+                component={GFlagArrayComponent}
+                name={`${clusterType}.instanceTags`}
+                flagType="tag"
+                operationType="Create"
+                isReadOnly={false}
+              />
+            </Col>
+          </Row>
+        );
+      }
     }
 
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
@@ -2096,7 +2099,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
-        {currentProviderCode === 'aws' && clusterType === 'primary' && (
+        {clusterType === 'primary' && (
           <div className="form-section no-border">{tagsArray}</div>
         )}
       </div>
