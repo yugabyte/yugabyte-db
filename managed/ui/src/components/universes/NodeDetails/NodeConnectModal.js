@@ -37,17 +37,30 @@ class NodeConnectModal extends Component {
   render() {
     const { currentRow, label, accessKeys, providerUUID } = this.props;
     const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
+    let accessCommand = null;
+    let accessTitle = null;
+
     if (isEmptyObject(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
       return <MenuItem>{label}</MenuItem>;
     }
 
     const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
-    if (isEmptyObject(accessKey)) {
+    if (isEmptyObject(accessKey) && currentRow.cloudInfo.cloud !== 'kubernetes') {
       return <span />;
     }
-    const accessKeyInfo = accessKey.keyInfo;
-    const sshPort = accessKeyInfo.sshPort || 54422;
-    const privateSSHCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+
+    if (currentRow.cloudInfo.cloud === 'kubernetes') {
+      accessTitle = 'Access your pod';
+      const podNamespace = currentRow.privateIP.split(".")[2];
+      accessCommand = `kubectl exec -it -n ${podNamespace} ${currentRow.name} -- sh`;
+    } else {
+      accessTitle = 'Access your node';
+      const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
+      const accessKeyInfo = accessKey.keyInfo;
+      const sshPort = accessKeyInfo.sshPort || 54422;
+      accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+    }
+
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
@@ -55,15 +68,15 @@ class NodeConnectModal extends Component {
           {label}
         </MenuItem>
         <YBModal
-          title={'Access your node'}
+          title={accessTitle}
           visible={this.state.showConnectModal}
           onHide={() => this.toggleConnectModal(false)}
           showCancelButton={true}
           cancelLabel={'OK'}
         >
           <pre className={'node-command'}>
-            <code>{privateSSHCommand}</code>
-            <YBCopyButton text={privateSSHCommand}></YBCopyButton>
+            <code>{accessCommand}</code>
+            <YBCopyButton text={accessCommand}></YBCopyButton>
           </pre>
         </YBModal>
       </Fragment>
