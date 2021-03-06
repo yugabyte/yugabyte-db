@@ -3672,7 +3672,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_pos := position((SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1) IN $1);
+    v_pos := (SELECT position((SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1) IN $1));
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -3700,7 +3700,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1) IN $1);
+    v_pos := (SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1) IN $1));
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -3731,7 +3731,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1);
+    v_pos := (SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1));
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -3767,11 +3767,11 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1);
+    v_pos := (SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1));
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            v_len := length((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1));
+            v_len := (SELECT length((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1)));
             v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos;
@@ -3806,11 +3806,11 @@ BEGIN
     -- position for the substring matching the whole pattern is returned.
     -- We need to enclose the pattern between parentheses.
     v_pattern := '(' || $2 || ')';
-    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1) IN $1);
+    v_pos := (SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1) IN $1));
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            v_len := length((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1));
+            v_len := (SELECT length((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1)));
             v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos;
@@ -3860,8 +3860,8 @@ BEGIN
     -- To get position of occurrence > 1 we need a more complex code
     LOOP
 	v_curr_pos := v_curr_pos + v_len;
-        v_pos := position((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1) IN substr($1, v_pos_orig));
-        v_len := length((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1));
+        v_pos := (SELECT position((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1) IN substr($1, v_pos_orig)));
+        v_len := (SELECT length((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1)));
         IF v_len IS NULL THEN
             EXIT;
         END IF;
@@ -3870,10 +3870,10 @@ BEGIN
         idx := idx + 1;
         EXIT WHEN (idx > occurrence);
     END LOOP;
-    v_pos := position((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1) IN substr($1, v_curr_pos));
+    v_pos := (SELECT position((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1) IN substr($1, v_curr_pos)));
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            v_len := length((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1));
+            v_len := (SELECT length((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1)));
             v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos + v_curr_pos - 1;
