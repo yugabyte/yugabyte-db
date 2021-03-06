@@ -27,6 +27,7 @@ import subprocess
 import json
 import hashlib
 import time
+import shlex
 
 from subprocess import check_call
 
@@ -78,7 +79,7 @@ REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and
 
 
 def sha256(s):
-    return hashlib.sha256(s).hexdigest()
+    return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
 def adjust_error_on_warning_flag(flag, step, language):
@@ -327,8 +328,9 @@ class PostgresBuilder(YbBuildToolBase):
             'LDFLAGS',
             '-Wl,-rpath,' + os.path.join(self.build_root, 'lib'))
 
-        for ldflags_var_name in ['LDFLAGS', 'LDFLAGS_EX']:
-            self.append_to_env_var(ldflags_var_name, '-lm')
+        if sys.platform != 'darwin':
+            for ldflags_var_name in ['LDFLAGS', 'LDFLAGS_EX']:
+                self.append_to_env_var(ldflags_var_name, '-lm')
 
         if is_verbose_mode():
             # CPPFLAGS are C preprocessor flags, CXXFLAGS are C++ flags.
@@ -349,8 +351,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         # Do not try to make rpaths relative during the configure step, as that may slow it down.
         self.set_env_var('YB_DISABLE_RELATIVE_RPATH', '1' if step == 'configure' else '0')
-        if self.build_type == 'compilecmds':
-            self.set_env_var('YB_SKIP_LINKING', '1')
 
         # We need to add this directory to PATH so Postgres build could find Bison.
         thirdparty_installed_common_bin_path = os.path.join(
@@ -482,9 +482,11 @@ class PostgresBuilder(YbBuildToolBase):
                 'CMakeLists.txt'
             ]
             git_hash = subprocess.check_output(
-                ['git', '--no-pager', 'log', '-n', '1', '--pretty=%H'] + code_subset).strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + code_subset)
-            git_diff_cached = subprocess.check_output(['git', 'diff', '--cached'] + code_subset)
+                ['git', '--no-pager', 'log', '-n', '1', '--pretty=%H'] + code_subset
+            ).decode('utf-8').strip()
+            git_diff = subprocess.check_output(['git', 'diff'] + code_subset).decode('utf-8')
+            git_diff_cached = subprocess.check_output(
+                ['git', 'diff', '--cached'] + code_subset).decode('utf-8')
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
@@ -539,8 +541,12 @@ class PostgresBuilder(YbBuildToolBase):
 
         compile_commands_files = []
 
-        work_dirs = [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib'),
-                     os.path.join(self.pg_build_root, 'third-party-extensions')]
+        third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
+        work_dirs = [
+            self.pg_build_root,
+            os.path.join(self.pg_build_root, 'contrib'),
+            third_party_extensions_dir
+        ]
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
@@ -556,32 +562,42 @@ class PostgresBuilder(YbBuildToolBase):
 
                 run_program(['chmod', 'u+x', make_script_path])
 
-                pg_config = []
-                if 'third-party-extensions' in work_dir:
-                    pg_config = ['PG_CONFIG=' + self.pg_config_root]
+                make_cmd_suffix = []
+                if work_dir == third_party_extensions_dir:
+                    make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_root]
+
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
 
+                complete_make_cmd = make_cmd + make_cmd_suffix
+                complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
                 make_result = run_program(
-                    make_cmd + pg_config, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
-                    error_ok=True
+                    ' '.join(shlex.quote(arg) for arg in complete_make_cmd),
+                    stdout_stderr_prefix='make',
+                    cwd=work_dir,
+                    error_ok=True,
+                    shell=True  # TODO: get rid of shell=True.
                 )
+                logging.info("Successfully ran 'make' in the %s directory", work_dir)
 
                 if make_result.failure():
                     make_result.print_output_to_stdout()
                     raise RuntimeError("PostgreSQL compilation failed")
 
-                if self.build_type == 'compilecmds':
-                    logging.info(
-                            "Not running make install in the %s directory since we are only "
-                            "generating the compilation database", work_dir)
-                else:
+                if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
                     run_program(
-                        'make install' + ' ' + ''.join(pg_config),
-                        stdout_stderr_prefix='make_install', cwd=work_dir, shell=True, error_ok=True
+                        ' '.join(shlex.quote(arg) for arg in complete_make_install_cmd),
+                        stdout_stderr_prefix='make_install',
+                        cwd=work_dir,
+                        error_ok=True,
+                        shell=True  # TODO: get rid of shell=True.
                     ).print_output_and_raise_error_if_failed()
-                    logging.info("Successfully ran make in the %s directory", work_dir)
+                    logging.info("Successfully ran 'make install' in the %s directory", work_dir)
+                else:
+                    logging.info(
+                            "Not running 'make install' in the %s directory since we are only "
+                            "generating the compilation database", work_dir)
 
                 if self.export_compile_commands:
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
@@ -589,7 +605,8 @@ class PostgresBuilder(YbBuildToolBase):
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
                     self.set_env_var('YB_PG_SKIP_CONFIG_STATUS', '1')
                     if not os.path.exists(compile_commands_path):
-                        run_program(['compiledb', 'make', '-n'], capture_output=False)
+                        run_program(
+                            ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
                     del os.environ['YB_PG_SKIP_CONFIG_STATUS']
 
                     if not os.path.exists(compile_commands_path):
