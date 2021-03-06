@@ -66,7 +66,6 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -121,16 +120,9 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
 }
 
 FlushJob::~FlushJob() {
-  ThreadStatusUtil::ResetThreadStatus();
 }
 
 void FlushJob::ReportStartedFlush() {
-  ThreadStatusUtil::SetColumnFamily(cfd_, cfd_->ioptions()->env,
-                                    cfd_->options()->enable_thread_tracking);
-  ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_FLUSH);
-  ThreadStatusUtil::SetThreadOperationProperty(
-      ThreadStatus::COMPACTION_JOB_ID,
-      job_context_->job_id);
   IOSTATS_RESET(bytes_written);
 }
 
@@ -139,14 +131,9 @@ void FlushJob::ReportFlushInputSize(const autovector<MemTable*>& mems) {
   for (auto* mem : mems) {
     input_size += mem->ApproximateMemoryUsage();
   }
-  ThreadStatusUtil::IncreaseThreadOperationProperty(
-      ThreadStatus::FLUSH_BYTES_MEMTABLES,
-      input_size);
 }
 
 void FlushJob::RecordFlushIOStats() {
-  ThreadStatusUtil::SetThreadOperationProperty(
-      ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
@@ -154,8 +141,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     CHECK(false) << "a flush should not have been scheduled.";
   }
 
-  AutoThreadOperationStageUpdater stage_run(
-      ThreadStatus::STAGE_FLUSH_RUN);
   // Save the contents of the earliest memtable as a new Table
   FileMetaData meta;
   autovector<MemTable*> mems;
@@ -231,8 +216,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
 
 Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     const autovector<MemTable*>& mems, VersionEdit* edit, FileMetaData* meta) {
-  AutoThreadOperationStageUpdater stage_updater(
-      ThreadStatus::STAGE_FLUSH_WRITE_L0);
   db_mutex_->AssertHeld();
   const uint64_t start_micros = db_options_.env->NowMicros();
   auto file_number_holder = file_numbers_provider_->NewFileNumber();
