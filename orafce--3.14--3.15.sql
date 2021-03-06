@@ -6,12 +6,12 @@ RETURNS text
 AS $$
 DECLARE
     modifiers text;
-    multiline text;
+    multiline text[];
 BEGIN
     -- Oracle 'n' modifier correspond to 's' POSIX modifier
     -- Oracle 'm' modifier correspond to 'n' POSIX modifier
-    SELECT translate($1, 'nm', 'sn') INTO modifiers;
-    SELECT regexp_match(modifiers, 's') INTO multiline;
+    modifiers := translate($1, 'nm', 'sn');
+    multiline := regexp_matches(modifiers, 's');
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
@@ -33,7 +33,7 @@ AS $$
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT regexp_match($1, $2, 'p') IS NOT NULL;
+    SELECT CASE WHEN (count(*) > 0) THEN true ELSE false END FROM regexp_matches($1, $2, 'p');
 $$
 LANGUAGE 'sql';
 
@@ -44,8 +44,8 @@ AS $$
 DECLARE
     modifiers text;
 BEGIN
-    SELECT oracle.translate_oracle_modifiers($3, false) INTO modifiers;
-    IF (SELECT regexp_match($1, $2, modifiers) IS NOT NULL) THEN
+    modifiers := oracle.translate_oracle_modifiers($3, false);
+    IF ((regexp_matches($1, $2, modifiers))[1] IS NOT NULL) THEN
         RETURN true;
     END IF;
     RETURN false;
@@ -78,7 +78,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT count(*)::integer FROM regexp_matches(substr($1, $3), $2, 'pg') INTO v_cnt;
+    v_cnt :=  count(*)::integer FROM regexp_matches(substr($1, $3), $2, 'pg');
     RETURN v_cnt;
 END;
 $$
@@ -90,15 +90,15 @@ RETURNS integer
 AS $$
 DECLARE
     modifiers text;
-    v_count   integer;
+    v_cnt   integer;
 BEGIN
     -- Check numeric arguments
     IF $3 < 1 THEN
         RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
     END IF;
-    SELECT oracle.translate_oracle_modifiers($4, true) INTO modifiers;
-    SELECT count(*)::integer FROM regexp_matches(substr($1, $3), $2, modifiers) INTO v_count;
-    RETURN v_count;
+    modifiers := oracle.translate_oracle_modifiers($4, true);
+    v_cnt := count(*)::integer FROM regexp_matches(substr($1, $3), $2, modifiers);
+    RETURN v_cnt;
 END;
 $$
 LANGUAGE plpgsql;
@@ -118,7 +118,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT position((SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1) IN $1) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1) IN $1);
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -146,7 +146,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1) IN $1) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1) IN $1);
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -177,7 +177,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1);
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         RETURN v_pos;
@@ -213,12 +213,12 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1) IN $1);
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            SELECT length((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1)) INTO v_len;
-        v_pos := v_pos + v_len;
+            v_len := length((SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1));
+            v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos;
     END IF;
@@ -247,17 +247,17 @@ BEGIN
     IF $5 != 0 AND $5 != 1 THEN
         RAISE EXCEPTION 'argument ''return_opt'' must be 0 or 1';
     END IF;
-    SELECT oracle.translate_oracle_modifiers($6, true) INTO modifiers;
+    modifiers := oracle.translate_oracle_modifiers($6, true);
     -- Without subexpression specified, assume 0 which mean that the first
     -- position for the substring matching the whole pattern is returned.
     -- We need to enclose the pattern between parentheses.
     v_pattern := '(' || $2 || ')';
-    SELECT position((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1) IN $1) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1) IN $1);
     -- position() returns NULL when not found, we need to return 0 instead
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            SELECT length((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1)) INTO v_len;
-        v_pos := v_pos + v_len;
+            v_len := length((SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1));
+            v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos;
     END IF;
@@ -295,7 +295,7 @@ BEGIN
         RAISE EXCEPTION 'argument ''return_opt'' must be 0 or 1';
     END IF;
     -- Translate Oracle regexp modifier into PostgreSQl ones
-    SELECT oracle.translate_oracle_modifiers($6, true) INTO modifiers;
+    modifiers := oracle.translate_oracle_modifiers($6, true);
     -- If subexpression value is 0 we need to enclose the pattern between parentheses.
     IF v_subexpr = 0 THEN
        v_pattern := '(' || $2 || ')';
@@ -306,8 +306,8 @@ BEGIN
     -- To get position of occurrence > 1 we need a more complex code
     LOOP
 	v_curr_pos := v_curr_pos + v_len;
-        SELECT position((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1) IN substr($1, v_pos_orig)) INTO v_pos;
-        SELECT length((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1)) INTO v_len;
+        v_pos := position((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1) IN substr($1, v_pos_orig));
+        v_len := length((SELECT (regexp_matches(substr($1, v_pos_orig), '('||$2||')', modifiers))[1] offset 0 limit 1));
         IF v_len IS NULL THEN
             EXIT;
         END IF;
@@ -316,10 +316,10 @@ BEGIN
         idx := idx + 1;
         EXIT WHEN (idx > occurrence);
     END LOOP;
-    SELECT position((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1) IN substr($1, v_curr_pos)) INTO v_pos;
+    v_pos := position((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1) IN substr($1, v_curr_pos));
     IF v_pos IS NOT NULL THEN
         IF $5 = 1 THEN
-            SELECT length((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1)) INTO v_len;
+            v_len := length((SELECT (regexp_matches(substr($1, v_curr_pos), v_pattern, modifiers))[v_subexpr] offset 0 limit 1));
             v_pos := v_pos + v_len;
         END IF;
         RETURN v_pos + v_curr_pos - 1;
@@ -344,7 +344,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1 INTO v_substr;
+    v_substr := (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1;
     RETURN v_substr;
 END;
 $$
@@ -369,7 +369,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1 INTO v_substr;
+    v_substr := (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1;
     RETURN v_substr;
 END;
 $$
@@ -398,7 +398,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1 INTO v_substr;
+    v_substr := (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1;
     RETURN v_substr;
 END;
 $$
@@ -420,7 +420,7 @@ BEGIN
     IF $4 < 1 THEN
         RAISE EXCEPTION 'argument ''occurence'' must be a number greater than 0';
     END IF;
-    SELECT oracle.translate_oracle_modifiers($5, true) INTO modifiers;
+    modifiers := oracle.translate_oracle_modifiers($5, true);
     -- Without subexpression specified, assume 0 which mean that the first
     -- position for the substring matching the whole pattern is returned.
     -- We need to enclose the pattern between parentheses.
@@ -428,7 +428,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1 INTO v_substr;
+    v_substr := (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1;
     RETURN v_substr;
 END;
 $$
@@ -443,6 +443,7 @@ DECLARE
     v_pattern text;
     modifiers text;
     v_subexpr integer := $6;
+    has_group integer;
 BEGIN
     -- Check numeric arguments
     IF $3 < 1 THEN
@@ -455,10 +456,11 @@ BEGIN
 	RAISE EXCEPTION 'argument ''group'' must be a positive number';
     END IF;
     -- Check that with v_subexpr = 1 we have a capture group otherwise return NULL
-    IF $6 = 1 AND regexp_match(v_pattern, '\(.*\)') IS NULL THEN
+    has_group := count(*) FROM regexp_matches(v_pattern, '\(.*\)');
+    IF $6 = 1 AND has_group = 0 THEN
 	RETURN NULL;
     END IF;
-    SELECT oracle.translate_oracle_modifiers($5, true) INTO modifiers;
+    modifiers := oracle.translate_oracle_modifiers($5, true);
     -- If subexpression value is 0 we need to enclose the pattern between parentheses.
     IF v_subexpr = 0 THEN
        v_pattern := '(' || $2 || ')';
@@ -469,7 +471,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[v_subexpr] offset $4-1 limit 1 INTO v_substr;
+    v_substr := (regexp_matches(substr($1, $3), v_pattern, modifiers))[v_subexpr] offset $4-1 limit 1;
     RETURN v_substr;
 END;
 $$

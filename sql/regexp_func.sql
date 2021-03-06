@@ -2,6 +2,7 @@
 \set ECHO none
 SET client_min_messages = warning;
 SET client_encoding = utf8;
+\set VERBOSITY terse
 \set ECHO all
 
 SET search_path TO oracle,"$user", public, pg_catalog;
