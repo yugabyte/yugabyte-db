@@ -512,12 +512,6 @@ class DBImpl : public DB {
                                    const CompactionJobStats& job_stats,
                                    int job_id);
 
-  void NewThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusDbInfo() const;
-
   Status WriteImpl(const WriteOptions& options, WriteBatch* updates,
                    WriteCallback* callback);
 

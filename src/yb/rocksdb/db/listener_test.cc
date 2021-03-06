@@ -134,9 +134,6 @@ TEST_F(EventListenerTest, OnSingleDBCompactionTest) {
   options.max_bytes_for_level_base = options.target_file_size_base * 2;
   options.max_bytes_for_level_multiplier = 2;
   options.compression = kNoCompression;
-#if ROCKSDB_USING_THREAD_STATUS
-  options.enable_thread_tracking = true;
-#endif  // ROCKSDB_USING_THREAD_STATUS
   options.level0_file_num_compaction_trigger = kNumL0Files;
   options.table_properties_collector_factories.push_back(
       std::make_shared<TestPropertiesCollectorFactory>());
@@ -190,25 +187,6 @@ class TestFlushListener : public EventListener {
     ASSERT_GT(info.table_properties.raw_value_size, 0U);
     ASSERT_GT(info.table_properties.num_data_blocks, 0U);
     ASSERT_GT(info.table_properties.num_entries, 0U);
-
-#if ROCKSDB_USING_THREAD_STATUS
-    // Verify the id of the current thread that created this table
-    // file matches the id of any active flush or compaction thread.
-    uint64_t thread_id = env_->GetThreadID();
-    std::vector<ThreadStatus> thread_list;
-    ASSERT_OK(env_->GetThreadList(&thread_list));
-    bool found_match = false;
-    for (auto thread_status : thread_list) {
-      if (thread_status.operation_type == ThreadStatus::OP_FLUSH ||
-          thread_status.operation_type == ThreadStatus::OP_COMPACTION) {
-        if (thread_id == thread_status.thread_id) {
-          found_match = true;
-          break;
-        }
-      }
-    }
-    ASSERT_TRUE(found_match);
-#endif  // ROCKSDB_USING_THREAD_STATUS
   }
 
   void OnFlushCompleted(
@@ -247,9 +225,6 @@ class TestFlushListener : public EventListener {
 TEST_F(EventListenerTest, OnSingleDBFlushTest) {
   Options options;
   options.write_buffer_size = k110KB;
-#if ROCKSDB_USING_THREAD_STATUS
-  options.enable_thread_tracking = true;
-#endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
   options.listeners.emplace_back(listener);
   std::vector<std::string> cf_names = {
@@ -283,9 +258,6 @@ TEST_F(EventListenerTest, OnSingleDBFlushTest) {
 TEST_F(EventListenerTest, MultiCF) {
   Options options;
   options.write_buffer_size = k110KB;
-#if ROCKSDB_USING_THREAD_STATUS
-  options.enable_thread_tracking = true;
-#endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
   options.listeners.emplace_back(listener);
   options.table_properties_collector_factories.push_back(
@@ -317,9 +289,6 @@ TEST_F(EventListenerTest, MultiCF) {
 
 TEST_F(EventListenerTest, MultiDBMultiListeners) {
   Options options;
-#if ROCKSDB_USING_THREAD_STATUS
-  options.enable_thread_tracking = true;
-#endif  // ROCKSDB_USING_THREAD_STATUS
   options.table_properties_collector_factories.push_back(
       std::make_shared<TestPropertiesCollectorFactory>());
   std::vector<TestFlushListener*> listeners;
@@ -399,9 +368,6 @@ TEST_F(EventListenerTest, MultiDBMultiListeners) {
 
 TEST_F(EventListenerTest, DisableBGCompaction) {
   Options options;
-#if ROCKSDB_USING_THREAD_STATUS
-  options.enable_thread_tracking = true;
-#endif  // ROCKSDB_USING_THREAD_STATUS
   TestFlushListener* listener = new TestFlushListener(options.env);
   const int kCompactionTrigger = 1;
   const int kSlowdownTrigger = 5;
