@@ -1322,9 +1322,10 @@ if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
-  if [[ ${#make_targets[@]} -gt 0 ]]; then
-    fatal "Cannot specify custom Make targets for the 'compilecmds' build type, got: " \
-          "${make_targets[*]}"
+  if [[ ${#make_targets[@]} -eq 0 ]]; then
+    make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
+  else
+    log "Custom targets specified for a compilecmds build, not adding default targets"
   fi
   # We need to add anything that generates header files:
   # - Protobuf
@@ -1334,7 +1335,6 @@ if [[ $build_type == "compilecmds" ]]; then
   #
   # Also we need to add postgres as a dependency, because it goes through the build_postgres.py
   # script and that is where the top-level combined compile_commands.json file is created.
-  make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
   build_java=false
 fi
 

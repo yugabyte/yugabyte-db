@@ -95,10 +95,7 @@
 #define inline
 #endif
 
-#if defined(__clang__) && ( \
-		(defined(__linux__) && __clang_major__ >= 10) || \
-		(defined(__APPLE__) && __clang_major__ >= 12) \
-	)
+#if defined(__has_attribute) && __has_attribute(fallthrough)
 #define switch_fallthrough() __attribute__((fallthrough))
 #else
 #define switch_fallthrough()

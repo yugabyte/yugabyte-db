@@ -150,8 +150,6 @@ static void validateInfiniteBounds(ParseState *pstate, List *blist);
 static Const *transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 							 const char *colName, Oid colType, int32 colTypmod);
 
-static void YBTransformPrimaryKeySplitOptions(CreateStmtContext *cxt);
-
 /*
  * transformCreateStmt -
  *	  parse analysis for CREATE TABLE
