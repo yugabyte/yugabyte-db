@@ -19,22 +19,36 @@ This section describes how to use stored procedures to perform transactions.
 
 While functions are extremely useful, they have a significant drawback, as well: they can't execute transactions. PostgreSQL 11 introduced stored procedures that support transactions, and Yugabyte supports them as well.
 
-## Creating Stored Procedures
+## Creating a Stored Procedure
 
-Creating a stored procedure in YSQL is a two-step process: you start by creating a procedure via the `CREATE PROCEDURE` statement, and call the procedure using the `CALL` statement.
-
-The `CREATE PROCEDURE` statement has the following syntax:
+To create a stored procedure in YSQL, use the `CREATE PROCEDURE` statement, which has the following syntax:
 
 ```sql
-
+create [or replace] procedure procedure_name(parameter_list)
+language plpgsql
+as $$
+declare
+-- variable declaration
+begin
+-- stored procedure body
+end; $$
 ```
 
-The `CALL` statement has the following syntax:
+## Invoking a Stored Procedure
+
+To invoke a stored procedure, use the `CALL` statement, which has the following syntax:
 
 ```sql
-
+call stored_procedure_name(argument_list);
 ```
 
-## Deleting Stored Procedures
+## Deleting a Stored Procedure
+
+To remove a stored procedure, use the `DROP PROCEDURE` statement, which has the following syntax:
+
+```sql
+drop procedure [if exists] procedure_name (argument_list)
+[cascade | restrict]
+```
 
 ## Using Stored Procedures
