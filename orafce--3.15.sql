@@ -3560,18 +3560,10 @@ RETURNS text
 AS $$
 DECLARE
     modifiers text;
-    multiline text[];
 BEGIN
     -- Oracle 'n' modifier correspond to 's' POSIX modifier
     -- Oracle 'm' modifier correspond to 'n' POSIX modifier
     modifiers := translate($1, 'nm', 'sn');
-    multiline := regexp_matches(modifiers, 's');
-    -- Oracle default behavior is newline-sensitive,
-    -- PostgreSQL not, so force 'p' modifier to affect
-    -- newline-sensitivity but not ^ and $ search.
-    IF multiline = NULL THEN
-        modifiers := modifiers || 'p';
-    END IF;
     IF $2 THEN
         modifiers := modifiers || 'g';
     END IF;
