@@ -60,7 +60,7 @@ CREATE INDEX t3_id3 ON t3 (id);
 CREATE INDEX t3_val ON t3 (val);
 ```
 
-The schema of the resulting is as follows:
+The schema of the resulting tables is as follows:
 
 ```
                  Table "public.t1"
