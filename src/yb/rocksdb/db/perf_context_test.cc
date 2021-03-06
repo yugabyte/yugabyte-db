@@ -30,7 +30,6 @@
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/util/string_util.h"
 
 
@@ -259,10 +258,6 @@ void ProfileQueries(bool enabled_time = false) {
   if (FLAGS_random_key) {
     std::random_shuffle(keys.begin(), keys.end());
   }
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 1U);
-#endif
-  int num_mutex_waited = 0;
   for (const int i : keys) {
     if (i == kFlushFlag) {
       FlushOptions fo;
@@ -277,20 +272,12 @@ void ProfileQueries(bool enabled_time = false) {
 
     perf_context.Reset();
     db->Put(write_options, key, value);
-    if (++num_mutex_waited > 3) {
-#ifndef NDEBUG
-      ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 0U);
-#endif
-    }
     hist_write_pre_post.Add(perf_context.write_pre_and_post_process_time);
     hist_write_wal_time.Add(perf_context.write_wal_time);
     hist_write_memtable_time.Add(perf_context.write_memtable_time);
     hist_put.Add(perf_context.user_key_comparison_count);
     total_db_mutex_nanos += perf_context.db_mutex_lock_nanos;
   }
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 0U);
-#endif
 
   for (const int i : keys) {
     std::string key = "k" + ToString(i);

@@ -43,7 +43,6 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 #include "yb/util/stats/iostats_context_imp.h"
 
@@ -165,13 +164,6 @@ Status BuildTable(const std::string& dbname,
       }
       auto& boundary_values = *boundaries;
       meta->UpdateBoundaries(std::move(boundary_values.key), boundary_values);
-
-      // TODO(noetzli): Update stats after flush, too.
-      if (io_priority == Env::IO_HIGH &&
-          IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
-        ThreadStatusUtil::SetThreadOperationProperty(
-            ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
-      }
     }
 
     // Finish and check for builder errors

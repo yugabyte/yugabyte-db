@@ -25,8 +25,9 @@
 
 #pragma once
 
+#include <deque>
+
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 #include "yb/util/thread.h"
 

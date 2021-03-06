@@ -54,6 +54,7 @@
 #include <set>
 #include "yb/rocksdb/port/port.h"
 #include "yb/util/slice.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/io_posix.h"
 #include "yb/rocksdb/util/thread_posix.h"
@@ -62,7 +63,6 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
-#include "yb/rocksdb/util/thread_status_updater.h"
 
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
@@ -84,10 +84,6 @@
 namespace rocksdb {
 
 namespace {
-
-ThreadStatusUpdater* CreateThreadStatusUpdater() {
-  return new ThreadStatusUpdater();
-}
 
 // list of pathnames that are locked
 static std::set<std::string> lockedFiles;
@@ -155,9 +151,6 @@ class PosixEnv : public Env {
     for (int pool_id = 0; pool_id < Env::Priority::TOTAL; ++pool_id) {
       thread_pools_[pool_id].JoinAllThreads();
     }
-    // All threads must be joined before the deletion of
-    // thread_status_updater_.
-    delete thread_status_updater_;
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
@@ -374,12 +367,6 @@ class PosixEnv : public Env {
       RETURN_NOT_OK(CreateDir(*result));
     }
     return Status::OK();
-  }
-
-  virtual Status GetThreadList(
-      std::vector<ThreadStatus>* thread_list) override {
-    assert(thread_status_updater_);
-    return thread_status_updater_->GetThreadList(thread_list);
   }
 
   static uint64_t gettid(pthread_t tid) {
@@ -774,7 +761,6 @@ PosixEnv::PosixEnv()
     // This allows later initializing the thread-local-env of each thread.
     thread_pools_[pool_id].SetHostEnv(this);
   }
-  thread_status_updater_ = CreateThreadStatusUpdater();
 }
 
 PosixEnv::PosixEnv(std::unique_ptr<RocksDBFileFactory> file_factory) :
@@ -786,7 +772,6 @@ PosixEnv::PosixEnv(std::unique_ptr<RocksDBFileFactory> file_factory) :
     // This allows later initializing the thread-local-env of each thread.
     thread_pools_[pool_id].SetHostEnv(this);
   }
-  thread_status_updater_ = CreateThreadStatusUpdater();
 }
 
 void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,

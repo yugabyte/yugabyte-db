@@ -119,8 +119,6 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/thread_status_updater.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
@@ -695,7 +693,6 @@ DBImpl::~DBImpl() {
     // Use timed wait for periodic status logging.
     bg_cv_.TimedWait(env_->NowMicros() + yb::ToMicroseconds(5s));
   }
-  EraseThreadStatusDbInfo();
   flush_scheduler_.Clear();
 
   while (!flush_queue_.empty()) {
@@ -3516,12 +3513,6 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     *made_progress = true;
   } else if (!trivial_move_disallowed && c->IsTrivialMove()) {
     TEST_SYNC_POINT("DBImpl::BackgroundCompaction:TrivialMove");
-    // Instrument for event update
-    // TODO(yhchiang): add op details for showing trivial-move.
-    ThreadStatusUtil::SetColumnFamily(
-        c->column_family_data(), c->column_family_data()->ioptions()->env,
-        c->column_family_data()->options()->enable_thread_tracking);
-    ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_COMPACTION);
 
     compaction_job_stats.num_input_files = c->num_input_files(0);
 
@@ -3570,9 +3561,6 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
         c->output_level(), moved_bytes, status.ToString().c_str(),
         c->column_family_data()->current()->storage_info()->LevelSummary(&tmp));
     *made_progress = true;
-
-    // Clear Instrument
-    ThreadStatusUtil::ResetThreadStatus();
   } else {
     int output_level  __attribute__((unused)) = c->output_level();
     TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCompaction:NonTrivial",
@@ -4427,7 +4415,6 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
 
   // this is outside the mutex
   if (s.ok()) {
-    NewThreadStatusCfInfo(down_cast<ColumnFamilyHandleImpl*>(*handle)->cfd());
     if (!persist_options_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
         s = STATUS(IOError,
@@ -4495,7 +4482,6 @@ Status DBImpl::DropColumnFamily(ColumnFamilyHandle* column_family) {
     // Note that here we erase the associated cf_info of the to-be-dropped
     // cfd before its ref-count goes to zero to avoid having to erase cf_info
     // later inside db_mutex.
-    EraseThreadStatusCfInfo(cfd);
     assert(cfd->IsDropped());
     auto* mutable_cf_options = cfd->GetLatestMutableCFOptions();
     max_total_in_memory_state_ -= mutable_cf_options->write_buffer_size *
@@ -6210,7 +6196,6 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
         if (cfd != nullptr) {
           handles->push_back(
               new ColumnFamilyHandleImpl(cfd, impl, &impl->mutex_));
-          impl->NewThreadStatusCfInfo(cfd);
         } else {
           if (db_options.create_missing_column_families) {
             // missing column family, create it
@@ -6548,42 +6533,6 @@ Status DBImpl::RenameTempFileToOptionsFile(const std::string& file_name) {
   return Status::OK();
 #endif  // !ROCKSDB_LITE
 }
-
-#if ROCKSDB_USING_THREAD_STATUS
-
-void DBImpl::NewThreadStatusCfInfo(
-    ColumnFamilyData* cfd) const {
-  if (db_options_.enable_thread_tracking) {
-    ThreadStatusUtil::NewColumnFamilyInfo(this, cfd, cfd->GetName(),
-                                          cfd->ioptions()->env);
-  }
-}
-
-void DBImpl::EraseThreadStatusCfInfo(
-    ColumnFamilyData* cfd) const {
-  if (db_options_.enable_thread_tracking) {
-    ThreadStatusUtil::EraseColumnFamilyInfo(cfd);
-  }
-}
-
-void DBImpl::EraseThreadStatusDbInfo() const {
-  if (db_options_.enable_thread_tracking) {
-    ThreadStatusUtil::EraseDatabaseInfo(this);
-  }
-}
-
-#else
-void DBImpl::NewThreadStatusCfInfo(
-    ColumnFamilyData* cfd) const {
-}
-
-void DBImpl::EraseThreadStatusCfInfo(
-    ColumnFamilyData* cfd) const {
-}
-
-void DBImpl::EraseThreadStatusDbInfo() const {
-}
-#endif  // ROCKSDB_USING_THREAD_STATUS
 
 #ifndef ROCKSDB_LITE
 SequenceNumber DBImpl::GetEarliestMemTableSequenceNumber(SuperVersion* sv,

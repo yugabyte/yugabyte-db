@@ -1283,36 +1283,6 @@ class Stats {
   void SetId(int id) { id_ = id; }
   void SetExcludeFromMerge() { exclude_from_merge_ = true; }
 
-  void PrintThreadStatus() {
-    std::vector<ThreadStatus> thread_list;
-    CHECK_OK(FLAGS_env->GetThreadList(&thread_list));
-
-    fprintf(stderr, "\n%18s %10s %12s %20s %13s %45s %12s %s\n",
-        "ThreadID", "ThreadType", "cfName", "Operation",
-        "ElapsedTime", "Stage", "State", "OperationProperties");
-
-    int64_t current_time = 0;
-    CHECK_OK(Env::Default()->GetCurrentTime(&current_time));
-    for (auto ts : thread_list) {
-      fprintf(stderr, "%18" PRIu64 " %10s %12s %20s %13s %45s %12s",
-          ts.thread_id,
-          ThreadStatus::GetThreadTypeName(ts.thread_type).c_str(),
-          ts.cf_name.c_str(),
-          ThreadStatus::GetOperationName(ts.operation_type).c_str(),
-          ThreadStatus::MicrosToString(ts.op_elapsed_micros).c_str(),
-          ThreadStatus::GetOperationStageName(ts.operation_stage).c_str(),
-          ThreadStatus::GetStateName(ts.state_type).c_str());
-
-      auto op_properties = ThreadStatus::InterpretOperationProperties(
-          ts.operation_type, ts.op_properties);
-      for (const auto& op_prop : op_properties) {
-        fprintf(stderr, " %s %" PRIu64" |",
-            op_prop.first.c_str(), op_prop.second);
-      }
-      fprintf(stderr, "\n");
-    }
-  }
-
   void ResetLastOpTime() {
     // Set to now to avoid latency from calls to SleepForMicroseconds
     last_op_finish_ = FLAGS_env->NowMicros();
@@ -1423,9 +1393,6 @@ class Stats {
           last_report_finish_ = now;
           last_report_done_ = done_;
         }
-      }
-      if (id_ == 0 && FLAGS_thread_status_per_interval) {
-        PrintThreadStatus();
       }
       fflush(stderr);
     }

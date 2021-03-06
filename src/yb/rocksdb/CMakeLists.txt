@@ -180,11 +180,6 @@ set(ROCKSDB_SRCS
     util/statistics.cc
     util/sync_point.cc
     util/thread_local.cc
-    util/thread_status_impl.cc
-    util/thread_status_updater.cc
-    util/thread_status_updater_debug.cc
-    util/thread_status_util.cc
-    util/thread_status_util_debug.cc
     util/xfunc.cc
     util/xxhash.cc
     ${ROCKSDB_PROTO_SRCS}
@@ -297,7 +292,6 @@ ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
 ADD_YB_TEST(util/rate_limiter_test)
 ADD_YB_TEST(util/slice_transform_test)
-ADD_YB_TEST(util/thread_list_test)
 ADD_YB_TEST(utilities/document/document_db_test)
 ADD_YB_TEST(utilities/document/json_document_test)
 ADD_YB_TEST(utilities/geodb/geodb_test)

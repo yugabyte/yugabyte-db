@@ -36,7 +36,6 @@
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/snapshot.h"
-#include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
 #include "yb/util/result.h"
