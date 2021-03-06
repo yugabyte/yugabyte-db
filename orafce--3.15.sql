@@ -3632,7 +3632,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_cnt :=  count(*)::integer FROM regexp_matches(substr($1, $3), $2, 'pg');
+    v_cnt :=  (SELECT count(*)::integer FROM regexp_matches(substr($1, $3), $2, 'pg'));
     RETURN v_cnt;
 END;
 $$
@@ -3651,7 +3651,7 @@ BEGIN
         RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
     END IF;
     modifiers := oracle.translate_oracle_modifiers($4, true);
-    v_cnt := count(*)::integer FROM regexp_matches(substr($1, $3), $2, modifiers);
+    v_cnt := (SELECT count(*)::integer FROM regexp_matches(substr($1, $3), $2, modifiers));
     RETURN v_cnt;
 END;
 $$
@@ -3898,7 +3898,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_substr := (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1;
+    v_substr := (SELECT (regexp_matches($1, v_pattern, 'pg'))[1] offset 0 limit 1);
     RETURN v_substr;
 END;
 $$
@@ -3923,7 +3923,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_substr := (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1;
+    v_substr := (SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset 0 limit 1);
     RETURN v_substr;
 END;
 $$
@@ -3952,7 +3952,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_substr := (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1;
+    v_substr := (SELECT (regexp_matches(substr($1, $3), v_pattern, 'pg'))[1] offset $4-1 limit 1);
     RETURN v_substr;
 END;
 $$
@@ -3982,7 +3982,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_substr := (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1;
+    v_substr := (SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[1] offset $4-1 limit 1);
     RETURN v_substr;
 END;
 $$
@@ -4010,7 +4010,7 @@ BEGIN
 	RAISE EXCEPTION 'argument ''group'' must be a positive number';
     END IF;
     -- Check that with v_subexpr = 1 we have a capture group otherwise return NULL
-    has_group := count(*) FROM regexp_matches(v_pattern, '\(.*\)');
+    has_group := (SELECT count(*) FROM regexp_matches(v_pattern, '\(.*\)'));
     IF $6 = 1 AND has_group = 0 THEN
 	RETURN NULL;
     END IF;
@@ -4025,7 +4025,7 @@ BEGIN
     -- Oracle default behavior is newline-sensitive,
     -- PostgreSQL not, so force 'p' modifier to affect
     -- newline-sensitivity but not ^ and $ search.
-    v_substr := (regexp_matches(substr($1, $3), v_pattern, modifiers))[v_subexpr] offset $4-1 limit 1;
+    v_substr := (SELECT (regexp_matches(substr($1, $3), v_pattern, modifiers))[v_subexpr] offset $4-1 limit 1);
     RETURN v_substr;
 END;
 $$
