@@ -16,11 +16,11 @@ isTocNested: true
 showAsideToc: true 
 ---
 
-Included here are the release notes for all releases in the v2.5 latest release series.
+{{< note title="Notable features and changes" >}}
 
-## Notable features and changes (cumulative for the v2.5 latest release series)
+Included here are the release notes for all releases in the v2.5 latest release series. Content will be added as new notable features and changes are available in the patch releases of the v2.5 latest release series.
 
-Note: Content will be added as new notable features and changes are available in the patch releases of the v2.5 latest release series.
+{{< /note >}}
 
 ## v2.5.3 - Mar 9, 2021
 
