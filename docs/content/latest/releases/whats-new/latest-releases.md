@@ -51,66 +51,66 @@ docker pull yugabytedb/yugabyte:2.5.3.0-b30
 
 #### Yugabyte Platform
 
-* [7126] PITR: Introduce snapshot schedule
-* [7225] [7228] [Platform] [UI] Enable the OpenShift tab, marked as beta
+* [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Introduce snapshot schedule
+* [[7225](https://github.com/yugabyte/yugabyte-db/issues/7225)] [[7228](https://github.com/yugabyte/yugabyte-db/issues/7228)] [Platform] [UI] Enable the OpenShift tab, marked as beta
 
 #### Core Database
 
-* [2717] YSQL: Support ALTER FUNCTION command
-* [6985] YSQL: Add simple UNIQUE column
+* [[2717](https://github.com/yugabyte/yugabyte-db/issues/2717)] YSQL: Support ALTER FUNCTION command
+* [[6985](https://github.com/yugabyte/yugabyte-db/issues/6985)] YSQL: Add simple UNIQUE column
 
 ### Improvements
 
 #### Yugabyte Platform
 
-* [5628] [yugaware] [azure] Support regions with no availability zones
-* [5807] [Platform] Added toggle to show deleted backups
-* [6373] Platform: Pause/Resume universe. (#6846)
-* [6962] Platform: Exposes endpoint for downloading log files.
-* [7121] Extend yb-admin restore_snapshot to use a custom time
+* [[5628](https://github.com/yugabyte/yugabyte-db/issues/5628)] [yugaware] [azure] Support regions with no availability zones
+* [[5807](https://github.com/yugabyte/yugabyte-db/issues/5807)] [Platform] Added toggle to show deleted backups
+* [[6373](https://github.com/yugabyte/yugabyte-db/issues/6373)] Platform: Pause/Resume universe. (#6846)
+* [[6962](https://github.com/yugabyte/yugabyte-db/issues/6962)] Platform: Exposes endpoint for downloading log files.
+* [[7121](https://github.com/yugabyte/yugabyte-db/issues/7121)] Extend yb-admin restore_snapshot to use a custom time
 
 #### Core Database
 
-* [7366] YSQL: Allow getting current SQL query in pggate for debug logging
-* [7418] [7463] YSQL: Import Introduce the 'force' option for the Drop Database command.
+* [[7366](https://github.com/yugabyte/yugabyte-db/issues/7366)] YSQL: Allow getting current SQL query in pggate for debug logging
+* [[7418](https://github.com/yugabyte/yugabyte-db/issues/7418)] [[7463](https://github.com/yugabyte/yugabyte-db/issues/7463)] YSQL: Import Introduce the 'force' option for the Drop Database command.
 
 ### Bug Fixes
 
 #### Yugabyte Platform
 
-* [4742] [Platform] Plotly tooltip is overlaping with no data on zero pozitions (on x or y)
-* [5383] Fix conflict resolution while adding read intents
-* [6213] [Platform] Fixed poor visual feedback for the node staus change
-* [6530] [Platform] Enforced better password strength for registration
-* [6611] [Platform] [Kubernetes] Consider AZ level namespace for the metrics (#7479)
-* [6718] [Platform]: Health check emails should include Yugaware Hostname (#7337)
-* [7149] Platform: Trigger trying to take a platform backup when a task has completed
-* [7161] Platform UI: fix loading instance types on AZ change and inability to edit volume size
-* [7234] [Platform] UI fixes for platform
-* [7342] [Platform] [UI] add Beta tag to HA tab + address feedback
-* [7363] [Platform] [UI] Certificate list improvements
-* [7392] [Platform] Fix the cqlsh healthcheck failures happening because of warnings in the output (#7364)
-* [7423] Platform: Fix AvailabilityZone::getByCode
-* [7468] [Platform] Fixed issues of deleting a backup goes to "unknown" state for that backup
-* [7488] Platform: Fix a sync backup bug due to File::renameTo behavior
-* [7490] Platform: Ensure prom config is reverted to non-federated when deleting a follower HA config
-* [7494] [YW] Hide Pause Universe in universe actions dropdown
-* [7496] Platform: Alerts should not be triggered for a paused universe when running health check
+* [[4742](https://github.com/yugabyte/yugabyte-db/issues/4742)] [Platform] Plotly tooltip is overlaping with no data on zero pozitions (on x or y)
+* [[5383](https://github.com/yugabyte/yugabyte-db/issues/5383)] Fix conflict resolution while adding read intents
+* [[6213](https://github.com/yugabyte/yugabyte-db/issues/6213)] [Platform] Fixed poor visual feedback for the node staus change
+* [[6530](https://github.com/yugabyte/yugabyte-db/issues/6530)] [Platform] Enforced better password strength for registration
+* [[6611](https://github.com/yugabyte/yugabyte-db/issues/6611)] [Platform] [Kubernetes] Consider AZ level namespace for the metrics (#7479)
+* [[6718](https://github.com/yugabyte/yugabyte-db/issues/6718)] [Platform]: Health check emails should include Yugaware Hostname (#7337)
+* [[7149](https://github.com/yugabyte/yugabyte-db/issues/7149)] Platform: Trigger trying to take a platform backup when a task has completed
+* [[7161](https://github.com/yugabyte/yugabyte-db/issues/7161)] Platform UI: fix loading instance types on AZ change and inability to edit volume size
+* [[7234](https://github.com/yugabyte/yugabyte-db/issues/7234)] [Platform] UI fixes for platform
+* [[7342](https://github.com/yugabyte/yugabyte-db/issues/7342)] [Platform] [UI] add Beta tag to HA tab + address feedback
+* [[7363](https://github.com/yugabyte/yugabyte-db/issues/7363)] [Platform] [UI] Certificate list improvements
+* [[7392](https://github.com/yugabyte/yugabyte-db/issues/7392)] [Platform] Fix the cqlsh healthcheck failures happening because of warnings in the output (#7364)
+* [[7423](https://github.com/yugabyte/yugabyte-db/issues/7423)] Platform: Fix AvailabilityZone::getByCode
+* [[7468](https://github.com/yugabyte/yugabyte-db/issues/7468)] [Platform] Fixed issues of deleting a backup goes to "unknown" state for that backup
+* [[7488](https://github.com/yugabyte/yugabyte-db/issues/7488)] Platform: Fix a sync backup bug due to File::renameTo behavior
+* [[7490](https://github.com/yugabyte/yugabyte-db/issues/7490)] Platform: Ensure prom config is reverted to non-federated when deleting a follower HA config
+* [[7494](https://github.com/yugabyte/yugabyte-db/issues/7494)] [YW] Hide Pause Universe in universe actions dropdown
+* [[7496](https://github.com/yugabyte/yugabyte-db/issues/7496)] Platform: Alerts should not be triggered for a paused universe when running health check
 
 #### Core Database
 
-* [2865] YSQL: Speed up DROP DATABASE by batching tablet deletion into one raft request
-* [5543] YSQL: unable to alter column with correct options after a previous attempt with incorrect options fails
-* [6183] YSQL: Import Fix memory leak in plpgsql's CALL processing
-* [6241] YSQL: Make row key share lock less restrictive
-* [6253] YCQL: Create Index does not have to wait for the backfill to complete
-* [7065] [YCQL] Fixed incorrect CQL response in case of IN() with no argument.
-* [7380] YSQL: Import Fix another ancient bug in parsing of BRE-mode regular expressions.
-* [7386] YSQL: Import Fix ancient bug in parsing of BRE-mode regular expressions.
-* [7397] Tablet splitting: Crash during generating TSHeartbeat report after split
-* [7400] YSQL: Prevent drop of database when there is active connection to the DB
-* [7413] docdb: Fixed MetaCache::ProcessTabletLocations to reuse partitions list for co-located tables
-* [7480] Remove reference to user from YSQLsh health check output
+* [[2865](https://github.com/yugabyte/yugabyte-db/issues/2865)] YSQL: Speed up DROP DATABASE by batching tablet deletion into one raft request
+* [[5543](https://github.com/yugabyte/yugabyte-db/issues/5543)] YSQL: unable to alter column with correct options after a previous attempt with incorrect options fails
+* [[6183](https://github.com/yugabyte/yugabyte-db/issues/6183)] YSQL: Import Fix memory leak in plpgsql's CALL processing
+* [[6241](https://github.com/yugabyte/yugabyte-db/issues/6241)] YSQL: Make row key share lock less restrictive
+* [[6253](https://github.com/yugabyte/yugabyte-db/issues/6253)] YCQL: Create Index does not have to wait for the backfill to complete
+* [[7065](https://github.com/yugabyte/yugabyte-db/issues/7065)] [YCQL] Fixed incorrect CQL response in case of IN() with no argument.
+* [[7380](https://github.com/yugabyte/yugabyte-db/issues/7380)] YSQL: Import Fix another ancient bug in parsing of BRE-mode regular expressions.
+* [[7386](https://github.com/yugabyte/yugabyte-db/issues/7386)] YSQL: Import Fix ancient bug in parsing of BRE-mode regular expressions.
+* [[7397](https://github.com/yugabyte/yugabyte-db/issues/7397)] Tablet splitting: Crash during generating TSHeartbeat report after split
+* [[7400](https://github.com/yugabyte/yugabyte-db/issues/7400)] YSQL: Prevent drop of database when there is active connection to the DB
+* [[7413](https://github.com/yugabyte/yugabyte-db/issues/7413)] docdb: Fixed MetaCache::ProcessTabletLocations to reuse partitions list for co-located tables
+* [[7480](https://github.com/yugabyte/yugabyte-db/issues/7480)] Remove reference to user from YSQLsh health check output
 
 ### Known Issues
 
