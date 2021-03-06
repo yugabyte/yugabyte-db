@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: pg_hint_plan
     parent: query-1-performance
-    weight: 566
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---
