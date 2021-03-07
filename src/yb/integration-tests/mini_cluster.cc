@@ -97,6 +97,11 @@ using std::string;
 using std::vector;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
+using yb::master::GetMasterClusterConfigRequestPB;
+using yb::master::GetMasterClusterConfigResponsePB;
+using yb::master::ChangeMasterClusterConfigRequestPB;
+using yb::master::ChangeMasterClusterConfigResponsePB;
+using yb::master::SysClusterConfigEntryPB;
 
 namespace {
 
@@ -315,6 +320,31 @@ Status MiniCluster::AddTabletServer() {
   auto options = tserver::TabletServerOptions::CreateTabletServerOptions();
   RETURN_NOT_OK(options);
   return AddTabletServer(*options);
+}
+
+Status MiniCluster::AddTServerToBlacklist(MiniMaster* master, MiniTabletServer* ts) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+
+  // Get current config.
+  RETURN_NOT_OK(master->master()->catalog_manager()->GetClusterConfig(&config_resp));
+
+  ChangeMasterClusterConfigRequestPB change_req;
+  *change_req.mutable_cluster_config() = std::move(*config_resp.mutable_cluster_config());
+  SysClusterConfigEntryPB* config = change_req.mutable_cluster_config();
+  // Add tserver to blacklist.
+  HostPortPB* blacklist_host_pb = config->mutable_server_blacklist()->mutable_hosts()->Add();
+  blacklist_host_pb->set_host(ts->bound_rpc_addr().address().to_string());
+  blacklist_host_pb->set_port(ts->bound_rpc_addr().port());
+
+  ChangeMasterClusterConfigResponsePB change_resp;
+
+  RETURN_NOT_OK(master->master()->catalog_manager()->SetClusterConfig(&change_req, &change_resp));
+
+  LOG(INFO) << "TServer at " << ts->bound_rpc_addr().address().to_string() << ":"
+            << ts->bound_rpc_addr().port() << " was added to the blacklist";
+
+  return Status::OK();
 }
 
 string MiniCluster::GetMasterAddresses() const {
@@ -671,7 +701,7 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
       MiniCluster* cluster, const TableId& table_id) {
   std::vector<tablet::TabletPeerPtr> result;
   for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    if (peer->tablet()->metadata()->tablet_data_state() !=
+    if (peer->tablet_metadata()->tablet_data_state() !=
         tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       result.push_back(peer);
     }
@@ -929,6 +959,20 @@ Status BreakConnectivity(MiniCluster* cluster, int idx1, int idx2) {
   }
 
   return Status::OK();
+}
+
+Result<int> ServerWithLeaders(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto* server = cluster->mini_tablet_server(i)->server();
+    if (!server) {
+      continue;
+    }
+    auto* ts_manager = server->tablet_manager();
+    if (ts_manager->GetLeaderCount() != 0) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, "No tablet server with leaders");
 }
 
 }  // namespace yb

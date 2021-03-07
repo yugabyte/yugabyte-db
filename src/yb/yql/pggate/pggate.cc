@@ -183,8 +183,10 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
                          messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())),
-      pg_callbacks_(callbacks) {
+      pg_callbacks_(callbacks),
+      pg_txn_manager_(
+          new PgTxnManager(
+              &async_client_init_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -359,10 +361,6 @@ void PgApiImpl::DeleteStatement(PgStatement *handle) {
   }
 }
 
-Status PgApiImpl::ClearBinds(PgStatement *handle) {
-  return handle->ClearBinds();
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::ConnectDatabase(const char *database_name) {
@@ -507,10 +505,12 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool add_primary_key,
                                  const bool colocated,
                                  const PgObjectId& tablegroup_oid,
+                                 const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid);
+      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
+      tablespace_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
   }
@@ -732,10 +732,12 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
                                  const PgObjectId& tablegroup_oid,
+                                 const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid);
+      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid,
+      tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -823,10 +825,6 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
-}
-
-Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondEq(attr_num, attr_value);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,

@@ -30,6 +30,14 @@ export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
 
+// Pause Universe
+export const PAUSE_UNIVERSE = 'PAUSE_UNIVERSE';
+export const PAUSE_UNIVERSE_RESPONSE = 'PAUSE_UNIVERSE_RESPONSE';
+
+// Restart Universe
+export const RESTART_UNIVERSE = 'RESTART_UNIVERSE';
+export const RESTART_UNIVERSE_RESPONSE = 'RESTART_UNIVERSE_RESPONSE';
+
 // Read replicas
 export const ADD_READ_REPLICA = 'ADD_READ_REPLICA';
 export const ADD_READ_REPLICA_RESPONSE = 'ADD_READ_REPLICA_RESPONSE';
@@ -217,6 +225,40 @@ export function deleteUniverse(universeUUID, isForceDelete) {
 export function deleteUniverseResponse(response) {
   return {
     type: DELETE_UNIVERSE_RESPONSE,
+    payload: response
+  };
+}
+
+export function pauseUniverse(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`);
+  return {
+    type: PAUSE_UNIVERSE,
+    payload: request
+  };
+}
+
+export function pauseUniverseResponse(response) {
+  return {
+    type: PAUSE_UNIVERSE_RESPONSE,
+    payload: response
+  };
+}
+
+export function restartUniverse(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`);
+  return {
+    type: RESTART_UNIVERSE,
+    payload: request
+  };
+}
+
+export function restartUniverseResponse(response) {
+  return {
+    type: RESTART_UNIVERSE_RESPONSE,
     payload: response
   };
 }
@@ -636,9 +678,15 @@ export function updateBackupStateResponse(response) {
   };
 }
 
-export function fetchLiveQueries(universeUUID, cancelFn) {
+export function fetchLiveQueries(universeUUID) {
   const customerUUID = localStorage.getItem("customerId");
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
+  return axios.get(endpoint);
+}
+
+export function fetchSlowQueries(universeUUID, cancelFn) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
   let request;
   if (cancelFn) {
     const CancelToken = axios.CancelToken;

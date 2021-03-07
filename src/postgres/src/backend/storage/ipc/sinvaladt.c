@@ -480,7 +480,9 @@ SIInsertDataEntries(const SharedInvalidationMessage *data, int n)
 		max = segP->maxMsgNum;
 		while (nthistime-- > 0)
 		{
-			segP->buffer[max % MAXNUMMESSAGES] = *data++;
+			SharedInvalidationMessage *dest = &segP->buffer[max % MAXNUMMESSAGES];
+			*dest = *data++;
+			dest->yb_header.sender_pid = getpid();
 			max++;
 		}
 

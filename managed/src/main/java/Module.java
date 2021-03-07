@@ -8,13 +8,15 @@ import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.queries.LiveQueryHelper;
+import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -62,7 +64,7 @@ public class Module extends AbstractModule {
       bind(HealthManager.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
-      bind(LiveQueryHelper.class).asEagerSingleton();
+      bind(QueryHelper.class).asEagerSingleton();
       bind(ShellProcessHandler.class).asEagerSingleton();
       bind(NetworkManager.class).asEagerSingleton();
       bind(AccessManager.class).asEagerSingleton();
@@ -83,6 +85,8 @@ public class Module extends AbstractModule {
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
+      bind(PlatformInstanceClientFactory.class).asEagerSingleton();
+      bind(PlatformReplicationHelper.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));

@@ -68,6 +68,9 @@ message ChangeMetadataRequestPB {
 
   // Used for alter schema on a non-primary table (e.g. colocated user table).
   optional bytes alter_table_id = 12;
+
+  // Used to update schema of a colocated user table upon backfill completion.
+  optional bytes backfill_done_table_id = 13;
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
@@ -123,6 +126,9 @@ message BackfillIndexRequestPB {
 
   // Currently only used for YSQL.
   optional string namespace_name = 9;
+
+  // Indexed table ID so we can properly address a colocated table.
+  optional bytes indexed_table_id = 10;
 }
 
 message BackfillIndexResponsePB {

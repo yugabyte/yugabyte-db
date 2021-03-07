@@ -143,6 +143,14 @@ pre {
     padding: 3px 6px;
     background-color: $YB_ORANGE;
   }
+  &.badge-green {
+    padding: 3px 6px;
+    background-color: $YB_SUCCESS_COLOR;
+  }
+  &.badge-gray {
+    padding: 3px 6px;
+    background-color: $YB_DARK_GRAY;
+  }
 }
 
 .popover {

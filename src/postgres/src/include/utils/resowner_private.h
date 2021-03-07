@@ -96,13 +96,4 @@ extern void ResourceOwnerRememberJIT(ResourceOwner owner,
 extern void ResourceOwnerForgetJIT(ResourceOwner owner,
 					   Datum handle);
 
-/* support for YugaByte statement refcount management */
-extern void ResourceOwnerEnlargeYugaByteStmts(ResourceOwner owner);
-extern void ResourceOwnerRememberYugaByteStmt(
-	ResourceOwner owner,
-	YBCPgStatement yb_stmt);
-extern void ResourceOwnerForgetYugaByteStmt(
-	ResourceOwner owner,
-	YBCPgStatement yb_stmt);
-
 #endif							/* RESOWNER_PRIVATE_H */

@@ -60,9 +60,11 @@ public class PlatformInstance extends Model {
   private Date lastBackup;
 
   @Constraints.Required()
+  @Column(unique = true)
   private Boolean isLeader;
 
   @Constraints.Required
+  @Column(unique = true)
   private Boolean isLocal;
 
   public UUID getUUID() {
@@ -91,7 +93,6 @@ public class PlatformInstance extends Model {
     this.config = config;
   }
 
-  // TODO: (Daniel) - Standardize format of datetime?
   @JsonGetter("last_backup")
   public Date getLastBackup() {
     return this.lastBackup;
@@ -101,9 +102,15 @@ public class PlatformInstance extends Model {
     this.lastBackup = lastBackup;
   }
 
-  public void updateLastBackup() {
-    this.lastBackup = new Date();
-    this.update();
+  public boolean updateLastBackup() {
+    try {
+      this.lastBackup = new Date();
+      this.update();
+      return true;
+    } catch (Exception exception) {
+      LOG.warn("DB error saving last backup time", exception);
+    }
+    return false;
   }
 
   @JsonGetter("is_leader")
@@ -124,21 +131,18 @@ public class PlatformInstance extends Model {
     this.isLocal = isLocal ? true : null;
   }
 
-  public void promoteFollower() {
-    if (this.isLeader) {
-      throw new RuntimeException("Platform instance is already a leader");
-    }
-
-    this.isLeader = true;
+  public void setIsLocalAndUpdate(Boolean isLocal) {
+    this.setIsLocal(isLocal);
     this.update();
   }
 
-  public void demoteLeader() {
-    if (!this.isLeader) {
-      throw new RuntimeException("Platform instance is already a follower");
-    }
+  public void promote() {
+    this.setIsLeader(true);
+    this.update();
+  }
 
-    this.isLeader = false;
+  public void demote() {
+    this.setIsLeader(false);
     this.update();
   }
 

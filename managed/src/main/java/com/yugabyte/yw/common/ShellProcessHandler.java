@@ -88,18 +88,23 @@ public class ShellProcessHandler {
 
             Process process = pb.start();
             waitForProcessExit(process, tempOutputFile, tempErrorFile);
-            BufferedReader outputStream = new BufferedReader(
-                new InputStreamReader(new FileInputStream(tempOutputFile)));
-            BufferedReader errorStream = new BufferedReader(
-                    new InputStreamReader(new FileInputStream(tempErrorFile)));
-            String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
-            String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
-            if (logCmdOutput) {
+            try (
+              FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
+              InputStreamReader outputReader = new InputStreamReader(outputInputStream);
+              BufferedReader outputStream = new BufferedReader(outputReader);
+              FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
+              InputStreamReader errorReader = new InputStreamReader(errorInputStream);
+              BufferedReader errorStream = new BufferedReader(errorReader)
+              ) {
+              String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
+              String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
+              if (logCmdOutput) {
                 LOG.debug("Proc stdout for '{}' | {}", response.description, processOutput);
                 LOG.debug("Proc stderr for '{}' | {}", response.description, processError);
+              }
+              response.code = process.exitValue();
+              response.message = (response.code == 0) ? processOutput : processError;
             }
-            response.code = process.exitValue();
-            response.message = (response.code == 0) ? processOutput : processError;
         } catch (IOException | InterruptedException e) {
             response.code = -1;
             LOG.error("Exception running command", e);
@@ -135,24 +140,26 @@ public class ShellProcessHandler {
     }
 
     private static void waitForProcessExit(
-        Process process,
-        File outFile,
-        File errFile) throws IOException, InterruptedException {
-
-        BufferedReader outputStream = new BufferedReader(
-            new InputStreamReader(new FileInputStream(outFile)));
-        BufferedReader errorStream = new BufferedReader(
-                new InputStreamReader(new FileInputStream(errFile)));
-
+      Process process,
+      File outFile,
+      File errFile
+    ) throws IOException, InterruptedException {
+      try (
+        FileInputStream outputInputStream = new FileInputStream(outFile);
+        InputStreamReader outputReader = new InputStreamReader(outputInputStream);
+        FileInputStream errInputStream = new FileInputStream(errFile);
+        InputStreamReader errReader = new InputStreamReader(errInputStream);
+        BufferedReader outputStream = new BufferedReader(outputReader);
+        BufferedReader errorStream = new BufferedReader(errReader)
+      ) {
         while (!process.waitFor(1, TimeUnit.SECONDS)) {
-                tailStream(outputStream);
-                tailStream(errorStream);
+          tailStream(outputStream);
+          tailStream(errorStream);
         }
         // check for any remaining lines
         tailStream(outputStream);
         tailStream(errorStream);
-        outputStream.close();
-        errorStream.close();
+      }
     }
 
     private static void tailStream(

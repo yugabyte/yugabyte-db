@@ -23,9 +23,9 @@ import play.mvc.Result;
 
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static play.test.Helpers.contentAsString;
 
 public class PlatformInstanceControllerTest extends FakeDBApplication {
@@ -74,21 +74,25 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
   }
 
-  private Result deletePlatformInstance(
-    UUID configUUID,
-    UUID instanceUUID
-  ) {
+  private Result deletePlatformInstance(UUID configUUID, UUID instanceUUID) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString()
       + "/instance/" + instanceUUID.toString();
     return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, authToken);
   }
 
+  private Result demotePlatformInstance(UUID configUUID, UUID instanceUUID) {
+    String authToken = user.createAuthToken();
+    String uri = "/api/settings/ha/config/" + configUUID.toString()
+      + "/instance/" + instanceUUID.toString() + "/demote";
+    return FakeApiHelper.doRequestWithAuthToken("POST", uri, authToken);
+  }
+
   @Test
   public void testCreatePlatformInstanceLocalFollower() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, false);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceConfigUUID = UUID.fromString(instanceJson.get("config_uuid").asText());
@@ -99,7 +103,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateRemotePlatformInstanceBeforeLocal() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", false, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", false, true);
     assertBadRequest(
       createResult,
       "Cannot create a remote platform instance before creating local platform instance"
@@ -110,9 +114,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateRemotePlatformInstanceWithLocalFollower() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, false);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
     assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "abcdef.com", false, false);
+    createResult = createPlatformInstance(configUUID, "http://abcdef.com", false, false);
     assertBadRequest(
       createResult,
       "Cannot create a remote platform instance on a follower platform instance"
@@ -123,9 +127,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreatePlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "abcdef.com", false, false);
+    createResult = createPlatformInstance(configUUID, "http://abcdef.com", false, false);
     assertOk(createResult);
   }
 
@@ -133,9 +137,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateMultipleLocalPlatformInstances() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "abcdef.com", true, false);
+    createResult = createPlatformInstance(configUUID, "http://abcdef.com", true, false);
     assertBadRequest(createResult, "Local platform instance already exists");
   }
 
@@ -143,9 +147,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateMultipleLeaderPlatformInstances() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "abcdef.com", false, true);
+    createResult = createPlatformInstance(configUUID, "http://abcdef.com", false, true);
     assertBadRequest(createResult, "Leader platform instance already exists");
   }
 
@@ -153,7 +157,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testDeleteLocalPlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
@@ -165,9 +169,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testDeleteRemotePlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
     assertOk(createResult);
-    createResult = createPlatformInstance(configUUID, "abcdef.com", false, false);
+    createResult = createPlatformInstance(configUUID, "http://abcdef.com", false, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
@@ -179,7 +183,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testDeleteLocalPlatformInstanceWithLocalFollower() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    Result createResult = createPlatformInstance(configUUID, "abc.com", true, false);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
@@ -187,5 +191,13 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertBadRequest(deleteResult, "Follower platform instance cannot delete platform instances");
   }
 
-  // TODO: (Daniel) - Add test coverage for promoteInstance(...) in #6505
+  @Test
+  public void testInvalidAddress() {
+    JsonNode haConfigJson = createHAConfig();
+    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com::abc", true, false);
+    assertBadRequest(createResult, "");
+    JsonNode node = Json.parse(contentAsString(createResult));
+    assertErrorNodeValue(node, "address", "Invalid URL provided");
+  }
 }

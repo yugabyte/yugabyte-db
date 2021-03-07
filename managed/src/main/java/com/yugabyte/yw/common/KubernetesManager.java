@@ -35,10 +35,16 @@ public class KubernetesManager {
     return execCommand(config, commandList);
   }
 
+  // TODO(bhavin192): modify the pullSecret on the fly while applying
+  // it? Add nodePrefix to the name, add labels which make it easy to
+  // find the secret by label selector, and even delete it if
+  // required. Something like, -lprovider=gke1 or
+  // -luniverse=uni1. Tracked here:
+  // https://github.com/yugabyte/yugabyte-db/issues/7012
   public ShellResponse applySecret(Map<String, String> config,
-                                                       String universePrefix, String pullSecret) {
-    List<String> commandList = ImmutableList.of("kubectl",  "create",
-        "-f", pullSecret, "--namespace", universePrefix);
+                                                       String namespace, String pullSecret) {
+    List<String> commandList = ImmutableList.of("kubectl",  "apply",
+        "-f", pullSecret, "--namespace", namespace);
     return execCommand(config, commandList);
   }
 
@@ -52,7 +58,7 @@ public class KubernetesManager {
 
   public ShellResponse helmInstall(Map<String, String> config,
                                                        UUID providerUUID, String universePrefix,
-                                                       String overridesFile) {
+                                                       String namespace, String overridesFile) {
     String helmPackagePath = appConfig.getString("yb.helm.package");
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
       throw new RuntimeException("Helm Package path not provided.");
@@ -60,86 +66,91 @@ public class KubernetesManager {
     Provider provider = Provider.get(providerUUID);
     Map<String, String> configProvider = provider.getConfig();
     List<String> commandList = ImmutableList.of("helm",  "install", universePrefix,
-        helmPackagePath, "--namespace", universePrefix, "-f", overridesFile,
+        helmPackagePath, "--namespace", namespace, "-f", overridesFile,
         "--timeout", getTimeout(), "--wait");
     LOG.info(String.join(" ", commandList));
     return execCommand(config, commandList);
   }
 
+
   public ShellResponse getPodInfos(Map<String, String> config,
-                                                       String universePrefix) {
+                                   String universePrefix,
+                                   String namespace) {
     List<String> commandList = ImmutableList.of("kubectl",  "get", "pods", "--namespace",
-        universePrefix, "-o", "json", "-l", "release=" + universePrefix);
+        namespace, "-o", "json", "-l", "release=" + universePrefix);
     return execCommand(config, commandList);
   }
 
   public ShellResponse getServices(Map<String, String> config,
-                                                       String universePrefix) {
+                                   String universePrefix,
+                                   String namespace) {
     List<String> commandList = ImmutableList.of("kubectl",  "get", "services", "--namespace",
-        universePrefix, "-o", "json", "-l", "release=" + universePrefix);
+        namespace, "-o", "json", "-l", "release=" + universePrefix);
     System.out.println(commandList);
     return execCommand(config, commandList);
   }
 
   public ShellResponse getPodStatus(Map<String, String> config,
-                                                        String universePrefix, String podName) {
+                                                        String namespace, String podName) {
     List<String> commandList = ImmutableList.of("kubectl",  "get", "pod", "--namespace",
-        universePrefix, "-o", "json", podName);
+        namespace, "-o", "json", podName);
     return execCommand(config, commandList);
   }
 
   public ShellResponse getServiceIPs(Map<String, String> config,
-                                                         String universePrefix, boolean isMaster) {
+                                                         String namespace, boolean isMaster) {
     String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
     List<String> commandList = ImmutableList.of("kubectl",  "get", "svc", serviceName,
-        "--namespace", universePrefix, "-o", "jsonpath=" + SERVICE_INFO_JSONPATH);
+        "--namespace", namespace, "-o", "jsonpath=" + SERVICE_INFO_JSONPATH);
     return execCommand(config, commandList);
   }
 
   public ShellResponse helmUpgrade(Map<String, String> config,
                                                        String universePrefix,
+                                                       String namespace,
                                                        String overridesFile) {
     String helmPackagePath = appConfig.getString("yb.helm.package");
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
       throw new RuntimeException("Helm Package path not provided.");
     }
     List<String> commandList = ImmutableList.of("helm",  "upgrade",  universePrefix,
-        helmPackagePath, "-f", overridesFile, "--namespace", universePrefix,
+        helmPackagePath, "-f", overridesFile, "--namespace", namespace,
         "--timeout", getTimeout(), "--wait");
     LOG.info(String.join(" ", commandList));
     return execCommand(config, commandList);
   }
 
   public ShellResponse updateNumNodes(Map<String, String> config,
-                                                          String universePrefix, int numNodes) {
-    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "scale",
+                                                          String namespace, int numNodes) {
+    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", namespace, "scale",
         "statefulset", "yb-tserver", "--replicas=" + numNodes);
     return execCommand(config, commandList);
   }
 
   public ShellResponse helmDelete(Map<String, String> config,
-                                                      String universePrefix) {
+                                                      String universePrefix,
+                                                      String namespace) {
     List<String> commandList = ImmutableList.of("helm",  "delete", universePrefix,
-        "-n", universePrefix);
+        "-n", namespace);
     return execCommand(config, commandList);
   }
 
-  public void deleteStorage(Map<String, String> config, String universePrefix) {
+  public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
     // Delete Master Volumes
     List<String> masterCommandList = ImmutableList.of("kubectl",  "delete", "pvc",
-        "--namespace", universePrefix, "-l", "app=yb-master");
+        "--namespace", namespace, "-l", "app=yb-master,release=" + universePrefix);
     execCommand(config, masterCommandList);
     // Delete TServer Volumes
     List<String> tserverCommandList = ImmutableList.of("kubectl",  "delete", "pvc",
-        "--namespace", universePrefix, "-l", "app=yb-tserver");
+        "--namespace", namespace, "-l", "app=yb-tserver,release=" + universePrefix);
     execCommand(config, tserverCommandList);
     // TODO: check the execCommand outputs.
   }
 
-  public void deleteNamespace(Map<String, String> config, String universePrefix) {
+  public void deleteNamespace(Map<String, String> config, String namespace) {
     // Delete Namespace
     List<String> masterCommandList = ImmutableList.of("kubectl",  "delete", "namespace",
-        universePrefix);
+        namespace);
     execCommand(config, masterCommandList);
   }
 

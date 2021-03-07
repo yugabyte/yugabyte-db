@@ -130,6 +130,11 @@ using PlacementId = std::string;
 
 typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
+typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
+  TablespaceIdToReplicationInfoMap;
+
+typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
+
 // Component within the catalog manager which tracks blacklist (decommission) operation
 // related information.
 class BlacklistState {
@@ -288,6 +293,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the information about the specified table.
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
+  CHECKED_STATUS GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                        GetTableSchemaResponsePB* resp,
+                                        bool get_fully_applied_indexes = false);
 
   // Get the information about the specified colocated databsae.
   CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
@@ -736,9 +744,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       bool add_indexes,
       bool include_parent_colocated_table = false);
 
-  // Returns 'table_replication_info' itself if set. Otherwise returns the cluster level
-  // replication info.
-  Result<ReplicationInfoPB> ResolveReplicationInfo(const ReplicationInfoPB& table_replication_info);
+  // Returns 'table_replication_info' itself if set. Else looks up placement info for its
+  // 'tablespace_id'. If neither is set, returns the cluster level replication info.
+  Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const ReplicationInfoPB& table_replication_info,
+      const TablespaceId& tablespace_id);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1068,11 +1078,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  void DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
 
-  // Marks tablet as deleted and triggers requests to the tablet servers to delete them.
-  void DeleteTabletAndSendRequests(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg);
+  // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
+  CHECKED_STATUS DeleteTabletListAndSendRequests(
+      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1120,11 +1130,34 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
+  // Return the tablespace information to caller.
+  void GetTablespaceInfo(
+      std::shared_ptr<TablespaceIdToReplicationInfoMap>* out_tablespace_placement_map,
+      std::shared_ptr<TableToTablespaceIdMap>* out_table_to_tablespace_map);
+
+  // Given 'tablespace_id' return the replication info associated with it.
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
+      const TablespaceId& tablespace_id);
+
   // Returns whether 'replication_info' has any relevant fields set.
   bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
 
   // Validates that 'replication_info' for a table has supported fields set.
   CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+
+  // Return the tablespaces in the system and their associated replication info from
+  // pg catalog tables.
+  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
+
+  // Starts the periodic job to update tablespace info if it is not running.
+  void StartRefreshYSQLTablePlacementInfo();
+
+  // Background task that refreshes the in-memory state for YSQL tables with their associated
+  // tablespace info.
+  void RefreshYSQLTablePlacementInfo();
+
+  // Helper function to refresh tablespace_placement_map_ and table_to_tablespace_map_.
+  void DoRefreshYSQLTablePlacementInfo();
 
   // Report metrics.
   void ReportMetrics();
@@ -1378,6 +1411,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
+  mutable LockType tablespace_lock_;
+
+  // The following shared_ptrs are periodically updated by a background task that
+  // reads tablespace information from the PG catalog tables. The task creates a new map,
+  // populates it with the information read from the catalog tables and updates these
+  // shared_ptrs. The maps themselves are thus never updated (no inserts/deletes/updates)
+  // once populated and are garbage collected once all references to them go out of scope.
+  // No clients are expected to update these maps, they take a lock merely to copy the
+  // shared_ptr and read from it.
+  std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map_
+    GUARDED_BY(tablespace_lock_);
+
+  // Map to provide the tablespace associated with a given table.
+  std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_lock_);
+
+  // Whether the periodic job to update tablespace info is running.
+  std::atomic<bool> tablespace_info_task_running_;
+
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
 
@@ -1385,6 +1436,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
+
+  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

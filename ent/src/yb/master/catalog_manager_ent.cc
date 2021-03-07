@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <regex>
 #include <set>
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
@@ -52,10 +53,12 @@
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/cast.h"
+#include "yb/util/date_time.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/status.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -460,7 +463,14 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
-    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id));
+    HybridTime ht;
+    if (req->has_restore_ht()) {
+      ht = HybridTime(req->restore_ht());
+    } else if (req->has_restore_interval()) {
+      ht = HybridTime::FromMicros(
+          master_->clock()->Now().GetPhysicalValueMicros() - req->restore_interval());
+    }
+    TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht));
     resp->set_restoration_id(id.data(), id.size());
     return Status::OK();
   }
@@ -573,7 +583,8 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        SendRestoreTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
+        SendRestoreTabletSnapshotRequest(
+            tablet, snapshot_id, HybridTime(), TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -698,7 +709,8 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
       case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT:
+      case SysRowEntry::SNAPSHOT:  FALLTHROUGH_INTENDED;
+      case SysRowEntry::SNAPSHOT_SCHEDULE:
         FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
     }
   }
@@ -946,6 +958,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
   req.set_num_tablets(table_data->num_tablets);
+  for (const auto& p : table_data->partitions) {
+    *req.add_partitions() = p;
+  }
   req.mutable_namespace_()->set_id(new_namespace_id);
   *req.mutable_partition_schema() = meta.partition_schema();
   *req.mutable_replication_info() = meta.replication_info();
@@ -1241,6 +1256,9 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
   ++table_data.num_tablets;
+  if (meta.has_partition()) {
+    table_data.partitions.push_back(meta.partition());
+  }
   return Status::OK();
 }
 
@@ -1323,10 +1341,14 @@ void CatalogManager::SendCreateTabletSnapshotRequest(
 void CatalogManager::SendRestoreTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet,
     const string& snapshot_id,
+    HybridTime restore_at,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE);
+  if (restore_at) {
+    call->SetSnapshotHybridTime(restore_at);
+  }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(ScheduleTask(call), "Failed to send restore snapshot request");
@@ -1592,6 +1614,26 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
   VLOG(1) << "Deleting snapshot: " << snapshot->id()
           << " PB: " << l->mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
+}
+
+Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
+                                              CreateSnapshotScheduleResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(*req, rpc->GetClientDeadline()));
+  resp->set_snapshot_schedule_id(id.data(), id.size());
+  return Status::OK();
+}
+
+Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
+                                             ListSnapshotSchedulesResponsePB* resp,
+                                             rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+
+  return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {

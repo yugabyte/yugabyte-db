@@ -20,6 +20,7 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/doc_path.h"
@@ -249,10 +250,13 @@ class DocWriteBatch {
 };
 
 // Converts a RocksDB WriteBatch to a string.
+// line_prefix is the prefix to be added to each line of the result. Could be used for indentation.
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
     StorageDbType storage_db_type,
-    BinaryOutputFormat binary_output_format);
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    const std::string& line_prefix);
 
 }  // namespace docdb
 }  // namespace yb

@@ -64,7 +64,7 @@ This is the result:
  20 | 40
 ```
 
-When data-changing CTEs (`INSERT`, `UPDATE` , and `DELETE` are named in a CTE, and, when these use a `RETURNING` clause, the returned values can be used in other CTEs and in the overall statement's final [sub]statement. Here os an example.
+When a data-changing [sub]statement (`INSERT`, `UPDATE` , or `DELETE`) is named in a CTE, and, when it uses a `RETURNING` clause, the returned values can be used in other CTEs and in the overall statement's final [sub]statement. Here is an example.
 
 ```plpgsql
 set client_min_messages = warning;
@@ -103,9 +103,9 @@ This is the result:
  t2         | 20 | 40
 ```
 
-The central notion is that each CTE that you name in a `WITH` clause can then be invoked by its name, either in a subsequent CTE in that `WITH` clause or in the overall statement's final, main, [sub]statement. In this way, a CTE is analogous, in the declarative programming domain of SQL, to a procedure or a function in the imperative programming domain of a procedural language, bringing the modular programming benefit of hiding names, and the implementations that they stand for, from scopes that have no interest in them.
+The central notion is that each CTE that you name in a `WITH` clause can then be invoked by its name, either in a subsequent CTE in that `WITH` clause or in the overall statement's final, main, [sub]statement. In this way, a CTE is analogous, in the declarative programming domain of SQL, to a procedure or a function in the domain of an "if-then-else" programming language, bringing the modular programming benefit of hiding names, and the implementations that they stand for, from scopes that have no interest in them.
 
-Finally, the use of a _recursive_ CTE in a `WITH` clause enables graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
+Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functionality, like graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
 
 ```
  emps hierarchy 
@@ -145,7 +145,7 @@ Anyway, the ordinary good practice principle holds even more here: always check 
 
 {{< tip title="Download a zip of WITH clause demonstration scripts" >}}
 
-The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) file contains the `.sql` scripts that illustrate the use off the [recursive CTE](./recursive-cte/):
+The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) file contains the `.sql` scripts that illustrate the use of the [recursive CTE](./recursive-cte/):
 
 - [Case study—Using a recursive CTE to traverse an employee hierarchy](./emps-hierarchy/)
 

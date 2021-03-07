@@ -5,14 +5,15 @@
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0
+ * .txt
  */
 
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.PlatformReplicationManager;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
+import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -52,7 +54,7 @@ public class PlatformReplicationController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
-      if (!config.isLeaderLocal()) {
+      if (!config.isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "This platform instance is not a leader");
       }
 
@@ -97,13 +99,22 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
-  public Result listBackups() {
+  public Result listBackups(UUID configUUID, String leaderAddr) {
     try {
-      List<String> backups = replicationManager.listBackups()
-        .stream()
-        .map(File::getName)
-        .sorted(Collections.reverseOrder())
-        .collect(Collectors.toList());
+      if (leaderAddr == null) {
+        HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
+        if (config == null) {
+          return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+        }
+        leaderAddr = config.getLeader().getAddress();
+      }
+
+      List<String> backups =
+        replicationManager.listBackups(new URL(leaderAddr))
+          .stream()
+          .map(File::getName)
+          .sorted(Collections.reverseOrder())
+          .collect(Collectors.toList());
       return ApiResponse.success(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);
