@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20210210192530-45c97f45f1-centos7-clang11/yugabyte-db-thirdparty-v20210210192530-45c97f45f1-centos7-clang11.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20210306075844-471ef8e125-centos7-clang11/yugabyte-db-thirdparty-v20210306075844-471ef8e125-centos7-clang11.tar.gz
