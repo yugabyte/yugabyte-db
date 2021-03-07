@@ -66,7 +66,7 @@ Result<T> GetValue(PGresult* result, int row, int column) {
   return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
 }
 
-Result<std::string> AsString(PGresult* result, int row, int column);
+Result<std::string> ToString(PGresult* result, int row, int column);
 void LogResult(PGresult* result);
 
 std::string PqEscapeLiteral(const std::string& input);
