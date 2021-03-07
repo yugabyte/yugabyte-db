@@ -252,6 +252,14 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 #if PG_VERSION_NUM >= 90600
 			&& entry->relam != BLOOM_AM_OID
 #endif
+#if PG_VERSION_NUM >= 100000
+			/*
+			 * Only support hash indexes for pg10+.  In previous version they
+			 * weren't crash safe, and changes in pg10+ also significantly
+			 * changed the disk space allocation.
+			 */
+			 && entry->relam != HASH_AM_OID
+#endif
 			)
 		{
 			/*
@@ -1855,6 +1863,99 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 		entry->pages = 1;		/* meta page */
 		entry->pages += (BlockNumber) ceil(
 										   ((double) entry->tuples * line_size) / usable_page_size);
+	}
+#endif
+#if PG_VERSION_NUM >= 100000
+	else if (entry->relam == HASH_AM_OID)
+	{
+		/* ----------------------------
+		 * From hash AM readme (src/backend/access/hash/README):
+		 *
+		 *   There are four kinds of pages in a hash index: the meta page (page
+		 *   zero), which contains statically allocated control information;
+		 *   primary bucket pages; overflow pages; and bitmap pages, which keep
+		 *   track of overflow pages that have been freed and are available for
+		 *   re-use.  For addressing purposes, bitmap pages are regarded as a
+		 *   subset of the overflow pages.
+		 * [...]
+		 *   A hash index consists of two or more "buckets", into which tuples
+		 *   are placed whenever their hash key maps to the bucket number.
+		 *   [...]
+		 *   Each bucket in the hash index comprises one or more index pages.
+		 *   The bucket's first page is permanently assigned to it when the
+		 *   bucket is created.  Additional pages, called "overflow pages", are
+		 *   added if the bucket receives too many tuples to fit in the primary
+		 *   bucket page.
+		 *
+		 * Hash AM also already provides some functions to compute an initial
+		 * number of buckets given the estimated number of tuples the index
+		 * will contains, which is a good enough estimate for hypothetical
+		 * index.
+		 *
+		 * The code below is simply an adaptation of original code to compute
+		 * the initial number of bucket, modified to cope with hypothetical
+		 * index, plus some naive estimates for the overflow and bitmap pages.
+		 *
+		 * For more details, refer to the original code, in:
+		 *   - _hash_init()
+		 *   - _hash_init_metabuffer()
+		 */
+		int32 data_width;
+		int32 item_width;
+		int32 ffactor;
+		double dnumbuckets;
+		uint32 num_buckets;
+		uint32 num_overflow;
+		uint32 num_bitmap;
+
+	/*
+	 * Determine the target fill factor (in tuples per bucket) for this index.
+	 * The idea is to make the fill factor correspond to pages about as full
+	 * as the user-settable fillfactor parameter says.  We can compute it
+	 * exactly since the index datatype (i.e. uint32 hash key) is fixed-width.
+	 */
+	data_width = sizeof(uint32);
+	item_width = MAXALIGN(sizeof(IndexTupleData)) + MAXALIGN(data_width) +
+		sizeof(ItemIdData);		/* include the line pointer */
+	ffactor = HypoHashGetTargetPageUsage(fillfactor) / item_width;
+	/* keep to a sane range */
+	if (ffactor < 10)
+		ffactor = 10;
+
+	/*
+	 * Choose the number of initial bucket pages to match the fill factor
+	 * given the estimated number of tuples.  We round up the result to the
+	 * total number of buckets which has to be allocated before using its
+	 * hashm_spares element. However always force at least 2 bucket pages. The
+	 * upper limit is determined by considerations explained in
+	 * _hash_expandtable().
+	 */
+	dnumbuckets = entry->tuples / ffactor;
+	if (dnumbuckets <= 2.0)
+		num_buckets = 2;
+	else if (dnumbuckets >= (double) 0x40000000)
+		num_buckets = 0x40000000;
+	else
+		num_buckets = _hash_get_totalbuckets(_hash_spareindex(dnumbuckets));
+
+	/*
+	 * Naive estimate of overflow pages, knowing that a page can store ffactor
+	 * tuples: we compute the number of tuples that wouldn't fit in the
+	 * previously computed number of buckets, and compute the number of pages
+	 * needed to store them.
+	 */
+	num_overflow = Max(0, ((entry->tuples - (num_buckets * ffactor)) /
+					   ffactor) + 1);
+
+	/*
+	 * Naive estimate of bitmap pages, using the previously computed  number of
+	 * overflow pages.
+	 */
+	num_bitmap = Max(1, num_overflow /
+					 pg_leftmost_one_pos32(HypoHashGetMaxBitmapSize()));
+
+	/* Simply add all computed pages, plus one extra block for the meta page */
+	entry->pages = num_buckets + num_overflow + num_bitmap + 1;
 	}
 #endif
 	else
