@@ -48,13 +48,16 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.typesafe.config.Config;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -86,6 +89,10 @@ import java.util.UUID;
 
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
+
+  @Mock
+  Config mockConfig;
+
   Customer customer;
   Users user;
 
@@ -413,6 +420,36 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteProviderWithInstanceType() {
+    Provider p = ModelFactory.onpremProvider(customer);
+    Region r = Region.create(p, "region-1", "region 1", "yb image");
+
+    ObjectNode metaData = Json.newObject();
+    metaData.put("numCores", 4);
+    metaData.put("memSizeGB", 300);
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    instanceTypeDetails.volumeDetailsList = new ArrayList<>();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeSizeGB = 20;
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    instanceTypeDetails.volumeDetailsList.add(volumeDetails);
+    metaData.put("longitude", -119.417932);
+    metaData.put("ybImage", "yb-image-1");
+    metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
+
+    InstanceType.createWithMetadata(p, "region-1", metaData);
+    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    Result result = deleteProvider(p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.asText(),
+      allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertNull(Provider.get(p.uuid));
   }
 
   @Test
