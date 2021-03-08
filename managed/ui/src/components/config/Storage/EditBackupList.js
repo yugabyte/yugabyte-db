@@ -10,7 +10,7 @@ import { YBTextInputWithLabel } from '../../common/forms/fields';
 
 // This method will handle the disable validation for the
 // input fields.
-const enableFields = (data, fieldId, configName) => {
+const disbaleFields = (data, fieldId, configName) => {
   if (data.inUse) {
     if (fieldId !== `${configName}_CONFIGURATION_NAME`) {
       return true;
@@ -36,7 +36,7 @@ function EditBackupList(props) {
           placeHolder={field.placeHolder}
           input={{
             value: data[field.id],
-            disabled: enableFields(data, field.id, configName)
+            disabled: disbaleFields(data, field.id, configName)
           }}
           component={YBTextInputWithLabel}
         />

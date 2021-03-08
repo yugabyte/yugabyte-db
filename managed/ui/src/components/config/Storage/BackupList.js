@@ -25,16 +25,23 @@ const getBackupLocation = (cell, row) => {
   return row.data.BACKUP_LOCATION;
 };
 
-// 
-const handleDeleteBackupConfig = () => {
-  console.log('delete modal');
+// This method will help us to delete the respective backup config
+// if it's not in use.
+const handleDeleteBackupConfig = (configUUID) => {
+  console.log(configUUID, '******************configUUID');
+  // return true;
 };
 
 // This method will return all the necessary actions
 // for the give list.
-const foramtConfigActions = (cell, row, onEdit) => {
-  const inUse = row.inUse;
-  const configName = row.data.CONFIGURATION_NAME;
+const foramtConfigActions = (cell, row, onEdit, deleteStorageConfig, showDeleteStorageConfig, visibleModal, hideDeleteStorageConfig) => {
+  const {
+    configUUID,
+    data,
+    inUse,
+    name
+  } = row;
+  const configName = data.CONFIGURATION_NAME;
 
   return (
     <DropdownButton
@@ -47,7 +54,7 @@ const foramtConfigActions = (cell, row, onEdit) => {
         <i className="fa fa-pencil"></i> Edit Configuration
       </MenuItem>
       <MenuItem
-        onClick={handleDeleteBackupConfig}
+        onClick={() => deleteStorageConfig(configUUID)}//{() => showDeleteStorageConfig(name)}
         disabled={inUse}>
         {!inUse &&
           <><i className="fa fa-trash"></i> Delete Configuration</>
@@ -62,20 +69,21 @@ const foramtConfigActions = (cell, row, onEdit) => {
             </span>
           </YBInfoTip>
         }
-
-        {/* {!inUse &&
-          <YBConfirmModal
-            name="delete-storage-config"
-            title='Confirm Delete'
-          // onConfirm={handleSubmit(this.deleteStorageConfig.bind(this, config.configUUID))}
-            currentModal={'delete' + configName + 'StorageConfig'}
-          // visibleModal={this.props.visibleModal}
-          // hideConfirmModal={this.props.hideDeleteStorageConfig}
-          >
-            Are you sure you want to delete {configName} Storage Configuration?
-          </YBConfirmModal>
-        } */}
       </MenuItem>
+
+      {/* {!inUse &&
+        <YBConfirmModal
+          name="delete-storage-config"
+          title='Confirm Delete'
+          onConfirm={() => deleteStorageConfig(row)}
+          currentModal={'delete' + name + 'StorageConfig'}
+          visibleModal={visibleModal}
+          hideConfirmModal={hideDeleteStorageConfig}
+        >
+          Are you sure you want to delete {name} Storage Configuration?
+        </YBConfirmModal>
+      } */}
+
       <MenuItem>
         <i className="fa fa-eye"></i> Show Universes
       </MenuItem>
@@ -100,18 +108,28 @@ const header = (currTab, onCreateBackup) => (
 );
 
 function BackupList(props) {
-  const currTab = props.activeTab.toUpperCase();
-  const onEdit = props.onEditConfig;
+  const {
+    activeTab,
+    data,
+    deleteStorageConfig,
+    hideDeleteStorageConfig,
+    onCreateBackup,
+    onEditConfig,
+    showDeleteStorageConfig,
+    visibleModal
+  } = props;
+  const currTab = activeTab.toUpperCase();
+  const onEdit = onEditConfig;
 
   return (
     <div>
       <YBPanelItem
-        header={header(currTab, props.onCreateBackup)}
+        header={header(currTab, onCreateBackup)}
         body={
           <>
             <BootstrapTable
               className="backup-list-table middle-aligned-table"
-              data={props.data}
+              data={data}
             >
               <TableHeaderColumn
                 dataField="configUUID"
@@ -144,7 +162,7 @@ function BackupList(props) {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={(cell, row) => foramtConfigActions(cell, row, onEdit)}
+                dataFormat={(cell, row) => foramtConfigActions(cell, row, onEdit, deleteStorageConfig, showDeleteStorageConfig, visibleModal, hideDeleteStorageConfig)}
                 columnClassName="yb-actions-cell"
                 className="yb-actions-cell"
               >

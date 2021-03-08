@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
+import { change } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
@@ -108,12 +109,6 @@ class StorageConfiguration extends Component {
     super(props);
 
     this.state = {
-      listview: {
-        s3: true,
-        nfs: true,
-        gcs: true,
-        az: true
-      },
       editView: {
         s3: {
           isEdited: false,
@@ -132,7 +127,13 @@ class StorageConfiguration extends Component {
           data: {}
         }
       },
-      iamRoleEnabled: false
+      iamRoleEnabled: false,
+      listview: {
+        s3: true,
+        nfs: true,
+        gcs: true,
+        az: true
+      }
     };
   }
 
@@ -245,10 +246,6 @@ class StorageConfiguration extends Component {
       });
   };
 
-  showDeleteConfirmModal = (configName) => {
-    this.props.showDeleteStorageConfig(configName);
-  };
-
   componentDidMount() {
     this.props.fetchCustomerConfigs();
   }
@@ -264,16 +261,16 @@ class StorageConfiguration extends Component {
     };
 
     this.setState({
-      listview: {
-        ...this.state.listview,
-        [activeTab]: false
-      },
       editView: {
         ...this.state.editView,
         [activeTab]: {
           isEdited: true,
           data: data
         }
+      },
+      listview: {
+        ...this.state.listview,
+        [activeTab]: false
       }
     });
   };
@@ -291,16 +288,17 @@ class StorageConfiguration extends Component {
   // This method will enable the backup list view.
   showListView = (activeTab) => {
     this.setState({
-      listview: {
-        ...this.state.listview,
-        [activeTab]: true
-      },
       editView: {
         ...this.state.editView,
         [activeTab]: {
           isEdited: false,
           data: {}
         }
+      },
+      iamRoleEnabled: false,
+      listview: {
+        ...this.state.listview,
+        [activeTab]: true
       }
     });
   };
@@ -318,6 +316,7 @@ class StorageConfiguration extends Component {
       addConfig: { loading },
       customerConfigs
     } = this.props;
+    const { iamRoleEnabled } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
     const backupListData = customerConfigs.data.filter((list) => {
@@ -343,9 +342,10 @@ class StorageConfiguration extends Component {
         >
           {!this.state.listview.s3 &&
             <AwsStorageConfiguration
-              {...this.props}
-              deleteStorageConfig={this.deleteStorageConfig}
-              iamRoleEnabled={this.state.iamRoleEnabled}
+              // {...this.props}
+              data={this.state.editView.s3.data}
+              // deleteStorageConfig={this.deleteStorageConfig}
+              iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
             />
           }
@@ -395,10 +395,12 @@ class StorageConfiguration extends Component {
             >
               {this.state.listview[activeTab] &&
                 <BackupList
+                  {...this.props}
                   activeTab={activeTab}
                   data={backupListData}
                   onCreateBackup={() => this.createBackupConfig(activeTab)}
                   onEditConfig={(row) => this.editBackupConfig(row, activeTab)}
+                  deleteStorageConfig={(row) => this.deleteStorageConfig(row)}
                 />
               }
 
