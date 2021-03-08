@@ -385,19 +385,21 @@ class AwsCloud(AbstractCloud):
     def start_instance(self, args, ssh_port):
         ec2 = boto3.resource('ec2',  args["region"])
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=args["id"])
             instance.start()
             instance.wait_until_running()
             # The OS boot up may take some time,
-            # so retry untill the instance allows SSH connection.
+            # so retry until the instance allows SSH connection.
             retry_count = 0
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            while retry_count < 25:
-                time.sleep(5)
+            while retry_count < 30:
+                time.sleep(10)
                 retry_count = retry_count + 1
                 result = sock.connect_ex((args["private_ip"], ssh_port))
                 if result == 0:
-                    break
-            sock.close()
+                    break     
         except ClientError as e:
             logging.error(e)
+        finally:
+            sock.close()
+
