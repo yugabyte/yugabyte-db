@@ -86,6 +86,11 @@ public class Scheduler {
    * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
    */
   private void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.debug("Skipping scheduler for follower platform");
+      return;
+    }
+
     // Check if last scheduled thread is still running.
     if (running.get()) {
       LOG.info("Previous scheduler still running");
