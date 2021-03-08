@@ -83,7 +83,7 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
-DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
+DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
     "use for the thread cache for tcmalloc across all threads in the tserver.");
 
 DECLARE_string(rpc_bind_addresses);
@@ -183,10 +183,15 @@ int TabletServerMain(int argc, char** argv) {
   }
 
 #ifdef TCMALLOC_ENABLED
-  LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
-    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;
-  if (!MallocExtension::instance()->SetNumericProperty(kTcMallocMaxThreadCacheBytes,
-      FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
+  if (FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes < 0) {
+    const auto mem_limit = MemTracker::GetRootTracker()->limit();
+    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes =
+        std::min(std::max(static_cast<size_t>(1.5 * mem_limit / 100), 256_MB), 2_GB);
+  }
+  LOG(INFO) << "Setting tcmalloc max thread cache bytes to: "
+            << FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;
+  if (!MallocExtension::instance()->SetNumericProperty(
+          kTcMallocMaxThreadCacheBytes, FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
     LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
   }
 #endif

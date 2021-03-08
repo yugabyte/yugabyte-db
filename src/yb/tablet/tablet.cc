@@ -188,7 +188,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
@@ -2345,7 +2345,16 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
-  const yb::CoarseDuration kMargin = FLAGS_backfill_index_timeout_grace_margin_ms * 1ms;
+  auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+  if (grace_margin_ms < 0) {
+    const auto rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+    const auto batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
+    // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
+    // By default, we will set it to twice the minimum value + 1s.
+    grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+    YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+  }
+  const yb::CoarseDuration kMargin = grace_margin_ms * 1ms;
   constexpr auto kProgressInterval = 1000;
   int num_rows_processed = 0;
   string resume_from;

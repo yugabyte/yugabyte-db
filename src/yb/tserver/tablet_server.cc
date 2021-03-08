@@ -130,6 +130,7 @@ DEFINE_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
 
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+DECLARE_int32(num_concurrent_backfills_allowed);
 
 namespace yb {
 namespace tserver {
@@ -278,6 +279,13 @@ void TabletServer::AutoInitServiceFlags() {
     FLAGS_tablet_server_svc_num_threads = std::max(64, num_threads);
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
+  }
+
+  if (FLAGS_num_concurrent_backfills_allowed == -1) {
+    const int32 num_threads = std::min(8, num_cores / 2);
+    FLAGS_num_concurrent_backfills_allowed = std::max(1, num_threads);
+    LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
+              << FLAGS_num_concurrent_backfills_allowed;
   }
 
   if (FLAGS_ts_consensus_svc_num_threads == -1) {
