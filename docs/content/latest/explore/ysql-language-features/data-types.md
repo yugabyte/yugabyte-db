@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section covers the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays and composite types. The [JSONB document data type](../../json-support) is covered in a separate section.
+This section covers the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays and composite types. The [JSONB document data type](../../json-support/jsonb-ysql) is covered in a separate section.
 
 ## Strings
 

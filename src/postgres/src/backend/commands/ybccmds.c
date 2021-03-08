@@ -763,17 +763,200 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
 }
 
-YBCPgStatement
-YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
+static void
+YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
+                        int* col, bool* needsYBAlter)
 {
-	/*
-	 * This does happen in some unsupported cases, e.g.
-	 * ALTER TABLE ADD CONSTRAINT PK USING INDEX - and while that one is
-	 * explicitly caught elsewhere, we keep this as a safeguard.
-	 */
-	if (stmt == NULL)
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("This ALTER TABLE command is not yet supported.")));
+	Oid relationId = RelationGetRelid(rel);
+	switch (cmd->subtype)
+	{
+		case AT_AddColumn:
+		case AT_AddColumnToView:
+		case AT_AddColumnRecurse:
+		{
+			ColumnDef* colDef = (ColumnDef *) cmd->def;
+			Oid			typeOid;
+			int32		typmod;
+			HeapTuple	typeTuple;
+			int order;
+
+			/* Skip yb alter for IF NOT EXISTS with existing column */
+			if (cmd->missing_ok)
+			{
+				HeapTuple tuple = SearchSysCacheAttName(relationId, colDef->colname);
+				if (HeapTupleIsValid(tuple)) {
+					ReleaseSysCache(tuple);
+					break;
+				}
+			}
+
+			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
+			typeOid = HeapTupleGetOid(typeTuple);
+			order = RelationGetNumberOfAttributes(rel) + *col;
+			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+
+			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
+													order, col_type));
+			++(*col);
+			ReleaseSysCache(typeTuple);
+			*needsYBAlter = true;
+
+			break;
+		}
+
+		case AT_DropColumn:
+		case AT_DropColumnRecurse:
+		{
+			/* Skip yb alter for IF EXISTS with non-existent column */
+			if (cmd->missing_ok)
+			{
+				HeapTuple tuple = SearchSysCacheAttName(relationId, cmd->name);
+				if (!HeapTupleIsValid(tuple))
+					break;
+				ReleaseSysCache(tuple);
+			}
+
+			HandleYBStatus(YBCPgAlterTableDropColumn(handle, cmd->name));
+			*needsYBAlter = true;
+
+			break;
+		}
+
+		case AT_AddIndex:
+		case AT_AddIndexConstraint:
+		{
+			IndexStmt *index = (IndexStmt *) cmd->def;
+			/* Only allow adding indexes when it is a unique or primary key constraint */
+			if (!(index->unique || index->primary) || !index->isconstraint)
+			{
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
+			}
+
+			break;
+		}
+
+		case AT_AlterColumnType:
+		{
+			/*
+			 * Only supports variants that don't require on-disk changes.
+			 * For now, that is just varchar and varbit.
+			 */
+			ColumnDef*			colDef = (ColumnDef *) cmd->def;
+			HeapTuple			typeTuple;
+			Form_pg_attribute	attTup;
+			Oid					curTypId;
+			Oid					newTypId;
+			int32				curTypMod;
+			int32				newTypMod;
+
+			/* Get current typid and typmod of the column. */
+			typeTuple = SearchSysCacheAttName(relationId, cmd->name);
+			if (!HeapTupleIsValid(typeTuple))
+			{
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
+						errmsg("column \"%s\" of relation \"%s\" does not exist",
+								cmd->name, RelationGetRelationName(rel))));
+			}
+			attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
+			curTypId = attTup->atttypid;
+			curTypMod = attTup->atttypmod;
+			ReleaseSysCache(typeTuple);
+
+			/* Get the new typid and typmod of the column. */
+			typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
+
+			/* Only varbit and varchar don't cause on-disk changes. */
+			switch (newTypId)
+			{
+				case VARCHAROID:
+				case VARBITOID:
+				{
+					/*
+					* Check for type equality, and that the new size is greater than or equal
+					* to the old size, unless the current size is infinite (-1).
+					*/
+					if (newTypId != curTypId ||
+						(newTypMod < curTypMod && newTypMod != -1) ||
+						(newTypMod > curTypMod && curTypMod == -1))
+					{
+						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This ALTER TABLE command is not yet supported.")));
+					}
+					break;
+				}
+
+				default:
+				{
+					if (newTypId == curTypId && newTypMod == curTypMod)
+					{
+						/* Types are the same, no changes will occur. */
+						break;
+					}
+					/* timestamp <-> timestamptz type change is allowed
+						if no rewrite is needed */
+					if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
+						!TimestampTimestampTzRequiresRewrite()) {
+						break;
+					}
+					if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
+						!TimestampTimestampTzRequiresRewrite()) {
+						break;
+					}
+					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("This ALTER TABLE command is not yet supported.")));
+				}
+			}
+			break;
+		}
+
+		case AT_AddConstraint:
+		case AT_AddConstraintRecurse:
+		case AT_DropConstraint:
+		case AT_DropConstraintRecurse:
+		case AT_DropOids:
+		case AT_EnableTrig:
+		case AT_EnableAlwaysTrig:
+		case AT_EnableReplicaTrig:
+		case AT_EnableTrigAll:
+		case AT_EnableTrigUser:
+		case AT_DisableTrig:
+		case AT_DisableTrigAll:
+		case AT_DisableTrigUser:
+		case AT_ChangeOwner:
+		case AT_ColumnDefault:
+		case AT_DropNotNull:
+		case AT_SetNotNull:
+		case AT_AddIdentity:
+		case AT_SetIdentity:
+		case AT_DropIdentity:
+		case AT_EnableRowSecurity:
+		case AT_DisableRowSecurity:
+		case AT_ForceRowSecurity:
+		case AT_NoForceRowSecurity:
+		case AT_AttachPartition:
+		case AT_DetachPartition:
+			/* For these cases a YugaByte alter isn't required, so we do nothing. */
+			break;
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("This ALTER TABLE command is not yet supported.")));
+			break;
+	}
+}
+
+YBCPgStatement
+YBCPrepareAlterTable(List** subcmds, int subcmds_size, Oid relationId)
+{
+	/* Appropriate lock was already taken */
+	Relation rel = relation_open(relationId, NoLock);
+
+	if (!IsYBRelation(rel))
+	{
+		relation_close(rel, NoLock);
+		return NULL;
+	}
 
 	YBCPgStatement handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
@@ -784,180 +967,15 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 	int col = 1;
 	bool needsYBAlter = false;
 
-	foreach(lcmd, stmt->cmds)
+	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
 	{
-		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-		switch (cmd->subtype)
+		foreach(lcmd, subcmds[cmd_idx])
 		{
-			case AT_AddColumn:
-			{
-				ColumnDef* colDef = (ColumnDef *) cmd->def;
-				Oid			typeOid;
-				int32		typmod;
-				HeapTuple	typeTuple;
-				int order;
-
-				/* Skip yb alter for IF NOT EXISTS with existing column */
-				if (cmd->missing_ok)
-				{
-					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colDef->colname);
-					if (HeapTupleIsValid(tuple)) {
-						ReleaseSysCache(tuple);
-						break;
-					}
-				}
-
-				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
-				typeOid = HeapTupleGetOid(typeTuple);
-				order = RelationGetNumberOfAttributes(rel) + col;
-				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
-
-				HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-														order, col_type));
-				++col;
-				ReleaseSysCache(typeTuple);
-				needsYBAlter = true;
-
-				break;
-			}
-			case AT_DropColumn:
-			{
-				/* Skip yb alter for IF EXISTS with non-existent column */
-				if (cmd->missing_ok)
-				{
-					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), cmd->name);
-					if (!HeapTupleIsValid(tuple))
-						break;
-					ReleaseSysCache(tuple);
-				}
-
-				HandleYBStatus(YBCPgAlterTableDropColumn(handle, cmd->name));
-				needsYBAlter = true;
-
-				break;
-			}
-
-			case AT_AddIndex:
-			case AT_AddIndexConstraint:
-			{
-				IndexStmt *index = (IndexStmt *) cmd->def;
-				/* Only allow adding indexes when it is a unique or primary key constraint */
-				if (!(index->unique || index->primary) || !index->isconstraint)
-				{
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("This ALTER TABLE command is not yet supported.")));
-				}
-
-				break;
-			}
-
-			case AT_AlterColumnType:
-			{
-				/*
-				 * Only supports variants that don't require on-disk changes.
-				 * For now, that is just varchar and varbit.
-				 */
-				ColumnDef*			colDef = (ColumnDef *) cmd->def;
-				HeapTuple			typeTuple;
-				Form_pg_attribute	attTup;
-				Oid					curTypId;
-				Oid					newTypId;
-				int32				curTypMod;
-				int32				newTypMod;
-
-				/* Get current typid and typmod of the column. */
-				typeTuple = SearchSysCacheAttName(RelationGetRelid(rel), cmd->name);
-				if (!HeapTupleIsValid(typeTuple))
-				{
-					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
-							errmsg("column \"%s\" of relation \"%s\" does not exist",
-									cmd->name, RelationGetRelationName(rel))));
-				}
-				attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
-				curTypId = attTup->atttypid;
-				curTypMod = attTup->atttypmod;
-				ReleaseSysCache(typeTuple);
-
-				/* Get the new typid and typmod of the column. */
-				typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
-
-				/* Only varbit and varchar don't cause on-disk changes. */
-				switch (newTypId)
-				{
-					case VARCHAROID:
-					case VARBITOID:
-					{
-						/*
-						* Check for type equality, and that the new size is greater than or equal
-						* to the old size, unless the current size is infinite (-1).
-						*/
-						if (newTypId != curTypId ||
-							(newTypMod < curTypMod && newTypMod != -1) ||
-							(newTypMod > curTypMod && curTypMod == -1))
-						{
-							ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("This ALTER TABLE command is not yet supported.")));
-						}
-						break;
-					}
-
-					default:
-					{
-						if (newTypId == curTypId && newTypMod == curTypMod)
-						{
-							/* Types are the same, no changes will occur. */
-							break;
-						}
-						/* timestamp <-> timestamptz type change is allowed
-							if no rewrite is needed */
-						if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
-							!TimestampTimestampTzRequiresRewrite()) {
-							break;
-						}
-						if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
-							!TimestampTimestampTzRequiresRewrite()) {
-							break;
-						}
-						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("This ALTER TABLE command is not yet supported.")));
-					}
-				}
-				break;
-			}
-
-			case AT_AddConstraint:
-			case AT_DropConstraint:
-			case AT_DropOids:
-			case AT_EnableTrig:
-			case AT_EnableAlwaysTrig:
-			case AT_EnableReplicaTrig:
-			case AT_EnableTrigAll:
-			case AT_EnableTrigUser:
-			case AT_DisableTrig:
-			case AT_DisableTrigAll:
-			case AT_DisableTrigUser:
-			case AT_ChangeOwner:
-			case AT_ColumnDefault:
-			case AT_DropNotNull:
-			case AT_SetNotNull:
-			case AT_AddIdentity:
-			case AT_SetIdentity:
-			case AT_DropIdentity:
-			case AT_EnableRowSecurity:
-			case AT_DisableRowSecurity:
-			case AT_ForceRowSecurity:
-			case AT_NoForceRowSecurity:
-			case AT_AttachPartition:
-			case AT_DetachPartition:
-				/* For these cases a YugaByte alter isn't required, so we do nothing. */
-				break;
-
-			default:
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("This ALTER TABLE command is not yet supported.")));
-				break;
+			YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd), rel, handle,
+			                        &col, &needsYBAlter);
 		}
 	}
+	relation_close(rel, NoLock);
 
 	if (!needsYBAlter)
 	{

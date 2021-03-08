@@ -48,11 +48,13 @@ class KubernetesProviderConfiguration extends Component {
       .map((region) => {
         const providerData = providers.data.find((p) => p.uuid === region.provider.uuid);
 
-        // If the type is Tanzu we don't want to include other k8s configs and vice versa.
+        // If the type has a dedicated tab, we don't want to include
+        // other k8s configs and vice versa.
+        const dedicatedK8sTabs = ['tanzu', 'openshift'];
         if (
           !isDefinedNotNull(providerData) ||
-          (type === 'tanzu' && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
-          (type === 'k8s' && providerData.config['KUBECONFIG_PROVIDER'] === 'tanzu')
+          (dedicatedK8sTabs.includes(type) && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
+          (type === 'k8s' && dedicatedK8sTabs.includes(providerData.config['KUBECONFIG_PROVIDER']))
         ) {
           return null;
         }
