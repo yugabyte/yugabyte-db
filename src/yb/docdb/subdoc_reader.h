@@ -33,11 +33,49 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
+
+
+// This class is responsible for housing state used to determine whether a row is still valid based
+// on it's write time. It can be constructed in one of two ways:
+// (1) Using just a write_time_watermark -- this is useful if some parent row was written at a given
+//     time and all children written before that time should be considered overwritten.
+// (2) Using additionally a read_time and expiration -- this is useful if the data we're reading has
+//     TTL enabled, e.g. CQL data.
+class ObsolescenceTracker {
+ public:
+  ObsolescenceTracker() = default;
+  explicit ObsolescenceTracker(DocHybridTime write_time_watermark);
+  ObsolescenceTracker(
+      const ReadHybridTime& read_time, DocHybridTime write_time_watermark, Expiration expiration);
+
+  bool IsObsolete(const DocHybridTime& write_time) const;
+
+  // Create an instance of ObsolescenceTracker derived from this instance. This "child" instance
+  // will incorporate the parents data with the new data, but notably the child's TTL will be
+  // ignored if the parent did not have a TTL. The assumption here is that an ObsolescenceTracker
+  // constructed without an expiration is constructed in the context of a database in which TTL's
+  // are not a valid concept (e.g. in SQL), so the same will be true of any subsequent children.
+  ObsolescenceTracker Child(const DocHybridTime& write_time, const MonoDelta& ttl) const;
+
+  const DocHybridTime& GetHighWriteTime();
+
+  // Performs the computation required to set the TTL on a row before constructing a SubDocument
+  // from it. Caller should provide the write time of the row whose TTL is tracked by this instance.
+  // Returns boost::none if this instance is not tracking TTL.
+  boost::optional<uint64_t> GetTtlRemainingSeconds(const HybridTime& ttl_write_time) const;
+
+ protected:
+  DocHybridTime write_time_watermark_ = DocHybridTime::kMin;
+  boost::optional<ReadHybridTime> read_time_;
+  boost::optional<Expiration> expiration_;
+};
+
 
 // This class orchestrates the creation of a SubDocument stored in RocksDB with key
 // target_subdocument_key, respecting the expiration and high write time passed to it on
@@ -48,8 +86,7 @@ class SubDocumentReader {
       const KeyBytes& target_subdocument_key,
       IntentAwareIterator* iter,
       DeadlineInfo* deadline_info,
-      DocHybridTime highest_ancestor_write_time,
-      Expiration inherited_expiration);
+      const ObsolescenceTracker& ancestor_obsolescence_tracker);
 
   // Populate the provided SubDocument* with the data for the provided target_subdocument_key. This
   // method assumes the provided IntentAwareIterator is pointing to the beginning of the range which
@@ -61,8 +98,9 @@ class SubDocumentReader {
   const KeyBytes& target_subdocument_key_;
   IntentAwareIterator* const iter_;
   DeadlineInfo* const deadline_info_;
-  const DocHybridTime highest_ancestor_write_time_;
-  const Expiration inherited_expiration_;
+  // Tracks the combined obsolescence info of not only this SubDocument's direct parent but all
+  // ancestors of the SubDocument.
+  ObsolescenceTracker ancestor_obsolescence_tracker_;
 };
 
 // This class is responsible for initializing TTL and overwrite metadata based on parent rows, and
@@ -74,7 +112,7 @@ class SubDocumentReaderBuilder {
   // Updates expiration/overwrite data by scanning all parents of this Builder's
   // target_subdocument_key.
   CHECKED_STATUS InitObsolescenceInfo(
-      DocHybridTime table_tombstone_time, Expiration table_expiration,
+      const ObsolescenceTracker& table_obsolescence_tracker,
       const Slice& root_doc_key, const Slice& target_subdocument_key);
 
   // Does NOT seek. This method assumes the caller has seeked iter to the key corresponding to
@@ -88,8 +126,7 @@ class SubDocumentReaderBuilder {
 
   IntentAwareIterator* iter_;
   DeadlineInfo* deadline_info_;
-  DocHybridTime highest_ancestor_write_time_ = DocHybridTime::kMin;
-  Expiration inherited_expiration_;
+  ObsolescenceTracker parent_obsolescence_tracker_;
 };
 
 }  // namespace docdb

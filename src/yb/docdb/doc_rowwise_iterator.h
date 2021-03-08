@@ -66,7 +66,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   virtual ~DocRowwiseIterator();
 
   // Init scan iterator.
-  CHECKED_STATUS Init();
+  CHECKED_STATUS Init(TableType table_type);
 
   // Init QL read scan.
   CHECKED_STATUS Init(const common::QLScanSpec& spec);
@@ -222,6 +222,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   boost::optional<KeyBytes> tuple_key_;
 
   mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
+
+  mutable bool ignore_ttl_ = false;
 };
 
 }  // namespace docdb

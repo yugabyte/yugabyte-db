@@ -13,6 +13,7 @@
 
 #include <thread>
 
+#include "yb/common/common.pb.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -477,7 +478,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
-  ASSERT_OK(iter.Init());
+  ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
   ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
   // Now verify row exists even with one valid column.
