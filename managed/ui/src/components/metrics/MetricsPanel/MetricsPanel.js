@@ -50,6 +50,7 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
+        data.hovertemplate = '%{data.name}: %{y} at %{x} <extra></extra>';
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -63,12 +64,13 @@ export default class MetricsPanel extends Component {
         this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
       metric.layout.height = this.props.height || 360;
       metric.layout.showlegend = true;
+      metric.layout.hovermode = 'closest'
       metric.layout.margin = {
         l: 45,
         r: 25,
         b: 0,
         t: 70,
-        pad: 4
+        pad: 14
       };
       if (
         isNonEmptyObject(metric.layout.yaxis) &&
