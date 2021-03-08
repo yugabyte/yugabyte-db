@@ -24,17 +24,17 @@ Included here are the release notes for all releases in the v2.5 latest release 
 
 ## v2.5.3 - Mar 9, 2021
 
-**Build:** `2.5.3.0-b30`
+**Build:** `2.5.3.1-bxx`
 
 ### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.3.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.3.1-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.3.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.5.3.1-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -44,7 +44,7 @@ Included here are the release notes for all releases in the v2.5 latest release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.5.3.0-b30
+docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 ```
 
 ### New Features
