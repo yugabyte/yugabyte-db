@@ -56,9 +56,7 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
-import {
-  EXPOSING_SERVICE_STATE_TYPES
-} from './ClusterFields';
+import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
@@ -360,6 +358,7 @@ function mapStateToProps(state, ownProps) {
     userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
+    featureFlags: state.featureFlags,
     formValues: selector(
       state,
       'formType',
@@ -477,7 +476,10 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
-    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
+    if (
+      values[clusterType].enableEncryptionAtRest &&
+      !values[clusterType].selectEncryptionAtRestConfig
+    ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
   }
