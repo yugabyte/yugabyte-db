@@ -706,7 +706,8 @@ class UniverseForm extends Component {
       fetchCustomerTasks: this.props.fetchCustomerTasks,
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
-      location: this.props.location
+      location: this.props.location,
+      featureFlags: this.props.featureFlags
     };
 
     if (this.state.currentView === 'Primary') {
@@ -745,7 +746,7 @@ class UniverseForm extends Component {
           btnClass="btn btn-orange universe-form-submit-btn"
           btnText={submitTextLabel}
           btnType={'submit'}
-          disabled={ formChangedOrInvalid || updateInProgress }
+          disabled={formChangedOrInvalid || updateInProgress}
         />
       );
     } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
@@ -836,7 +837,7 @@ class UniverseForm extends Component {
             onClick={showFullMoveModal}
             btnClass="btn btn-orange universe-form-submit-btn"
             btnText={submitTextLabel}
-            disabled={ formChangedOrInvalid || updateInProgress }
+            disabled={formChangedOrInvalid || updateInProgress}
           />
           {visibleModal === 'fullMoveModal' && (
             <YBModal
@@ -916,7 +917,7 @@ class UniverseForm extends Component {
               {asyncReplicaBtn}
               <YBButton
                 btnClass="btn btn-orange universe-form-submit-btn"
-                disabled={ disableSubmit || updateInProgress }
+                disabled={disableSubmit || updateInProgress}
                 btnText={submitTextLabel}
                 btnType={'submit'}
               />

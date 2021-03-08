@@ -39,6 +39,7 @@ import {
 } from '../../../utils/UniverseUtils';
 import pluralize from 'pluralize';
 import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
+import { INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY } from '../UniverseDetail/UniverseDetail';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -166,7 +167,9 @@ export default class ClusterFields extends Component {
         this.state = {
           ...initialState,
           isReadOnlyExists: true,
-          editNotAllowed: this.props.editNotAllowed
+          editNotAllowed: this.props.editNotAllowed,
+          awsInstanceWithEphemeralStorage: false,
+          gcpInstanceWithEphemeralStorage: false
         };
       } else {
         this.state = { ...initialState, isReadOnlyExists: false, editNotAllowed: false };
@@ -665,6 +668,9 @@ export default class ClusterFields extends Component {
     } else {
       currentDeviceInfo.diskIops = null;
     }
+    if (storageValue === 'Scratch') {
+      this.setState({ gcpInstanceWithEphemeralStorage: true });
+    }
     updateFormField(`${clusterType}.storageType`, storageValue);
     this.setState({ deviceInfo: currentDeviceInfo, storageType: storageValue });
   }
@@ -1027,7 +1033,9 @@ export default class ClusterFields extends Component {
         regionList: [],
         providerSelected: providerUUID,
         deviceInfo: {},
-        accessKeyCode: defaultAccessKeyCode
+        accessKeyCode: defaultAccessKeyCode,
+        awsInstanceWithEphemeralStorage: false,
+        gcpInstanceWithEphemeralStorage: false
       });
       this.props.getRegionListItems(providerUUID, true);
       this.props.getInstanceTypeListItems(providerUUID);
@@ -1049,9 +1057,12 @@ export default class ClusterFields extends Component {
   instanceTypeChanged(value) {
     const { updateFormField, clusterType } = this.props;
     const instanceTypeValue = value;
+    const instancePrefix = value.split('.')[0];
+    this.setState({
+      awsInstanceWithEphemeralStorage: INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instancePrefix)
+    });
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
     this.setState({ instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false });
-
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
   }
 
@@ -1074,7 +1085,9 @@ export default class ClusterFields extends Component {
 
   validateUserTags(value) {
     if (value.length) {
-      const forbiddenEntry = value.find(x => FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase()));
+      const forbiddenEntry = value.find((x) =>
+        FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase())
+      );
       return forbiddenEntry ? `User tag "${forbiddenEntry.name}" is not allowed.` : undefined;
     }
   }
@@ -1095,9 +1108,10 @@ export default class ClusterFields extends Component {
   instanceTypeGroupsToOptions = (groups) => {
     return Object.entries(groups).map(([group, list]) => (
       <optgroup label={`${group} type instances`} key={group}>
-        {list.map(item => (
+        {list.map((item) => (
           <option key={item.instanceTypeCode} value={item.instanceTypeCode}>
-            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB
+            RAM)
           </option>
         ))}
       </optgroup>
@@ -1105,7 +1119,15 @@ export default class ClusterFields extends Component {
   };
 
   render() {
-    const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
+    const {
+      clusterType,
+      cloud,
+      softwareVersions,
+      accessKeys,
+      universe,
+      formValues,
+      featureFlags
+    } = this.props;
     const { hasInstanceTypeChanged } = this.state;
     const self = this;
     let gflagArray = <span />;
@@ -1304,17 +1326,25 @@ export default class ClusterFields extends Component {
           );
         } else if (isInGcp) {
           storageTypeSelector = (
-            <span className="volume-info form-group-shrinked">
-              <Field
-                name={`${clusterType}.storageType`}
-                component={YBSelectWithLabel}
-                options={gcpTypesList}
-                label="Storage Type (SSD)"
-                defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
-                onInputChanged={self.storageTypeChanged}
-                readOnlySelect={isFieldReadOnly}
-              />
-            </span>
+            <>
+              <span className="volume-info form-group-shrinked">
+                <Field
+                  name={`${clusterType}.storageType`}
+                  component={YBSelectWithLabel}
+                  options={gcpTypesList}
+                  label="Storage Type (SSD)"
+                  defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
+                  onInputChanged={self.storageTypeChanged}
+                  readOnlySelect={isFieldReadOnly}
+                />
+              </span>
+              {/* this.state.gcpInstanceWithEphemeralStorage && (
+                <span className="gcp-ephemeral-storage-warning">
+                  ! Selected type is ephemeral storage, If you will pause this universe your data
+                  will get lost.
+                </span>
+              ) */}
+            </>
           );
         } else if (isInAzu) {
           storageTypeSelector = (
@@ -1513,8 +1543,10 @@ export default class ClusterFields extends Component {
       );
     }
     // Only enable Time Sync Service toggle for AWS/GCP.
-    if (isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === 'aws' || currentProvider.code === 'gcp')) {
+    if (
+      isDefinedNotNull(currentProvider) &&
+      (currentProvider.code === 'aws' || currentProvider.code === 'gcp')
+    ) {
       const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
       useTimeSync = (
         <Field
@@ -1559,7 +1591,8 @@ export default class ClusterFields extends Component {
                 .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
                 .map((item, arrIdx) => (
                   <option key={idx + arrIdx} value={item.instanceTypeCode}>
-                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)},{' '}
+                    {item.memSizeGB}GB RAM)
                   </option>
                 ))}
             </optgroup>
@@ -1571,7 +1604,7 @@ export default class ClusterFields extends Component {
       const list = cloud.instanceTypes?.data || [];
       _.sortBy(list, 'instanceTypeCode');
 
-      list.forEach(item => {
+      list.forEach((item) => {
         const prefix = item.instanceTypeCode.split('-')[0].toUpperCase();
         groups[prefix] = groups[prefix] || [];
         groups[prefix].push(item);
@@ -1585,7 +1618,7 @@ export default class ClusterFields extends Component {
       _.sortBy(list, 'instanceTypeCode');
 
       for (const [group, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
-        list.forEach(item => {
+        list.forEach((item) => {
           if (regexp.test(item.instanceTypeCode)) {
             groups[group] = groups[group] || [];
             groups[group].push(item);
@@ -1595,7 +1628,7 @@ export default class ClusterFields extends Component {
       }
 
       // catch uncategorized instance types, if any
-      list.forEach(item => {
+      list.forEach((item) => {
         if (!item.processed) {
           groups['Other'] = groups['Other'] || [];
           groups['Other'].push(item);
@@ -1887,6 +1920,14 @@ export default class ClusterFields extends Component {
                   readOnlySelect={getPromiseState(cloud.instanceTypes).isLoading()}
                 />
               </div>
+              {this.state.awsInstanceWithEphemeralStorage &&
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
+                  <span className="aws-instance-with-ephemeral-storage-warning">
+                    ! Selected instance type is with ephemeral storage, If you will pause this
+                    universe your data will get lost.
+                  </span>
+                )}
             </Col>
             <Col sm={12} md={12} lg={6}>
               {deviceDetail && (
@@ -2191,9 +2232,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
-        {clusterType === 'primary' && (
-          <div className="form-section no-border">{tagsArray}</div>
-        )}
+        {clusterType === 'primary' && <div className="form-section no-border">{tagsArray}</div>}
       </div>
     );
   }
