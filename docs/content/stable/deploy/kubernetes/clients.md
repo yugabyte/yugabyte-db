@@ -180,13 +180,11 @@ pod "yb-client" deleted
 
 ### Connect externally
 
-To connect externally to a TLS-enabled YugabyteDB helm cluster, first download the client certificates locally from the Kubernetes cluster's secrets.
+To connect externally to a TLS-enabled YugabyteDB helm cluster, start by downloading the root certificate from the Kubernetes cluster's  secrets, as follows:
 
 ```sh
 $ mkdir $(pwd)/certs
 $ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.root\.crt}' | base64 --decode > $(pwd)/certs/root.crt
-$ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yugabytedb\.crt}' | base64 --decode > $(pwd)/certs/yugabytedb.crt
-$ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.yugabytedb\.key}' | base64 --decode > $(pwd)/certs/yugabytedb.key
 ```
 
 Here is an example of a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service` as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). 
