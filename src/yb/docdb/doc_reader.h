@@ -80,7 +80,10 @@ class DocDBTableReader {
   // colocated table as indicated by the provided root_doc_key, this method is a no-op.
   CHECKED_STATUS UpdateTableTombstoneTime(const Slice& root_doc_key);
 
-  void SetTableTtl(Expiration table_ttl);
+  // Determine based on the provided schema if there is a table-level TTL and use the computed value
+  // in any subsequently read SubDocuments. This call also turns on row-level TTL tracking for
+  // subsequently read SubDocuments.
+  void SetTableTtl(const Schema& table_schema);
 
   // For each value in projection, read into the provided SubDocument* a child Subdocument
   // corresponding to the data at the key formed by appending the projection value to the end of the
@@ -108,6 +111,7 @@ class DocDBTableReader {
   const SeekFwdSuffices seek_fwd_suffices_;
   DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
   Expiration table_expiration_;
+  ObsolescenceTracker table_obsolescence_tracker_;
   SubDocumentReaderBuilder subdoc_reader_builder_;
 };
 
