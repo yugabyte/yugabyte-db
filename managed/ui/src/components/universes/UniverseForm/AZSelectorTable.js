@@ -417,7 +417,7 @@ export default class AZSelectorTable extends Component {
       const placementStatusObject = {
         numUniqueRegions: placementInfo?.uniqueRegions,
         numUniqueAzs: placementInfo?.uniqueAzs,
-        replicationFactor: configTemplateCurrentCluster?.userIntent.replicationFactor
+        replicationFactor: configTemplateCurrentCluster?.userIntent?.replicationFactor
       };
       this.props.setPlacementStatus(placementStatusObject);
     }
