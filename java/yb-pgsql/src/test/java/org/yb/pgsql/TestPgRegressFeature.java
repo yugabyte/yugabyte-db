@@ -16,6 +16,8 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import org.yb.client.TestUtils;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 /**
@@ -38,6 +40,9 @@ public class TestPgRegressFeature extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
     flagMap.put("ysql_pg_conf", TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    if(!TestUtils.isReleaseBuild()){
+      flagMap.put("yb_client_admin_operation_timeout_sec", Integer.toString(240));
+    }
     return flagMap;
   }
 
