@@ -400,10 +400,24 @@ export default class AZSelectorTable extends Component {
 
   UNSAFE_componentWillMount() {
     const {
-      universe: { currentUniverse, universeConfigTemplate },
+      universe: { currentUniverse, universeConfigTemplate, currentPlacementStatus},
       type,
       clusterType
     } = this.props;
+
+    // If currentPlacementStatus is null the fetch it.
+    if(!currentPlacementStatus) {
+      const configTemplateCurrentCluster = isNonEmptyObject(universeConfigTemplate.data)
+        ? getClusterByType(universeConfigTemplate.data.clusters, clusterType)
+        : null;
+      const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
+      const placementStatusObject = {
+        numUniqueRegions: placementInfo?.uniqueRegions,
+        numUniqueAzs: placementInfo?.uniqueAzs,
+        replicationFactor: configTemplateCurrentCluster?.userIntent?.replicationFactor
+      };
+      this.props.setPlacementStatus(placementStatusObject);
+    }
     const currentCluster = getPromiseState(universeConfigTemplate).isSuccess()
       ? getClusterByType(universeConfigTemplate.data.clusters, clusterType)
       : {};
@@ -431,7 +445,7 @@ export default class AZSelectorTable extends Component {
       const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
       const azGroups = placementInfo.groups;
       if (
-        !areUniverseConfigsEqual(
+        !areUniverseConfigsEqual( 
           this.props.universe.universeConfigTemplate.data,
           universeConfigTemplate.data
         )
