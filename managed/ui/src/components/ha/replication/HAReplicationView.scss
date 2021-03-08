@@ -19,6 +19,10 @@
 
   &__value {
     font-weight: 400;
+
+    .btn-copy {
+      margin-left: 20px;
+    }
   }
 
   &__topology-row {

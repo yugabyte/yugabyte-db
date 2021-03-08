@@ -15,7 +15,7 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
-    AzureAccessCommand, AzureQueryCommand
+    AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, create_resource_group
 
 
@@ -40,6 +40,7 @@ class AzureCloud(AbstractCloud):
         self.add_subcommand(AzureNetworkCommand())
         self.add_subcommand(AzureAccessCommand())
         self.add_subcommand(AzureQueryCommand())
+        self.add_subcommand(AzureDnsCommand())
 
     def network_bootstrap(self, args):
         # Each region code maps to dictionary containing
@@ -83,7 +84,8 @@ class AzureCloud(AbstractCloud):
     def create_instance(self, args, adminSSH):
         vmName = args.search_pattern
         region = args.region
-        zone = args.zone.split('-')[-1]  # last character of zone (eastus-1) relevant for template
+        zoneParts = args.zone.split('-')
+        zone = zoneParts[1] if len(zoneParts) > 1 else None
         logging.info("[app] About to create Azure VM {} in {}/{}.".format(vmName, region, zone))
 
         subnet = args.cloud_subnet
@@ -92,15 +94,14 @@ class AzureCloud(AbstractCloud):
         volType = args.volume_type
         private_key_file = args.private_key_file
         instanceType = args.instance_type
-        # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
-        [pub, offer, sku, image] = args.machine_image.split(':')
+        image = args.machine_image
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
         nicId = self.get_admin().create_nic(vmName, vnet, subnet, zone, nsg, region, public_ip)
         self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
-                                   instanceType, adminSSH, image, nsg, pub, offer,
-                                   sku, volType, args.type, region, nicId)
+                                   instanceType, adminSSH, nsg, image, volType, args.type,
+                                   region, nicId)
         logging.info("[app] Created Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):
@@ -154,3 +155,15 @@ class AzureCloud(AbstractCloud):
 
     def update_disk(self, args):
         raise YBOpsRuntimeError("Update Disk not implemented for Azure")
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().list_dns_record_set(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().create_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().edit_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)

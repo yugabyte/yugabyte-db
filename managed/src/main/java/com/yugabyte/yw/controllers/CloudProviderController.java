@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -85,6 +86,9 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   GCPInitializer gcpInitializer;
+
+  @Inject
+  AZUInitializer azuInitializer;
 
   @Inject
   Commissioner commissioner;
@@ -185,11 +189,11 @@ public class CloudProviderController extends AuthenticatedController {
     try {
       Provider provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
       if (!config.isEmpty()) {
+        String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
-            String hostedZoneId = provider.getAwsHostedZoneId();
             if (hostedZoneId != null) {
-              return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+              return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
           case "gcp":
@@ -201,6 +205,11 @@ public class CloudProviderController extends AuthenticatedController {
               createKubernetesInstanceTypes(provider, customerUUID);
             } catch (javax.persistence.PersistenceException ex) {
               // TODO: make instance types more multi-tenant friendly...
+            }
+            break;
+          case "azu":
+            if (hostedZoneId != null) {
+              return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
         }
@@ -479,6 +488,8 @@ public class CloudProviderController extends AuthenticatedController {
     }
     if (provider.code.equals("gcp")) {
       return gcpInitializer.initialize(customerUUID, providerUUID);
+    } else if (provider.code.equals("azu")) {
+      return azuInitializer.initialize(customerUUID, providerUUID);
     }
     return awsInitializer.initialize(customerUUID, providerUUID);
   }
@@ -581,12 +592,12 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
 
-    if (provider.code.equals("aws")) {
+    if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
       String hostedZoneId = formData.get("hostedZoneId").asText();
       if (hostedZoneId == null || hostedZoneId.length() == 0) {
         return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
       }
-      return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+      return validateHostedZoneUpdate(provider, hostedZoneId);
     } else if (provider.code.equals("kubernetes")) {
       Map<String, String> config = processConfig(formData, Common.CloudType.kubernetes);
       if (config != null) {
@@ -602,7 +613,7 @@ public class CloudProviderController extends AuthenticatedController {
     }
   }
 
-  private Result validateAwsHostedZoneUpdate(Provider provider, String hostedZoneId) {
+  private Result validateHostedZoneUpdate(Provider provider, String hostedZoneId) {
     // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
     ShellResponse response = dnsManager.listDnsRecord(
         provider.uuid, hostedZoneId);
