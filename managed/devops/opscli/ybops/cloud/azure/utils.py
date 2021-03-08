@@ -672,7 +672,7 @@ class AzureCloudAdmin():
 
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
-        return {"private_ip": public_ip, "public_ip": public_ip, "region": region,
+        return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": "{}-{}".format(region, zone), "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name}
