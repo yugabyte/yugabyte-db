@@ -62,6 +62,12 @@ export function successStringFormatter(cell, row) {
           <i className="fa fa-warning" /> Failed
         </span>
       );
+    case 'Deleted':
+      return (
+        <span className="yb-orange">
+          <i className="fa fa-warning" /> Deleted
+        </span>
+      );
     default:
       return (
         <span className="yb-fail-color">

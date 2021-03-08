@@ -235,6 +235,11 @@ if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
   yb_linuxbrew_dir_where_from=" (from environment)"
 fi
 
+yb_llvm_toolchain_dir_where_from=""
+if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
+  yb_llvm_toolchain_dir_where_from=" (from environment)"
+fi
+
 # To deduplicate Maven arguments
 yb_mvn_parameters_already_set=false
 
@@ -843,8 +848,8 @@ log_diagnostics_about_local_thirdparty() {
 find_compiler_by_type() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set YB_COMPILER_TYPE
-  if [[ -n ${YB_RESOLVED_CC_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
-    cc_executable=$YB_RESOLVED_CC_COMPILER
+  if [[ -n ${YB_RESOLVED_C_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
+    cc_executable=$YB_RESOLVED_C_COMPILER
     cxx_executable=$YB_RESOLVED_CXX_COMPILER
     return
   fi
@@ -943,17 +948,22 @@ find_compiler_by_type() {
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
     clang10|clang11)
-      local clang_prefix_candidate
-      local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
-      local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
-      for clang_prefix_candidate in /usr/local/bin /usr/bin; do
-        if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
-              -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
-          cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
-          cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
-          break
-        fi
-      done
+      if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
+        cc_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang
+        cxx_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang++
+      else
+        local clang_prefix_candidate
+        local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
+        local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
+        for clang_prefix_candidate in /usr/local/bin /usr/bin; do
+          if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
+                -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+            cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
+            cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+            break
+          fi
+        done
+      fi
     ;;
     zapcc)
       if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
@@ -1002,7 +1012,7 @@ find_compiler_by_type() {
     fi
   done
 
-  export YB_RESOLVED_CC_COMPILER=$cc_executable
+  export YB_RESOLVED_C_COMPILER=$cc_executable
   export YB_RESOLVED_CXX_COMPILER=$cxx_executable
 }
 
@@ -1111,7 +1121,7 @@ download_thirdparty() {
 
   local toolchain_url_path=""
   local toolchain_dir_parent=""
-  local is_linuxbrew
+  local is_linuxbrew=false
 
   if [[ ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
     # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
@@ -1121,7 +1131,6 @@ download_thirdparty() {
     is_linuxbrew=true
   else
     toolchain_url_path=$YB_THIRDPARTY_DIR/toolchain_url.txt
-    is_linuxbrew=false
   fi
 
   if [[ -n $toolchain_url_path ]]; then
@@ -1130,8 +1139,10 @@ download_thirdparty() {
       toolchain_url=$(<"$toolchain_url_path")
       local toolchain_url_basename=${toolchain_url##*/}
 
+      is_llvm=false
       if [[ $toolchain_url_basename == yb-llvm-* ]]; then
         toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LLVM
+        is_llvm=true
       elif "$is_linuxbrew"; then
         toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LINUXBREW
       else
@@ -1151,6 +1162,18 @@ download_thirdparty() {
         yb_linuxbrew_dir_where_from=" (downloaded from $toolchain_url)"
         save_brew_path_to_build_dir
       fi
+
+      if "$is_llvm"; then
+        if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
+              $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" ]]; then
+          log_thirdparty_and_toolchain_details
+          fatal "YB_LLVM_TOOLCHAIN_DIR is already set to '$YB_LLVM_TOOLCHAIN_DIR', cannot set it " \
+                "to '$extracted_dir'"
+        fi
+        export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
+        yb_llvm_toolchain_dir_where_from=" (downloaded from $toolchain_url)"
+        save_llvm_toolchain_path_to_build_dir
+      fi
     elif "$is_linuxbrew"; then
       fatal "Cannot download Linuxbrew: file '$toolchain_url_path' does not exist"
     fi
@@ -1164,6 +1187,11 @@ download_thirdparty() {
 disable_linuxbrew() {
   export YB_DISABLE_LINUXBREW=1
   unset YB_LINUXBREW_DIR
+}
+
+detect_toolchain() {
+  detect_brew
+  detect_llvm_toolchain
 }
 
 detect_brew() {
@@ -1262,6 +1290,12 @@ save_brew_path_to_build_dir() {
   fi
 }
 
+save_llvm_toolchain_path_to_build_dir() {
+  if is_linux; then
+    save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
+  fi
+}
+
 save_thirdparty_info_to_build_dir() {
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_DIR:-}" "thirdparty_path.txt"
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_URL:-}" "thirdparty_url.txt"
@@ -1351,6 +1385,20 @@ detect_linuxbrew() {
       log "Could not find Linuxbrew candidate directories."
     fi
     log "Failed to install Linuxbrew $linuxbrew_version into $linuxbrew_local_dir."
+  fi
+}
+
+detect_llvm_toolchain() {
+  if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
+    export YB_LLVM_TOOLCHAIN_DIR
+    return
+  fi
+
+  if ! "$is_clean_build" &&
+     [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
+    YB_LLVM_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/llvm_path.txt")
+    export YB_LLVM_TOOLCHAIN_DIR
+    yb_llvm_toolchain_dir_where_from=" (from file '$BUILD_ROOT/llvm_path.txt')"
   fi
 }
 
@@ -1781,6 +1829,9 @@ log_thirdparty_and_toolchain_details() {
     echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_where_from"
     if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
       echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_where_from"
+    fi
+    if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
+      echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_where_from"
     fi
     if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
       echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL$yb_thirdparty_url_where_from"

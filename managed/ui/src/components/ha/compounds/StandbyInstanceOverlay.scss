@@ -2,7 +2,7 @@
 
 .standby-instance-overlay {
   position: fixed;
-  left: 90px;
+  left: 110px;
   right: 0;
   top: 0;
   bottom: 0;
@@ -13,7 +13,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 64px;
+  font-size: 60px;
   font-weight: 500;
   color: $YB_WHITE;
+  text-align: center;
 }

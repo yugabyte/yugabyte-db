@@ -44,7 +44,7 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
     <div className={`side-panel ${!visible ? 'panel-hidden' : ''}`}>
       <div className="side-panel__header">
         <span className="side-panel__icon--close" onClick={onHide}>
-          <i className="fa fa-chevron-right" />
+          <i className="fa fa-close" />
         </span>
         <div className="side-panel__title">DETAILS</div>
       </div>

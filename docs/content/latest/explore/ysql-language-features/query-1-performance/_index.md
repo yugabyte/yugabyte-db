@@ -29,13 +29,16 @@ menu:
       </div>
     </a>
   </div>
-  
-
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-hint-plan/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">1 article</div>
+        <div class="title">Use a pg_hint_plan</div>
+      </div>
+      <div class="body">
+        Control query execution plans with hinting phrases.
+      </div>
+    </a>
+  </div>
 </div>
-
-
-
-
-
-
-
