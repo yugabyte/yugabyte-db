@@ -11,6 +11,12 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 ## REL0_8_0_STABLE
 ### Improvements
 
+Column userid (int64) was removed.
+Column dbid (int64) was removed.
+
+Column user (string) was added (replacement for userid).
+Column datname (string) was added (replacement for dbid).
+
 [PG-176](https://jira.percona.com/browse/PG-176): Extract fully qualified relations name.
 
 [PG-175](https://jira.percona.com/browse/PG-175): Only Superuser / Privileged user can view IP address.
