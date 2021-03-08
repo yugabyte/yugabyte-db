@@ -149,4 +149,14 @@ public class HighAvailabilityConfig extends Model {
 
     return Base64.getEncoder().encodeToString(secretKey.getEncoded());
   }
+
+  public static boolean isFollower() {
+    // This is assuming there is only a single HA config existing
+    // (which there is protection for at the API level).
+    // TODO: (Daniel) - https://github.com/yugabyte/yugabyte-db/issues/7545
+    return list().stream()
+      .map(HighAvailabilityConfig::getLocal)
+      .filter(Objects::nonNull)
+      .anyMatch(i -> !i.getIsLeader());
+  }
 }

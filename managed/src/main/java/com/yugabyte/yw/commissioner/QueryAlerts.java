@@ -18,10 +18,7 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.config.ConfigSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.concurrent.ExecutionContext;
@@ -109,6 +106,11 @@ public class QueryAlerts {
 
   @VisibleForTesting
   void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.debug("Skipping querying for alerts for follower platform");
+      return;
+    }
+
     if (running.compareAndSet(false, true)) {
       try {
         Set<Alert> alertsStillActive = new HashSet<>();
