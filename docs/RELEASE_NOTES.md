@@ -73,8 +73,6 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 [PG-111](https://jira.percona.com/browse/PG-111) Show information for incomplete buckets.
 
-[PG-112](https://jira.percona.com/browse/PG-112) Rename the column from “IP” to a more meaningful "client_ip".
-
 [PG-148](https://jira.percona.com/browse/PG-148) Loss of query statistics/monitoring due to not enough “slots” available.
 
 ## v0.6.0
