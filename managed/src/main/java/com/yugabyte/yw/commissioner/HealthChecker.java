@@ -31,15 +31,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import org.apache.commons.lang3.StringUtils;
@@ -261,6 +254,11 @@ public class HealthChecker {
 
   @VisibleForTesting
   void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.debug("Skipping health checker for follower platform");
+      return;
+    }
+
     if (running.get()) {
       LOG.info("Previous run of health checker is still underway");
       return;
