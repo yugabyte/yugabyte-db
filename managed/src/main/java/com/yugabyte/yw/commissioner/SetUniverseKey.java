@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -150,6 +151,11 @@ public class SetUniverseKey {
 
     @VisibleForTesting
     void scheduleRunner() {
+      if (HighAvailabilityConfig.isFollower()) {
+        LOG.debug("Skipping universe key setter for follower platform");
+        return;
+      }
+
         if (running.compareAndSet(false, true)) {
             LOG.debug("Running universe key setter");
             Customer.getAll().forEach(c -> {
