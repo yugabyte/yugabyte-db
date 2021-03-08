@@ -68,7 +68,8 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
       txn_op_context, deadline, read_time);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
-  DocDBTableReader doc_reader(iter.get(), deadline, SeekFwdSuffices::kFalse);
+  iter->SeekToLastDocKey();
+  DocDBTableReader doc_reader(iter.get(), deadline);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   SubDocument result;
@@ -78,13 +79,9 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   return boost::none;
 }
 
-DocDBTableReader::DocDBTableReader(
-    IntentAwareIterator* iter,
-    CoarseTimePoint deadline,
-    SeekFwdSuffices seek_fwd_suffices)
+DocDBTableReader::DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline)
     : iter_(iter),
       deadline_info_(deadline),
-      seek_fwd_suffices_(seek_fwd_suffices),
       subdoc_reader_builder_(iter_, &deadline_info_) {}
 
 void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
@@ -125,18 +122,10 @@ CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
   auto dockey_size =
       VERIFY_RESULT(DocKey::EncodedSize(sub_doc_key, DocKeyPart::kWholeDocKey));
   const Slice root_doc_key(sub_doc_key.data(), dockey_size);
-  SeekTo(root_doc_key);
+  iter_->SeekForward(root_doc_key);
   RETURN_NOT_OK(subdoc_reader_builder_.InitObsolescenceInfo(
       table_obsolescence_tracker_, root_doc_key, sub_doc_key));
   return Status::OK();
-}
-
-void DocDBTableReader::SeekTo(const Slice& subdoc_key) {
-  if (seek_fwd_suffices_) {
-    iter_->SeekForward(subdoc_key);
-  } else {
-    iter_->Seek(subdoc_key);
-  }
 }
 
 Result<bool> DocDBTableReader::Get(
