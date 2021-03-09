@@ -27,9 +27,12 @@ import com.datastax.driver.core.ResultSetFuture;
 import org.yb.YBTestRunner;
 import org.yb.util.SanitizerUtil;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestTransaction extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestTransaction.class);
 
   public int getTestMethodTimeoutSec() {
     // Extend timeout for testBasicReadWrite stress test.
