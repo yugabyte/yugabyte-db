@@ -79,7 +79,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.4, v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |
-| [Point in time restores](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) | PROGRESS  |  v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
+| [Point in time restores](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) | PROGRESS  |  v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7120) |  |
 | Pessimistic locking | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | YSQL: table statistics and CBO | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) |  |
 | [Support `GIN` indexes](https://github.com/yugabyte/yugabyte-db/issues/1337) | PROGRESS | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) | |
