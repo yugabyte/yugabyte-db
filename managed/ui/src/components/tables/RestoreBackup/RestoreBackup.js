@@ -4,7 +4,7 @@ import _ from 'lodash';
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
+import { YBFormSelect, YBFormInput, YBSelectWithLabel } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils/ObjectUtils';
 import { YBModalForm } from '../../common/forms';
@@ -116,19 +116,36 @@ export default class RestoreBackup extends Component {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
       return { value: config.metadata.configUUID, label: labelName };
     });
+    
+    let configTypeList = <option />;
+    const optGroups =
+      storageConfigs
+      && isNonEmptyArray(storageConfigs)
+      && storageConfigs.reduce((val, indx) => {
+        const configType = `${indx.name} Storage`;
+        val[configType]
+          ? val[configType].push(indx.name)
+          : (val[configType] = [indx.name]);
+        return val;
+    }, {});
 
-    const storageOptions = storageConfigs.map((config) => {
-      return { value: config.configUUID, label: config.name + ' Storage' };
-    });
+    if (isNonEmptyObject(optGroups)) {
+      configTypeList = Object.keys(optGroups).map(function (key, idx) {
+        return (
+          <optgroup label={key.toUpperCase()} key={key + idx}>
+            {optGroups[key]
+              .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
+              .map((item, arrIdx) => (
+                <option key={idx + arrIdx} value={item}>
+                  {item}
+                </option>
+              ))}
+          </optgroup>
+        );
+      });
+    }
 
-    const initialValues = {
-      ...this.props.initialValues,
-      storageConfigUUID: hasBackupInfo
-        ? storageOptions.find((element) => {
-          return element.value === this.props.initialValues.storageConfigUUID;
-        })
-        : ''
-    };
+    const initialValues = this.props.initialValues;
     const isUniverseBackup =
       hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
 
@@ -176,9 +193,9 @@ export default class RestoreBackup extends Component {
           <Field
             name="storageConfigUUID"
             {...(hasBackupInfo ? { type: 'hidden' } : null)}
-            component={YBFormSelect}
+            component={YBSelectWithLabel}
             label={'Storage'}
-            options={storageOptions}
+            options={configTypeList}
           />
           <Field
             name="storageLocation"
