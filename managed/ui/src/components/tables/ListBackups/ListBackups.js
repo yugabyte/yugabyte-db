@@ -9,7 +9,7 @@ import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isAvailable } from '../../../utils/LayoutUtils';
+import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
@@ -146,6 +146,7 @@ export default class ListBackups extends Component {
   };
 
   showMultiTableInfo = (row) => {
+    const { currentCustomer } = this.props;
     let displayTableData = [{ ...row }];
     if (Array.isArray(row.backupList) && row.backupList.length) {
       return (
@@ -175,14 +176,16 @@ export default class ListBackups extends Component {
           >
             Table Name
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="storageLocation"
-            dataFormat={this.copyStorageLocation}
-            dataSort
-            dataAlign="left"
-          >
-            Storage Location
-          </TableHeaderColumn>
+          {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+            <TableHeaderColumn
+              dataField="storageLocation"
+              dataFormat={this.copyStorageLocation}
+              dataSort
+              dataAlign="left"
+            >
+              Storage Location
+            </TableHeaderColumn>
+          )}
         </BootstrapTable>
       );
     } else if (row.tableUUIDList && row.tableUUIDList.length) {
@@ -234,13 +237,15 @@ export default class ListBackups extends Component {
         >
           Table Name
         </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="storageLocation"
-          dataFormat={this.copyStorageLocation}
-          dataAlign="left"
-        >
-          Storage Location
-        </TableHeaderColumn>
+        {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+          <TableHeaderColumn
+            dataField="storageLocation"
+            dataFormat={this.copyStorageLocation}
+            dataAlign="left"
+          >
+            Storage Location
+          </TableHeaderColumn>
+        )}
       </BootstrapTable>
     );
   };

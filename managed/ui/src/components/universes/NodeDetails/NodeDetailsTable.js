@@ -4,10 +4,9 @@ import React, { Component, Fragment } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { getProxyNodeAddress } from '../../../utils/UniverseUtils';
-import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
+import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -61,23 +60,26 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeNameLink = (cell, row) => {
-      const ip = <div className={'text-lightgray'}>{row['privateIP']}</div>;
+      const showIp = isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
+      const ip = showIp ? <div className={'text-lightgray'}>{row['privateIP']}</div>: null;
       let nodeName = cell;
       let onPremNodeName = '';
-      if (row.cloudInfo.cloud === 'aws') {
-        const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        nodeName = (
-          <a href={awsURI} target="_blank" rel="noopener noreferrer">
-            {cell}
-          </a>
-        );
-      } else if (row.cloudInfo.cloud === 'gcp') {
-        const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        nodeName = (
-          <a href={gcpURI} target="_blank" rel="noopener noreferrer">
-            {cell}
-          </a>
-        );
+      if (showIp) {
+        if (row.cloudInfo.cloud === 'aws') {
+          const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
+          nodeName = (
+            <a href={awsURI} target="_blank" rel="noopener noreferrer">
+              {cell}
+            </a>
+          );
+        } else if (row.cloudInfo.cloud === 'gcp') {
+          const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
+          nodeName = (
+            <a href={gcpURI} target="_blank" rel="noopener noreferrer">
+              {cell}
+            </a>
+          );
+        }
       }
 
       if (row.cloudInfo.cloud === 'onprem') {
@@ -140,7 +142,7 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeAction = function (cell, row) {
-      const hideIP = !isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
+      const hideIP = isHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
       const actions_disabled = isDisabled(
         customer.currentCustomer.data.features,
         'universes.actions'
@@ -192,6 +194,9 @@ export default class NodeDetailsTable extends Component {
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster' : 'Read Replicas';
+    const displayNodeActions = !this.props.isReadOnlyUniverse &&
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
+
     return (
       <YBPanelItem
         className={`${clusterType}-node-details`}
@@ -237,7 +242,7 @@ export default class NodeDetailsTable extends Component {
             >
               Processes
             </TableHeaderColumn>
-            {!this.props.isReadOnlyUniverse && (
+            {displayNodeActions && (           
               <TableHeaderColumn
                 dataField="nodeAction"
                 className={'yb-actions-cell'}
