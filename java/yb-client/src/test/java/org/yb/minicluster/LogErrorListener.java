@@ -15,6 +15,7 @@ package org.yb.minicluster;
 
 /**
  * This is used with LogPrinter to look for error messages reported by external processes.
+ * One LogErrorListener should only be given to one LogPrinter.
  */
 public interface LogErrorListener {
   void handleLine(String line);
@@ -23,13 +24,4 @@ public interface LogErrorListener {
    * This could throw {@link AssertionError} in case errors were found.
    */
   void reportErrorsAtEnd();
-
-  /**
-   * This is called when a {@link LogPrinter} is begin initialized that has been given this instance
-   * of a {@link LogErrorListener}. This allows us to detect cases when the same log listener
-   * is being associated with multiple log printers, which is not allowed.
-   * @param printer log printer instance
-   */
-  void associateWithLogPrinter(LogPrinter printer);
-
 }

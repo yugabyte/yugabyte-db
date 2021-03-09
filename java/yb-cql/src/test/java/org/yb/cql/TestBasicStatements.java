@@ -17,12 +17,16 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.AssertionWrappers;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
+import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
@@ -30,6 +34,8 @@ import com.google.common.net.HostAndPort;
 
 @RunWith(value=YBTestRunner.class)
 public class TestBasicStatements extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestBasicStatements.class);
+
   @Test
   public void testCreateTable() throws Exception {
     LOG.info("Create table ...");
@@ -48,10 +54,11 @@ public class TestBasicStatements extends BaseCQLTest {
   @Test
   public void testUnsupportedProtocol() throws Exception {
     thrown.expect(com.datastax.driver.core.exceptions.UnsupportedProtocolVersionException.class);
-    Session s = getDefaultClusterBuilder()
+    try (Cluster c = getDefaultClusterBuilder()
                 .allowBetaProtocolVersion()
-                .build()
-                .connect();
+                .build()) {
+      c.connect();
+    }
   }
 
   @Test
