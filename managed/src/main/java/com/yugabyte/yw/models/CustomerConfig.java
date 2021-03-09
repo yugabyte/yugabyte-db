@@ -60,6 +60,9 @@ public class CustomerConfig extends Model {
   @Id
   public UUID configUUID;
 
+  @Column(length=100, nullable = true)
+  public String configName;
+
   @Column(nullable = false)
   public UUID customerUUID;
 
