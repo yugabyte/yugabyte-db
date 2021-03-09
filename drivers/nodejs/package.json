@@ -1,0 +1,22 @@
+{
+  "name": "pg-age",
+  "version": "1.0.0-alpha",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest --verbose ./test",
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "keywords": [],
+  "author": "Alex Kwak <take-me-home@kakao.com>",
+  "dependencies": {
+    "pg": ">=6.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^26.0.20",
+    "@types/pg": "^7.14.10",
+    "jest": "^26.6.3",
+    "ts-jest": "^26.5.1",
+    "typescript": "^4.1.5"
+  }
+}
