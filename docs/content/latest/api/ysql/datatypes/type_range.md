@@ -26,13 +26,13 @@ Range data type | Underlying data type |
 
 ## Description
 
-The underlying data type of a range data type must be orderable. Each of the six built-in range data types meets this requirement. A range value is defined by the (smaller) start value and the (larger) end value. A range value therefore corresponds to the "interval" notion in mathematics. (Don't confuse this with the YSQL data type `interval` which denotes an amount of elapsed time and which is defined only by its absolute size.)
+The underlying data type of a range data type must be orderable. Each of the six built-in range data types meets this requirement. A range value is defined by its (smaller) start value and the (larger) end value. A range value therefore corresponds to the "interval" notion in mathematics. (Don't confuse this with the YSQL data type `interval` which denotes an amount of elapsed time and which is defined only by its absolute size.)
 
 ### The "interval" notion in mathematics
 
 See the Wikipedia article [Interval (mathematics)](https://en.wikipedia.org/wiki/Interval_(mathematics)).
 
-The following notions, and their notation, from mathematics carry over to the YSQL range data types. 
+The following notions, and their notation, from mathematics carry over to the YSQL range data types.
 
 - An _open_ interval excludes its endpoints, and is denoted with parentheses. For example, _(0,1)_ means greater than _0_ and less than _1_.
 - A _closed_ interval includes all its endpoints, and is denoted with square brackets. For example, _[0,1]_ means greater than or equal to _0_ and less than or equal to _1_.
@@ -48,7 +48,17 @@ First, create a table:
 create table t(k int primary key, r1 tsrange, r2 tsrange);
 ```
 
-#### Specify "tsrange" values using literals
+#### Specify range values using literals
+
+The same approach is used to specify range values of all range data types using literals. A text value is defined as follows:
+
+- It starts with an opening parenthesis or an opening square bracket.
+
+- It is followed by the `::text` typecast representation of the lower bound, a comma and then the `::text` typecast representation of the upper bound.
+
+- It finishes with a closing parenthesis or a closing square bracket.
+
+This example uses `tsrange`. 
 
 ```plpgsql
 insert into t(k, r1, r2)
@@ -82,7 +92,7 @@ from t where k = 1;
 This is the result:
 
 ```
- is r1's lower inclusive? | is r1's upper inclusive? | is r2's lower inclusive? | is r2's upper inclusive? 
+ is r1's lower inclusive? | is r1's upper inclusive? | is r2's lower inclusive? | is r2's upper inclusive?
 --------------------------+--------------------------+--------------------------+--------------------------
  true                     | false                    | false                    | true
 ```
@@ -134,6 +144,123 @@ This is the result:
  true
 ```
 
+#### Unbounded ranges
+
+Either, or both of, the lower bound and the upper bound of a range value can be set to express the semantics "unbounded". The [PostgreSQL documentation](https://www.postgresql.org/docs/11/rangetypes.html#RANGETYPES-INFINITE) uses "unbounded" and "infinite" interchangeably to denote such a range. Yugabyte recommends always using the term "unbounded" and avoiding the term "infinite". The reason for this is explained later in this section.
+
+- When a range value is defined using a literal, an unbounded lower or upper bound is specified as unbounded simply by omitting the value, like this:
+
+```plpgsql
+select ('(, 5]'::int4range)::text as "canonicalized literal";
+```
+This is the result:
+
+```
+ canonicalized literal 
+-----------------------
+ (,6)
+```
+
+Notice that the opening punctuation mark has been canonicalized to `(` rather than to `[` — as would be the form for a finite bound. The bound value is still omitted because "unbounded" means the same when the bound is exclusive as when it's inclusive. The closing punctuation mark has been canonicalized to `)` in the normal way, bringing the consequence that the bound is rendered as _"6"_ instead of as _"5"_. (See the section [Discrete range data types and the canonical forms of their literals](#discrete-range-data-types-and-the-canonical-forms-of-their-literals) below.)
+
+Notice that no discretion is allowed for the use of whitespace: to denote that the lower bound is unbounded, there must be _no_ whitespace between the opening punctuation mark and the comma; and to denote that the upper bound is unbounded, there must be _no_ whitespace between the comma and the closing punctuation mark.
+
+- When a range value is defined using a constructor, an unbounded lower or upper bound is specified as unbounded by using `NULL`, like this:
+
+```plpgsql
+select (
+    '(, 5]'::int4range = int4range(null, 5, '(]')
+  )::text as "literal and constructor produce the same result?";
+```
+
+This is the result:
+
+```
+ literal and constructor produce the same result? 
+--------------------------------------------------
+ true
+```
+
+You can test the "unbounded" status of a bound with the `boolean` functions `lower_inf()` and `upper_inf()`like this:
+
+```plpgsql
+with a as (select '(,)'::int4range as v)
+select lower_inf(v)::text, upper_inf(v)::text from a;
+```
+
+This is the result:
+
+```
+ lower_inf | upper_inf 
+-----------+-----------
+ true      | true
+```
+
+The example illustrates the point that, as a special case, a range might be doubly unbounded. This could be useful in a scenario where user-input determines if a query is to be restricted using a predicate on some column or if there is to be no such restriction. Dynamic SQL can be avoided by writing the query as fixed static text using the "contains" operator (see the section [Is a value of a range's underlying data type contained within a range?](#is-a-value-of-a-range-s-underlying-data-type-contained-within-a-range) below) and by binding in the value of the range at run time.
+
+**Note:** Some data types, like for example `timestamp`, support a special `infinity` value which can also be used to define a range. Try this:
+
+
+
+```plpgsql
+select
+  ('infinity'::timestamp)             ::text as "infinity timestamp",
+  ('[2020-01-01, infinity]'::tsrange) ::text as "infinity upper bound tsrange";
+```
+
+This is the result:
+
+```
+ infinity timestamp |   infinity upper bound tsrange   
+--------------------+----------------------------------
+ infinity           | ["2020-01-01 00:00:00",infinity]
+```
+
+However, a range with an upper bound equal to positive infinity turns out to be different from a range that is unbounded at that end. The same holds for a range that has a lower bound equal to negative infinity. These two tests confirm this. First try this:
+
+```plpgsql
+select (upper_inf('[2020-01-01, infinity]'::tsrange))::text as "upper bound set to infinity tests as infinity?";
+```
+
+This is the result:
+
+```
+ upper bound set to infinity tests as infinity? 
+------------------------------------------------
+ false
+```
+
+And now try this:
+
+```plpgsql
+select (
+    tsrange('2020-01-01'::timestamp, 'infinity'::timestamp)
+    =
+    tsrange('2020-01-01'::timestamp, null      ::timestamp)
+  )::text as "infinity bound same as unbounded bound?";
+```
+
+This is the result:
+
+```
+ infinity bound same as unbounded bound? 
+-----------------------------------------
+ false
+```
+
+{{< tip title="Yugabyte recommends always specifying an unbounded bound by omitting the value (in a literal) or by using NULL (in a constructor).">}}
+
+Using the special value `infinity` brings the following disadvantages:
+
+- Not all of the underlying data types for which there are built-in range data types support an `infinity` notion. In fact, only `date`, plain `timestamp` and `timestamptz` (in the class for which there are built-in range data types) do support an `infinity` notion.
+- The semantics are unclear. This is shown most dramatically by the fact that the `lower_inf()` and `upper_inf()` functions return `FALSE` when the corresponding bound is set to (negative or positive) `infinity`. Correspondingly, a pair of range values where one bound is set ordinarily to a normal value and where the other bound is set either to `infinity` or to "unbounded" compare as unequal.
+- There are yet other reasons. But the two that have been explained in this "recommendation" section are sufficient reason to avoid the special negative or positive `infinity`  value.
+
+The earlier recommendation to avoid the term "infinite" when describing a bound and to use only "unbounded" should now be clear: all inflexions of "infinity" serve only to bring confusion.
+
+{{< /tip >}}
+
+
 ### Operations on range values and values of the underlying data type
 
 You can find out if a single range value is empty or if two range values intersect; you can derive a new range value as the intersection of two range values; and you can find out if a value of the underlying data type is contained within a range value.
@@ -146,10 +273,10 @@ Try this:
 select isempty(r1)::text from t where k = 1;
 ```
 
-This is the result:
+The return data type of `isempty()` is `boolean`. This is the result:
 
 ```
- isempty 
+ isempty
 ---------
  false
 ```
@@ -163,7 +290,7 @@ select isempty(numrange(1.5, 1.5, '[)'))::text;
 The third actual argument specifies the default for the corresponding formal parameter as a self-documentation device. This is the result:
 
 ```
- isempty 
+ isempty
 ---------
  true
 ```
@@ -200,10 +327,10 @@ Try this:
 select (numrange(1.0, 2.0) && numrange(1.5, 2.5))::text as "range values intersect?";
 ```
 
-This is the result:
+The return data type of the `&&` intersection operator is `boolean`. This is the result:
 
 ```
- range values intersect? 
+ range values intersect?
 -------------------------
  true
 ```
@@ -251,7 +378,7 @@ select (17::int <@ int4range(11, 42))::text as "is value within range?";
 This is the result:
 
 ```
- is value within range? 
+ is value within range?
 ------------------------
  true
 ```
@@ -265,7 +392,7 @@ select (int4range(11, 42) @> 17::int)::text as "does range contain value?";
 This is the result:
 
 ```
- does range contain value? 
+ does range contain value?
 ---------------------------
  true
 ```
@@ -294,7 +421,7 @@ select (
 This is the result:
 
 ```
- all the same? 
+ all the same?
 ---------------
  true
 ```
@@ -307,12 +434,12 @@ select r1::text, r2::text, r3::text, r4::text from t where k = 1;
 This is the result:
 
 ```
-  r1   |  r2   |  r3   |  r4   
+  r1   |  r2   |  r3   |  r4
 -------+-------+-------+-------
  [3,8) | [3,8) | [3,8) | [3,8)
 ```
 
-Of course, because as has been seen, the values of _"r1"_, _"r2"_, _"r3"_, and _"r4"_ are identical, it's of no consequence how these were established. The canonical form of the literal is the form that is used to display the value. The test results shows that this is the form where the lower bound is _inclusive_ (denoted by the square bracket) and where the upper bound is _exclusive_ (denoted by the parenthesis).
+Of course, because as has been seen, the values of _"r1"_, _"r2"_, _"r3"_, and _"r4"_ are identical, it's of no consequence how these were established. The canonical form of the literal is the form that is used to display the value. The test results show that this is the form where the lower bound is _inclusive_ (denoted by the square bracket) and where the upper bound is _exclusive_ (denoted by the parenthesis).
 
 ## Current restriction
 
