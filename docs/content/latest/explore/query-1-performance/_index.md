@@ -1,18 +1,17 @@
 ---
-title: Query Performance
-headerTitle: Query Performance
-linkTitle: Query Performance
+title: Query Optimization
+headerTitle: Query Optimization
+linkTitle: Query Optimization
 description: Improve query performance via optimization
 headcontent: Improve query performance via optimization
 image: /images/section_icons/index/develop.png
 aliases:
-  - /ysql-language-features/query-1-performance/
 section: Explore
 menu:
   latest:
     identifier: query-1-performance
-    parent: explore-ysql-language-features    
-    weight: 600
+    parent: explore
+    weight: 235
 ---
 
 <div class="row">
