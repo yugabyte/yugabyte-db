@@ -6,7 +6,7 @@ import { components } from 'react-select';
 import { browserHistory } from 'react-router';
 import cronParser from 'cron-parser';
 import moment from 'moment';
-import { YBFormSelect, YBFormToggle, YBFormInput } from '../../common/forms/fields';
+import { YBFormSelect, YBFormToggle, YBFormInput, YBSelectWithLabel } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
 import {
@@ -218,11 +218,35 @@ export default class CreateBackup extends Component {
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const { backupType } = this.state;
-    const storageOptions = storageConfigs.map((config) => {
-      return { value: config.configUUID, label: config.name + ' Storage' };
-    });
-    const initialValues = this.props.initialValues;
+    let configTypeList = <option />;
+    const optGroups =
+      storageConfigs
+      && isNonEmptyArray(storageConfigs)
+      && storageConfigs.reduce((val, indx) => {
+        const configType = `${indx.name} Storage`;
+        val[configType]
+          ? val[configType].push(indx.name)
+          : (val[configType] = [indx.name]);
+        return val;
+    }, {});
 
+    if (isNonEmptyObject(optGroups)) {
+      configTypeList = Object.keys(optGroups).map(function (key, idx) {
+        return (
+          <optgroup label={key.toUpperCase()} key={key + idx}>
+            {optGroups[key]
+              .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
+              .map((item, arrIdx) => (
+                <option key={idx + arrIdx} value={item}>
+                  {item}
+                </option>
+              ))}
+          </optgroup>
+        );
+      });
+    }
+
+    const initialValues = this.props.initialValues;
     let tableOptions = [];
     let keyspaceOptions = [];
     const keyspaces = new Set();
@@ -494,9 +518,9 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
-                      component={YBFormSelect}
+                      component={YBSelectWithLabel}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
@@ -535,9 +559,9 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
-                      component={YBFormSelect}
+                      component={YBSelectWithLabel}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
@@ -602,9 +626,9 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
-                      component={YBFormSelect}
+                      component={YBSelectWithLabel}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
