@@ -28,9 +28,12 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestFrozenType extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestFrozenType.class);
 
   @Test
   public void testFrozenValues() throws Exception {

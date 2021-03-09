@@ -18,6 +18,9 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.cql.BaseCQLTest;
@@ -30,6 +33,8 @@ import static org.yb.AssertionWrappers.assertEquals;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCQLSecure extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCQLSecure.class);
+
   public TestCQLSecure() {
     tserverArgs = new ArrayList<>();
     tserverArgs.add("--use_client_to_server_encryption=true");
@@ -67,6 +72,7 @@ public class TestCQLSecure extends BaseCQLTest {
     assertEquals(value, row.getString(1));
   }
 
+  /** Note: Don't forget to close the cluster after you're done with it! */
   @Override
   public Cluster.Builder getDefaultClusterBuilder() {
     return super.getDefaultClusterBuilder().withSSL();

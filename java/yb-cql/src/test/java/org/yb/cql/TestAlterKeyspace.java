@@ -24,10 +24,15 @@ import com.datastax.driver.core.Session;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.util.RandomNumberUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestAlterKeyspace.class);
+
   // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
   // beginning of the test.
   private static String getRandomKeyspaceName() {

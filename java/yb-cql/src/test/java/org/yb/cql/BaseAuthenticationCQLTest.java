@@ -78,6 +78,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
 
   public Session getDefaultSession() {
     Cluster.Builder cb = getDefaultClusterBuilder();
+    // FIXME: Wrong design, cluster needs to be closed! See #7566.
     Cluster c = cb.build();
     Session s = c.connect();
     return s;
@@ -85,6 +86,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
 
   public Session getSession(String username, String password) {
     Cluster.Builder cb = super.getDefaultClusterBuilder().withCredentials(username, password);
+    // FIXME: Wrong design, cluster needs to be closed! See #7566.
     Cluster c = cb.build();
     Session s = c.connect();
     return s;
@@ -111,15 +113,13 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
                                            String expectedMessage) {
     // Use superclass definition to not have a default set of credentials.
     Cluster.Builder cb = super.getDefaultClusterBuilder();
-    Cluster c = null;
     if (usingAuth) {
       cb = cb.withCredentials(optUser, optPass);
     }
     if (compression != ProtocolOptions.Compression.NONE) {
       cb = cb.withCompression(compression);
     }
-    c = cb.build();
-    try {
+    try (Cluster c = cb.build()) {
       Session s = c.connect();
       s.execute("SELECT * FROM system_schema.tables;");
       // If we're expecting a failure, we should NOT be in here.
@@ -129,7 +129,6 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
       assertTrue(expectFailure);
       assertTrue(e.getMessage().contains(expectedMessage));
     }
-    c.close();
   }
 
   // Verifies that roleName exists in the system_auth.roles table, and that canLogin and isSuperuser

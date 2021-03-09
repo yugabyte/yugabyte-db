@@ -32,9 +32,12 @@ import static org.yb.AssertionWrappers.assertTrue;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestAlterTable extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestAlterTable.class);
 
   protected class SelectRunnable implements Runnable {
     private boolean failed = false;

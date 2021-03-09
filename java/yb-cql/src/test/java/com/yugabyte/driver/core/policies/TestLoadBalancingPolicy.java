@@ -52,9 +52,13 @@ import java.util.UUID;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestLoadBalancingPolicy extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestLoadBalancingPolicy.class);
+
   private static final int SYSTEM_PARTITIONS_REFRESH_SECS = 10;
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {

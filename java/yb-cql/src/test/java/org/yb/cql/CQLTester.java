@@ -39,6 +39,9 @@ import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.DataType.Name;
 
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.client.TestUtils;
 
 import java.util.List;
@@ -61,8 +64,9 @@ import static org.yb.AssertionWrappers.fail;
 /**
 * Base class for CQL tests.
 */
-public class CQLTester extends BaseCQLTest
-{
+public class CQLTester extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(CQLTester.class);
+
   public static final String KEYSPACE = "cql_test_keyspace";
   private static final AtomicInteger seqNumber = new AtomicInteger();
 

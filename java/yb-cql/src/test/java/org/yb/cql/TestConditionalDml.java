@@ -24,9 +24,12 @@ import static org.yb.AssertionWrappers.assertTrue;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestConditionalDml extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestConditionalDml.class);
 
   // Assert that the specified row (h1, h2, r1, r2, v1, v2) exists.
   void assertRow(int h1, String h2, int r1, String r2, int v1, String v2) {

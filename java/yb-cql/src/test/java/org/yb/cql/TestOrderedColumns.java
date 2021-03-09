@@ -39,9 +39,12 @@ import java.util.TreeSet;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestOrderedColumns extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestOrderedColumns.class);
 
   @Override
   public int getTestMethodTimeoutSec() {

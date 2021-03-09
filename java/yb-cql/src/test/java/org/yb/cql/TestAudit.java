@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -31,12 +32,14 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.LogErrorListener;
-import org.yb.minicluster.LogPrinter;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.util.SanitizerUtil;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
@@ -48,6 +51,10 @@ import com.google.common.net.HostAndPort;
 
 @RunWith(value = YBTestRunner.class)
 public class TestAudit extends BaseCQLTest {
+
+  private static final Logger LOG = LoggerFactory.getLogger(TestAudit.class);
+
+  private final CurrentAuditRecords auditRecords = new CurrentAuditRecords();
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -61,30 +68,40 @@ public class TestAudit extends BaseCQLTest {
     return super.getDefaultClusterBuilder().withCredentials("cassandra", "cassandra");
   }
 
+  @Override
+  protected boolean shouldRestartMiniClusterBetweenTests() {
+    // We need to restart the cluster in order to reset audit flags to their defaults.
+    return true;
+  }
+
   @Before
   public void createRolesAndInitLogListeners() throws Exception {
     for (Entry<HostAndPort, MiniYBDaemon> entry : miniCluster.getTabletServers().entrySet()) {
       int port = entry.getKey().getPort();
       MiniYBDaemon tserver = entry.getValue();
-      tserver.getLogPrinter().addErrorListener(new AuditLogListener(port));
+      tserver.getLogPrinter().addErrorListener(new AuditLogListener(port, auditRecords));
     }
+
     session.execute("CREATE ROLE user1 WITH login = true AND password = '123'");
 
     AuditConfig config = new AuditConfig();
     config.enabled = true;
     applyAuditConfig(config);
-    discardAuditRecords();
+    auditRecords.discard();
   }
 
   @After
   public void dropRoles() throws Exception {
-    session.execute("DROP ROLE user1");
+    for (String role : Arrays.asList("user1", "user2", "user3")) {
+      session.execute("DROP ROLE IF EXISTS " + role);
+    }
   }
 
   @Test
   public void auth() throws Exception {
-    try (Session session = getSession("user1", "123")) {
-      List<AuditLogEntry> records = fetchNewAuditRecords();
+    try (Cluster cluster = getCluster("user1", "123");
+         Session session = cluster.connect()) {
+      List<AuditLogEntry> records = auditRecords.popAll();
       List<AuditLogEntry> authRecords = records.stream()
           .filter(e -> e.category.equals("AUTH"))
           .collect(Collectors.toList());
@@ -94,37 +111,33 @@ public class TestAudit extends BaseCQLTest {
       }
     }
 
-    try (Session session = getSession("user1", "321")) {
+    try (Cluster cluster = getCluster("user1", "321");
+         Session session = cluster.connect()) {
       fail("These credentials should be invalid!");
     } catch (com.datastax.driver.core.exceptions.AuthenticationException ex) {
-      List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "null", "LOGIN_ERROR", "AUTH",
-                  null /* batchId */, null /* keyspace */, null /* scope */,
-                  "LOGIN FAILURE; Provided username user1 and/or password are incorrect")),
-          records);
+      assertAudit(
+          new AuditLogEntry('E', "null", "LOGIN_ERROR", "AUTH",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              "LOGIN FAILURE; Provided username user1 and/or password are incorrect"));
     } catch (Exception ex) {
       throw ex;
     }
 
     // Plaintext password should be replaced by <REDACTED>.
     {
-      // Just to use session for the first time - this gets called internally anyway.
-      useKeyspace("cql_test_keyspace");
-      discardAuditRecords();
-      session.execute("CREATE ROLE user2 WITH login = true AND pAsSWorD=  'hide me!'");
-      session.execute("ALTER ROLE user2 WITH PaSswORd   ='hide me too!'");
-      List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertAuditRecords(
-          Arrays.asList(
+      assertAudit(
+          "CREATE ROLE user2 WITH login = true AND pAsSWorD=  'hide me!'",
+          (cql) -> Arrays.asList(
               new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
                   null /* batchId */, null /* keyspace */, null /* scope */,
-                  "CREATE ROLE user2 WITH login = true AND pAsSWorD=  <REDACTED>"),
+                  "CREATE ROLE user2 WITH login = true AND pAsSWorD=  <REDACTED>")));
+
+      assertAudit(
+          "ALTER ROLE user2 WITH PaSswORd   ='hide me too!'",
+          (cql) -> Arrays.asList(
               new AuditLogEntry('E', "cassandra", "ALTER_ROLE", "DCL",
                   null /* batchId */, null /* keyspace */, null /* scope */,
-                  "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")),
-          records);
+                  "ALTER ROLE user2 WITH PaSswORd   =<REDACTED>")));
     }
   }
 
@@ -133,24 +146,19 @@ public class TestAudit extends BaseCQLTest {
   public void batchPlaintext() throws Exception {
     session.execute("CREATE TABLE batch_t (id int PRIMARY KEY)"
         + " WITH transactions = {'enabled': 'true'}");
-    discardAuditRecords();
+    auditRecords.discard();
 
     String startTxnCql = "START TRANSACTION";
     String insertCql = "INSERT INTO batch_t (id) VALUES (1)";
     String commitCql = "COMMIT";
 
     // Execute as one-liner.
-    {
-      String oneLinerCql = StringUtils.joinWith("; ", startTxnCql, insertCql, insertCql, commitCql);
-      session.execute(oneLinerCql);
-      List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "BATCH", "DML",
-                  null /* batchId */, null /* keyspace */, null /* scope */,
-                  oneLinerCql)),
-          records);
-    }
+    assertAudit(
+        StringUtils.joinWith("; ", startTxnCql, insertCql, insertCql, commitCql),
+        (cql) -> Arrays.asList(
+            new AuditLogEntry('E', "cassandra", "BATCH", "DML",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql)));
 
     // Execute line by line.
     // Batch request ID is not present in this case.
@@ -160,22 +168,19 @@ public class TestAudit extends BaseCQLTest {
       session.execute(insertCql);
       session.execute(insertCql);
       session.execute(commitCql);
-      List<AuditLogEntry> records = fetchNewAuditRecords();
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "BATCH", "DML",
-                  null /* batchId */, null /* keyspace */, null /* scope */,
-                  startTxnCql),
-              new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "batch_t",
-                  insertCql),
-              new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "batch_t",
-                  insertCql),
-              new AuditLogEntry('E', "cassandra", "BATCH", "DML",
-                  null /* batchId */, null /* keyspace */, null /* scope */,
-                  commitCql)),
-          records);
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "BATCH", "DML",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              startTxnCql),
+          new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "batch_t",
+              insertCql),
+          new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "batch_t",
+              insertCql),
+          new AuditLogEntry('E', "cassandra", "BATCH", "DML",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              commitCql));
     }
   }
 
@@ -184,7 +189,7 @@ public class TestAudit extends BaseCQLTest {
   public void batchDriverStatement() throws Exception {
     session.execute("CREATE TABLE batch_t (id int PRIMARY KEY)"
         + " WITH transactions = {'enabled': 'true'}");
-    discardAuditRecords();
+    auditRecords.discard();
 
     String insertCql = "INSERT INTO batch_t (id) VALUES (1)";
     String insertPrepCql = "INSERT INTO batch_t (id) VALUES (?)";
@@ -199,7 +204,7 @@ public class TestAudit extends BaseCQLTest {
 
     // Three PREPARE calls (one per tserver), three UPDATEs
 
-    List<AuditLogEntry> records = fetchNewAuditRecords();
+    List<AuditLogEntry> records = auditRecords.popAll();
     String batchId = getBatchId(records);
 
     AuditLogEntry prepareEntry = new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
@@ -228,7 +233,7 @@ public class TestAudit extends BaseCQLTest {
   public void batchWithStaleMetadata() throws Exception {
     {
       session.execute("CREATE TABLE test_batch (h INT, r BIGINT, PRIMARY KEY ((h), r))");
-      discardAuditRecords();
+      auditRecords.discard();
 
       String insertCql = "INSERT INTO test_batch (h, r) VALUES (1, 1)";
 
@@ -236,7 +241,7 @@ public class TestAudit extends BaseCQLTest {
       batch.add(new SimpleStatement("INSERT INTO test_batch (h, r) VALUES (1, 1)"));
       session.execute(batch);
 
-      List<AuditLogEntry> records = fetchNewAuditRecords();
+      List<AuditLogEntry> records = auditRecords.popAll();
       String batchId = getBatchId(records);
       assertAuditRecords(
           Arrays.asList(
@@ -252,7 +257,7 @@ public class TestAudit extends BaseCQLTest {
     {
       session.execute("DROP TABLE test_batch");
       session.execute("CREATE TABLE test_batch (h INT, r TEXT, PRIMARY KEY ((h), r))");
-      discardAuditRecords();
+      auditRecords.discard();
 
       String insertCql = "INSERT INTO test_batch (h, r) VALUES (1, ?)";
 
@@ -260,7 +265,7 @@ public class TestAudit extends BaseCQLTest {
       batch.add(new SimpleStatement(insertCql, "R" + 1));
       session.execute(batch);
 
-      List<AuditLogEntry> records = fetchNewAuditRecords();
+      List<AuditLogEntry> records = auditRecords.popAll();
       String batchId = getBatchId(records);
       // TODO: We probably shouldn't log an error here as the user doesn't receive it.
       assertAuditRecords(
@@ -285,112 +290,341 @@ public class TestAudit extends BaseCQLTest {
   @Test
   public void dmlAndQuery() throws Exception {
     session.execute("CREATE TABLE t (id int PRIMARY KEY, v text)");
-    discardAuditRecords();
+    auditRecords.discard();
 
     // INSERT
-    {
-      String insertCql = "INSERT INTO t (id, v) VALUES (1, 'v1')";
-      session.execute(insertCql);
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  insertCql)),
-          fetchNewAuditRecords());
-    }
+    assertAudit(
+        "INSERT INTO t (id, v) VALUES (1, 'v1')",
+        (cql) -> Arrays.asList(
+            new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+                null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+                cql)));
 
     // INSERT (prepared)
     {
       String insertBindCql = "INSERT INTO t (id, v) VALUES (?, ?)";
       BoundStatement bound = session.prepare(insertBindCql).bind(1, "v1-1");
-      assertAuditRecords(
+      assertAudit(
           Collections.nCopies(3 /* One per node */,
               new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  insertBindCql)),
-          fetchNewAuditRecords());
+                  insertBindCql)));
       session.execute(bound);
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  insertBindCql)),
-          fetchNewAuditRecords());
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+              insertBindCql));
     }
 
     // SELECT
     {
       String selectCql = "SELECT * FROM t";
       assertQueryRowsOrdered(selectCql, "Row[1, v1-1]");
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  selectCql)),
-          fetchNewAuditRecords());
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+              selectCql));
     }
 
     // UPDATE
-    {
-      String updateCql = "UPDATE t SET v = 'v1-2' WHERE id = 1";
-      session.execute(updateCql);
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  updateCql)),
-          fetchNewAuditRecords());
-    }
+    assertAudit(
+        "UPDATE t SET v = 'v1-2' WHERE id = 1",
+        (cql) -> Arrays.asList(
+            new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+                null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+                cql)));
 
     // SELECT (prepared)
     {
       String selectCql = "SELECT id, v FROM t WHERE id = ?";
       BoundStatement bound = session.prepare(selectCql).bind(1);
-      assertAuditRecords(
+      assertAudit(
           Collections.nCopies(3 /* One per node */,
               new AuditLogEntry('E', "cassandra", "PREPARE_STATEMENT", "PREPARE",
                   null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  selectCql)),
-          fetchNewAuditRecords());
+                  selectCql)));
       assertQueryRowsOrdered(bound, Arrays.asList("Row[1, v1-2]"));
-      assertAuditRecords(
-          Arrays.asList(
-              new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
-                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
-                  selectCql)),
-          fetchNewAuditRecords());
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+              selectCql));
     }
   }
 
-  // FIXME: log level, KS, cat, user
+  @Test
+  public void logLevel() throws Exception {
+    session.execute("CREATE TABLE t (id int PRIMARY KEY)");
+    String cql = "SELECT * FROM t";
+    AuditLogEntry entry = new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
+        null /* batchId */, DEFAULT_TEST_KEYSPACE, "t", cql);
+
+    AuditConfig config = new AuditConfig();
+    config.enabled = true;
+
+    config.logLevel = "ErroR";
+    applyAuditConfig(config);
+    entry.logLevel = 'E';
+    assertAudit(cql, (__) -> Arrays.asList(entry));
+
+    config.logLevel = "WarninG";
+    applyAuditConfig(config);
+    entry.logLevel = 'W';
+    assertAudit(cql, (__) -> Arrays.asList(entry));
+
+    config.logLevel = "InfO";
+    applyAuditConfig(config);
+    entry.logLevel = 'I';
+    assertAudit(cql, (__) -> Arrays.asList(entry));
+  }
+
+  /** Verifies that only requests made to included non-excluded keyspaces should be logged. */
+  @Test
+  public void filteringByKeyspace() throws Exception {
+    AuditConfig config = new AuditConfig();
+    config.enabled = true;
+    config.includedKeyspaces = "k1,k2";
+    config.excludedKeyspaces = "k2,k3";
+    applyAuditConfig(config);
+
+    // Keyspace-specific requests, only k1 should be logged.
+
+    for (String ks : Arrays.asList("k1", "k2", "k3")) {
+      boolean shouldBeLogged = ks.equals("k1");
+
+      Function<Function<String, AuditLogEntry>,
+               Function<String, List<AuditLogEntry>>> generateOneOptionalLog = //
+                   (recFn) -> (cql) -> shouldBeLogged
+                       ? Arrays.asList(recFn.apply(cql))
+                       : Collections.emptyList();
+
+      assertAudit(
+          "CREATE KEYSPACE " + ks,
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "CREATE_KEYSPACE", "DDL",
+                  null /* batchId */, ks, null /* scope */,
+                  cql)));
+
+      assertAudit(
+          "CREATE TABLE " + ks + ".t1 (id int PRIMARY KEY, v text)",
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "CREATE_TABLE", "DDL",
+                  null /* batchId */, ks, "t1",
+                  cql)));
+
+      assertAudit(
+          "INSERT INTO " + ks + ".t1 (id, v) VALUES (1, 'v1')",
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+                  null /* batchId */, ks, "t1",
+                  cql)));
+
+      assertAudit(
+          "SELECT * FROM " + ks + ".t1",
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "SELECT", "QUERY",
+                  null /* batchId */, ks, "t1",
+                  cql)));
+
+      assertAudit(
+          "USE " + ks,
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "USE_KEYSPACE", "OTHER",
+                  null /* batchId */, ks, null /* scope */,
+                  cql)),
+          false /* excludeUseKeyspace */);
+
+      assertAudit(
+          "TRUNCATE t1",
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "TRUNCATE", "DDL",
+                  null /* batchId */, ks, "t1",
+                  cql)));
+
+      assertAudit(
+          "DROP TABLE t1",
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "DROP_TABLE", "DDL",
+                  null /* batchId */, ks, "t1",
+                  cql)));
+
+      assertAudit(
+          "DROP KEYSPACE " + ks,
+          generateOneOptionalLog.apply(
+              (cql) -> new AuditLogEntry('E', "cassandra", "DROP_KEYSPACE", "DDL",
+                  null /* batchId */, ks, null /* scope */,
+                  cql)));
+    }
+
+    // Non keyspace-specific requests, should all be logged.
+
+    assertAudit(
+        "CREATE ROLE dummy",
+        (cql) -> Arrays.asList(
+            new AuditLogEntry('E', "cassandra", "CREATE_ROLE", "DCL",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql)));
+  }
+
+  /** Verifies that only requests made for included non-excluded categories should be logged. */
+  @Test
+  public void filteringByCategory() throws Exception {
+    AuditConfig config = new AuditConfig();
+    config.enabled = true;
+    config.includedCategories = "DmL,QuErY";
+    config.excludedCategories = "qUeRy,dDl";
+    applyAuditConfig(config);
+
+    // Only DML is logged.
+    String ddl = "CREATE TABLE t (id int PRIMARY KEY, v text)";
+    String dml = "INSERT INTO t (id, v) VALUES (1, 'a')";
+    String query = "SELECT * FROM t";
+    session.execute(ddl);
+    session.execute(dml);
+    session.execute(query);
+    assertAudit(
+        new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+            null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+            dml));
+  }
+
+  /** Verifies that only requests made by included non-excluded users should be logged. */
+  @Test
+  public void filteringByUser() throws Exception {
+    AuditConfig config = new AuditConfig();
+    config.enabled = true;
+    config.includedUsers = "UseR1,UsEr2";
+    config.excludedUsers = "uSeR2,uSEr3";
+    applyAuditConfig(config);
+
+    session.execute("CREATE ROLE user2 WITH login = true AND password = '123'");
+    session.execute("CREATE ROLE user3 WITH login = true AND password = '123'");
+    session.execute("GRANT ALL PERMISSIONS on KEYSPACE " + DEFAULT_TEST_KEYSPACE + " to user1");
+    session.execute("GRANT ALL PERMISSIONS on KEYSPACE " + DEFAULT_TEST_KEYSPACE + " to user2");
+    session.execute("GRANT ALL PERMISSIONS on KEYSPACE " + DEFAULT_TEST_KEYSPACE + " to user3");
+    session.execute("CREATE TABLE t (id int PRIMARY KEY)");
+    auditRecords.discard();
+
+    String cql = "SELECT * FROM " + DEFAULT_TEST_KEYSPACE + ".t";
+
+    try (Cluster cluster = getCluster("user1", "123");
+         Session session = cluster.connect()) {
+      session.execute(cql);
+      // 1) There are 4 login events: one connection per node + a control connection.
+      // 2) Due to some driver version error, control connection issues an erroneous query
+      //    "SELECT * FROM system.peers_v2" for a table that doesn't exist.
+      //    We don't care about it here, so we filter it out.
+      AuditLogEntry loginRecord = new AuditLogEntry('E', "user1", "LOGIN_SUCCESS", "AUTH",
+          null /* batchId */, null /* keyspace */, null /* scope */,
+          "LOGIN SUCCESSFUL");
+      List<AuditLogEntry> actualRecords = auditRecords.popAll().stream()
+          .filter(e -> e.operationAndErrorMessage == null
+              || !e.operationAndErrorMessage.contains("peers_v2"))
+          .collect(Collectors.toList());
+      assertAuditRecords(
+          Arrays.asList(
+              loginRecord,
+              loginRecord,
+              loginRecord,
+              loginRecord,
+              new AuditLogEntry('E', "user1", "SELECT", "QUERY",
+                  null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+                  cql)),
+          actualRecords);
+    }
+
+    try (Cluster cluster = getCluster("user2", "123");
+         Session session = cluster.connect()) {
+      session.execute(cql);
+      assertAudit(Collections.emptyList());
+    }
+
+    try (Cluster cluster = getCluster("user3", "123");
+         Session session = cluster.connect()) {
+      session.execute(cql);
+      assertAudit(Collections.emptyList());
+    }
+  }
+
+  @Test
+  public void timing() throws Exception {
+    for (String cql : Arrays.asList(
+        "CREATE TABLE t (id int PRIMARY KEY, v int)",
+        "INSERT INTO t (id, v) VALUES (1, 1)",
+        "SELECT * FROM t")) {
+      long beforeMs = System.currentTimeMillis();
+      session.execute(cql);
+      long afterMs = System.currentTimeMillis();
+
+      List<AuditLogEntry> records = auditRecords.popAll();
+      assertTrue("No audit was logged for " + cql, records.size() >= 1);
+      for (AuditLogEntry record : records) {
+        long recordTs = Long.parseLong(record.timestamp);
+        assertGreaterThanOrEqualTo(
+            "Timestamp for record " + record + " comes before the statement was issued!",
+            recordTs, beforeMs);
+        assertLessThanOrEqualTo(
+            "Timestamp for record " + record + " comes after the statement has returned!",
+            recordTs, afterMs);
+      }
+    }
+  }
+
+  @Test
+  public void errors() throws Exception {
+    session.execute("CREATE TABLE t (id int PRIMARY KEY, v int)"
+        + " WITH transactions = { 'enabled': true }");
+    session.execute("CREATE UNIQUE INDEX ON t (v)");
+    session.execute("INSERT INTO t (id, v) VALUES (1, 1)");
+    auditRecords.discard();
+
+    // Parse error
+    {
+      String cql = "ZELEGT * FROUME t";
+      String expectedError = "Invalid SQL Statement."
+          + " syntax error, unexpected IDENT, expecting end_of_file";
+      assertQueryError(cql, expectedError);
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "REQUEST_FAILURE", "ERROR",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              cql + "; " + expectedError));
+    }
+
+    // Analyze error
+    {
+      String cql = "SELECT v2 FROM t";
+      String expectedError = "Undefined Column. Column doesn't exist";
+      assertQueryError(cql, expectedError);
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "REQUEST_FAILURE", "ERROR",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              cql + "; " + expectedError));
+    }
+
+    // Execution error
+    {
+      String cql = "INSERT INTO t (id, v) VALUES (2, 1)";
+      String expectedError = "Execution Error. Duplicate value disallowed by unique index t_v_idx";
+      assertQueryError(cql, expectedError);
+      assertAudit(
+          new AuditLogEntry('E', "cassandra", "UPDATE", "DML",
+              null /* batchId */, DEFAULT_TEST_KEYSPACE, "t",
+              cql),
+          new AuditLogEntry('E', "cassandra", "REQUEST_FAILURE", "ERROR",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              cql + "; " + expectedError));
+    }
+  }
 
   //
   // Helpers
   //
 
-  private Session getSession(String username, String password) {
-    Cluster.Builder cb = getDefaultClusterBuilder().withCredentials(username, password);
-    Cluster c = cb.build();
-    Session s = c.connect();
-    return s;
-  }
-
-  private List<AuditLogEntry> auditRecords = Collections.synchronizedList(new ArrayList<>());
-
-  /** Discard existing audit records so that only newer ones will be retrieved. */
-  private void discardAuditRecords() throws Exception {
-    Thread.sleep(100);
-    auditRecords.clear();
-  }
-
-  /** Retrieve the audit records added to the log since last call. */
-  private List<AuditLogEntry> fetchNewAuditRecords() throws Exception {
-    Thread.sleep(100);
-    synchronized (auditRecords) {
-      List<AuditLogEntry> result = new ArrayList<>(auditRecords);
-      auditRecords.clear();
-      return result;
-    }
+  /**
+   * Create a "cluster" to connect with the given credentials. Note that while returning
+   * {@code Session} would be more convenient, we can't do that because cluster needs to be closed.
+   */
+  private Cluster getCluster(String username, String password) {
+    return getDefaultClusterBuilder().withCredentials(username, password).build();
   }
 
   private String getBatchId(List<AuditLogEntry> records) throws Exception {
@@ -428,11 +662,59 @@ public class TestAudit extends BaseCQLTest {
     LOG.info("Audit config applied in " + sw.getTime() + " ms");
   }
 
+  //
+  // Audit assertion helpers.
+  // Note that they filter out USE_KEYSPACE by default.
+  //
+
+  private void assertAudit(AuditLogEntry... log)
+      throws Exception {
+    assertAudit(Arrays.<AuditLogEntry>asList(log));
+  }
+
+  private void assertAudit(List<AuditLogEntry> log)
+      throws Exception {
+    assertAuditRecords(log, auditRecords.popAll());
+  }
+
+  private void assertAudit(
+      String cql,
+      Function<String, List<AuditLogEntry>> generateLog) throws Exception {
+    assertAudit(cql, generateLog, true /* excludeUseKeyspace */);
+  }
+
+  private void assertAudit(
+      String cql,
+      Function<String, List<AuditLogEntry>> generateLog,
+      boolean excludeUseKeyspace) throws Exception {
+    auditRecords.discard();
+    session.execute(cql);
+    assertAuditRecords("Audit mismatch for " + cql + ";\n", generateLog.apply(cql),
+        auditRecords.popAll(), excludeUseKeyspace);
+  }
+
   private void assertAuditRecords(List<AuditLogEntry> expected, List<AuditLogEntry> actual) {
-    if (!Objects.equals(expected, actual)) {
-      fail(String.format("expected:<\n  %s\n> but was:<\n  %s\n>",
+    assertAuditRecords("", expected, actual, true /* excludeUseKeyspace */);
+  }
+
+  /**
+   * @param excludeUseKeyspace
+   *          The first operation after {@code USE ks} triggers an additional log entry
+   *          {@code USE "ks"} on every node current connection goes to. This is expected and aligns
+   *          with Cassandra, but not convenient to test.
+   */
+  private void assertAuditRecords(
+      String prefixMsg,
+      List<AuditLogEntry> expected,
+      List<AuditLogEntry> actual,
+      boolean excludeUseKeyspace) {
+    List<AuditLogEntry> actual2 = actual.stream()
+        .filter(e -> !excludeUseKeyspace || !e.type.equals("USE_KEYSPACE"))
+        .collect(Collectors.toList());
+    if (!Objects.equals(expected, actual2)) {
+      fail(prefixMsg + String.format("expected:<\n  %s\n> but was:<\n  %s\n>",
           StringUtils.joinWith("\n  ", expected.toArray()),
-          StringUtils.joinWith("\n  ", actual.toArray())));
+          StringUtils.joinWith("\n  ", actual2.toArray())));
     }
   }
 
@@ -466,23 +748,41 @@ public class TestAudit extends BaseCQLTest {
     }
   }
 
-  private class AuditLogListener implements LogErrorListener {
+  /** Sink for audit records from all tservers. */
+  private static class CurrentAuditRecords {
+    private final List<AuditLogEntry> storage = Collections
+        .synchronizedList(new ArrayList<>());
+
+    public void push(AuditLogEntry entry) {
+      storage.add(entry);
+    }
+
+    /** Discard existing audit records so that only newer ones will be retrieved. */
+    public void discard() throws Exception {
+      popAll();
+    }
+
+    /** Retrieve the audit records added to the log since last call, discarding them. */
+    public List<AuditLogEntry> popAll() throws Exception {
+      Thread.sleep((long) (200 * SanitizerUtil.getTimeoutMultiplier()));
+      synchronized (storage) {
+        List<AuditLogEntry> result = new ArrayList<>(storage);
+        storage.clear();
+        return result;
+      }
+    }
+  }
+
+  /** Listens to log file on a single tserver, adding audit records to {@code auditRecords}. */
+  private static class AuditLogListener implements LogErrorListener {
     private final String PREFIX = "AUDIT: ";
 
-    public final int tserverPort;
+    private final int tserverPort;
+    private final CurrentAuditRecords auditRecords;
 
-    public AuditLogListener(int tserverPort) {
+    public AuditLogListener(int tserverPort, CurrentAuditRecords auditRecords) {
       this.tserverPort = tserverPort;
-    }
-
-    @Override
-    public void associateWithLogPrinter(LogPrinter printer) {
-      // NOOP
-    }
-
-    @Override
-    public void reportErrorsAtEnd() {
-      // NOOP
+      this.auditRecords = auditRecords;
     }
 
     @Override
@@ -539,7 +839,12 @@ public class TestAudit extends BaseCQLTest {
                 + ", line: " + line);
         }
       }
-      auditRecords.add(entry);
+      auditRecords.push(entry);
+    }
+
+    @Override
+    public void reportErrorsAtEnd() {
+      // NOOP
     }
   }
 

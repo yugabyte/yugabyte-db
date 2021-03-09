@@ -91,6 +91,8 @@ using std::string;
 using client::YBClient;
 using client::YBMetaDataCache;
 using client::YBTableName;
+using ql::audit::IsPrepare;
+using ql::audit::ErrorIsFormatted;
 
 QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   time_to_parse_ql_query_ =
@@ -164,7 +166,7 @@ Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
     ql_metrics_->time_to_parse_ql_query_->Increment(elapsed_time.ToMicroseconds());
   }
   if (!s.ok()) {
-    RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, s, true /* error_is_formatted */));
+    RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, s, ErrorIsFormatted::kTrue));
     return s;
   }
   *parse_tree = parser->Done();
@@ -199,7 +201,7 @@ Status QLProcessor::Prepare(const string& stmt, ParseTree::UniPtr* parse_tree,
   }
   if (s.IsQLError()) {
     RETURN_NOT_OK(audit_logger_.LogStatementError((*parse_tree)->root().get(), stmt, s,
-                                                  true /* error_is_formatted */));
+                                                  ErrorIsFormatted::kTrue));
   }
   return s;
 }
@@ -448,10 +450,10 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
 }
 
 void QLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
+  is_rescheduled_.store(IsRescheduled::kTrue, std::memory_order_release);
   // Some unit tests are not executed in CQL proxy. In those cases, just execute the callback
   // directly while disabling thread restrictions.
   const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-  audit_logger_.MarkRescheduled();
   task->Run();
   // In such tests QLProcessor is deleted right after Run is executed, since QLProcessor tasks
   // do nothing in Done we could just don't execute it.

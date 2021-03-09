@@ -94,9 +94,6 @@ namespace ql {
 namespace audit {
 
 using boost::optional;
-using yb::cqlserver::CQLMessage;
-using yb::cqlserver::CQLResponse;
-using yb::cqlserver::ErrorResponse;
 
 //
 // Entities
@@ -244,7 +241,7 @@ std::unordered_set<std::string> SplitGflagList(const std::string& gflag) {
 
 template<typename T>
 bool Contains(const std::unordered_set<T>& set, const T& value) {
-  return set.find(value) != set.end();
+  return set.count(value) != 0;
 }
 
 // Return an audit log type for a tree node, or nullptr if a node can't be audited.
@@ -561,8 +558,8 @@ bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
   std::string gflag_value;
   bool found = GFLAGS_NAMESPACE::GetCommandLineOption(gflag_name.c_str(), &gflag_value);
   if (!found) {
-    // This should never happen as we use compile-time check in a macro.
-    LOG(FATAL) << "Gflag " << gflag_name << " does not exist!";
+    // This should never happen as we use a compile-time check in a macro.
+    LOG(DFATAL) << "Gflag " << gflag_name << " does not exist!";
     return false;
   }
 
@@ -587,7 +584,7 @@ bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
 // Returns false if the given predicate is not satisfied.
 #define RETURN_IF_NOT_SATISFIES_GFLAG(gflag, entry, predicate_on_split_and_e) \
     static_assert(std::is_same<decltype(BOOST_PP_CAT(FLAGS_, gflag)), std::string&>::value, \
-                  "Flag must be string"); \
+                  "Flag " BOOST_PP_STRINGIZE(gflag) " must be string"); \
     \
     if (!SatisfiesGFlag(e, BOOST_PP_STRINGIZE(gflag), \
                         [](const GflagListValue& split, const LogEntry& e) { \
@@ -651,12 +648,13 @@ Result<LogEntry> AuditLogger::CreateLogEntry(const Type& type,
   return std::move(entry);
 }
 
-Status AuditLogger::StartBatchRequest(int statements_count) {
-  if (!FLAGS_ycql_enable_audit_log) {
+Status AuditLogger::StartBatchRequest(int statements_count,
+                                      IsRescheduled is_rescheduled) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 
-  if (rescheduled_ && !batch_id_.empty()) {
+  if (is_rescheduled && !batch_id_.empty()) {
     // Keep an existing batch ID in case of reschedule.
     return Status::OK();
   }
@@ -697,7 +695,7 @@ Status AuditLogger::EndBatchRequest() {
 }
 
 Status AuditLogger::LogAuthResponse(const CQLResponse& response) {
-  if (!FLAGS_ycql_enable_audit_log) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 
@@ -733,9 +731,9 @@ Status AuditLogger::LogAuthResponse(const CQLResponse& response) {
 
 Status AuditLogger::LogStatement(const TreeNode* tnode,
                                  const std::string& statement,
-                                 bool is_prepare) {
-  // FIXME(alex): Rescheduled statements should not be logged.
-  if (!FLAGS_ycql_enable_audit_log || !tnode /* || rescheduled_*/) {
+                                 IsPrepare is_prepare) {
+  // FIXME(alex): Rescheduled statements should not be logged (this requires additional testing).
+  if (!FLAGS_ycql_enable_audit_log || !tnode || !conn_) {
     return Status::OK();
   }
 
@@ -764,8 +762,8 @@ Status AuditLogger::LogStatement(const TreeNode* tnode,
 Status AuditLogger::LogStatementError(const TreeNode* tnode,
                                       const std::string& statement,
                                       const Status& error_status,
-                                      bool error_is_formatted) {
-  if (!FLAGS_ycql_enable_audit_log || !tnode) {
+                                      ErrorIsFormatted error_is_formatted) {
+  if (!FLAGS_ycql_enable_audit_log || !tnode || !conn_) {
     return Status::OK();
   }
 
@@ -774,8 +772,8 @@ Status AuditLogger::LogStatementError(const TreeNode* tnode,
 
 Status AuditLogger::LogStatementError(const std::string& statement,
                                       const Status& error_status,
-                                      bool error_is_formatted) {
-  if (!FLAGS_ycql_enable_audit_log) {
+                                      ErrorIsFormatted error_is_formatted) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 

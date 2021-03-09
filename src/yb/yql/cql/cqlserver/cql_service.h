@@ -23,13 +23,13 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 #include "yb/yql/cql/ql/statement.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 #include "yb/util/object_pool.h"
 #include "yb/util/string_case.h"
@@ -70,10 +70,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(
-      const CQLMessage::QueryId& id, const std::string& keyspace, const std::string& query);
+      const ql::CQLMessage::QueryId& id, const std::string& keyspace, const std::string& query);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
-  std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const ql::CQLMessage::QueryId& id);
 
   std::shared_ptr<ql::Statement> GetAuthPreparedStatement() const { return auth_prepared_stmt_; }
 

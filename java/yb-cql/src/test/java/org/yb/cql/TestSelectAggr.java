@@ -35,9 +35,13 @@ import static org.yb.AssertionWrappers.fail;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelectAggr extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelectAggr.class);
+
   int h_min = 1;
   int r_min = 2;
   long v1_min = 1000;

@@ -27,9 +27,13 @@ import static org.yb.AssertionWrappers.assertFalse;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestArith extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestArith.class);
+
   interface MathOperator {
     Long Eval(Long a, Long b);
   }

@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
 
-  protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
   // Integer.MAX_VALUE seconds is the maximum allowed TTL by Cassandra.
   protected static final int MAX_TTL_SEC = Integer.MAX_VALUE;

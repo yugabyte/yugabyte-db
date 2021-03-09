@@ -37,9 +37,12 @@ import static org.yb.AssertionWrappers.fail;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestBindVariable extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestBindVariable.class);
 
   private void testInvalidBindStatement(String stmt, Object... values) {
     try {

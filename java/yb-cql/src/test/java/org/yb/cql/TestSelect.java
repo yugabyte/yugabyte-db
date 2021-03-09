@@ -43,9 +43,13 @@ import static org.yb.AssertionWrappers.assertNull;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelect.class);
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);

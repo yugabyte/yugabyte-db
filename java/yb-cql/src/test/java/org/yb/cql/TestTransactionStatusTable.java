@@ -18,6 +18,9 @@ import static org.yb.AssertionWrappers.assertEquals;
 import com.datastax.driver.core.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.MiscUtil;
@@ -30,6 +33,8 @@ import java.util.concurrent.CountDownLatch;
 
 @RunWith(value=YBTestRunner.class)
 public class TestTransactionStatusTable extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestTransactionStatusTable.class);
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
@@ -48,41 +53,43 @@ public class TestTransactionStatusTable extends BaseCQLTest {
     final CountDownLatch startSignal = new CountDownLatch(kTablesCount);
     List<ThrowingRunnable> cmds = new ArrayList<>();
     List<Session> sessions = new ArrayList<>();
-    final Cluster cluster = getDefaultClusterBuilder().build();
-    for (int i = 0; i <  kTablesCount; ++i) {
-      final int idx = i;
-      final Session session = cluster.connect(DEFAULT_TEST_KEYSPACE);
-      sessions.add(session);
-      cmds.add(() -> {
-        startSignal.countDown();
-        startSignal.await();
-        final String tableName = String.format("test_restart_%d", idx);
-        LOG.info("Creating table " + tableName + "...");
-        // Allow extra time on the create statements to finish because the load balancer seems to be
-        // moving the leaders before all the alters corresponding to the Index Permissions finish.
-        session.execute(
-            new SimpleStatement(String.format(
-                "create table %s (k int primary key, v int) " +
-                "with transactions = {'enabled' : true};", tableName))
-            .setReadTimeoutMillis((int) (36000 * SanitizerUtil.getTimeoutMultiplier())));
-        LOG.info("Created table " + tableName);
-        session.execute(String.format("create index on %s (v);", tableName));
-        LOG.info("Created index on " + tableName);
-        session.execute(String.format("insert into %s (k, v) values (1, 1000);", tableName));
-        LOG.info("Inserted data into " + tableName);
-        ResultSet rs = session.execute(String.format("select k, v from %s", tableName));
-        LOG.info("Selected data from " + tableName);
-        String actualResult = "";
-        for (com.datastax.driver.core.Row row : rs) {
-          actualResult += row.toString();
-        }
-        assertEquals("Row[1, 1000]", actualResult);
-        LOG.info("Checked selected data from " + tableName);
-      });
-    }
-    MiscUtil.runInParallel(cmds, startSignal, (int) (60 * SanitizerUtil.getTimeoutMultiplier()));
-    for (Session s : sessions) {
-      s.close();
+    try (Cluster cluster = getDefaultClusterBuilder().build()) {
+      for (int i = 0; i <  kTablesCount; ++i) {
+        final int idx = i;
+        final Session session = cluster.connect(DEFAULT_TEST_KEYSPACE);
+        sessions.add(session);
+        cmds.add(() -> {
+          startSignal.countDown();
+          startSignal.await();
+          final String tableName = String.format("test_restart_%d", idx);
+          LOG.info("Creating table " + tableName + "...");
+          // Allow extra time on the create statements to finish because the load balancer seems
+          // to be moving the leaders before all the alters corresponding to the Index Permissions
+          // finish.
+          session.execute(
+              new SimpleStatement(String.format(
+                  "create table %s (k int primary key, v int) " +
+                  "with transactions = {'enabled' : true};", tableName))
+              .setReadTimeoutMillis((int) (36000 * SanitizerUtil.getTimeoutMultiplier())));
+          LOG.info("Created table " + tableName);
+          session.execute(String.format("create index on %s (v);", tableName));
+          LOG.info("Created index on " + tableName);
+          session.execute(String.format("insert into %s (k, v) values (1, 1000);", tableName));
+          LOG.info("Inserted data into " + tableName);
+          ResultSet rs = session.execute(String.format("select k, v from %s", tableName));
+          LOG.info("Selected data from " + tableName);
+          String actualResult = "";
+          for (com.datastax.driver.core.Row row : rs) {
+            actualResult += row.toString();
+          }
+          assertEquals("Row[1, 1000]", actualResult);
+          LOG.info("Checked selected data from " + tableName);
+        });
+      }
+      MiscUtil.runInParallel(cmds, startSignal, (int) (60 * SanitizerUtil.getTimeoutMultiplier()));
+      for (Session s : sessions) {
+        s.close();
+      }
     }
   }
 }

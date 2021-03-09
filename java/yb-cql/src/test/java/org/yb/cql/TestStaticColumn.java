@@ -28,9 +28,12 @@ import static org.yb.AssertionWrappers.fail;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestStaticColumn extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestStaticColumn.class);
 
   private void createTable(boolean insertSeedData) {
     session.execute("create table t (" +

@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.ExternalDaemonLogErrorListener;
 import org.yb.minicluster.LogErrorListener;
-import org.yb.minicluster.LogErrorListenerWrapper;
 import org.yb.minicluster.LogPrinter;
 import org.yb.util.*;
 
@@ -128,8 +127,7 @@ public class PgRegressRunner {
       Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED\\s*$");
 
   private LogErrorListener createLogErrorListener() {
-    return new LogErrorListenerWrapper(
-        new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid)) {
+    return new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid) {
       @Override
       public void handleLine(String line) {
         super.handleLine(line);
