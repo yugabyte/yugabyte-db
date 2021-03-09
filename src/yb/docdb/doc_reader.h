@@ -24,6 +24,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
@@ -32,6 +33,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -73,7 +75,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 class DocDBTableReader {
  public:
   DocDBTableReader(
-      IntentAwareIterator* iter, DeadlineInfo* deadline_info,
+      IntentAwareIterator* iter, CoarseTimePoint deadline,
       SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
@@ -106,8 +108,7 @@ class DocDBTableReader {
 
   // Owned by caller.
   IntentAwareIterator* iter_;
-  // Owned by caller.
-  DeadlineInfo* deadline_info_;
+  DeadlineInfo deadline_info_;
   const SeekFwdSuffices seek_fwd_suffices_;
   DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
   Expiration table_expiration_;
