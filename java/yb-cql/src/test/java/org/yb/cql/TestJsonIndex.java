@@ -29,9 +29,12 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestJsonIndex extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestJsonIndex.class);
 
   @Test
   public void testIndex() throws Exception {
