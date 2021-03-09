@@ -19,6 +19,7 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -595,21 +596,22 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {
       if (statement_type_ != TreeNodeOpcode::kPTSelectStmt) {
-        return sem_context->Error(expr, "IN expression not supported for write operations",
+        return sem_context->Error(expr, "Operator not supported for write operations",
                                   ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
       }
 
       if (col_args != nullptr) {
-        return sem_context->Error(expr, "IN expression not supported for subscripted column",
+        return sem_context->Error(expr, "Operator not supported for subscripted column",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       if(!value->has_no_column_ref()) {
         return sem_context->Error(expr,
-            "Expressions are not allowed as argument of IN condition.",
+            "Argument of this opreator cannot reference a column",
             ErrorCode::CQL_STATEMENT_INVALID);
       }
 

@@ -58,7 +58,8 @@ OpSelectivity GetOperatorSelectivity(const QLOperator op) {
     case QL_OP_LESS_THAN_EQUAL:
       return OpSelectivity::kRange;
     case QL_OP_NOOP: FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_IN:
+    case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_EQUAL:
       break;
     default:
       // Should have been caught beforehand (as this is called in pt_select after analyzing the

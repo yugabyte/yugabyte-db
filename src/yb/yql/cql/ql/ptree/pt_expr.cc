@@ -70,6 +70,7 @@ CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
       case QL_OP_GREATER_THAN_EQUAL:
       case QL_OP_IN:
       case QL_OP_NOT_IN:
+      case QL_OP_NOT_EQUAL:
       case QL_OP_NOOP:
         break;
       default:
@@ -742,6 +743,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                                PTExpr::SharedPtr op2) {
   // "op1" and "op2" must have been analyzed before getting here
   switch (ql_op_) {
+    case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_EQUAL:
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
@@ -751,8 +753,7 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     case QL_OP_LESS_THAN: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN: FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
-    case QL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EQUAL:
+    case QL_OP_GREATER_THAN_EQUAL:
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(CheckInequalityOperands(sem_context, op1, op2));

@@ -581,6 +581,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertEquals(expectedRows, actualRows);
   }
 
+  // Assert presence of expected rows while ensuring no duplicates exist in actual output.
+  protected void assertQueryWithoutDups(Statement stmt, Set<String> expectedRows) {
+    ResultSet rs = session.execute(stmt);
+    Set<String> actualRows = new HashSet<>();
+    int row_cnt = 0;
+    for (Row row : rs) {
+      row_cnt++;
+      actualRows.add(row.toString());
+    }
+    assertEquals(expectedRows, actualRows);
+    assertEquals(row_cnt, expectedRows.size());
+  }
+
   /**
    * Assert the result of a query when the order of the rows is not enforced.
    * To be used, for instance, when querying over multiple hashes where the order is defined by the
@@ -591,6 +604,21 @@ public class BaseCQLTest extends BaseMiniClusterTest {
    */
   protected void assertQueryRowsUnordered(String stmt, String... expectedRows) {
     assertQuery(stmt, Arrays.stream(expectedRows).collect(Collectors.toSet()));
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is not enforced.
+   * To be used, for instance, when querying over multiple hashes where the order is defined by the
+   * hash function not just the values. Also, ensure that there are no duplicates in the actual
+   * output.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the expected rows in no particular order
+   */
+  protected void assertQueryRowsUnorderedWithoutDups(String stmt,
+                                                     String... expectedRows) {
+    assertQueryWithoutDups(new SimpleStatement(stmt),
+      Arrays.stream(expectedRows).collect(Collectors.toSet()));
   }
 
   /**
