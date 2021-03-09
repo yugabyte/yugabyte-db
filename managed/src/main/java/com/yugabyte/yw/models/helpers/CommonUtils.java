@@ -52,4 +52,27 @@ public class CommonUtils {
       }
     }
   }
+
+  /**
+   * Gets the value at `path` of `object`. Traverses `object` and attempts to access each
+   * nested key in `path`. Returns null if unable to find property.
+   * Based on lodash's get utility function: https://lodash.com/docs/4.17.15#get
+   *
+   * @param object  ObjectNode to be traversed
+   * @param path    Dot-separated string notation to represent JSON property
+   * @return        JsonNode value of property or null
+   */
+  public static JsonNode getNodeProperty(JsonNode object, String path) {
+    String[] jsonPropertyList = path.split("\\.");
+    JsonNode currentNode = object;
+    for (String key : jsonPropertyList) {
+      if (currentNode != null && currentNode.has(key)) {
+        currentNode = currentNode.get(key);
+      } else {
+        currentNode = null;
+        break;
+      }
+    }
+    return currentNode;
+  }
 }

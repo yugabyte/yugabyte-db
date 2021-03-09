@@ -13,7 +13,7 @@ import { Panel } from 'react-bootstrap';
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
-import { isDisabled } from '../../../../utils/LayoutUtils';
+import { isDisabled, isNotHidden } from '../../../../utils/LayoutUtils';
 
 import './UniverseHealthCheckList.scss';
 
@@ -65,17 +65,19 @@ export const UniverseHealthCheckList = (props) => {
             <div className="pull-left">
               <h2>Health Checks</h2>
             </div>
-            <div className="pull-right">
-              <div className="backup-action-btn-group">
-                <UniverseAction
-                  className="table-action"
-                  universe={currentUniverse.data}
-                  actionType="alert-config"
-                  btnClass={'btn-orange'}
-                  disabled={actions_disabled}
-                />
+            {isNotHidden(currentCustomer.data.features, 'universes.details.health.alerts') && 
+              <div className="pull-right">
+                <div className="backup-action-btn-group">
+                  <UniverseAction
+                    className="table-action"
+                    universe={currentUniverse.data}
+                    actionType="alert-config"
+                    btnClass={'btn-orange'}
+                    disabled={actions_disabled}
+                  />
+                </div>
               </div>
-            </div>
+            }            
           </Row>
           <Row>{nodesCronStatus}</Row>
         </div>
