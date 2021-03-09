@@ -26,9 +26,12 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCollectionTypes extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCollectionTypes.class);
 
   private String createTableStmt(String tableName, String keyType, String elemType)
       throws Exception {

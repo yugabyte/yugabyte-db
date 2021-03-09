@@ -17,8 +17,8 @@
 //   - native_protocol_v4.spec
 //   - native_protocol_v5.spec
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_MESSAGE_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_MESSAGE_H_
+#ifndef YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
+#define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
 
 #include <stdint.h>
 #include <memory>
@@ -36,7 +36,7 @@
 #include "yb/util/net/sockaddr.h"
 
 namespace yb {
-namespace cqlserver {
+namespace ql {
 
 class CQLRequest;
 class CQLResponse;
@@ -972,7 +972,7 @@ class CQLServerEventList : public rpc::ServerEventList {
   std::vector<std::unique_ptr<CQLServerEvent>> cql_server_events_;
 };
 
-}  // namespace cqlserver
+}  // namespace ql
 }  // namespace yb
 
-#endif // YB_YQL_CQL_CQLSERVER_CQL_MESSAGE_H_
+#endif // YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
