@@ -19,7 +19,7 @@ You can connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client
 
 ## Prerequisites
 
-You do not need client certificates in order to connect to your YugabyteDB clusters, but you have to enable server-to-server encryption and client-to-server encryption. For more information, see [Enable server-to-server encryption](../server-to-server/) and [Enable client-to-server encryption](../client-to-server).
+In order to connect to your YugabyteDB clusters using encryption in transit, you have to enable client-to-server encryption. In addition, you might need to enable server-to-server encryption (see [Enable server-to-server encryption](../server-to-server/) and [Enable client-to-server encryption](../client-to-server).
 
 Each client that connects to a YugabyteDB cluster needs the following file to be accessible on the client computer:
 
