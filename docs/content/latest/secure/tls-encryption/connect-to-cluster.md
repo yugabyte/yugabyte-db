@@ -84,9 +84,9 @@ UUID_3 		node3:7100     	ALIVE 	FOLLOWER
 
 To enable `ycqlsh` to connect to a YugabyteDB cluster with encryption enabled, you need to set the following environment variables:
 
-Variable       | Description                  |
----------------|------------------------------|
-`SSL_CERTFILE` | The root certificate file (`ca.crt`). |
+Variable       | Description                  
+---------------|------------------------------
+`SSL_CERTFILE` | The root certificate file (`ca.crt`). 
 
 To set the environment variables, use the following `export` commands:
 
@@ -142,3 +142,4 @@ ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```
+

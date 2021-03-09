@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Introduction
 
-This document describes options to connect to a Yugabyte cluster deployed within Kubernetes.
+This document describes options available for connecting to a Yugabyte cluster deployed within Kubernetes.
 
 ## Prerequisites
 
@@ -210,3 +210,4 @@ Use HELP for help.
 cqlsh> SHOW HOST
 Connected to local cluster at 35.200.205.208:9042.
 ```
+
