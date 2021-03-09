@@ -13,7 +13,8 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
-from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL
+from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
+    MIN_NUM_CORES
 from ybops.common.exceptions import YBOpsRuntimeError
 
 import logging
@@ -579,7 +580,10 @@ class AzureCloudAdmin():
             # We only care about VMs that support Premium storage. Promo is pricing special.
             if (not regex.match(vm_size) or vm_size.endswith("Promo")):
                 continue
-            all_vms[vm_size] = self.parse_vm_info(vm)
+            vm_info = self.parse_vm_info(vm)
+            if vm_info["memSizeGb"] < MIN_MEM_SIZE_GB or vm_info["numCores"] < MIN_NUM_CORES:
+                continue
+            all_vms[vm_size] = vm_info
 
         for region in regions:
             price_info = self.get_pricing_info(VM_PRICING_URL_FORMAT.format(region))
@@ -595,8 +599,9 @@ class AzureCloudAdmin():
         price_info = requests.get(url).json()
         vm_name_to_price_dict = {}
         for info in price_info.get('Items'):
-            # Azure API doesn't support regex as of 2/05/2021, so manually parse out Windows.
-            if not info['productName'].endswith(' Windows'):
+            # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
+            # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
+            if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
                 vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
         next_url = price_info.get('NextPageLink')
         if next_url:
