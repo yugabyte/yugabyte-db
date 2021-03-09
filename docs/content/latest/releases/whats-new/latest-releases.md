@@ -89,6 +89,7 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 * [[7234](https://github.com/yugabyte/yugabyte-db/issues/7234)] [Platform] UI fixes for platform
 * [[7342](https://github.com/yugabyte/yugabyte-db/issues/7342)] [Platform] [UI] add Beta tag to HA tab + address feedback
 * [[7363](https://github.com/yugabyte/yugabyte-db/issues/7363)] [Platform] [UI] Certificate list improvements
+* [[7372](https://github.com/yugabyte/yugabyte-db/issues/7372)] Platform: Skip running periodic schedules when in follower mode
 * [[7392](https://github.com/yugabyte/yugabyte-db/issues/7392)] [Platform] Fix the cqlsh healthcheck failures happening because of warnings in the output (#7364)
 * [[7423](https://github.com/yugabyte/yugabyte-db/issues/7423)] Platform: Fix AvailabilityZone::getByCode
 * [[7468](https://github.com/yugabyte/yugabyte-db/issues/7468)] [Platform] Fixed issues of deleting a backup goes to "unknown" state for that backup
@@ -96,6 +97,7 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 * [[7490](https://github.com/yugabyte/yugabyte-db/issues/7490)] Platform: Ensure prom config is reverted to non-federated when deleting a follower HA config
 * [[7494](https://github.com/yugabyte/yugabyte-db/issues/7494)] [YW] Hide Pause Universe in universe actions dropdown
 * [[7496](https://github.com/yugabyte/yugabyte-db/issues/7496)] Platform: Alerts should not be triggered for a paused universe when running health check
+* [Platform] [UI] - User menu not clickable
 
 #### Core Database
 
