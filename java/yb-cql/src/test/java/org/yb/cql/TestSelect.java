@@ -176,6 +176,167 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST CQL SIMPLE QUERY - End");
   }
 
+  public void testNotEqualsQuery(boolean use_if_clause) throws Exception {
+    LOG.info("TEST CQL QUERY WITH NOT EQUALS - Start");
+
+    // Setup test table.
+    setupTable("test_select", 0);
+
+    // Populate rows.
+    {
+      String insert_stmt = "INSERT INTO test_select (h1, h2, r1, r2, v1, v2) " +
+                           "VALUES (?, ?, ?, ?, ?, ?)";
+      PreparedStatement stmt = session.prepare(insert_stmt);
+      for (int i = 1; i <= 2; i++) {
+        for (int j = 1; j <= 2; j++) {
+          session.execute(stmt.bind(new Integer(i), "h" + i,
+                                    new Integer(j), "r" + j,
+                                    new Integer(j), "v" + i + j));
+        }
+      }
+      session.execute("INSERT INTO test_select (h1, h2, r1, r2, v1, v2) " +
+                      "VALUES (3, 'h3', 1, 'r1', null, 'v')");
+    }
+
+    String clause_type = use_if_clause ? "IF" : "WHERE";
+
+    // Tests on primary key columns work only with WHERE clause.
+    if (!use_if_clause) {
+      // Test with "!=" on hash key (both null and non-null case
+      // even though the null case doesn't make sense for primary key columns).
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s h1 != NULL", clause_type),
+        "Row[1, h1, 1, r1, 1, v11]",
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s h1 != 1", clause_type),
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      // Test with "!=" on range key (both null and non-null case
+      // even though the null case doesn't make sense for primary key columns).
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s r1 != NULL", clause_type),
+        "Row[1, h1, 1, r1, 1, v11]",
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s r1 != 1", clause_type),
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 2, r2, 2, v22]");
+    }
+
+    // Test with "!=" on regular column (both null and non-null case).
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != NULL", clause_type),
+      "Row[1, h1, 1, r1, 1, v11]",
+      "Row[1, h1, 2, r2, 2, v12]",
+      "Row[2, h2, 1, r1, 1, v21]",
+      "Row[2, h2, 2, r2, 2, v22]");
+
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != 1", clause_type),
+      "Row[1, h1, 2, r2, 2, v12]",
+      "Row[2, h2, 2, r2, 2, v22]",
+      "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "!=" operator on multiple columns.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != 1 AND v2 != 'v12'", clause_type),
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "<>" instead of != operator - both are allowed in YCQL and have same semantics.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 <> 1 AND v2 != 'v12'", clause_type),
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "!=" operator on json/collection column.
+    //   i) JSON should be comparable with NULL and other JSONs.
+    //   ii) Collections can only be compared with NULL. See IsComparable() in ql_type.h for ref.
+    String alter_stmt = "ALTER TABLE test_select add v_json jsonb, v_set SET<int>, " +
+      "v_map MAP<int,int>, v_list LIST<int>";
+
+    session.execute(alter_stmt);
+    session.execute("TRUNCATE TABLE test_select"); // To reduce the output space for tests.
+
+    session.execute("INSERT INTO test_select(h1, h2, r1, r2, v1, v2, v_json, v_set, v_map, " +
+      "v_list) VALUES (1, 'h1', 1, 'r1', 1, 'v11', '{\"key\": \"val\"}', {1}, {1:1}, [1])");
+
+    // For json.
+
+    // TODO: As of now != null works on collections but not with json.
+    // There were two approaches to allow json comparison with null -
+    // 1. Change the isConvertible() related conversion matrix for json and null
+    // 2. Add a condition in semantic analysis to not check isConvertible() for
+    //    =,!=,IN,NOT IN operators in where clause.
+    //
+    // assertQueryRowsUnorderedWithoutDups(
+    //   String.format("SELECT * FROM test_select %s v_json != null", clause_type),
+    //   "Row[1, h1, 1, r1, 1, v11, {\"key\": \"val\"}, {1}, {1:1}, [1]]");
+
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_json != '{\"key\": \"val\"}'", clause_type));
+
+    // For set.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_set != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // For map.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_map != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // For list.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_list != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // Negative tests below.
+    if (!use_if_clause) {
+      // Test with more than one "!=" operator on one column.
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 != 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 <> 1 AND v1 != 2", clause_type));
+
+      // Test with "!=" operator with other operators - <, >, <=, >=, =, IN, NOT IN.
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 < 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 > 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 <= 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 >= 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 = 1 AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 IN (1) AND v1 != 2", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v1 NOT IN (1) AND v1 != 2", clause_type));
+
+      // Test with "!=" operator on json/collection subscripted column.
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v_json->>'key' != ''", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v_map[1] != null", clause_type));
+      runInvalidQuery(String.format("SELECT * FROM test_select %s v_list[1] != null", clause_type));
+    }
+
+    // Test with incomparable data type.
+    runInvalidQuery(String.format("SELECT * FROM test_select %s v1 != ''", clause_type));
+  }
+
+  @Test
+  public void testNotEqualsQueryWithWhere() throws Exception {
+    testNotEqualsQuery(false /* use_if_clause */);
+  }
+
+  @Test
+  public void testNotEqualsQueryWithIf() throws Exception {
+    testNotEqualsQuery(true /* use_if_clause */);
+  }
+
   @Test
   public void testRangeQuery() throws Exception {
     LOG.info("TEST CQL RANGE QUERY - Start");
@@ -240,10 +401,6 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 > 3;");
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 < 1 AND r1 <= 3;");
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <= 1 AND r1 <= 3;");
-
-    // Invalid range: not-equal not supported.
-    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <> 1;");
-    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 != 1;");
 
     LOG.info("TEST CQL RANGE QUERY - End");
   }
