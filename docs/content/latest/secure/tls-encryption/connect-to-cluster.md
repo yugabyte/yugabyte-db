@@ -19,11 +19,11 @@ You can connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client
 
 ## Prerequisites
 
-In order to connect to your YugabyteDB clusters using encryption in transit, you have to enable client-to-server encryption. In addition, you might need to enable server-to-server encryption (see [Enable server-to-server encryption](../server-to-server/) and [Enable client-to-server encryption](../client-to-server).
+In order to connect to your YugabyteDB clusters using encryption in transit, you have to enable client-to-server encryption and might need to enable server-to-server encryption (see [Connecting to a YugabyteDB Cluster](#connecting-to-a-yugabytedb-cluster)).
 
 Each client that connects to a YugabyteDB cluster needs the following file to be accessible on the client computer:
 
-- `ca.crt` — root certificate file (YSQL and YCQL). See [Generate the root certificate file](../server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
+- `ca.crt` — root certificate file (for YSQL and YCQL). See [Generate the root certificate file](../server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
 
   This file should be available in the `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (`ysqlsh`) locally.
 

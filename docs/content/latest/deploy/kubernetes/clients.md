@@ -145,11 +145,7 @@ spec:
       defaultMode: 256
 ```
 
-The following example shows a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect.
-
-Info pending
-
-Use the following command to verify the connection:
+When a client uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect, you can execute the following command to verify the connection:
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local "sslmode=require"
@@ -162,11 +158,7 @@ You are connected to database "yugabyte" as user "yugabyte" on host "yb-tservers
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 ```
 
-The following example shows a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect.
-
-Info pending
-
-Use the following command to verify the connection:
+When a client uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect, you can execute the following command to verify the connection:
 
 ```sh
 $ kubectl exec -n yb-demo -it yb-client -- ycqlsh yb-tservers.yb-demo.svc.cluster.local 9042 --ssl
@@ -193,11 +185,7 @@ $ mkdir $(pwd)/certs
 $ kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.root\.crt}' | base64 --decode > $(pwd)/certs/root.crt
 ```
 
-The following example shows a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect. The command specifies the external LoadBalancer IP of the `yb-tserver-service`, as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). 
-
-Info pending
-
-Use the following command to verify the connection:
+When a client that uses the `YSQL shell` ([`ysqlsh`](../../../admin/ysqlsh)) to connect, the command to execute specifies the external LoadBalancer IP of the `yb-tserver-service`, as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). You can verify the connection via the following command:
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-client:latest ysqlsh -h <External_Cluster_IP> "sslmode=require"
@@ -210,11 +198,7 @@ You are connected to database "yugabyte" as user "yugabyte" on host "35.200.205.
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 ```
 
-The following example shows a client that uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect:
-
-Info pending
-
-To verify the connection, use the following `docker run` command:
+When a client uses the `YCQL shell` ([`ycqlsh`](../../../admin/cqlsh)) to connect, you can verify the connection by executing the following `docker run` command:
 
 ```sh
 $ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
