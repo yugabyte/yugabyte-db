@@ -2,18 +2,15 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +33,32 @@ public class BackupsController extends AuthenticatedController {
 
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
+    JsonNode custStorageLoc = CommonUtils.getNodeProperty(
+      Customer.get(customerUUID).getFeatures(),
+      "universes.details.backups.storageLocation"
+    );
+    boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
+    if (!isStorageLocMasked) {
+      Users user = (Users) ctx().args.get("user");
+      JsonNode userStorageLoc = CommonUtils.getNodeProperty(
+        user.getFeatures(),
+        "universes.details.backups.storageLocation"
+      );
+      isStorageLocMasked = userStorageLoc != null && userStorageLoc.asText().equals("hidden");
+    }
+
+    // If either customer or user featureConfig has storageLocation hidden,
+    // mask the string in each backup
+    if (isStorageLocMasked) {
+      for (Backup backup : backups) {
+        BackupTableParams params = backup.getBackupInfo();
+        String loc = params.storageLocation;
+        if (!loc.isEmpty()) {
+          params.storageLocation = "**********";
+        }
+        backup.setBackupInfo(params);
+      }
+    }
     return ApiResponse.success(backups);
   }
 
