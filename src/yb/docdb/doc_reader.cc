@@ -34,6 +34,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
 using std::vector;
@@ -65,10 +66,9 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
       txn_op_context, deadline, read_time);
-  DeadlineInfo deadline_info(deadline);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
-  DocDBTableReader doc_reader(iter.get(), &deadline_info, SeekFwdSuffices::kFalse);
+  DocDBTableReader doc_reader(iter.get(), deadline, SeekFwdSuffices::kFalse);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   SubDocument result;
@@ -80,12 +80,12 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 
 DocDBTableReader::DocDBTableReader(
     IntentAwareIterator* iter,
-    DeadlineInfo* deadline_info,
+    CoarseTimePoint deadline,
     SeekFwdSuffices seek_fwd_suffices)
     : iter_(iter),
-      deadline_info_(deadline_info),
+      deadline_info_(deadline),
       seek_fwd_suffices_(seek_fwd_suffices),
-      subdoc_reader_builder_(iter_, deadline_info_) {}
+      subdoc_reader_builder_(iter_, &deadline_info_) {}
 
 void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
   Expiration table_ttl(TableTTL(table_schema));

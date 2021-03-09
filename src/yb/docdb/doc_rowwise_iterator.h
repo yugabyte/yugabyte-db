@@ -29,7 +29,6 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/util/status.h"
 #include "yb/util/operation_counter.h"
 
@@ -215,8 +214,6 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // Used for keeping track of errors in HasNext.
   mutable Status has_next_status_;
-
-  mutable DeadlineInfo deadline_info_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
