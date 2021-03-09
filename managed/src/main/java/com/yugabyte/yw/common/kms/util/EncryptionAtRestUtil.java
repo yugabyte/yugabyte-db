@@ -13,9 +13,9 @@ package com.yugabyte.yw.common.kms.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
@@ -210,20 +210,7 @@ public class EncryptionAtRestUtil {
     public static ArrayNode getUniverses(UUID configUUID) {
       Set<Universe> universes = KmsHistory.getUniverses(
           configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-      ArrayNode details = Json.newArray();
-      
-      for (Universe universe : universes) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        ObjectNode universePayload = Json.newObject();
-        universePayload.put("name", universe.name);
-        universePayload.put("updateInProgress", universeDetails.updateInProgress);
-        universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
-        universePayload.put("uuid", universe.universeUUID.toString());
-        universePayload.put("creationDate", universe.creationDate.getTime());
-        universePayload.put("universePaused", universeDetails.universePaused);
-        details.add(universePayload);
-      }
-      return details;
+      return Util.getUniverseDetails(universes);
     }
 
     public static int getNumKeyRotations(UUID universeUUID) {

@@ -178,19 +178,7 @@ public class CertificateInfo extends Model {
   }
 
   public ArrayNode getUniverseDetails() {
-    List<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
-    ArrayNode details = Json.newArray();
-    for (Universe universe : universes) {
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      ObjectNode universePayload = Json.newObject();
-      universePayload.put("name", universe.name);
-      universePayload.put("updateInProgress", universeDetails.updateInProgress);
-      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
-      universePayload.put("uuid", universe.universeUUID.toString());
-      universePayload.put("creationDate", universe.creationDate.getTime());
-      universePayload.put("universePaused", universeDetails.universePaused);
-      details.add(universePayload);
-    }
-    return details;
+    Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
+    return Util.getUniverseDetails(universes);
   }
 }
