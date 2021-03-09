@@ -62,6 +62,10 @@ YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
 # TTL in seconds for how long DNS records will be cached.
 DNS_RECORD_SET_TTL = 5
 
+# Minimum required resources on a VM.
+MIN_MEM_SIZE_GB = 2
+MIN_NUM_CORES = 2
+
 
 class ReleasePackage(object):
     def __init__(self):
