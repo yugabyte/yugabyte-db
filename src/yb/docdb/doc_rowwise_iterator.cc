@@ -466,8 +466,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
-      deadline_info_(deadline_) {
+      done_(false) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
   projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
@@ -697,7 +696,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // SubDocument.
     }
     if (doc_reader_ == nullptr) {
-      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), &deadline_info_);
+      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), deadline_);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema_);
