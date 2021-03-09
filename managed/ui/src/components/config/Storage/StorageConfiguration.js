@@ -2,86 +2,20 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
-import { change } from 'redux-form';
+import { withRouter } from 'react-router';
+import { SubmissionError } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
-import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
-import { withRouter } from 'react-router';
-import { Field, SubmissionError } from 'redux-form';
+import { YBButton } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
-import { YBConfirmModal } from '../../modals';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
-import YBInfoTip from '../../common/descriptors/YBInfoTip';
-
-import awss3Logo from './images/aws-s3.png';
-import azureLogo from './images/azure_logo.svg';
-import {
-  isNonEmptyObject,
-  isEmptyObject,
-  isDefinedNotNull
-} from '../../../utils/ObjectUtils';
 import { BackupList } from './BackupList';
 import { EditBackupList } from './EditBackupList';
 import { CreateBackup } from './CreateBackup';
-
-const storageConfigTypes = {
-  NFS: {
-    title: 'NFS Storage',
-    fields: [
-      {
-        id: 'NFS_CONFIGURATION_NAME',
-        label: 'Configuration Name',
-        placeHolder: 'Configuration Name'
-      },
-      {
-        id: 'NFS_BACKUP_LOCATION',
-        label: 'NFS Storage Path',
-        placeHolder: 'NFS Storage Path'
-      }
-    ]
-  },
-  GCS: {
-    title: 'GCS Storage',
-    fields: [
-      {
-        id: 'GCS_CONFIGURATION_NAME',
-        label: 'Configuration Name',
-        placeHolder: 'Configuration Name'
-      },
-      {
-        id: 'GCS_BACKUP_LOCATION',
-        label: 'GCS Bucket',
-        placeHolder: 'GCS Bucket'
-      },
-      {
-        id: 'GCS_CREDENTIALS_JSON',
-        label: 'GCS Credentials',
-        placeHolder: 'GCS Credentials JSON'
-      }
-    ]
-  },
-  AZ: {
-    title: 'Azure Storage',
-    fields: [
-      {
-        id: 'AZ_CONFIGURATION_NAME',
-        label: 'Configuration Name',
-        placeHolder: 'Configuration Name'
-      },
-      {
-        id: 'AZ_BACKUP_LOCATION',
-        label: 'Container URL',
-        placeHolder: 'Container URL'
-      },
-      {
-        id: 'AZURE_STORAGE_SAS_TOKEN',
-        label: 'SAS Token',
-        placeHolder: 'SAS Token'
-      }
-    ]
-  }
-};
+import { StorageConfigTypes } from './ConfigType';
+import awss3Logo from './images/aws-s3.png';
+import azureLogo from './images/azure_logo.svg';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -137,12 +71,17 @@ class StorageConfiguration extends Component {
     };
   }
 
+  componentDidMount() {
+    this.props.fetchCustomerConfigs();
+  }
+
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
 
-  wrapFields = (configFields, configName, configControls) => {
+  wrapFields = (configFields, configName) => {
     const configNameFormatted = configName.toLowerCase();
+  
     return (
       <Tab
         eventKey={configNameFormatted}
@@ -153,7 +92,6 @@ class StorageConfiguration extends Component {
         {!this.state.listview[configNameFormatted] &&
           <Row className="config-section-header" key={configNameFormatted}>
             <Col lg={8}>{configFields}</Col>
-            {configControls && <Col lg={4}>{configControls}</Col>}
           </Row>
         }
       </Tab>
@@ -162,7 +100,8 @@ class StorageConfiguration extends Component {
 
   addStorageConfig = (values, action, props) => {
     const type =
-      (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
+      (props.activeTab && props.activeTab.toUpperCase())
+      || Object.keys(StorageConfigTypes)[0];
     Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
@@ -246,10 +185,6 @@ class StorageConfiguration extends Component {
       });
   };
 
-  componentDidMount() {
-    this.props.fetchCustomerConfigs();
-  }
-
   // This method will enable the edit config form.
   editBackupConfig = (row, activeTab) => {
     const tab = activeTab.toUpperCase();
@@ -317,7 +252,8 @@ class StorageConfiguration extends Component {
       customerConfigs
     } = this.props;
     const { iamRoleEnabled } = this.state;
-    const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
+    const activeTab = this.props.activeTab
+    || Object.keys(StorageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
@@ -342,19 +278,17 @@ class StorageConfiguration extends Component {
         >
           {!this.state.listview.s3 &&
             <AwsStorageConfiguration
-              // {...this.props}
               data={this.state.editView.s3.data}
-              // deleteStorageConfig={this.deleteStorageConfig}
               iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
             />
           }
         </Tab>
       ];
-      Object.keys(storageConfigTypes).forEach((configName) => {
+      Object.keys(StorageConfigTypes).forEach((configName) => {
         if (this.state.editView[activeTab]?.isEdited) {
           const configFields = [];
-          const configTemplate = storageConfigTypes[configName];
+          const configTemplate = StorageConfigTypes[configName];
           configTemplate.fields.forEach((field) => {
             const value = this.state.editView[activeTab].data;
             configFields.push(
@@ -369,7 +303,7 @@ class StorageConfiguration extends Component {
           configs.push(this.wrapFields(configFields, configName));
         } else {
           const configFields = [];
-          const config = storageConfigTypes[configName];
+          const config = StorageConfigTypes[configName];
           config.fields.forEach((field) => {
             configFields.push(
               <CreateBackup
@@ -387,7 +321,7 @@ class StorageConfiguration extends Component {
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
             <YBTabsPanel
-              defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+              defaultTab={Object.keys(StorageConfigTypes)[0].toLowerCase()}
               activeTab={activeTab}
               id="storage-config-tab-panel"
               className="config-tabs"

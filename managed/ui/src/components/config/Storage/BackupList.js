@@ -1,14 +1,17 @@
 // Copyright (c) YugaByte, Inc.
-// 
+//
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
+//
+// This file will hold a common list view for the different kind
+// of storage configuration.
 
-import React from 'react';
-import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
-import { YBConfirmModal } from '../../modals';
-import { YBPanelItem } from '../../panels';
+import React, { useState } from "react";
+import { Button, DropdownButton, MenuItem } from "react-bootstrap";
+import { BootstrapTable, TableHeaderColumn } from "react-bootstrap-table";
+import YBInfoTip from "../../common/descriptors/YBInfoTip";
+import { FlexContainer, FlexShrink } from "../../common/flexbox/YBFlexBox";
+import { YBConfirmModal } from "../../modals";
+import { YBPanelItem } from "../../panels";
 
 // Data format for configuration name column.
 const getBackupConfigName = (cell, row) => {
@@ -25,23 +28,23 @@ const getBackupLocation = (cell, row) => {
   return row.data.BACKUP_LOCATION;
 };
 
-// This method will help us to delete the respective backup config
-// if it's not in use.
-const handleDeleteBackupConfig = (configUUID) => {
-  console.log(configUUID, '******************configUUID');
-  // return true;
-};
-
 // This method will return all the necessary actions
 // for the give list.
-const foramtConfigActions = (cell, row, onEdit, deleteStorageConfig, showDeleteStorageConfig, visibleModal, hideDeleteStorageConfig) => {
+const foramtConfigActions = (cell, row, operations) => {
   const {
     configUUID,
-    data,
     inUse,
     name
   } = row;
-  const configName = data.CONFIGURATION_NAME;
+  const {
+    configData,
+    onEdit,
+    deleteStorageConfig,
+    setConfigData,
+    showDeleteStorageConfig,
+    visibleModal,
+    hideDeleteStorageConfig
+  } = operations;
 
   return (
     <DropdownButton
@@ -54,7 +57,10 @@ const foramtConfigActions = (cell, row, onEdit, deleteStorageConfig, showDeleteS
         <i className="fa fa-pencil"></i> Edit Configuration
       </MenuItem>
       <MenuItem
-        onClick={() => deleteStorageConfig(configUUID)}//{() => showDeleteStorageConfig(name)}
+        onClick={() => {
+          setConfigData(configUUID);
+          showDeleteStorageConfig(name);
+        }}
         disabled={inUse}>
         {!inUse &&
           <><i className="fa fa-trash"></i> Delete Configuration</>
@@ -71,19 +77,19 @@ const foramtConfigActions = (cell, row, onEdit, deleteStorageConfig, showDeleteS
         }
       </MenuItem>
 
-      {/* {!inUse &&
-        <YBConfirmModal
+      {<YBConfirmModal
           name="delete-storage-config"
-          title='Confirm Delete'
-          onConfirm={() => deleteStorageConfig(row)}
-          currentModal={'delete' + name + 'StorageConfig'}
+          title="Confirm Delete"
+          onConfirm={() => deleteStorageConfig(configData)}
+          currentModal={"delete" + name + "StorageConfig"}
           visibleModal={visibleModal}
           hideConfirmModal={hideDeleteStorageConfig}
         >
           Are you sure you want to delete {name} Storage Configuration?
         </YBConfirmModal>
-      } */}
+      }
 
+      {/* TODO: Need to implement the show universe which is in review list */}
       <MenuItem>
         <i className="fa fa-eye"></i> Show Universes
       </MenuItem>
@@ -107,7 +113,8 @@ const header = (currTab, onCreateBackup) => (
   </>
 );
 
-function BackupList(props) {
+const BackupList = (props) => {
+  const [ configData, setConfigData ] = useState({});  
   const {
     activeTab,
     data,
@@ -162,7 +169,19 @@ function BackupList(props) {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={(cell, row) => foramtConfigActions(cell, row, onEdit, deleteStorageConfig, showDeleteStorageConfig, visibleModal, hideDeleteStorageConfig)}
+                dataFormat={(cell, row) => foramtConfigActions(
+                  cell,
+                  row,
+                  {
+                    configData,
+                    deleteStorageConfig,
+                    hideDeleteStorageConfig,
+                    onEdit,
+                    setConfigData,
+                    showDeleteStorageConfig,
+                    visibleModal
+                  }
+                )}
                 columnClassName="yb-actions-cell"
                 className="yb-actions-cell"
               >

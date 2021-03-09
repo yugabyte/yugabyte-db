@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
-import { Field } from 'redux-form';
-import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull, isEmptyObject } from '../../../utils/ObjectUtils';
-import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import React, { Component } from "react";
+import { Row, Col } from "react-bootstrap";
+import { YBButton, YBToggle, YBTextInputWithLabel } from "../../common/forms/fields";
+import { Field } from "redux-form";
+import { YBConfirmModal } from "../../modals";
+import { isDefinedNotNull, isEmptyObject } from "../../../utils/ObjectUtils";
+import YBInfoTip from "../../common/descriptors/YBInfoTip";
 
-const required = value => value ? undefined : 'This field is required.';
+const required = value => value ? undefined : "This field is required.";
 
 class AwsStorageConfiguration extends Component {
 
@@ -16,12 +16,12 @@ class AwsStorageConfiguration extends Component {
   // based on the given conditions.
   disableInputFields = (data, configName, iamRoleEnabled) => {
     if (data.inUse) {
-      if (configName !== 'S3_CONFIGURATION_NAME') {
+      if (configName !== "S3_CONFIGURATION_NAME") {
         return true;
       }
     }
 
-    if (data['IAM_INSTANCE_PROFILE'] || iamRoleEnabled) {
+    if (data["IAM_INSTANCE_PROFILE"] || iamRoleEnabled) {
       if (configName === "AWS_ACCESS_KEY_ID" || configName === "AWS_SECRET_ACCESS_KEY") {
         return true;
       }
@@ -37,9 +37,9 @@ class AwsStorageConfiguration extends Component {
     const allowKeyEdits = !isEmptyObject(data) || iamRoleEnabled;
     
     return (
-      <Row className="config-section-header" key={'s3'}>
+      <Row className="config-section-header" key={"s3"}>
         <Col lg={9}>
-          <Row className="config-provider-row" key={'configuration-name'}>
+          <Row className="config-provider-row" key={"configuration-name"}>
             <Col lg={2}>
               <div className="form-item-custom-label">Configuration Name</div>
             </Col>
@@ -49,8 +49,8 @@ class AwsStorageConfiguration extends Component {
                   name="AWS_CONFIGURATION_NAME"
                   component={YBTextInputWithLabel}
                   // input={{
-                  //   value: data['CONFIGURATION_NAME'],
-                  //   disabled: this.disableInputFields(data, 'S3_CONFIGURATION_NAME')
+                  //   value: data["CONFIGURATION_NAME"],
+                  //   disabled: this.disableInputFields(data, "S3_CONFIGURATION_NAME")
                   // }}
                 />
               ) : ( */}
@@ -69,7 +69,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={'s3-iam-instance-profile'}>
+          <Row className="config-provider-row" key={"s3-iam-instance-profile"}>
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
             </Col>
@@ -80,8 +80,8 @@ class AwsStorageConfiguration extends Component {
                   component={YBToggle}
                   onToggle={iamInstanceToggle}
                   input={{
-                    value: data['IAM_INSTANCE_PROFILE'],
-                    disabled: this.disableInputFields(data, 'IAM_INSTANCE_PROFILE')
+                    value: data["IAM_INSTANCE_PROFILE"],
+                    disabled: this.disableInputFields(data, "IAM_INSTANCE_PROFILE")
                   }}
                   subLabel="Whether to use instance's IAM role for S3 backup."
                 />
@@ -95,7 +95,7 @@ class AwsStorageConfiguration extends Component {
               )}
             </Col>
           </Row>
-          <Row className="config-provider-row" key={'s3-aws-access-key-id'}>
+          <Row className="config-provider-row" key={"s3-aws-access-key-id"}>
             <Col lg={2}>
               <div className="form-item-custom-label">Access Key</div>
             </Col>
@@ -105,8 +105,8 @@ class AwsStorageConfiguration extends Component {
                   name="AWS_ACCESS_KEY_ID"
                   placeHolder="AWS Access Key"
                   input={{
-                    value: data['AWS_ACCESS_KEY_ID'] || '',
-                    disabled: this.disableInputFields(data, 'AWS_ACCESS_KEY_ID', iamRoleEnabled)
+                    value: data["AWS_ACCESS_KEY_ID"] || "",
+                    disabled: this.disableInputFields(data, "AWS_ACCESS_KEY_ID", iamRoleEnabled)
                   }}
                   component={YBTextInputWithLabel}
                 />
@@ -120,7 +120,7 @@ class AwsStorageConfiguration extends Component {
               )}
             </Col>
           </Row>
-          <Row className="config-provider-row" key={'s3-aws-secret-access-key'}>
+          <Row className="config-provider-row" key={"s3-aws-secret-access-key"}>
             <Col lg={2}>
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
@@ -130,8 +130,8 @@ class AwsStorageConfiguration extends Component {
                   name="AWS_SECRET_ACCESS_KEY"
                   placeHolder="AWS Access Secret"
                   input={{
-                    value: data['AWS_SECRET_ACCESS_KEY'] || '',
-                    disabled: this.disableInputFields(data, 'AWS_SECRET_ACCESS_KEY', iamRoleEnabled)
+                    value: data["AWS_SECRET_ACCESS_KEY"] || "",
+                    disabled: this.disableInputFields(data, "AWS_SECRET_ACCESS_KEY", iamRoleEnabled)
                   }}
                   component={YBTextInputWithLabel}
                 />
@@ -145,7 +145,7 @@ class AwsStorageConfiguration extends Component {
               )}
             </Col>
           </Row>
-          <Row className="config-provider-row" key={'s3-backup-location'}>
+          <Row className="config-provider-row" key={"s3-backup-location"}>
             <Col lg={2}>
               <div className="form-item-custom-label">S3 Bucket</div>
             </Col>
@@ -155,8 +155,8 @@ class AwsStorageConfiguration extends Component {
                   name="AWS_BACKUP_LOCATION"
                   placeHolder="s3://S3 Bucket"
                   input={{
-                    value: data['BACKUP_LOCATION'],
-                    disabled: this.disableInputFields(data, 'AWS_BACKUP_LOCATION')
+                    value: data["BACKUP_LOCATION"],
+                    disabled: this.disableInputFields(data, "AWS_BACKUP_LOCATION")
                   }}
                   component={YBTextInputWithLabel}
                 />
@@ -176,7 +176,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={'s3-backup-host-base'}>
+          <Row className="config-provider-row" key={"s3-backup-host-base"}>
             <Col lg={2}>
               <div className="form-item-custom-label">S3 Bucket Host Base</div>
             </Col>
@@ -186,8 +186,8 @@ class AwsStorageConfiguration extends Component {
                   name="AWS_HOST_BASE"
                   placeHolder="s3.amazonaws.com"
                   input={{
-                    value: data['AWS_HOST_BASE'],
-                    disabled: this.disableInputFields(data, 'AWS_HOST_BASE')
+                    value: data["AWS_HOST_BASE"],
+                    disabled: this.disableInputFields(data, "AWS_HOST_BASE")
                   }}
                   component={YBTextInputWithLabel}
                 />

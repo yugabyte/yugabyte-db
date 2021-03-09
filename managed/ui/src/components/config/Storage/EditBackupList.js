@@ -1,12 +1,15 @@
 // Copyright (c) YugaByte, Inc.
-// 
+//
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
+//
+// This file will hold a editable view for the particular storage
+// configuration input fields.
 
-import { Field } from 'redux-form';
-import React from 'react';
-import { Col, Row } from 'react-bootstrap';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { YBTextInputWithLabel } from '../../common/forms/fields';
+import { Field } from "redux-form";
+import React from "react";
+import { Col, Row } from "react-bootstrap";
+import { isDefinedNotNull } from "../../../utils/ObjectUtils";
+import { YBTextInputWithLabel } from "../../common/forms/fields";
 
 // This method will handle the disable validation for the
 // input fields.
@@ -18,7 +21,7 @@ const disbaleFields = (data, fieldId, configName) => {
   }
 }
 
-function EditBackupList(props) {
+const EditBackupList = (props) => {
   const {
     configName,
     data,
@@ -38,7 +41,7 @@ function EditBackupList(props) {
             value: data[field.id],
             disabled: disbaleFields(data, field.id, configName)
           }}
-          component={YBTextInputWithLabel}
+          component={field.component}
         />
       </Col>
     </Row>

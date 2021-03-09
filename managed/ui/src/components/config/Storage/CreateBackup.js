@@ -1,13 +1,15 @@
 // Copyright (c) YugaByte, Inc.
-// 
+//
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
+//
+// This file is responsible for the creation of all the input
+// fields for it"s respective storage configuration type.
 
-import { Field } from 'redux-form';
-import React from 'react';
-import { Col, Row } from 'react-bootstrap';
-import { YBTextInputWithLabel } from '../../common/forms/fields';
+import { Field } from "redux-form";
+import React from "react";
+import { Col, Row } from "react-bootstrap";
 
-function CreateBackup(props) {
+const CreateBackup = (props) => {
   const {
     configName,
     field
@@ -22,7 +24,7 @@ function CreateBackup(props) {
         <Field
           name={field.id}
           placeHolder={field.placeHolder}
-          component={YBTextInputWithLabel}
+          component={field.component}
         />
       </Col>
     </Row>
