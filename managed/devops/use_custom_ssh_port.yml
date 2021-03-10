@@ -16,7 +16,9 @@
     - name: 'install python 2.x'
       raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
     - name: Install policycoreutils-python
-      raw: "yum install -y policycoreutils-python"
+      package:
+        name: policycoreutils-python
+        state: present
       when: machine_image is match(".*centos-7-v20210217")
   roles:
     - ansible-sshd
