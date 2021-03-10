@@ -15,7 +15,7 @@ import { YBPanelItem } from "../../panels";
 
 // Data format for configuration name column.
 const getBackupConfigName = (cell, row) => {
-  return row.data.CONFIGURATION_NAME;
+  return row.configName;
 };
 
 // Data format for status column.
@@ -53,9 +53,11 @@ const foramtConfigActions = (cell, row, operations) => {
       id="bg-nested-dropdown"
       pullRight
     >
-      <MenuItem onClick={() => onEdit(row)}>
+      {/* TODO: Under discussion whether we need to enable this or not. */}
+
+      {/* <MenuItem onClick={() => onEdit(row)}>
         <i className="fa fa-pencil"></i> Edit Configuration
-      </MenuItem>
+      </MenuItem> */}
       <MenuItem
         onClick={() => {
           setConfigData(configUUID);

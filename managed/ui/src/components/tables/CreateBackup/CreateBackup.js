@@ -225,8 +225,8 @@ export default class CreateBackup extends Component {
       && storageConfigs.reduce((val, indx) => {
         const configType = `${indx.name} Storage`;
         val[configType]
-          ? val[configType].push(indx.name)
-          : (val[configType] = [indx.name]);
+          ? val[configType].push(indx.configName)
+          : (val[configType] = [indx.configName]);
         return val;
     }, {});
 

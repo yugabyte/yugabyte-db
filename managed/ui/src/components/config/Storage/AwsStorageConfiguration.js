@@ -44,23 +44,23 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Configuration Name</div>
             </Col>
             <Col lg={9}>
-              {/* {!isEmptyObject(data) ? (
+              {!isEmptyObject(data) ? (
                 <Field
-                  name="AWS_CONFIGURATION_NAME"
+                  name="S3_CONFIGURATION_NAME"
                   component={YBTextInputWithLabel}
-                  // input={{
-                  //   value: data["CONFIGURATION_NAME"],
-                  //   disabled: this.disableInputFields(data, "S3_CONFIGURATION_NAME")
-                  // }}
+                  input={{
+                    value: data["S3_CONFIGURATION_NAME"],
+                    disabled: this.disableInputFields(data, "S3_CONFIGURATION_NAME")
+                  }}
                 />
-              ) : ( */}
+              ) : (
                 <Field
                   name="S3_CONFIGURATION_NAME"
                   placeHolder="Configuration Name"
                   component={YBTextInputWithLabel}
                   validate={required}
                 />
-              {/* )} */}
+              )}
             </Col>
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
@@ -162,7 +162,7 @@ class AwsStorageConfiguration extends Component {
                 />
               ) : (
                 <Field
-                  name="S3_BACKUP_LOCATION"
+                  name="AWS_BACKUP_LOCATION"
                   placeHolder="s3://S3 Bucket"
                   component={YBTextInputWithLabel}
                   validate={required}

@@ -9,6 +9,8 @@ import { Field } from "redux-form";
 import React from "react";
 import { Col, Row } from "react-bootstrap";
 
+const required = value => value ? undefined : "This field is required.";
+
 const CreateBackup = (props) => {
   const {
     configName,
@@ -25,6 +27,7 @@ const CreateBackup = (props) => {
           name={field.id}
           placeHolder={field.placeHolder}
           component={field.component}
+          validate={required}
         />
       </Col>
     </Row>

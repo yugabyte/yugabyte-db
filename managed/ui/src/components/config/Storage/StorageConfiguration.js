@@ -137,7 +137,7 @@ class StorageConfiguration extends Component {
 
       default:
         if (values['IAM_INSTANCE_PROFILE']) {
-          configName = dataPayload['AWS_CONFIGURATION_NAME'];
+          configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
           dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
@@ -146,7 +146,7 @@ class StorageConfiguration extends Component {
             'IAM_INSTANCE_PROFILE'
           ]);
         } else {
-          configName = dataPayload['AWS_CONFIGURATION_NAME'];
+          configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
@@ -158,7 +158,8 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    return this.props
+    return (
+      this.props
       .addCustomerConfig({
         type: 'STORAGE',
         name: type,
@@ -174,7 +175,13 @@ class StorageConfiguration extends Component {
           // show server-side validation errors under form inputs
           throw new SubmissionError(this.props.addConfig.error);
         }
-      });
+      }), this.setState({
+        listview: {
+          ...this.state.listview,
+          [props.activeTab]: true
+        }
+      })
+    );
   };
 
   deleteStorageConfig = (configUUID) => {
@@ -192,7 +199,7 @@ class StorageConfiguration extends Component {
       ...row.data,
       'inUse': row.inUse,
       [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
-      [`${tab}_CONFIGURATION_NAME`]: row.data.CONFIGURATION_NAME,
+      [`${tab}_CONFIGURATION_NAME`]: row.configName,
     };
 
     this.setState({
