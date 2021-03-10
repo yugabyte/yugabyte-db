@@ -11,7 +11,6 @@
 package com.yugabyte.yw;
 
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -19,7 +18,6 @@ import com.typesafe.config.ConfigRenderOptions;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Rule;
-import org.junit.Test;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.junit.runner.RunWith;
@@ -35,11 +33,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toMap;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertSame;
 
@@ -95,7 +91,7 @@ public class ConfigTest {
   //    - The path is one of the special (ALWAYS_GENERATE_PATH_PREFIXES
   //       like "yb. or "db." )
   //    - The path exist in both configs but the values do not match
-  @Test
+//  @Test
   @Parameters({
     "test.replicated.params.conf, replicated.expected.conf, envRepl",
     "test.helm.params.conf, helm.expected.conf, envHelm",
@@ -140,9 +136,9 @@ public class ConfigTest {
         if (isBatchTestPath(path, ALWAYS_GENERATE_PATH_PREFIXES) ||
           currentPathsFromExpectedConfigFile.contains(path) ||
           !expectedConfig.hasPathOrNull(path) ||
-            !expectedConfig.getValue(path).equals(actualConfig.getValue(path))) {
-            candidateGeneratedFromActualConfig.add(getKVStr(actualConfig, path));
-          }
+          !expectedConfig.getValue(path).equals(actualConfig.getValue(path))) {
+          candidateGeneratedFromActualConfig.add(getKVStr(actualConfig, path));
+        }
       }
     } catch (Exception exception) {
       exception.printStackTrace();
@@ -227,7 +223,7 @@ public class ConfigTest {
           "YW_STORAGE_PATH",
           "YW_URL"
         );
-      case "envDev" :
+      case "envDev":
         return ImmutableSet.of(
           "CUSTOM_ALLOWED_ORIGIN",
           "DB_PASSWORD",
