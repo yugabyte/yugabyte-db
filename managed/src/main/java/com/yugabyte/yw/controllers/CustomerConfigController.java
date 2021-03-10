@@ -18,8 +18,6 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 public class CustomerConfigController extends AuthenticatedController {
@@ -60,5 +58,34 @@ public class CustomerConfigController extends AuthenticatedController {
 
   public Result list(UUID customerUUID) {
     return ApiResponse.success(CustomerConfig.getAll(customerUUID));
+  }
+
+  public Result edit(UUID customerUUID, UUID configUUID) {
+    JsonNode formData =  request().body().asJson();
+    ObjectNode errorJson = configValidator.validateFormData(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+
+    errorJson = configValidator.validateDataContent(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
+    if (customerConfig == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
+    }
+    CustomerConfig config = CustomerConfig.get(configUUID);
+    if (customerConfig.getInUse()) {
+      config.configName = formData.get("configName").toString();
+      config.update();
+      return ApiResponse.success(config);
+    }
+    config.data = Json.toJson(formData.get("data"));
+    config.configName = formData.get("configName").toString();
+    config.name = formData.get("name").toString();
+    config.update();
+    Audit.createAuditEntry(ctx(), request());
+    return ApiResponse.success(config);
   }
 }
