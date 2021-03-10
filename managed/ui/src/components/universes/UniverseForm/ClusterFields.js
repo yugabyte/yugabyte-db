@@ -259,9 +259,9 @@ export default class ClusterFields extends Component {
       const userIntent =
         clusterType === 'async'
           ? readOnlyCluster && {
-            ...readOnlyCluster.userIntent,
-            universeName: primaryCluster.userIntent.universeName
-          }
+              ...readOnlyCluster.userIntent,
+              universeName: primaryCluster.userIntent.universeName
+            }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled =
@@ -600,7 +600,7 @@ export default class ClusterFields extends Component {
     if (type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists)) {
       this.props.handleHasFieldChanged(
         this.hasFieldChanged() ||
-        !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
+          !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
       );
     } else {
       this.props.handleHasFieldChanged(true);
@@ -733,12 +733,23 @@ export default class ClusterFields extends Component {
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
-      updateFormField('primary.enableExposingService', event.target.checked ?
-          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
-      updateFormField('async.enableExposingService', event.target.checked ?
-          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']);
-      this.setState({ enableExposingService: event.target.checked ?
-          EXPOSING_SERVICE_STATE_TYPES['Exposed'] : EXPOSING_SERVICE_STATE_TYPES['Unexposed']});
+      updateFormField(
+        'primary.enableExposingService',
+        event.target.checked
+          ? EXPOSING_SERVICE_STATE_TYPES['Exposed']
+          : EXPOSING_SERVICE_STATE_TYPES['Unexposed']
+      );
+      updateFormField(
+        'async.enableExposingService',
+        event.target.checked
+          ? EXPOSING_SERVICE_STATE_TYPES['Exposed']
+          : EXPOSING_SERVICE_STATE_TYPES['Unexposed']
+      );
+      this.setState({
+        enableExposingService: event.target.checked
+          ? EXPOSING_SERVICE_STATE_TYPES['Exposed']
+          : EXPOSING_SERVICE_STATE_TYPES['Unexposed']
+      });
     }
   }
 
@@ -762,7 +773,8 @@ export default class ClusterFields extends Component {
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
       this.setState({
         enableNodeToNodeEncrypt: event.target.checked,
-        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked});
+        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
+      });
     }
   }
 
@@ -1108,16 +1120,19 @@ export default class ClusterFields extends Component {
 
     // Populate the cloud provider list
     if (isNonEmptyArray(cloud.providers.data)) {
-      universeProviderList = cloud.providers.data.map(function (providerItem, idx) {
+      universeProviderList = cloud.providers.data.reduce((providerOption, providerItem) => {
+        if (this.props.type === 'Async' && providerItem.code === 'kubernetes') {
+          return providerOption;
+        }
         if (providerItem.uuid === currentProviderUUID) {
           currentProviderCode = providerItem.code;
         }
-        return (
+        return providerOption.concat(
           <option key={providerItem.uuid} value={providerItem.uuid}>
             {providerItem.name}
           </option>
         );
-      });
+      }, []);
     }
 
     // Spot price and EBS types
@@ -1147,7 +1162,7 @@ export default class ClusterFields extends Component {
       });
     const azuTypesList =
       cloud.azuTypes.data &&
-      cloud.azuTypes.data.sort().map(function (azuType, idx) {
+      cloud.azuTypes.data.sort().map?.(function (azuType, idx) {
         return (
           <option key={azuType} value={azuType}>
             {API_UI_STORAGE_TYPES[azuType]}
@@ -1159,7 +1174,7 @@ export default class ClusterFields extends Component {
       <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
-      ...cloud.authConfig.data.map((config, index) => {
+      ...cloud.authConfig.data.map?.((config, index) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
         return (
           <option value={config.metadata.configUUID} key={`kms-option-${index + 1}`}>
@@ -1206,8 +1221,9 @@ export default class ClusterFields extends Component {
     if (isNonEmptyObject(deviceInfo)) {
       const currentProvider = this.getCurrentProvider(self.state.providerSelected);
       if (
-        (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD'
-          || self.state.volumeType === 'NVME') &&
+        (self.state.volumeType === 'EBS' ||
+          self.state.volumeType === 'SSD' ||
+          self.state.volumeType === 'NVME') &&
         isDefinedNotNull(currentProvider)
       ) {
         const isInAws = currentProvider.code === 'aws';
@@ -1377,7 +1393,10 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={ this.clientToNodeEncryptField(isFieldReadOnly, this.state.enableNodeToNodeEncrypt)}
+          isReadOnly={this.clientToNodeEncryptField(
+            isFieldReadOnly,
+            this.state.enableNodeToNodeEncrypt
+          )}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
@@ -1422,24 +1441,36 @@ export default class ClusterFields extends Component {
       ) {
         const tlsCertOptions = [];
         if (this.props.type === 'Create') {
-          tlsCertOptions.push(<option key={'cert-option-0'} value={''}>
-            Create new certificate
-          </option>);
+          tlsCertOptions.push(
+            <option key={'cert-option-0'} value={''}>
+              Create new certificate
+            </option>
+          );
         }
 
         if (!_.isEmpty(this.props.userCertificates.data)) {
           this.props.userCertificates.data.forEach((cert, index) => {
             if (this.props.type === 'Create') {
-              const disableOnPremCustomCerts = currentProvider.code !== 'onprem' && cert.certType === 'CustomCertHostPath';
+              const disableOnPremCustomCerts =
+                currentProvider.code !== 'onprem' && cert.certType === 'CustomCertHostPath';
               tlsCertOptions.push(
-                <option key={`cert-option-${index + 1}`} value={cert.uuid} disabled={disableOnPremCustomCerts}>
+                <option
+                  key={`cert-option-${index + 1}`}
+                  value={cert.uuid}
+                  disabled={disableOnPremCustomCerts}
+                >
                   {cert.label}
                 </option>
               );
             } else {
-              const isCustomCertAndOnPrem = currentProvider.code === 'onprem' && cert.certType === 'CustomCertHostPath';
+              const isCustomCertAndOnPrem =
+                currentProvider.code === 'onprem' && cert.certType === 'CustomCertHostPath';
               tlsCertOptions.push(
-                <option key={`cert-option-${index + 1}`} value={cert.uuid} disabled={!isCustomCertAndOnPrem}>
+                <option
+                  key={`cert-option-${index + 1}`}
+                  value={cert.uuid}
+                  disabled={!isCustomCertAndOnPrem}
+                >
                   {cert.label}
                 </option>
               );
@@ -1575,7 +1606,7 @@ export default class ClusterFields extends Component {
     } else if (currentProviderCode === 'kubernetes') {
       universeInstanceTypeList =
         cloud.instanceTypes.data &&
-        cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
+        cloud.instanceTypes.data.map(function (instanceTypeItem) {
           return (
             <option
               key={instanceTypeItem.instanceTypeCode}
@@ -1590,7 +1621,7 @@ export default class ClusterFields extends Component {
     } else {
       universeInstanceTypeList =
         cloud.instanceTypes.data &&
-        cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
+        cloud.instanceTypes.data.map(function (instanceTypeItem) {
           return (
             <option
               key={instanceTypeItem.instanceTypeCode}
@@ -1608,17 +1639,15 @@ export default class ClusterFields extends Component {
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
         : getReadOnlyCluster(
-          _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
-        );
+            _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
+          );
     const placementCloud = getPlacementCloud(cluster);
-    const regionAndProviderDefined = isNonEmptyArray(formValues[clusterType]?.regionList)
-      && isNonEmptyString(formValues[clusterType]?.provider);
+    const regionAndProviderDefined =
+      isNonEmptyArray(formValues[clusterType]?.regionList) &&
+      isNonEmptyString(formValues[clusterType]?.provider);
 
     // For onprem provider type if numNodes < maxNumNodes then show the AZ error.
-    if (
-      self.props.universe.currentPlacementStatus && placementCloud
-      && regionAndProviderDefined
-    ) {
+    if (self.props.universe.currentPlacementStatus && placementCloud && regionAndProviderDefined) {
       placementStatus = (
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
@@ -1626,11 +1655,11 @@ export default class ClusterFields extends Component {
           providerCode={currentProvider?.code}
         />
       );
-    } else if (currentProvider?.code === 'onprem'
-      && !(this.state.numNodes <= this.state.maxNumNodes)
-      && self.props.universe.currentPlacementStatus
-      && isNonEmptyArray(formValues[clusterType].regionList)
-      && isNonEmptyString(formValues[clusterType].provider)
+    } else if (
+      currentProvider?.code === 'onprem' &&
+      !(this.state.numNodes <= this.state.maxNumNodes) &&
+      self.props.universe.currentPlacementStatus &&
+      regionAndProviderDefined
     ) {
       placementStatusOnprem = (
         <AZPlacementInfo
@@ -1645,8 +1674,8 @@ export default class ClusterFields extends Component {
       configTemplate && clusterType === 'primary'
         ? !!getPrimaryCluster(clusters)
         : clusterType === 'async'
-          ? !!getReadOnlyCluster(clusters)
-          : false;
+        ? !!getReadOnlyCluster(clusters)
+        : false;
     const azSelectorTable = (
       <div>
         <AZSelectorTable
@@ -1767,35 +1796,35 @@ export default class ClusterFields extends Component {
                 />
                 {clusterType === 'async'
                   ? [
-                    <Field
-                      key="numNodes"
-                      name={`${clusterType}.numNodes`}
-                      type="text"
-                      component={YBControlledNumericInputWithLabel}
-                      className={
-                        getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
-                          ? 'readonly'
-                          : ''
-                      }
-                      data-yb-field="nodes"
-                      label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
-                      onInputChanged={this.numNodesChanged}
-                      onLabelClick={this.numNodesClicked}
-                      val={this.state.numNodes}
-                      minVal={Number(this.state.replicationFactor)}
-                    />,
-                    <Field
-                      key="replicationFactor"
-                      name={`${clusterType}.replicationFactor`}
-                      type="text"
-                      component={YBRadioButtonBarWithLabel}
-                      options={[1, 2, 3, 4, 5, 6, 7]}
-                      label="Replication Factor"
-                      initialValue={this.state.replicationFactor}
-                      onSelect={this.replicationFactorChanged}
-                      isReadOnly={isFieldReadOnly}
-                    />
-                  ]
+                      <Field
+                        key="numNodes"
+                        name={`${clusterType}.numNodes`}
+                        type="text"
+                        component={YBControlledNumericInputWithLabel}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        data-yb-field="nodes"
+                        label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
+                        onInputChanged={this.numNodesChanged}
+                        onLabelClick={this.numNodesClicked}
+                        val={this.state.numNodes}
+                        minVal={Number(this.state.replicationFactor)}
+                      />,
+                      <Field
+                        key="replicationFactor"
+                        name={`${clusterType}.replicationFactor`}
+                        type="text"
+                        component={YBRadioButtonBarWithLabel}
+                        options={[1, 2, 3, 4, 5, 6, 7]}
+                        label="Replication Factor"
+                        initialValue={this.state.replicationFactor}
+                        onSelect={this.replicationFactorChanged}
+                        isReadOnly={isFieldReadOnly}
+                      />
+                    ]
                   : null}
               </div>
 
@@ -1836,7 +1865,7 @@ export default class ClusterFields extends Component {
               )}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
-              {placementStatusOnprem  || regionAndProviderDefined && azSelectorTable}
+              {placementStatusOnprem || (regionAndProviderDefined && azSelectorTable)}
             </Col>
           </Row>
         </div>
@@ -1979,8 +2008,9 @@ export default class ClusterFields extends Component {
                     component={YBToggle}
                     isReadOnly={isFieldReadOnly}
                     disableOnChange={disableToggleOnChange}
-                    checkedVal={this.state.enableExposingService ===
-                        EXPOSING_SERVICE_STATE_TYPES['Exposed']}
+                    checkedVal={
+                      this.state.enableExposingService === EXPOSING_SERVICE_STATE_TYPES['Exposed']
+                    }
                     onToggle={this.toggleEnableExposingService}
                     label="Enable Exposing Service"
                     subLabel="Assign an exposing service (loadbalancer, nodeport) for connecting to the DB endpoints over the internet."
