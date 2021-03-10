@@ -59,7 +59,6 @@ class PTOrderBy : public TreeNode {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  CHECKED_STATUS ValidateExpr(SemContext *sem_context);
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   Direction direction() const {
@@ -123,6 +122,127 @@ class PTTableRef : public TreeNode {
 using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
+// State variables for INDEX analysis.
+class SelectScanInfo : public MCBase {
+ public:
+  // Public types.
+  typedef MCSharedPtr<SelectScanInfo> SharedPtr;
+
+  // Constructor.
+  explicit SelectScanInfo(MemoryContext *memctx,
+                          int num_columns,
+                          MCVector<const PTExpr*> *scan_filtering_exprs,
+                          MCMap<MCString, ColumnDesc> *scan_column_map);
+
+  // Collecting references to columns.
+  const ColumnDesc* GetColumnDesc(const SemContext *sem_context, const MCString& col_name);
+
+  // Collecting references to filter expressions.
+  CHECKED_STATUS AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr);
+
+  // Collecting references of operators on WHERE clause.
+  CHECKED_STATUS AddWhereExpr(SemContext *sem_context,
+                              const PTRelationExpr *expr,
+                              const ColumnDesc *col_desc,
+                              PTExpr::SharedPtr value,
+                              PTExprListNode::SharedPtr col_args = nullptr);
+
+  // Setup for analyzing where clause.
+  void set_analyze_where(bool val) { analyze_where_ = val; }
+  bool analyze_where() const { return analyze_where_; }
+
+  // Setup for analyzing if clause.
+  void set_analyze_if(bool val) { analyze_if_ = val; }
+  bool analyze_if() const { return analyze_if_; }
+
+  // Setup for analyzing order by clause.
+  void StartOrderbyAnalysis(MCMap<MCString, ColumnDesc> *column_map) {
+    analyze_orderby_ = true;
+    scan_column_map_ = column_map;
+  }
+  void FinishOrderbyAnalysis() {
+    analyze_orderby_ = false;
+    scan_column_map_ = nullptr;
+  }
+
+  // Direct access functions.
+  const MCList<ColumnOp>& col_ops() const {
+    return col_ops_;
+  }
+
+  const MCVector<ColumnOpCounter>& col_op_counters() const {
+    return col_op_counters_;
+  }
+
+  const MCList<JsonColumnOp>& col_json_ops() const {
+    return col_json_ops_;
+  }
+
+  const MCList<SubscriptedColumnOp>& col_subscript_ops() const {
+    return col_subscript_ops_;
+  }
+
+ private:
+  // Processing state.
+  bool analyze_where_ = false;
+  bool analyze_if_ = false;
+  bool analyze_orderby_ = false;
+
+  // Reference list from where clause
+  MCList<ColumnOp> col_ops_;
+  MCVector<ColumnOpCounter> col_op_counters_;
+
+  MCList<JsonColumnOp> col_json_ops_;
+  MCList<SubscriptedColumnOp> col_subscript_ops_;
+
+  // All filter expression from WHERE and IF clauses.
+  MCVector<const PTExpr*> *scan_filtering_exprs_ = nullptr;
+
+  // Index columns.
+  MCMap<MCString, ColumnDesc> *scan_column_map_ = nullptr;
+};
+
+//--------------------------------------------------------------------------------------------------
+// Chosen index.
+class SelectScanSpec {
+ public:
+  SelectScanSpec() { }
+
+  const TableId& index_id() const {
+    return index_id_;
+  }
+
+  void set_index_id(const TableId& val) {
+    index_id_ = val;
+  }
+
+  bool use_primary_scan() const {
+    return index_id_.empty();
+  }
+
+  bool covers_fully() const {
+    return covers_fully_;
+  }
+
+  void set_covers_fully(bool val) {
+    covers_fully_ = val;
+  }
+
+  bool is_forward_scan() const {
+    return is_forward_scan_;
+  }
+
+  void set_is_forward_scan(bool val) {
+    is_forward_scan_ = val;
+  }
+
+ private:
+  TableId index_id_;
+  bool covers_fully_ = false;
+  bool is_forward_scan_ = true;
+};
+
+//--------------------------------------------------------------------------------------------------
 // This class represents SELECT statement.
 class PTSelectStmt : public PTDmlStmt {
  public:
@@ -145,12 +265,13 @@ class PTSelectStmt : public PTDmlStmt {
                PTOrderByListNode::SharedPtr order_by_clause,
                PTExpr::SharedPtr limit_clause,
                PTExpr::SharedPtr offset_clause);
+
   // Construct a nested select tnode to select from the index.
   PTSelectStmt(MemoryContext *memctx,
                const PTSelectStmt& parent,
                PTExprListNode::SharedPtr selected_exprs,
-               const TableId& index_id,
-               bool covers_fully);
+               const SelectScanSpec& scan_spec);
+
   virtual ~PTSelectStmt();
 
   template<typename... TypeArgs>
@@ -160,10 +281,30 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
+  // This function traverses the parse tree for SELECT statement a few times for different purposes.
+  // (1) Analyze references.
+  //     This step validate the references to tables, columns, and operators.
+  // (2) Analyze scan plan.
+  //     This step chooses an index to scan and save the scan-spec.
+  // (3) Analyze clauses
+  //     This step analyzes clauses according to the chosen scan spec to prepare for execution.
+  //
+  // NOTE:
+  // The current design for SELECT analysis is bit different from common compilation practice.
+  // extended and required more analysis, we can redo this work then.
+  // - Normally, step (1) should have collected information for processes in steps (2) and (3).
+  //   However, the existing implementation in YugaByte is different when choosing scan path.
+  // - After step (2), the current design creates a duplicate of the parse tree for nested query
+  //   and compile both SELECT twins to analyze PRIMARY and SECONDARY scan within the same context.
+  // This adds unnecessary complexities to the compilation process. However, it affects all layers
+  // in CQL, so we will keep it that way for now to avoid new bugs and extra work. If the CQL
+  // language is extended further toward SQL, we can change this design.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  bool CoversFully(const IndexInfo& index_info) const;
+
+  // Explain scan path.
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   ExplainPlanPB AnalysisResultToPB() override;
-  bool CoversFully(const IndexInfo& index_info) const;
 
   // Execution opcode.
   virtual TreeNodeOpcode opcode() const override {
@@ -221,6 +362,10 @@ class PTSelectStmt : public PTDmlStmt {
     return is_aggregate_;
   }
 
+  const SelectScanInfo *select_scan_info() const {
+    return select_scan_info_;
+  }
+
   const PTSelectStmt::SharedPtr& child_select() const {
     return child_select_;
   }
@@ -258,14 +403,24 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
  private:
+  // Analyze the components of a SELECT.
   CHECKED_STATUS LookupIndex(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);
+
+  // Analyze clauses.
+  CHECKED_STATUS AnalyzeFromClause(SemContext *sem_context);
+  CHECKED_STATUS AnalyzeSelectList(SemContext *sem_context);
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
-  CHECKED_STATUS ValidateOrderByExprs(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOffsetClause(SemContext *sem_context);
   CHECKED_STATUS ConstructSelectedSchema();
+
+  // Routines for analysis and choosing scan plan.
+  CHECKED_STATUS AnalyzeReferences(SemContext *sem_context);
+  CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
+  CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context,
+                                      const TableId& index_id,
+                                      bool *is_forward_scan);
+  CHECKED_STATUS SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
 
   // --- The parser will decorate this node with the following information --
 
@@ -287,9 +442,13 @@ class PTSelectStmt : public PTDmlStmt {
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
   PTExpr::SharedPtr offset_clause_;
-  MCVector<const PTExpr*> covering_exprs_;
 
   // -- The semantic analyzer will decorate this node with the following information --
+  // Collecting all expressions that are selected.
+  MCVector<const PTExpr*> covering_exprs_;
+
+  // Collecting all expressions that a chosen index must cover to process the statement.
+  MCVector<const PTExpr*> filtering_exprs_;
 
   bool is_forward_scan_ = true;
   bool is_aggregate_ = false;
@@ -305,6 +464,11 @@ class PTSelectStmt : public PTDmlStmt {
   // Name of all columns the SELECT statement is referenced. Similar to the list "column_refs_",
   // but this is a list of column names instead of column ids.
   MCSet<string> referenced_index_colnames_;
+  SelectScanInfo *select_scan_info_ = nullptr;
+
+  // Flag for a top level SELECT.
+  // Although CQL does not have nested SELECT, YugaByte treats INDEX query as a nested DML.
+  bool is_top_level_ = true;
 };
 
 }  // namespace ql

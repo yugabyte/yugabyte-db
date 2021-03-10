@@ -28,9 +28,11 @@
 namespace yb {
 namespace ql {
 
+class SelectScanInfo;
 class WhereExprState;
 class IfExprState;
 class PTColumnDefinition;
+class PTDmlStmt;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -55,11 +57,11 @@ class PTColumnDefinition;
 class SemState {
  public:
   // Constructor: Create a new sem_state to use and save the existing state to previous_state_.
-  SemState(SemContext *sem_context,
-           const std::shared_ptr<QLType>& expected_ql_type = QLType::Create(UNKNOWN_DATA),
-           InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const MCSharedPtr<MCString>& bindvar_name = nullptr,
-           const ColumnDesc *lhs_col = nullptr);
+  explicit SemState(SemContext *sem_context,
+                    const std::shared_ptr<QLType>& expected_ql_type = QLType::Create(UNKNOWN_DATA),
+                    InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
+                    const MCSharedPtr<MCString>& bindvar_name = nullptr,
+                    const ColumnDesc *lhs_col = nullptr);
 
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
@@ -72,6 +74,23 @@ class SemState {
   // Reset the sem_context back to its previous state.
   void ResetContextState();
 
+  // State variable for index analysis.
+  void SetScanState(SelectScanInfo *scan_state) {
+    scan_state_ = scan_state;
+  }
+  SelectScanInfo *scan_state() {
+    return scan_state_;
+  }
+
+  // State variable to checking key condition.
+  bool void_primary_key_condition() const {
+    return void_primary_key_condition_;
+  }
+
+  void set_void_primary_key_condition(bool val) {
+    void_primary_key_condition_ = val;
+  }
+
   // Update state variable for where clause.
   void SetWhereState(WhereExprState *where_state) {
     where_state_ = where_state;
@@ -83,6 +102,14 @@ class SemState {
     if_state_ = if_state;
   }
   IfExprState *if_state() const { return if_state_; }
+
+  // Update state variable for orderby clause.
+  void set_validate_orderby_expr(bool validate_orderby_expr) {
+    validate_orderby_expr_ = validate_orderby_expr;
+  }
+  bool validate_orderby_expr() const {
+    return validate_orderby_expr_;
+  }
 
   // Update the expr states.
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
@@ -111,6 +138,14 @@ class SemState {
 
   void set_bindvar_name(string bindvar_name);
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+
+  PTDmlStmt *current_dml_stmt() const {
+    return current_dml_stmt_;
+  }
+
+  void set_current_dml_stmt(PTDmlStmt *stmt) {
+    current_dml_stmt_ = stmt;
+  }
 
   bool processing_set_clause() const { return processing_set_clause_; }
   void set_processing_set_clause(bool value) { processing_set_clause_ = value; }
@@ -144,6 +179,9 @@ class SemState {
   void set_processing_index_column(PTColumnDefinition *index_column) {
     index_column_ = index_column;
   }
+  bool is_processing_index_column() const {
+    return (index_column_ != nullptr);
+  }
   void add_index_column_ref(int32_t col_id);
 
   bool is_uncovered_index_select() const;
@@ -151,6 +189,9 @@ class SemState {
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
+
+  // The current dml statement being processed.
+  PTDmlStmt *current_dml_stmt_ = nullptr;
 
   // Save the previous state to reset when done.
   SemState *previous_state_ = nullptr;
@@ -162,11 +203,25 @@ class SemState {
 
   MCSharedPtr<MCString> bindvar_name_ = nullptr;
 
+  // State variables for index analysis.
+  SelectScanInfo *scan_state_ = nullptr;
+
+  // State variable for analyzing key condition.
+  // - If select-scan is using nested INDEX key, primary key condition should be dropped off, and
+  //   this flag should be set to true. Error on primary key condition should be ignored because
+  //   the secondary index key is used in place of primary key.
+  // - Currently, this flag is only used for query that has nested INDEX query. YugaByte does not
+  //   have any other kinds of nested query
+  bool void_primary_key_condition_ = false;
+
   // State variables for where expression.
   WhereExprState *where_state_ = nullptr;
 
   // State variables for if expression.
   IfExprState *if_state_ = nullptr;
+
+  // State variables for orderby expression.
+  bool validate_orderby_expr_ = false;
 
   // Predicate for selecting data from an index instead of a user table.
   bool selecting_from_index_ = false;

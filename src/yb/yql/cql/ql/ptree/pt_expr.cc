@@ -776,17 +776,38 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  // Add filtering expressions in IF clause for indexing operations.
-  IfExprState *if_state = sem_context->if_state();
-  if (if_state != nullptr) {
-    if (op1->index_desc()) {
-      if_state->AddFilteringExpr(sem_context, this);
-    } else if (op1->expr_op() == ExprOperator::kRef) {
-      if_state->AddFilteringExpr(sem_context, this);
-    } else if (op1->expr_op() == ExprOperator::kSubColRef) {
-      if_state->AddFilteringExpr(sem_context, this);
-    } else if (op1->expr_op() == ExprOperator::kJsonOperatorRef) {
-      if_state->AddFilteringExpr(sem_context, this);
+  // Collecting scan information if its state is set.
+  SelectScanInfo *scan_state = sem_context->scan_state();
+  if (scan_state != nullptr) {
+    // Add reference to expressions and operators in WHERE clause for indexing analysis.
+    if (scan_state->analyze_where()) {
+      if (op1->index_desc()) {
+        RETURN_NOT_OK(scan_state->AddWhereExpr(sem_context, this, op1->index_desc(), op2));
+
+      } else if (op1->expr_op() == ExprOperator::kRef) {
+        const PTRef *ref = static_cast<const PTRef *>(op1.get());
+        RETURN_NOT_OK(scan_state->AddWhereExpr(sem_context, this, ref->desc(), op2));
+
+      } else if (op1->expr_op() == ExprOperator::kSubColRef) {
+        const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(op1.get());
+        RETURN_NOT_OK(scan_state->AddWhereExpr(sem_context, this, ref->desc(), op2, ref->args()));
+
+      } else if (op1->expr_op() == ExprOperator::kJsonOperatorRef) {
+        const PTJsonColumnWithOperators *ref =
+          static_cast<const PTJsonColumnWithOperators*>(op1.get());
+        RETURN_NOT_OK(scan_state->AddWhereExpr(sem_context, this, ref->desc(), op2,
+                                                  ref->operators()));
+      }
+    }
+
+    // Add filtering expressions in IF clause for indexing analysis.
+    if (scan_state->analyze_if()) {
+      if (op1->index_desc() ||
+          op1->expr_op() == ExprOperator::kRef ||
+          op1->expr_op() == ExprOperator::kSubColRef ||
+          op1->expr_op() == ExprOperator::kJsonOperatorRef) {
+        RETURN_NOT_OK(scan_state->AddFilteringExpr(sem_context, this));
+      }
     }
   }
 
@@ -950,10 +971,17 @@ const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context,
 const ColumnDesc *PTExpr::GetColumnDesc(const SemContext *sem_context,
                                         const MCString& desc_name,
                                         PTDmlStmt *stmt) const {
+  SelectScanInfo *scan_state = sem_context->scan_state();
+  if (scan_state) {
+    // Get column from scan_state when analyze index for scanning.
+    return scan_state->GetColumnDesc(sem_context, desc_name);
+  }
+
   if (stmt) {
     // Get column from DML statement when compiling a DML statement.
     return stmt->GetColumnDesc(sem_context, desc_name);
   }
+
   // Get column from symbol table in context.
   return sem_context->GetColumnDesc(desc_name);
 }
@@ -1043,10 +1071,11 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
   // and counters. No error checking is needed when processing SELECT against INDEX table because
   // we already check it against the UserTable.
   if (sem_context->processing_if_clause() && !sem_context->selecting_from_index()) {
-    if (desc_->is_primary()) {
+    if (desc_->is_primary() && !sem_context->void_primary_key_condition()) {
       return sem_context->Error(this, "Primary key column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
-    } else if (desc_->is_counter()) {
+    }
+    if (desc_->is_counter()) {
       return sem_context->Error(this, "Counter column reference is not allowed in if clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
@@ -1215,7 +1244,8 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 CHECKED_STATUS PTSubscriptedColumn::CheckLhsExpr(SemContext *sem_context) {
   // If where_state is null, we are processing the IF clause. In that case, disallow reference to
   // primary key columns.
-  if (sem_context->where_state() == nullptr && desc_->is_primary()) {
+  if (sem_context->where_state() == nullptr &&
+      desc_->is_primary() && !sem_context->void_primary_key_condition()) {
     return sem_context->Error(this, "Primary key column reference is not allowed in if expression",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
