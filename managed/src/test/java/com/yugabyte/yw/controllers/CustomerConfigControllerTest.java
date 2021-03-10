@@ -105,11 +105,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testListCustomeWithData() {
     ModelFactory.createS3StorageConfig(defaultCustomer);
+    ModelFactory.createS3StorageConfig(defaultCustomer);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url,
         defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
-    assertEquals(1, node.size());
+    assertEquals(2, node.size());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -184,15 +185,30 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
         defaultUser.createAuthToken(), bodyJson);
-    assertBadRequest(result, "Can't edit the config as it is already in use");
+    assertOk(result);
     backup.delete();
-    Schedule schedule = ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(),
-                                                          configUUID);
-    schedule.delete();
     result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
         defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     assertEquals(data, CustomerConfig.get(configUUID).data);
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Invalid configUUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 }

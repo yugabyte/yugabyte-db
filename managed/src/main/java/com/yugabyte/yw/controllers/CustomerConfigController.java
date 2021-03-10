@@ -18,8 +18,6 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 public class CustomerConfigController extends AuthenticatedController {
