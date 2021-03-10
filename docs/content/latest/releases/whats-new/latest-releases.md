@@ -84,7 +84,7 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 * [[6530](https://github.com/yugabyte/yugabyte-db/issues/6530)] [Platform] Enforced better password strength for registration
 * [[6611](https://github.com/yugabyte/yugabyte-db/issues/6611)] [Platform] [Kubernetes] Consider AZ level namespace for the metrics (#7479)
 * [[6718](https://github.com/yugabyte/yugabyte-db/issues/6718)] [Platform]: Health check emails should include Yugaware Hostname (#7337)
-* [7024] Platform: Unable to edit number of nodes in AZ section (#7350)
+* [[7024](https://github.com/yugabyte/yugabyte-db/issues/7024)] Platform: Unable to edit number of nodes in AZ section (#7350)
 * [[7149](https://github.com/yugabyte/yugabyte-db/issues/7149)] Platform: Trigger trying to take a platform backup when a task has completed
 * [[7161](https://github.com/yugabyte/yugabyte-db/issues/7161)] Platform UI: fix loading instance types on AZ change and inability to edit volume size
 * [[7234](https://github.com/yugabyte/yugabyte-db/issues/7234)] [Platform] UI fixes for platform
