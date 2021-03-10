@@ -77,15 +77,17 @@ public class CustomerConfigController extends AuthenticatedController {
     if (customerConfig == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
-    if (customerConfig.getInUse()) {
-      return ApiResponse.error(BAD_REQUEST, "Can't edit the config as it is already in use");
-    }
-
     CustomerConfig config = CustomerConfig.get(configUUID);
+    if (customerConfig.getInUse()) {
+      config.configName = formData.get("configName").toString();
+      config.update();
+      return ApiResponse.success(config);
+    }
     config.data = Json.toJson(formData.get("data"));
     config.configName = formData.get("configName").toString();
     config.name = formData.get("name").toString();
     config.update();
+    Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
   }
 }
