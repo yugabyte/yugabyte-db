@@ -1012,13 +1012,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 namespace {
 
 bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
-    TSRegistrationPB reg_a = a.ts_desc->GetRegistration();
-    TSRegistrationPB reg_b = b.ts_desc->GetRegistration();
-    if (!reg_a.common().http_addresses().empty() && !reg_b.common().http_addresses().empty()) {
-        return reg_a.common().http_addresses(0).host() < reg_b.common().http_addresses(0).host();
-    } else {
-        return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
-    }
+    return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
 }
 
 } // anonymous namespace
