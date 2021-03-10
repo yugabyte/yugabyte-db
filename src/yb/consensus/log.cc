@@ -559,7 +559,7 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
-    
+
     // In case where TServer process reboots, we need to reload the wal file size into the metric,
     // otherwise we do nothing
     if (metrics_ && metrics_->wal_size->value() == 0) {
@@ -611,7 +611,7 @@ Status Log::CloseCurrentSegment() {
 
   if (status.ok() && metrics_) {
       metrics_->wal_size->IncrementBy(active_segment_->Size());
-  } 
+  }
   return status;
 }
 

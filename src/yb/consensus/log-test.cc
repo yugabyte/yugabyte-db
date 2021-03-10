@@ -432,7 +432,7 @@ TEST_F(LogTest, TestCorruptLogInHeader) {
   DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
-//Tests log metrics for WAL files size
+// Tests log metrics for WAL files size
 TEST_F(LogTest, TestLogMetrics) {
   BuildLog();
 // Set a small segment size so that we have roll overs.
