@@ -1,7 +1,7 @@
 ---
-title: Encryption in transit on YugabyteDB clusters
-headerTitle: Encryption in transit
-linkTitle: Encryption in transit
+title: Encryption in Transit on YugabyteDB Clusters
+headerTitle: Encryption in Transit
+linkTitle: Encryption in Transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png
@@ -14,10 +14,10 @@ menu:
     weight: 725
 ---
 
-YugabyteDB can be configured to protect data in transit with:
+YugabyteDB can be configured to protect data in transit using the following:
 
-- [Server-server encryption](./server-to-server) for intra-node communication between YB-Master and YB-TServer nodes
-- [Client-server](./client-to-server) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL
+- [Server-server encryption](./server-to-server) for intra-node communication between YB-Master and YB-TServer nodes.
+- [Client-server](./client-to-server) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
 
 YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols. 
 
@@ -39,6 +39,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
     </a>
   </div>
 
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="client-certificates/">
       <div class="head">
@@ -50,6 +51,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
       </div>
     </a>
   </div>
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="server-to-server/">
