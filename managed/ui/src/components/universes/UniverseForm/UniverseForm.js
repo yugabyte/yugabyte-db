@@ -621,7 +621,17 @@ class UniverseForm extends Component {
       );
     }
 
-    if (this.state.currentView === 'Primary' && type !== 'Edit' && type !== 'Async') {
+    const selectedProviderUUID = this.props?.formValues?.primary?.provider;
+    const selectedProvider = this.props?.cloud?.providers?.data?.find(
+      (provider) => provider.uuid === selectedProviderUUID
+    );
+
+    if (
+      this.state.currentView === 'Primary' &&
+      type !== 'Edit' &&
+      type !== 'Async' &&
+      (selectedProvider === undefined || selectedProvider?.code !== 'kubernetes')
+    ) {
       asyncReplicaBtn = (
         <YBButton
           btnClass="btn btn-default universe-form-submit-btn"
@@ -709,12 +719,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     let submitControl = (
