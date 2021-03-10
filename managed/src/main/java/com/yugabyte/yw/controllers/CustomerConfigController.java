@@ -61,4 +61,31 @@ public class CustomerConfigController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     return ApiResponse.success(CustomerConfig.getAll(customerUUID));
   }
+
+  public Result edit(UUID customerUUID, UUID configUUID) {
+    JsonNode formData =  request().body().asJson();
+    ObjectNode errorJson = configValidator.validateFormData(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+
+    errorJson = configValidator.validateDataContent(formData);
+    if (errorJson.size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, errorJson);
+    }
+    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
+    if (customerConfig == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
+    }
+    if (customerConfig.getInUse()) {
+      return ApiResponse.error(BAD_REQUEST, "Can't edit the config as it is already in use");
+    }
+
+    CustomerConfig config = CustomerConfig.get(configUUID);
+    config.data = Json.toJson(formData.get("data"));
+    config.configName = formData.get("configName").toString();
+    config.name = formData.get("name").toString();
+    config.update();
+    return ApiResponse.success(config);
+  }
 }
