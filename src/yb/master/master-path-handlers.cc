@@ -1011,8 +1011,14 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
 namespace {
 
-bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
-  return a.role < b.role;
+bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
+    TSRegistrationPB reg_a = a.ts_desc->GetRegistration();
+    TSRegistrationPB reg_b = b.ts_desc->GetRegistration();
+    if (!reg_a.common().http_addresses().empty() && !reg_b.common().http_addresses().empty()) {
+        return reg_a.common().http_addresses(0).host() < reg_b.common().http_addresses(0).host();
+    } else {
+        return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
+    }
 }
 
 } // anonymous namespace
@@ -1119,7 +1125,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
-    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
+    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
 
     auto l = tablet->LockForRead();
 
