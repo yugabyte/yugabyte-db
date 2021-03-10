@@ -112,18 +112,21 @@ public class CustomerConfig extends Model {
 
   public ArrayNode getUniverseDetails() {
     ArrayNode details = Json.newArray();
-    ObjectNode universePayload = Json.newObject();
-    for (Universe universe : Backup.getUniverses(this.configUUID)) {
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      universePayload.put("name", universe.name);
-      universePayload.put("updateInProgress", universeDetails.updateInProgress);
-      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
-      universePayload.put("uuid", universe.universeUUID.toString());
-      universePayload.put("creationDate", universe.creationDate.getTime());
-      universePayload.put("universePaused", universeDetails.universePaused);
-      details.add(universePayload);
+    if (this.type==ConfigType.STORAGE){
+      ObjectNode universePayload = Json.newObject();
+      // TODO this would go to the util.java after KMS PR get merged. 
+      for (Universe universe : Backup.getUniverses(this.configUUID)) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universePayload.put("name", universe.name);
+        universePayload.put("updateInProgress", universeDetails.updateInProgress);
+        universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
+        universePayload.put("uuid", universe.universeUUID.toString());
+        universePayload.put("creationDate", universe.creationDate.getTime());
+        universePayload.put("universePaused", universeDetails.universePaused);
+        details.add(universePayload);
+      }
     }
-    return details;
+  return details;
   }
 
   @Override
