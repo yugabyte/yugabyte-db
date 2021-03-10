@@ -10,7 +10,8 @@ air_gap: false
 update_yum_cache: false
 yum_retry_count: 5
 
-linux_packages: []
+linux_packages:
+  - rsync
 
 azure_packages:
   - libselinux-python
