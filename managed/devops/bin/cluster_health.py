@@ -252,7 +252,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -h'
+        remote_cmd = 'df -h 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):

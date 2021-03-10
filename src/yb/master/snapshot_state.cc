@@ -42,7 +42,8 @@ SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const tserver::TabletSnapshotOpRequestPB& request)
     : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
-      id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()), version_(1) {
+      id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
+      schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
   request.extra_data().UnpackTo(&entries_);
@@ -52,14 +53,18 @@ SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const SysSnapshotEntryPB& entry)
     : StateWithTablets(context, entry.state()),
-      id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()), version_(entry.version()) {
+      id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
+      schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
+      version_(entry.version()) {
   InitTablets(entry.tablet_snapshots());
   *entries_.mutable_entries() = entry.entries();
 }
 
 std::string SnapshotState::ToString() const {
-  return Format("{ id: $0 snapshot_hybrid_time: $1 version: $2 initial_state: $3 tablets: $4 }",
-                id_, snapshot_hybrid_time_, version_, InitialStateName(), tablets());
+  return Format(
+      "{ id: $0 snapshot_hybrid_time: $1 schedule_id: $2 version: $3 initial_state: $4 "
+          "tablets: $5 }",
+      id_, snapshot_hybrid_time_, schedule_id_, version_, InitialStateName(), tablets());
 }
 
 Status SnapshotState::ToPB(SnapshotInfoPB* out) {
@@ -74,6 +79,10 @@ Status SnapshotState::ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client) {
   TabletsToPB(out->mutable_tablet_snapshots());
 
   *out->mutable_entries() = entries_.entries();
+
+  if (schedule_id_) {
+    out->set_schedule_id(schedule_id_.data(), schedule_id_.size());
+  }
 
   out->set_version(version_);
 
