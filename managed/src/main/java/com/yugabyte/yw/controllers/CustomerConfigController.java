@@ -85,13 +85,8 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode data = Json.toJson(formData.get("data"));
     for (Iterator<String> it = data.fieldNames(); it.hasNext(); ) {
       String key = it.next();
-      if (key.contains("KEY")&& data.get(key).toString().contains("**")){
-        ((ObjectNode) data).put(key, config.data.get(key));
-      }
-      if (key.contains("SECRET")&&data.get(key).toString().contains("**")){
-        ((ObjectNode) data).put(key, config.data.get(key));
-      } 
-      if(key.contains("CREDENTIALS")&&data.get(key).toString().contains("**")) {
+      if ((key.contains("KEY") || key.contains("SECRET") || key.contains("CREDENTIALS"))
+          && data.get(key).toString().contains("**")){
         ((ObjectNode) data).put(key, config.data.get(key));
       }
     }
