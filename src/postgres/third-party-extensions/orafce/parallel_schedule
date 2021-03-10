@@ -1,0 +1,3 @@
+test: init
+test: dbms_pipe_session_A dbms_pipe_session_B
+test: dbms_alert_session_A dbms_alert_session_B dbms_alert_session_C
