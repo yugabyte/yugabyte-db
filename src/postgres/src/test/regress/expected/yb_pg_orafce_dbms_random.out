@@ -1,0 +1,84 @@
+-- Tests for package DBMS_RANDOM
+SELECT dbms_random.initialize(8);
+ initialize
+------------
+
+(1 row)
+
+SELECT dbms_random.normal()::numeric(10, 8) != dbms_random.normal()::numeric(10, 8);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.seed(8);
+ seed
+------
+
+(1 row)
+
+SELECT dbms_random.random() != dbms_random.random();
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.seed('test');
+ seed
+------
+
+(1 row)
+
+SELECT dbms_random.string('U',5) != dbms_random.string('U',5);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.string('U',5) != dbms_random.string('P',2);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.string('U',5) != dbms_random.string('x',4);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.string('U',5) != dbms_random.string('a',2);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.string('U',5) != dbms_random.string('l',3);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.seed(5);
+ seed
+------
+
+(1 row)
+
+SELECT dbms_random.value()::numeric(10, 8) != dbms_random.value()::numeric(10, 8);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.value(10,15)::numeric(10, 8) != dbms_random.value(10,15)::numeric(10, 8);;
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT dbms_random.terminate();
+ terminate
+-----------
+
+(1 row)

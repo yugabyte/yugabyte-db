@@ -1,0 +1,248 @@
+\set ECHO none
+ receive_message 
+-----------------
+               0
+(1 row)
+
+-- Receives messages sent via an implicit pipe
+SELECT receiveFrom('named_pipe');
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: \201
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+-- Bulk receive messages
+SELECT bulkReceive();
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: \201
+NOTICE:  RECEIVE 24: (2,rob)
+ bulkreceive 
+-------------
+ 
+(1 row)
+
+-- Receives messages sent via an explicit private pipe under the same user
+-- 'pipe_test_owner'
+SELECT dbms_pipe.receive_message('recv_private1_notifier');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+SELECT receiveFrom('private_pipe_1');
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: \201
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+-- Switch user to 'pipe_test_other'
+DROP USER IF EXISTS pipe_test_other;
+NOTICE:  role "pipe_test_other" does not exist, skipping
+CREATE USER pipe_test_other;
+SET SESSION AUTHORIZATION pipe_test_other;
+-- Try to receive messages sent via an explicit private pipe under the user
+-- 'pipe_test_other' who is not the owner of pipe.
+-- insufficient privileges in case of 'private_pipe_2'.
+SELECT dbms_pipe.receive_message('recv_private2_notifier');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+SELECT receiveFrom('private_pipe_2');
+ERROR:  insufficient privilege
+-- These are explicit private pipes created using create_pipe(text,integer)
+-- and create_pipe(text)
+SELECT dbms_pipe.receive_message('recv_public1_notifier');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+SELECT receiveFrom('public_pipe_3');
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: \201
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+SELECT dbms_pipe.receive_message('recv_public2_notifier');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+SELECT receiveFrom('public_pipe_4');
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: \201
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+-- Switch back to user 'pipe_test_owner'
+SET SESSION AUTHORIZATION pipe_test_owner;
+DROP USER pipe_test_other;
+-- Tests receive_message(text)
+SELECT checkReceive1('pipe_name_1');
+NOTICE:  RECEIVE checking one-argument send_message()
+ checkreceive1 
+---------------
+ 
+(1 row)
+
+SELECT checkReceive1('pipe_name_2');
+NOTICE:  RECEIVE checking two-argument send_message()
+ checkreceive1 
+---------------
+ 
+(1 row)
+
+-- Tests dbms_pipe.db_pipes view
+SELECT name, items, "limit", private, owner
+FROM dbms_pipe.db_pipes
+WHERE name LIKE 'private%'
+ORDER BY name;
+      name      | items | limit | private |      owner      
+----------------+-------+-------+---------+-----------------
+ private_pipe_1 |     0 |    10 | t       | pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+(2 rows)
+
+-- Tests dbms_pipe.__list_pipes(); attribute size is not included
+-- since it can be different across runs.
+SELECT name, items, "limit", private, owner
+FROM dbms_pipe.__list_pipes()  AS  (name varchar, items int4, siz int4, "limit" int4, private bool, owner varchar)
+WHERE name <> 'pipe_name_4'
+ORDER BY 1;
+      name      | items | limit | private |      owner      
+----------------+-------+-------+---------+-----------------
+ pipe_name_3    |     1 |       | f       | 
+ private_pipe_1 |     0 |    10 | t       | pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+ public_pipe_3  |     0 |    10 | f       | 
+ public_pipe_4  |     0 |    10 | f       | 
+(5 rows)
+
+-- Tests remove_pipe(text)
+SELECT dbms_pipe.remove_pipe('private_pipe_1');
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+SELECT dbms_pipe.remove_pipe('private_pipe_2');
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+SELECT dbms_pipe.remove_pipe('public_pipe_3');
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+SELECT dbms_pipe.remove_pipe('public_pipe_4');
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+SELECT dbms_pipe.purge('pipe_name_1');
+ purge 
+-------
+ 
+(1 row)
+
+SELECT dbms_pipe.purge('pipe_name_2');
+ purge 
+-------
+ 
+(1 row)
+
+-- Receives drop table notification from session A via 'pipe_name_3'
+SELECT  dropTempTable();
+ droptemptable 
+---------------
+ 
+(1 row)
+
+SELECT dbms_pipe.purge('pipe_name_3');
+ purge 
+-------
+ 
+(1 row)
+
+-- tests unique_session_name() (uses 'pipe_name_4')
+SELECT checkUniqueSessionNameB();
+ checkuniquesessionnameb 
+-------------------------
+ f
+(1 row)
+
+SELECT dbms_pipe.purge('pipe_name_4');
+ purge 
+-------
+ 
+(1 row)
+
+DROP FUNCTION receiveFrom(text);
+DROP FUNCTION checkReceive1(text);
+DROP FUNCTION checkUniqueSessionNameB();
+DROP FUNCTION bulkReceive();
+DROP FUNCTION dropTempTable();
+-- Perform a recieve on removed pipe resulting on timeout
+SELECT dbms_pipe.receive_message('public_pipe_4',2);
+ receive_message 
+-----------------
+               1
+(1 row)
+
+SELECT dbms_pipe.purge('public_pipe_4');
+ purge 
+-------
+ 
+(1 row)
+
+SET SESSION AUTHORIZATION DEFAULT;
+DROP USER pipe_test_owner;

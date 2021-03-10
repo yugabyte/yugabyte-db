@@ -1,4 +1,4 @@
-DIRS = pg_hint_plan 
+DIRS = pg_hint_plan orafce
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)
 CLEANDIRS = $(DIRS:%=clean-%)
