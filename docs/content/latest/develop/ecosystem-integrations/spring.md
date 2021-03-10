@@ -1,6 +1,6 @@
 ---
 title: Spring Support for YugabyteDB
-linkTitle: Spring Support for YugabyteDB
+linkTitle: Spring Framework
 description: Spring Support for YugabyteDB
 aliases:
   - /develop/ecosystem-integrations/spring/
