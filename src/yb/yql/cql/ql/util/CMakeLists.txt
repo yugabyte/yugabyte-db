@@ -12,6 +12,7 @@
 #
 
 add_library(ql_util
+            cql_message.cc
             errcodes.cc
             statement_params.cc
             statement_result.cc
@@ -19,4 +20,6 @@ add_library(ql_util
 
 target_link_libraries(ql_util
                       yb_client
-                      yb_util)
+                      yb_util
+                      lz4
+                      snappy)
