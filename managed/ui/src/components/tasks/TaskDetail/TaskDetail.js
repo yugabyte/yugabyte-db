@@ -16,6 +16,7 @@ import { Highlighter } from '../../../helpers/Highlighter';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
+import { toast } from 'react-toastify';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -32,18 +33,21 @@ class TaskDetail extends Component {
   };
 
   retryTaskClicked = (currentTaskUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID).then(() => {
-      browserHistory.push('/tasks');
+    this.props.retryCurrentTask(currentTaskUUID).then((response) => {
+      const taskResponse = response?.payload?.response;
+      if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
+        browserHistory.push('/tasks');
+      } else {
+        const toastMessage = taskResponse.data?.error
+          ? taskResponse.data.error
+          : taskResponse.statusText;
+        toast.error(toastMessage);
+      }
     });
-  }
+  };
 
   componentDidMount() {
-    const {
-      params,
-      fetchCurrentTaskDetail,
-      fetchFailedTaskDetail,
-      fetchUniverseList
-    } = this.props;
+    const { params, fetchCurrentTaskDetail, fetchFailedTaskDetail, fetchUniverseList } = this.props;
     const currentTaskUUID = params.taskUUID;
     if (isNonEmptyString(currentTaskUUID)) {
       fetchCurrentTaskDetail(currentTaskUUID);
@@ -94,16 +98,14 @@ class TaskDetail extends Component {
       let displayMessage = 'Expand';
       let displayIcon = <i className="fa fa-expand"></i>;
       if (self.state.errorStringDisplay) {
-        errorElement = <Highlighter type="json" text={errorString} element="pre"/>;
+        errorElement = <Highlighter type="json" text={errorString} element="pre" />;
         displayMessage = 'View Less';
         displayIcon = <i className="fa fa-compress"></i>;
       }
 
       return (
         <div className="clearfix">
-          <div className="onprem-config__json">
-            {errorElement}
-          </div>
+          <div className="onprem-config__json">{errorElement}</div>
           <div
             className="btn btn-orange text-center pull-right task-detail-button"
             onClick={self.toggleErrorStringDisplay}
@@ -111,21 +113,24 @@ class TaskDetail extends Component {
             {displayIcon}
             {displayMessage}
           </div>
-          {isNonEmptyString(currentTaskData.title)
-           && currentTaskData.title.includes("Created Universe") &&
-            <div
-              className="btn btn-orange text-center pull-right task-detail-button"
-              onClick={() => self.retryTaskClicked(taskUUID)}
-            >
-              <i className="fa fa-refresh"></i>
-              Retry Task
-            </div>
-          }
+          {isNonEmptyString(currentTaskData.title) &&
+            currentTaskData.title.includes('Created Universe') && (
+              <div
+                className="btn btn-orange text-center pull-right task-detail-button"
+                onClick={() => self.retryTaskClicked(taskUUID)}
+              >
+                <i className="fa fa-refresh"></i>
+                Retry Task
+              </div>
+            )}
         </div>
       );
     };
     let universe = null;
-    if (currentTaskData.targetUUID && getPromiseState(this.props.universe.universeList).isSuccess()) {
+    if (
+      currentTaskData.targetUUID &&
+      getPromiseState(this.props.universe.universeList).isSuccess()
+    ) {
       const universes = this.props.universe.universeList.data;
       universe = _.find(
         universes,
@@ -140,7 +145,7 @@ class TaskDetail extends Component {
           let allowRetry = false;
           if (universe) {
             const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
-            allowRetry = primaryCluster.userIntent.providerType === "onprem";
+            allowRetry = primaryCluster.userIntent.providerType === 'onprem';
           }
           errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
         }

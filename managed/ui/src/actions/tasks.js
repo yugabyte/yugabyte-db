@@ -91,6 +91,6 @@ export function retryTask(taskUUID) {
 export function retryTaskResponse(response) {
   return {
     type: RETRY_TASK_RESPONSE,
-    payload: response.payload
+    payload: response
   };
 }
