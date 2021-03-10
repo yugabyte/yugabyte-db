@@ -8,6 +8,7 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import org.slf4j.Logger;
@@ -21,9 +22,11 @@ import javax.persistence.Id;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -105,6 +108,22 @@ public class CustomerConfig extends Model {
               Schedule.existsStorageConfig(this.configUUID));
     }
     return false;
+  }
+
+  public ArrayNode getUniverseDetails() {
+    ArrayNode details = Json.newArray();
+    ObjectNode universePayload = Json.newObject();
+    for (Universe universe : Backup.getUniverses(this.configUUID)) {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universePayload.put("name", universe.name);
+      universePayload.put("updateInProgress", universeDetails.updateInProgress);
+      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      universePayload.put("universePaused", universeDetails.universePaused);
+      details.add(universePayload);
+    }
+    return details;
   }
 
   @Override

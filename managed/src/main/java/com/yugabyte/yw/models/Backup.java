@@ -7,6 +7,8 @@ import io.ebean.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.helpers.TaskType;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -16,7 +18,9 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -224,5 +228,35 @@ public class Backup extends Model {
         .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
         .collect(Collectors.toList());
     return backupList.size() != 0;
+  }
+
+  public static Set<Universe> getUniverses(UUID customerConfigUUID) {
+    List<Backup> backupList = find.query().where()
+        .or()
+          .eq("state", BackupState.Completed)
+          .eq("state", BackupState.InProgress)
+        .endOr()
+        .findList();
+    backupList = backupList.stream()
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+        .collect(Collectors.toList());
+    Set<UUID> universeUUIDs = new HashSet<>();
+    backupList.stream()
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) && 
+        universeUUIDs.add( b.getBackupInfo().universeUUID));   
+        
+    List<Schedule> scheduleList = Schedule.find.query().where()
+        .or()
+          .eq("task_type", TaskType.BackupUniverse)
+          .eq("task_type", TaskType.MultiTableBackup)
+        .endOr()
+        .eq("status", "Active")
+        .findList();
+    scheduleList = scheduleList.stream()
+        .filter(s -> s.getTaskParams().path("storageConfigUUID").asText()
+        .equals(customerConfigUUID.toString()) &&
+        universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+        .collect(Collectors.toList());
+    return Universe.get(universeUUIDs);
   }
 }
