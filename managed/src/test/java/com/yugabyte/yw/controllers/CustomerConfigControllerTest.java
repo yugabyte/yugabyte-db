@@ -169,4 +169,30 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
+
+  @Test
+  public void testEditInUseStorageConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(),
+                                              configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Can't edit the config as it is already in use");
+    backup.delete();
+    Schedule schedule = ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(),
+                                                          configUUID);
+    schedule.delete();
+    result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    assertEquals(data, CustomerConfig.get(configUUID).data);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
 }
