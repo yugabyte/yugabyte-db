@@ -252,7 +252,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -h 2>/dev/null'
+        remote_cmd = 'df -hl 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -406,7 +406,7 @@ class NodeChecker():
 
         errors = []
         if not ('Connected to local cluster at {}:{}'
-                                .format(self.node, self.ycql_port) in output or
+                .format(self.node, self.ycql_port) in output or
                 "AuthenticationFailed('Remote end requires authentication.'" in output):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
