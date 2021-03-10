@@ -128,8 +128,7 @@ class WhereExprState {
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
                  TreeNodeOpcode statement_type,
-                 MCList<FuncOp> *func_ops,
-                 MCVector<const PTExpr*> *filtering_exprs)
+                 MCList<FuncOp> *func_ops)
     : ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
@@ -138,8 +137,7 @@ class WhereExprState {
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
-      func_ops_(func_ops),
-      filtering_exprs_(filtering_exprs) {
+      func_ops_(func_ops) {
   }
 
   CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
@@ -185,26 +183,6 @@ class WhereExprState {
   TreeNodeOpcode statement_type_;
 
   MCList<FuncOp> *func_ops_;
-
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> *filtering_exprs_;
-};
-
-// State variables for if clause.
-class IfExprState {
- public:
-  explicit IfExprState(MCVector<const PTExpr*> *filtering_exprs)
-      : filtering_exprs_(filtering_exprs) {
-  }
-
-  void AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr) {
-    // Collecting all filtering expressions to help choosing INDEX when processing a DML.
-    filtering_exprs_->push_back(expr);
-  }
-
- private:
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> *filtering_exprs_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -593,9 +571,6 @@ class PTDmlStmt : public PTCollection {
   // indexes that do not.
   MCUnorderedSet<client::YBTablePtr> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
-
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> filtering_exprs_;
 
   // For inter-dependency analysis of DMLs in a batch/transaction
   bool modifies_primary_row_ = false;
