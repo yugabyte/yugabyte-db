@@ -91,8 +91,8 @@ public class CustomerConfigController extends AuthenticatedController {
       }
     }
     config.data = Json.toJson(data);
-    config.configName = formData.get("configName").toString();
-    config.name = formData.get("name").toString();
+    config.configName = formData.get("configName").textValue();
+    config.name = formData.get("name").textValue();
     config.update();
     Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(config);
