@@ -18,7 +18,7 @@
 using namespace std::literals;
 
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
-
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 namespace yb {
 namespace client {
@@ -33,13 +33,14 @@ class SnapshotScheduleTest : public SnapshotTestBase {
     SnapshotTestBase::SetUp();
   }
 
-  Result<SnapshotScheduleId> CreateSchedule() {
+  Result<SnapshotScheduleId> CreateSchedule(
+      MonoDelta interval = kSnapshotInterval, MonoDelta retention = 20h) {
     rpc::RpcController controller;
     controller.set_timeout(60s);
     master::CreateSnapshotScheduleRequestPB req;
     auto& options = *req.mutable_options();
-    options.set_interval_sec(std::chrono::seconds(kSnapshotInterval).count());
-    options.set_retention_duration_sec(1200);
+    options.set_interval_sec(interval.ToSeconds());
+    options.set_retention_duration_sec(retention.ToSeconds());
     auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
     tables.Add()->set_table_id(table_.table()->id());
     master::CreateSnapshotScheduleResponsePB resp;
@@ -122,6 +123,22 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
     return snapshots.size() == 2;
   }, kSnapshotInterval, "Second snapshot"));
+}
+
+TEST_F(SnapshotScheduleTest, GC) {
+  FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
+  // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
+  ASSERT_RESULT(CreateSchedule(kSnapshotInterval, kSnapshotInterval));
+
+  std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
+  while (all_snapshot_ids.size() < 4) {
+    auto snapshots = ASSERT_RESULT(ListSnapshots(TxnSnapshotId::Nil(), false));
+    for (const auto& snapshot : snapshots) {
+      all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
+    }
+    ASSERT_LE(snapshots.size(), 2);
+    std::this_thread::sleep_for(100ms);
+  }
 }
 
 } // namespace client

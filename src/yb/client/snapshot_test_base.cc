@@ -38,11 +38,12 @@ Result<bool> SnapshotTestBase::IsSnapshotDone(const TxnSnapshotId& snapshot_id) 
   return VERIFY_RESULT(SnapshotState(snapshot_id)) == master::SysSnapshotEntryPB::COMPLETE;
 }
 
-Result<Snapshots> SnapshotTestBase::ListSnapshots(const TxnSnapshotId& snapshot_id) {
+Result<Snapshots> SnapshotTestBase::ListSnapshots(
+    const TxnSnapshotId& snapshot_id, bool list_deleted) {
   master::ListSnapshotsRequestPB req;
   master::ListSnapshotsResponsePB resp;
 
-  req.set_list_deleted_snapshots(true);
+  req.set_list_deleted_snapshots(list_deleted);
   if (!snapshot_id.IsNil()) {
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   }

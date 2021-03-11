@@ -30,7 +30,8 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
 
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
-  Result<Snapshots> ListSnapshots(const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil());
+  Result<Snapshots> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool list_deleted = true);
   CHECKED_STATUS VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state);
   CHECKED_STATUS WaitSnapshotInState(
