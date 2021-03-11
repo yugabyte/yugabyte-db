@@ -33,8 +33,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({
   location
 }) => {
   const { isLoading, isSuccess, data: universe } = useQuery(
-    [QUERY_KEY.fetchUniverse, universeId],
-    api.fetchUniverse
+    QUERY_KEY.fetchUniverse,
+    () => api.fetchUniverse(QUERY_KEY.fetchUniverse, universeId)
   );
 
   if (isSuccess && !isLoading && universe && isValidUniverse(universe)) {

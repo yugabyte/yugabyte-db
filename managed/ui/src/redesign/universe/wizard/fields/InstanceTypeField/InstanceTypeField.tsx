@@ -36,8 +36,8 @@ export const InstanceTypeField: FC = () => {
   const { control, errors, getValues, setValue } = useFormContext<InstanceConfigFormValue>();
   const { formData } = useContext(WizardContext);
   const { data } = useQuery(
-    [QUERY_KEY.getInstanceTypes, formData.cloudConfig.provider?.uuid],
-    api.getInstanceTypes,
+    QUERY_KEY.getInstanceTypes,
+    () => api.getInstanceTypes(QUERY_KEY.getInstanceTypes, formData.cloudConfig.provider?.uuid || ''),
     {
       enabled: !!formData.cloudConfig.provider?.uuid,
       onSuccess: (data) => {

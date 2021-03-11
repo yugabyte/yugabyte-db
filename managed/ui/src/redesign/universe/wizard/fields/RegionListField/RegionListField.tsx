@@ -25,8 +25,8 @@ export const RegionListField: FC = () => {
   const { control, errors, getValues, setValue, watch } = useFormContext<CloudConfigFormValue>();
   const provider = watch('provider');
   const { isFetching, data } = useQuery(
-    [QUERY_KEY.getRegionsList, provider?.uuid],
-    api.getRegionsList,
+    QUERY_KEY.getRegionsList,
+    () => api.getRegionsList(QUERY_KEY.getRegionsList, provider?.uuid || ''),
     {
       enabled: !!provider?.uuid, // make sure query won't run when there's no provider defined
       onSuccess: (regions) => {

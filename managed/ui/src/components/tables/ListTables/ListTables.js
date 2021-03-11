@@ -309,7 +309,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
           Write
         </TableHeaderColumn>
-        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
+        {isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}
