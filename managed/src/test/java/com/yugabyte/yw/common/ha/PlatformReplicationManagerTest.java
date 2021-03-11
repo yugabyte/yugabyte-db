@@ -119,10 +119,10 @@ public class PlatformReplicationManagerTest extends TestCase {
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
     return new Object[][] {
-      { "1.2.3.4", "postgres", "password", "localhost", 5432, "/tmp/foo.bar", true },
-      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, "/tmp/foo.bar", true },
-      { "1.2.3.4", "postgres", "password", "localhost", 5432, "/tmp/foo.bar", false },
-      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, "/tmp/foo.bar", false },
+      { "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true },
+      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true },
+      { "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false },
+      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false },
     };
   }
 
@@ -134,7 +134,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     String dbPassword,
     String dbHost,
     int dbPort,
-    String inputPath,
+    File inputPath,
     boolean isCreate
   ) {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
@@ -146,7 +146,8 @@ public class PlatformReplicationManagerTest extends TestCase {
     RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
     when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
 
-    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(new ShellResponse());
+    when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+      .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
     PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
       actorSystem,
@@ -160,7 +161,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       dbUsername,
       dbHost,
       dbPort,
-      inputPath,
+      inputPath.getAbsolutePath(),
       isCreate,
       "/tmp/foo.bar"
     );
@@ -172,7 +173,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     }
 
     verify(shellProcessHandler, times(1))
-      .run(expectedCommandArgs, expectedEnvVars);
+      .run(expectedCommandArgs, expectedEnvVars, false);
   }
 
   @SuppressWarnings("unused")

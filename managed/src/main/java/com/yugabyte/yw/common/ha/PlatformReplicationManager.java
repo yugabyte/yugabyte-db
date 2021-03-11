@@ -98,7 +98,7 @@ public class PlatformReplicationManager {
 
   public void stop() {
     if (!replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
-      LOG.warn("Platform backup schedule is already stopped");
+      LOG.debug("Platform backup schedule is already stopped");
       return;
     }
 
@@ -474,9 +474,9 @@ public class PlatformReplicationManager {
 
   private class RestorePlatformBackupParams extends PlatformBackupParams {
     // Where to input a previously taken platform backup from.
-    private final String input;
+    private final File input;
 
-    RestorePlatformBackupParams(String input) {
+    RestorePlatformBackupParams(File input) {
       this.input = input;
     }
 
@@ -485,7 +485,7 @@ public class PlatformReplicationManager {
       List<String> commandArgs = new ArrayList<>();
       commandArgs.add("restore");
       commandArgs.add("--input");
-      commandArgs.add(input);
+      commandArgs.add(input.getAbsolutePath());
 
       return commandArgs;
     }
@@ -497,7 +497,7 @@ public class PlatformReplicationManager {
 
     LOG.debug("Command to run: [" + String.join(" ", commandArgs) + "]");
 
-    return shellProcessHandler.run(commandArgs, extraVars);
+    return shellProcessHandler.run(commandArgs, extraVars, false /* logCmdOutput */);
   }
 
   /**
@@ -507,7 +507,7 @@ public class PlatformReplicationManager {
    */
   @VisibleForTesting
   boolean createBackup() {
-    LOG.info("Creating platform backup...");
+    LOG.debug("Creating platform backup...");
 
     ShellResponse response = runCommand(new CreatePlatformBackupParams());
 
@@ -524,7 +524,7 @@ public class PlatformReplicationManager {
    * @param input is the path to the backup to be restored
    * @return the output/results of running the script
    */
-  public boolean restoreBackup(String input) {
+  public boolean restoreBackup(File input) {
     LOG.info("Restoring platform backup...");
 
     ShellResponse response = runCommand(new RestorePlatformBackupParams(input));
