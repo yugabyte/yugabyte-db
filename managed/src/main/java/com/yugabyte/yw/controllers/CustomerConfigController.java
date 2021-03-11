@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.Iterator;
 import java.util.UUID;
 
 public class CustomerConfigController extends AuthenticatedController {
@@ -81,7 +82,15 @@ public class CustomerConfigController extends AuthenticatedController {
       config.update();
       return ApiResponse.success(config);
     }
-    config.data = Json.toJson(formData.get("data"));
+    JsonNode data = Json.toJson(formData.get("data"));
+    for (Iterator<String> it = data.fieldNames(); it.hasNext(); ) {
+      String key = it.next();
+      if ((key.contains("KEY") || key.contains("SECRET") || key.contains("CREDENTIALS"))
+          && data.get(key).toString().contains("**")){
+        ((ObjectNode) data).put(key, config.data.get(key));
+      }
+    }
+    config.data = Json.toJson(data);
     config.configName = formData.get("configName").toString();
     config.name = formData.get("name").toString();
     config.update();
