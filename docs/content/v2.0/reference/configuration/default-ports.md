@@ -31,7 +31,7 @@ Use the following targets to configure [Prometheus](https://prometheus.io/) to s
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `93000` for node level metrics.
+You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
 
 For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
