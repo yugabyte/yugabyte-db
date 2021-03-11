@@ -257,6 +257,17 @@ public class Backup extends Model {
         .equals(customerConfigUUID.toString()) &&
         universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
         .collect(Collectors.toList());
-    return Universe.get(universeUUIDs);
+    Set<Universe> universes = new HashSet<Universe>();
+    for (UUID universeUUID : universeUUIDs) {
+      try {
+        Universe.get(universeUUID);
+      }
+      // backup exist but universe does not.We are ignoring such backups.
+      catch(Exception e){ 
+        continue;
+      }
+      universes.add(Universe.get(universeUUID));
+    }
+    return universes;
   }
 }
