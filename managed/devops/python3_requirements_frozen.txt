@@ -50,7 +50,7 @@ multidict==5.1.0
 oauth2client==3.0.0
 oauthlib==3.1.0
 paramiko==2.4.2
-protobuf==3.15.5
+protobuf==3.15.6
 pyasn1-modules==0.2.8
 pyasn1==0.4.8
 pycodestyle==2.6.0
