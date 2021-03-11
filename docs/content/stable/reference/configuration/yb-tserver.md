@@ -508,7 +508,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-Default: `true`
+Default: `false`
 
 ##### --ysql_sequence_cache_minval
 
