@@ -108,7 +108,7 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content if req.status_code == requests.codes.ok else None
+            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
         except requests.exceptions.ConnectionError as e:
             return None
 
