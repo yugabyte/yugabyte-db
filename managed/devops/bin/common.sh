@@ -47,19 +47,99 @@ regex_from_list() {
   echo "^($regex)$"
 }
 
+# This just logs to stderr.
+log() {
+  BEGIN_COLOR='\033[0;32m'
+  END_COLOR='\033[0m'
+  GREEN='\033[0;32m'
+  RED='\033[0;31m'
+
+  case ${_log_level:-info} in
+    error)
+      BEGIN_COLOR='\033[0;31m'
+      shift
+      ;;
+    warn)
+      BEGIN_COLOR='\033[0;33m'
+      shift
+      ;;
+  esac
+  echo -e "${BEGIN_COLOR}[$( get_timestamp ) \
+${BASH_SOURCE[1]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]${END_COLOR}" $* >&2
+}
+
+fatal() {
+  log "$@"
+  exit 1
+}
+
+get_timestamp() {
+  date +%Y-%m-%d_%H_%M_%S
+}
+
+check_python_executables() {
+  executables="$1"
+  for py_executable in $executables; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-DEFAULT_USE_PY3_VALUE="1"
-if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-  DEFAULT_USE_PY3_VALUE="0"
+PYTHON2_EXECUTABLES="python2 python2.7"
+PYTHON3_EXECUTABLES="python3 python3.7"
+PYTHON_EXECUTABLE=""
+YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-""}
+# Prioritize python3 over python2.
+if [ -z "$YB_MANAGED_DEVOPS_USE_PYTHON3" ]; then
+  if check_python_executables "$PYTHON3_EXECUTABLES"; then
+    YB_MANAGED_DEVOPS_USE_PYTHON3="1"
+  elif check_python_executables "$PYTHON2_EXECUTABLES"; then
+    YB_MANAGED_DEVOPS_USE_PYTHON3="0"
+  fi
+
+  if [ -z "$PYTHON_EXECUTABLE" ]; then
+    if which python > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="python"
+      if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
+        YB_MANAGED_DEVOPS_USE_PYTHON3="0"
+      else
+        YB_MANAGED_DEVOPS_USE_PYTHON3="1"
+      fi
+    fi
+  fi
+else
+  if which python > /dev/null 2>&1; then
+    if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
+      if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
+        PYTHON_EXECUTABLE="python"
+      fi
+    elif [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "1" ]]; then
+      PYTHON_EXECUTABLE="python"
+    fi
+  fi
+
+  if [ -z "$PYTHON_EXECUTABLE" ]; then
+    POSSIBLE_EXECUTABLES="$PYTHON3_EXECUTABLES"
+    if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
+      POSSIBLE_EXECUTABLES="$PYTHON2_EXECUTABLES"
+    fi
+    check_python_executables "$POSSIBLE_EXECUTABLES"
+  fi
 fi
 
-readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
       $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
   fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
         "expected 0 or 1"
+fi
+if [ -z "$PYTHON_EXECUTABLE" ]; then
+  fatal "Failed to find python executable."
 fi
 
 readonly yb_script_name=${0##*/}
@@ -127,35 +207,6 @@ log_error() {
  log "$@"
 }
 
-# This just logs to stderr.
-log() {
-  BEGIN_COLOR='\033[0;32m'
-  END_COLOR='\033[0m'
-  GREEN='\033[0;32m'
-  RED='\033[0;31m'
-
-  case ${_log_level:-info} in
-    error)
-      BEGIN_COLOR='\033[0;31m'
-      shift
-      ;;
-    warn)
-      BEGIN_COLOR='\033[0;33m'
-      shift
-      ;;
-  esac
-  echo -e "${BEGIN_COLOR}[$( get_timestamp ) ${BASH_SOURCE[1]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]${END_COLOR}" $* >&2
-}
-
-fatal() {
-  log "$@"
-  exit 1
-}
-
-get_timestamp() {
-  date +%Y-%m-%d_%H_%M_%S
-}
-
 ensure_log_dir_defined() {
   if [[ -z ${log_dir:-} ]]; then
     fatal "log_dir is not set"
@@ -207,7 +258,7 @@ deactivate_virtualenv() {
     return
   fi
 
-  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH=$MANAGED_PYTHONPATH_ORIGINAL
     return
   fi
@@ -245,7 +296,7 @@ activate_virtualenv() {
     return
   fi
 
-  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
     return
   fi
@@ -266,10 +317,10 @@ activate_virtualenv() {
       set -x
       cd "${virtualenv_dir%/*}"
       if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-        python3 -m venv "$YB_VIRTUALENV_BASENAME"
+        "$PYTHON_EXECUTABLE" -m venv "$YB_VIRTUALENV_BASENAME"
       else
         # Assuming that the default python binary is pointing to Python 2.7.
-        python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+        "$PYTHON_EXECUTABLE" -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
       fi
     )
   elif "$is_linux"; then
@@ -366,9 +417,9 @@ verbose_mkdir_p() {
 
 run_pip() {
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-    pip3 "$@"
+    "$PYTHON_EXECUTABLE" -m pip "$@"
   else
-    python "$(which pip)" "$@"
+    "$PYTHON_EXECUTABLE" "$(which pip)" "$@"
   fi
 }
 
@@ -466,8 +517,7 @@ install_ybops_package() {
   fi
   (
     cd "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME"
-    log "Using python: $( which python )"
-    python setup.py install $user_flag
+    "$PYTHON_EXECUTABLE" setup.py install $user_flag
     rm -rf build dist "$YBOPS_PACKAGE_NAME.egg-info"
   )
   virtualenv_aware_log "Installed the ybops package"
