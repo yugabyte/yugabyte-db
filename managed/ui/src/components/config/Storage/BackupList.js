@@ -53,11 +53,9 @@ const foramtConfigActions = (cell, row, operations) => {
       id="bg-nested-dropdown"
       pullRight
     >
-      {/* TODO: Under discussion whether we need to enable this or not. */}
-
-      {/* <MenuItem onClick={() => onEdit(row)}>
+      <MenuItem onClick={() => onEdit(row)}>
         <i className="fa fa-pencil"></i> Edit Configuration
-      </MenuItem> */}
+      </MenuItem>
       <MenuItem
         onClick={() => {
           setConfigData(configUUID);

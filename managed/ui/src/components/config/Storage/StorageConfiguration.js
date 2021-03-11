@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
 import { withRouter } from 'react-router';
-import { SubmissionError } from 'redux-form';
+import { SubmissionError, change } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton } from '../../common/forms/fields';
@@ -14,6 +14,7 @@ import { BackupList } from './BackupList';
 import { EditBackupList } from './EditBackupList';
 import { CreateBackup } from './CreateBackup';
 import { StorageConfigTypes } from './ConfigType';
+import { ConfigControls } from './ConfigControls';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
 
@@ -62,7 +63,7 @@ class StorageConfiguration extends Component {
         }
       },
       iamRoleEnabled: false,
-      listview: {
+      listView: {
         s3: true,
         nfs: true,
         gcs: true,
@@ -89,7 +90,7 @@ class StorageConfiguration extends Component {
         key={configNameFormatted + '-tab'}
         unmountOnExit={true}
       >
-        {!this.state.listview[configNameFormatted] &&
+        {!this.state.listView[configNameFormatted] &&
           <Row className="config-section-header" key={configNameFormatted}>
             <Col lg={8}>{configFields}</Col>
           </Row>
@@ -176,8 +177,8 @@ class StorageConfiguration extends Component {
           throw new SubmissionError(this.props.addConfig.error);
         }
       }), this.setState({
-        listview: {
-          ...this.state.listview,
+        listView: {
+          ...this.state.listView,
           [props.activeTab]: true
         }
       })
@@ -197,10 +198,15 @@ class StorageConfiguration extends Component {
     const tab = activeTab.toUpperCase();
     const data = {
       ...row.data,
-      'inUse': row.inUse,
+      "inUse": row.inUse,
       [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
       [`${tab}_CONFIGURATION_NAME`]: row.configName,
     };
+
+    Object.keys(data).map((fieldName) => {
+      const fieldValue = data[fieldName];
+      this.props.dispatch(change("storageConfigForm", fieldName, fieldValue));
+    });
 
     this.setState({
       editView: {
@@ -210,8 +216,9 @@ class StorageConfiguration extends Component {
           data: data
         }
       },
-      listview: {
-        ...this.state.listview,
+      iamRoleEnabled: data["IAM_INSTANCE_PROFILE"],
+      listView: {
+        ...this.state.listView,
         [activeTab]: false
       }
     });
@@ -219,9 +226,10 @@ class StorageConfiguration extends Component {
 
   // This method will enable the create backup form.
   createBackupConfig = (activeTab) => {
+    this.props.reset();
     this.setState({
-      listview: {
-        ...this.state.listview,
+      listView: {
+        ...this.state.listView,
         [activeTab]: false
       }
     });
@@ -229,6 +237,7 @@ class StorageConfiguration extends Component {
 
   // This method will enable the backup list view.
   showListView = (activeTab) => {
+    this.props.reset();
     this.setState({
       editView: {
         ...this.state.editView,
@@ -238,8 +247,8 @@ class StorageConfiguration extends Component {
         }
       },
       iamRoleEnabled: false,
-      listview: {
-        ...this.state.listview,
+      listView: {
+        ...this.state.listView,
         [activeTab]: true
       }
     });
@@ -283,7 +292,7 @@ class StorageConfiguration extends Component {
           key={'s3-tab'}
           unmountOnExit={true}
         >
-          {!this.state.listview.s3 &&
+          {!this.state.listView.s3 &&
             <AwsStorageConfiguration
               data={this.state.editView.s3.data}
               iamRoleEnabled={iamRoleEnabled}
@@ -334,7 +343,7 @@ class StorageConfiguration extends Component {
               className="config-tabs"
               routePrefix="/config/backup/"
             >
-              {this.state.listview[activeTab] &&
+              {this.state.listView[activeTab] &&
                 <BackupList
                   {...this.props}
                   activeTab={activeTab}
@@ -348,21 +357,11 @@ class StorageConfiguration extends Component {
               {configs}
             </YBTabsPanel>
 
-            {(!this.state.listview[activeTab] ||
-              this.state.editView[activeTab].isEdited) &&
-              <div className="form-action-button-container">
-                <YBButton
-                  btnText='Save'
-                  btnClass='btn btn-orange'
-                  btnType="submit"
-                />
-                <YBButton
-                  btnText='Cancel'
-                  btnClass='btn btn-orange'
-                  onClick={() => this.showListView(activeTab)}
-                />
-              </div>
-            }
+            <ConfigControls
+              {...this.state}
+              activeTab={activeTab}
+              showListView={() => this.showListView(activeTab)}
+            />
           </form>
         </div>
       );
