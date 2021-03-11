@@ -377,4 +377,3 @@ void drop_graphs(List *graphnames)
             drop_graph, CStringGetDatum(graphname), BoolGetDatum(true));
     }
 }
-

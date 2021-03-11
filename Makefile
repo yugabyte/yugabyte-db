@@ -35,6 +35,7 @@ OBJS = src/backend/age.o \
        src/backend/parser/ag_scanner.o \
        src/backend/parser/cypher_analyze.o \
        src/backend/parser/cypher_clause.o \
+       src/backend/executor/cypher_delete.o \
        src/backend/parser/cypher_expr.o \
        src/backend/parser/cypher_gram.o \
        src/backend/parser/cypher_item.o \
@@ -68,6 +69,7 @@ REGRESS = scan \
           cypher_match \
           cypher_set \
           cypher_remove \
+	  cypher_delete \
           cypher_with \
           drop
 

@@ -22,6 +22,8 @@
 
 #include "postgres.h"
 
+#include "nodes/execnodes.h"
+
 #include "catalog/ag_catalog.h"
 
 #define Anum_ag_label_vertex_table_id 1
@@ -75,6 +77,8 @@ char *get_label_relation_name(const char *label_name, Oid label_graph);
 
 bool label_id_exists(Oid label_graph, int32 label_id);
 RangeVar *get_label_range_var(char *graph_name, Oid graph_oid, char *label_name);
+
+List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid);
 
 #define label_exists(label_name, label_graph) \
     OidIsValid(get_label_oid(label_name, label_graph))

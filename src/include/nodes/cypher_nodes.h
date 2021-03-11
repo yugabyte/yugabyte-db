@@ -103,6 +103,7 @@ typedef struct cypher_delete
     ExtensibleNode extensible;
     bool detach; // true if DETACH is specified
     List *exprs; // targets of this deletion
+    int location;
 } cypher_delete;
 
 /*
@@ -204,6 +205,7 @@ typedef struct cypher_create_target_nodes
 {
     List *paths;
     uint32 flags;
+    Oid graph_oid;
 } cypher_create_target_nodes;
 
 typedef struct cypher_create_path
@@ -293,6 +295,21 @@ typedef struct cypher_update_item
     List *qualified_name;
     bool remove_item;
 } cypher_update_item;
+
+typedef struct cypher_delete_information
+{
+    List *delete_items;
+    int flags;
+    char *graph_name;
+    Oid graph_oid;
+    bool detach;
+} cypher_delete_information;
+
+typedef struct cypher_delete_item
+{
+    Value *entity_position;
+    char *var_name;
+} cypher_delete_item;
 
 /* grammar node for typecasts */
 typedef struct cypher_typecast

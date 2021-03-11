@@ -27,6 +27,7 @@
 #include "access/stratnum.h"
 #include "catalog/indexing.h"
 #include "fmgr.h"
+#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
@@ -38,6 +39,7 @@
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
+#include "executor/cypher_utils.h"
 #include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
@@ -257,4 +259,64 @@ RangeVar *get_label_range_var(char *graph_name, Oid graph_oid,
     relname = get_rel_name(label_cache->relation);
 
     return makeRangeVar(graph_name, relname, -1);
+}
+
+/*
+ * Retrieves a list of all the names of a graph.
+ *
+ * XXX: We may want to use the cache system for this function,
+ * however the cache system currently requires us to know the
+ * name of the label we want.
+  */
+List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
+{
+    List *labels = NIL;
+    ScanKeyData scan_keys[2];
+    Relation ag_label;
+    HeapScanDesc scan_desc;
+    HeapTuple tuple;
+    TupleTableSlot *slot;
+    ResultRelInfo *resultRelInfo;
+
+    // setup scan keys to get all edges for the given graph oid
+    ScanKeyInit(&scan_keys[1], Anum_ag_label_graph, BTEqualStrategyNumber,
+                F_OIDEQ, ObjectIdGetDatum(graph_oid));
+    ScanKeyInit(&scan_keys[0], Anum_ag_label_kind, BTEqualStrategyNumber,
+                F_CHAREQ, CharGetDatum(LABEL_TYPE_EDGE));
+
+    // setup the table to be scanned
+    ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
+    scan_desc = heap_beginscan(ag_label, estate->es_snapshot, 2, scan_keys);
+
+    resultRelInfo = create_entity_result_rel_info(estate, "ag_catalog", "ag_label");
+
+    slot = ExecInitExtraTupleSlot(estate,
+                RelationGetDescr(resultRelInfo->ri_RelationDesc));
+
+    // scan through the results and get all the label names.
+    while(true)
+    {
+        Name label;
+        bool isNull;
+        Datum datum;
+
+        tuple = heap_getnext(scan_desc, ForwardScanDirection);
+
+        // no more labels to process
+        if (!HeapTupleIsValid(tuple))
+            break;
+
+        ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+
+        datum = slot_getattr(slot, Anum_ag_label_name, &isNull);
+        label = DatumGetName(datum);
+
+        labels = lappend(labels, label);
+    }
+
+    heap_endscan(scan_desc);
+    heap_close(ag_label, RowExclusiveLock);
+    heap_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+
+    return labels;
 }

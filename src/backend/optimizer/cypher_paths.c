@@ -35,7 +35,8 @@ typedef enum cypher_clause_kind
 {
     CYPHER_CLAUSE_NONE,
     CYPHER_CLAUSE_CREATE,
-    CYPHER_CLAUSE_SET
+    CYPHER_CLAUSE_SET,
+    CYPHER_CLAUSE_DELETE
 } cypher_clause_kind;
 
 static set_rel_pathlist_hook_type prev_set_rel_pathlist_hook;
@@ -47,6 +48,8 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
                                         Index rti, RangeTblEntry *rte);
 static void handle_cypher_set_clause(PlannerInfo *root, RelOptInfo *rel,
                                      Index rti, RangeTblEntry *rte);
+static void handle_cypher_delete_clause(PlannerInfo *root, RelOptInfo *rel,
+                                        Index rti, RangeTblEntry *rte);
 
 void set_rel_pathlist_init(void)
 {
@@ -72,6 +75,10 @@ static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti,
         break;
     case CYPHER_CLAUSE_SET:
         handle_cypher_set_clause(root, rel, rti, rte);
+        break;
+    case CYPHER_CLAUSE_DELETE:
+        handle_cypher_delete_clause(root, rel, rti, rte);
+        break;
     case CYPHER_CLAUSE_NONE:
         break;
     default:
@@ -106,15 +113,46 @@ static cypher_clause_kind get_cypher_clause_kind(RangeTblEntry *rte)
 
     fe = (FuncExpr *)te->expr;
 
-    if (is_oid_ag_func(fe->funcid, "_cypher_create_clause"))
+    if (is_oid_ag_func(fe->funcid, CREATE_CLAUSE_FUNCTION_NAME))
         return CYPHER_CLAUSE_CREATE;
-    if (is_oid_ag_func(fe->funcid, "_cypher_set_clause"))
+    if (is_oid_ag_func(fe->funcid, SET_CLAUSE_FUNCTION_NAME))
         return CYPHER_CLAUSE_SET;
+    if (is_oid_ag_func(fe->funcid, DELETE_CLAUSE_FUNCTION_NAME))
+        return CYPHER_CLAUSE_DELETE;
     else
         return CYPHER_CLAUSE_NONE;
 }
 
 // replace all possible paths with our CustomPath
+static void handle_cypher_delete_clause(PlannerInfo *root, RelOptInfo *rel,
+                                        Index rti, RangeTblEntry *rte)
+{
+    TargetEntry *te;
+    FuncExpr *fe;
+    Const *c;
+    List *custom_private;
+    CustomPath *cp;
+
+    // Add the pattern to the CustomPath
+    te = (TargetEntry *)llast(rte->subquery->targetList);
+    fe = (FuncExpr *)te->expr;
+    c = linitial(fe->args);
+    custom_private = list_make1(DatumGetPointer(c->constvalue));
+
+    cp = create_cypher_delete_path(root, rel, custom_private);
+
+    // Discard any pre-existing paths
+    rel->pathlist = NIL;
+    rel->partial_pathlist = NIL;
+
+    add_path(rel, (Path *)cp);
+}
+
+/*
+ * Take the paths possible for the RelOptInfo that represents our
+ * _cypher_delete_clause function replace them with our delete clause
+ * path. The original paths will be children to the new delete path.
+ */
 static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
                                         Index rti, RangeTblEntry *rte)
 {
@@ -132,10 +170,11 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
 
     cp = create_cypher_create_path(root, rel, custom_private);
 
-    // Discard any pre-existing paths
+    // Discard any pre-existing paths, they should be under the cp path
     rel->pathlist = NIL;
     rel->partial_pathlist = NIL;
 
+    // Add the new path to the rel.
     add_path(rel, (Path *)cp);
 }
 

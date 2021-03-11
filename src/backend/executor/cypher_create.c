@@ -29,12 +29,14 @@
 #include "parser/parse_relation.h"
 #include "rewrite/rewriteHandler.h"
 #include "utils/rel.h"
+#include "utils/tqual.h"
 
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 #include "nodes/cypher_nodes.h"
 #include "utils/agtype.h"
+#include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
 static void begin_cypher_create(CustomScanState *node, EState *estate,
@@ -53,8 +55,9 @@ static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
                                 TupleTableSlot *elemTupleSlot, EState *estate);
 static void process_pattern(cypher_create_custom_scan_state *css);
 static void process_all_tuples(CustomScanState *node, EState *estate);
+static bool entity_exists(EState *estate, Oid graph_oid, graphid id);
 
-const CustomExecMethods cypher_create_exec_methods = {"Cypher Create",
+const CustomExecMethods cypher_create_exec_methods = {CREATE_SCAN_STATE_NAME,
                                                       begin_cypher_create,
                                                       exec_cypher_create,
                                                       end_cypher_create,
@@ -136,7 +139,18 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
         }
     }
 
-    estate->es_output_cid++;
+    /*
+     * Postgres does not assign the es_output_cid in queries that do
+     * not write to disk, ie: SELECT commands. We need the command id
+     * for our clauses, and we may need to initialize it. We cannot use
+     * GetCurrentCommandId because there may be other cypher clauses
+     * that have modified the command id.
+     */
+    if (estate->es_output_cid == 0)
+        estate->es_output_cid = estate->es_snapshot->curcid;
+
+    CommandCounterIncrement();
+    Increment_Estate_CommandId(estate);
 }
 
 /*
@@ -196,11 +210,11 @@ static void process_all_tuples(CustomScanState *node, EState *estate)
 
     do
     {
-        estate->es_output_cid++;
         process_pattern(css);
-        estate->es_output_cid--;
 
+        Decrement_Estate_CommandId(estate);
         slot = ExecProcNode(node->ss.ps.lefttree);
+        Increment_Estate_CommandId(estate);
     } while (!TupIsNull(slot));
 }
 
@@ -217,10 +231,11 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
     saved_resultRelInfo = estate->es_result_relation_info;
 
     //Process the subtree first
-    estate->es_output_cid--;
+    Decrement_Estate_CommandId(estate);
     slot = ExecProcNode(node->ss.ps.lefttree);
+    Increment_Estate_CommandId(estate);
+
     css->slot = slot;
-    estate->es_output_cid++;
 
     econtext->ecxt_scantuple =
         node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
@@ -287,8 +302,6 @@ static void end_cypher_create(CustomScanState *node)
                        RowExclusiveLock);
         }
     }
-
-    GetCurrentCommandId(true);
 }
 
 static void rescan_cypher_create(CustomScanState *node)
@@ -311,6 +324,7 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
     cypher_css->pattern = target_nodes->paths;
     cypher_css->tuple_info = NIL;
     cypher_css->flags = target_nodes->flags;
+    cypher_css->graph_oid = target_nodes->graph_oid;
 
     cypher_css->css.ss.ps.type = T_CustomScanState;
     cypher_css->css.methods = &cypher_create_exec_methods;
@@ -397,16 +411,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
     tuple = insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
     if (node->variable_name != NULL)
-    {
-        clause_tuple_information *tuple_info;
-
-        tuple_info = palloc(sizeof(clause_tuple_information));
-
-        tuple_info->tuple = tuple;
-        tuple_info->name = node->variable_name;
-
-        css->tuple_info = lappend(css->tuple_info, tuple_info);
-    }
+        css->tuple_info = add_tuple_info(css->tuple_info, tuple, node->variable_name);
 
     /*
      * When the edge is used by clauses higher in the execution tree
@@ -533,6 +538,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
         {
             agtype *a;
             agtype_value *v;
+            bool is_deleted = false;
 
             a = (agtype *)scanTupleSlot->tts_values[node->id_var_no];
 
@@ -544,6 +550,20 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
                          errmsg("id agtype must resolve to a graphid")));
 
             id = GRAPHID_GET_DATUM(v->val.int_value);
+
+            /*
+             * Its possible the variable has already been deleted. There are two ways
+             * this can happen. One is the query explicitly deleted the variable, the
+             * is_deleted flag will catch that. However, it is possible the user deleted
+             * the vertex using another variable name. We need to scan the table to find
+             * the vertex's current status relative to this CREATE clause.
+             */
+            get_heap_tuple(&css->css, node->variable_name, &is_deleted);
+
+            if (is_deleted || !entity_exists(estate, css->graph_oid, DATUM_GET_GRAPHID(id)))
+                ereport(ERROR,
+                    (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+                     errmsg("vertex assigned to variable %s was deleted", node->variable_name)));
         }
         else if (CYPHER_TARGET_NODE_ID_IS_GRAPHID(node->flags))
         {
@@ -569,6 +589,47 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
     }
 
     return id;
+}
+
+/*
+ * Find out if the entity still exists. This is for 'implicit' deletion
+ * of an entity.
+ */
+static bool entity_exists(EState *estate, Oid graph_oid, graphid id)
+{
+    label_cache_data *label;
+    ScanKeyData scan_keys[1];
+    HeapScanDesc scan_desc;
+    HeapTuple tuple;
+    Relation rel;
+    bool result = true;
+
+    /*
+     * Extract the label id from the graph id and get the table name
+     * the entity is part of.
+     */
+    label = search_label_graph_id_cache(graph_oid, GET_LABEL_ID(id));
+
+    // Setup the scan key to be the graphid
+    ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber,
+                F_GRAPHIDEQ, GRAPHID_GET_DATUM(id));
+
+    rel = heap_open(label->relation, RowExclusiveLock);
+    scan_desc = heap_beginscan(rel, estate->es_snapshot, 1, scan_keys);
+
+    tuple = heap_getnext(scan_desc, ForwardScanDirection);
+
+    /*
+     * If a single tuple was returned, the tuple is still valid, otherwise'
+     * set to false.
+     */
+    if (!HeapTupleIsValid(tuple))
+        result = false;
+
+    heap_endscan(scan_desc);
+    heap_close(rel, RowExclusiveLock);
+
+    return result;
 }
 
 /*

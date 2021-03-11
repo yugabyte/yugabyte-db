@@ -23,9 +23,15 @@
 #include "nodes/pg_list.h"
 #include "nodes/relation.h"
 
+#define CREATE_PATH_NAME "Cypher Create"
+#define SET_PATH_NAME "Cypher Set"
+#define DELETE_PATH_NAME "Cypher Delete"
+
 CustomPath *create_cypher_create_path(PlannerInfo *root, RelOptInfo *rel,
                                       List *custom_private);
 CustomPath *create_cypher_set_path(PlannerInfo *root, RelOptInfo *rel,
+                                   List *custom_private);
+CustomPath *create_cypher_delete_path(PlannerInfo *root, RelOptInfo *rel,
                                    List *custom_private);
 
 #endif

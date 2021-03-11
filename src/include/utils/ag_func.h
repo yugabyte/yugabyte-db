@@ -22,6 +22,10 @@
 
 #include "postgres.h"
 
+#define CREATE_CLAUSE_FUNCTION_NAME "_cypher_create_clause"
+#define SET_CLAUSE_FUNCTION_NAME "_cypher_set_clause"
+#define DELETE_CLAUSE_FUNCTION_NAME "_cypher_delete_clause"
+
 bool is_oid_ag_func(Oid func_oid, const char *func_name);
 Oid get_ag_func_oid(const char *func_name, const int nargs, ...);
 Oid get_pg_func_oid(const char *func_name, const int nargs, ...);

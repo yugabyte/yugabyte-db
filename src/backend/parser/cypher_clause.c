@@ -216,6 +216,12 @@ static cypher_update_information *transform_cypher_set_item_list(cypher_parsesta
 static cypher_update_information *transform_cypher_remove_item_list(cypher_parsestate *cpstate,
                                                                     List *remove_item_list,
                                                                     Query *query);
+// delete
+static Query *transform_cypher_delete(cypher_parsestate *cpstate,
+                                      cypher_clause *clause);
+static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
+                                               List *delete_item_list,
+                                               Query *query);
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
@@ -270,7 +276,7 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_set))
         return transform_cypher_set(cpstate, clause);
     else if (is_ag_node(self, cypher_delete))
-        return NULL;
+        return transform_cypher_delete(cpstate, clause);
     else if (is_ag_node(self, cypher_sub_pattern))
         result = transform_cypher_sub_pattern(cpstate, clause);
     else
@@ -280,6 +286,126 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     result->canSetTag = true;
 
     return result;
+}
+
+/*
+ * Transform the Delete clause. Creates a _cypher_delete_clause
+ * and passes the necessary information that is needed in the
+ * execution phase.
+ */
+static Query *transform_cypher_delete(cypher_parsestate *cpstate,
+                                      cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_delete *self = (cypher_delete *)clause->self;
+    Query *query;
+    TargetEntry *tle;
+    Oid func_set_oid;
+    Const *pattern_const;
+    Expr *func_expr;
+    RangeTblEntry *rte;
+    int rtindex;
+
+    cypher_delete_information *delete_data;
+
+    delete_data = palloc0(sizeof(cypher_delete_information));
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+    query->targetList = NIL;
+
+    if (!clause->prev)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("DELETE cannot be the first clause in a Cypher query"),
+                        parser_errposition(pstate, self->location)));
+    }
+
+    rte = transform_prev_cypher_clause(cpstate, clause->prev);
+    rtindex = list_length(pstate->p_rtable);
+
+    // rte is the first RangeTblEntry in pstate
+    Assert(rtindex == 1);
+
+    query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+    func_set_oid = get_ag_func_oid(DELETE_CLAUSE_FUNCTION_NAME, 1, INTERNALOID);
+
+    delete_data->delete_items = transform_cypher_delete_item_list(cpstate, self->exprs, query);
+    delete_data->graph_name = cpstate->graph_name;
+    delete_data->graph_oid = cpstate->graph_oid;
+    delete_data->detach = self->detach;
+
+    if (!clause->next)
+        delete_data->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
+
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
+                              PointerGetDatum(delete_data), false, true);
+
+    func_expr = (Expr *)makeFuncExpr(func_set_oid, AGTYPEOID,
+                                     list_make1(pattern_const), InvalidOid,
+                                     InvalidOid, COERCE_EXPLICIT_CALL);
+
+    // Create the target entry
+    tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
+                          "cypher_delete_clause", false);
+    query->targetList = lappend(query->targetList, tle);
+
+    query->rtable = pstate->p_rtable;
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+
+    return query;
+}
+
+/*
+ * Iterate through the list of items to delete and extract the variable name.
+ * Then find the resno that the variable name belongs to.
+ */
+static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
+                                               List *delete_item_list, Query *query)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    List *items = NIL;
+    ListCell *lc;
+
+    foreach(lc, delete_item_list)
+    {
+        Node *expr = lfirst(lc);
+        ColumnRef *col;
+        Value *val, *pos;
+        int resno;
+
+        cypher_delete_item *item = palloc(sizeof(cypher_delete_item));
+
+        if (!IsA(expr, ColumnRef))
+            ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
+
+        col = (ColumnRef *)expr;
+
+        if(list_length(col->fields) != 1)
+            ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
+
+        val = linitial(col->fields);
+
+        if(!IsA(val, String))
+            ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
+
+        resno = get_target_entry_resno(query->targetList, val->val.str);
+
+        if (resno == -1)
+            ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                errmsg("undefined reference to variable %s in DELETE clause", val->val.str),
+                parser_errposition(pstate, col->location)));
+
+        pos = makeInteger(resno);
+
+        item->var_name = val->val.str;
+        item->entity_position = pos;
+
+        items = lappend(items, item);
+    }
+
+    return items;
 }
 
 static Query *transform_cypher_set(cypher_parsestate *cpstate,
@@ -354,7 +480,7 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     // Create the target entry
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
-                          "cypher_set_clause", false);
+                          SET_CLAUSE_FUNCTION_NAME, false);
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
@@ -2240,6 +2366,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 
     target_nodes = palloc(sizeof(cypher_create_target_nodes));
     target_nodes->flags = CYPHER_CLAUSE_FLAG_NONE;
+    target_nodes->graph_oid = cpstate->graph_oid;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -2258,7 +2385,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
         target_nodes->flags |= CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE;
     }
 
-    func_create_oid = get_ag_func_oid("_cypher_create_clause", 1, INTERNALOID);
+    func_create_oid = get_ag_func_oid(CREATE_CLAUSE_FUNCTION_NAME, 1, INTERNALOID);
 
     null_const = makeNullConst(AGTYPEOID, -1, InvalidOid);
     tle = makeTargetEntry((Expr *)null_const, pstate->p_next_resno++,

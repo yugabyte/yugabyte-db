@@ -23,11 +23,13 @@
 #include "postgres.h"
 
 #include "fmgr.h"
+#include "utils/fmgroids.h"
 #include "utils/syscache.h"
 
 #include "catalog/ag_namespace.h"
 
 typedef int64 graphid;
+#define F_GRAPHIDEQ F_INT8EQ
 
 #define LABEL_ID_MIN 1
 #define LABEL_ID_MAX PG_UINT16_MAX
@@ -57,6 +59,9 @@ typedef int64 graphid;
 #define GRAPHIDARRAYOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_graphid"), \
                      ObjectIdGetDatum(ag_catalog_namespace_id())))
+
+#define GET_LABEL_ID(id) \
+       (((uint64)id) >> ENTRY_ID_BITS)
 
 graphid make_graphid(const int32 label_id, const int64 entry_id);
 int32 get_graphid_label_id(const graphid gid);

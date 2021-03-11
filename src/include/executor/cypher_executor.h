@@ -24,10 +24,17 @@
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 
+#define DELETE_SCAN_STATE_NAME "Cypher Delete"
+#define SET_SCAN_STATE_NAME "Cypher Set"
+#define CREATE_SCAN_STATE_NAME "Cypher Create"
+
 Node *create_cypher_create_plan_state(CustomScan *cscan);
 extern const CustomExecMethods cypher_create_exec_methods;
 
 Node *create_cypher_set_plan_state(CustomScan *cscan);
 extern const CustomExecMethods cypher_set_exec_methods;
+
+Node *create_cypher_delete_plan_state(CustomScan *cscan);
+extern const CustomExecMethods cypher_delete_exec_methods;
 
 #endif

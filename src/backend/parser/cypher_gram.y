@@ -652,12 +652,9 @@ delete:
             n = make_ag_node(cypher_delete);
             n->detach = $1;
             n->exprs = $3;
+            n->location = @1;
 
             $$ = (Node *)n;
-
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("DELETE clause not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
