@@ -204,7 +204,7 @@ public class HealthChecker {
       SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
       if (!StringUtils.isEmpty(emailDestinations) && (smtpData != null)
           && (sendMailAlways || hasErrors)) {
-        String subject = String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(),
+        String subject = String.format("%s %s - <%s> %s", "Yugabyte Platform Alert " , hasErrors ? "ERROR" : "OK", c.getTag(),
             u.name);
         String mailError = sendEmailReport(u, c, smtpData, emailDestinations, subject, healthJSON,
             reportOnlyErrors);
