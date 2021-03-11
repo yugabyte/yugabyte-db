@@ -1548,7 +1548,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 }
 
 void CatalogManager::HandleDeleteTabletSnapshotResponse(
-    SnapshotId snapshot_id, TabletInfo *tablet, bool error) {
+    const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) {
   LOG(INFO) << "Handling Delete Tablet Snapshot Response for tablet "
             << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
 
@@ -1561,7 +1561,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
 
     if (!snapshot) {
-      LOG(WARNING) << "Snapshot not found: " << snapshot_id;
+      LOG(WARNING) << __func__ << " Snapshot not found: " << snapshot_id;
       return;
     }
   }

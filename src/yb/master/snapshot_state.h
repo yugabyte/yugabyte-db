@@ -71,11 +71,12 @@ class SnapshotState : public StateWithTablets {
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);
   CHECKED_STATUS ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
-  CHECKED_STATUS CheckCanDelete();
+  CHECKED_STATUS TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
   bool ShouldUpdate(const SnapshotState& other) const;
+  void DeleteAborted(const Status& status);
 
  private:
   bool IsTerminalFailure(const Status& status) override;
@@ -87,6 +88,7 @@ class SnapshotState : public StateWithTablets {
   // schedule id. Otherwise it will be nil.
   SnapshotScheduleId schedule_id_;
   int version_;
+  bool delete_started_ = false;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

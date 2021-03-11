@@ -82,7 +82,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
-  void HandleDeleteTabletSnapshotResponse(SnapshotId snapshot_id, TabletInfo *tablet, bool error);
+  void HandleDeleteTabletSnapshotResponse(
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 

@@ -54,6 +54,8 @@ namespace master {
 
 namespace {
 
+YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
+
 void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
@@ -258,23 +260,12 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
-      RETURN_NOT_OK(snapshot.CheckCanDelete());
+      RETURN_NOT_OK(snapshot.TryStartDelete());
     }
 
     auto synchronizer = std::make_shared<Synchronizer>();
-    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
-    auto request = operation_state->AllocateRequest();
-
-    request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-
-    operation_state->set_completion_callback(std::make_unique<
-        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
-    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
-
-    context_.Submit(std::move(operation));
-    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
-    return Status::OK();
+    SubmitDelete(snapshot_id, synchronizer);
+    return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
   CHECKED_STATUS DeleteReplicated(
@@ -487,7 +478,7 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     VLOG(4) << __func__ << "()";
-    std::vector<TxnSnapshotId> cleanup_snapshots;
+    std::vector<TxnSnapshotId> cleanup_snapshots, delete_snapshots;
     TabletSnapshotOperations operations;
     SnapshotScheduleOperations schedule_operations;
     {
@@ -501,11 +492,30 @@ class MasterSnapshotCoordinator::Impl {
       }
       auto now = context_.Clock()->Now();
       for (const auto& p : schedules_) {
-        p->PrepareOperations(LastSnapshotTime(p->id()), now, &schedule_operations);
+        auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
+        auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
+        if (first_snapshot && first_snapshot != last_snapshot) {
+          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+            auto delete_status = first_snapshot->TryStartDelete();
+            if (delete_status.ok()) {
+              delete_snapshots.push_back(first_snapshot->id());
+            } else {
+              VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
+                      << delete_status;
+            }
+          }
+        }
+        auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
+                                                : HybridTime::kInvalid;
+        p->PrepareOperations(last_snapshot_time, now, &schedule_operations);
       }
     }
     for (const auto& id : cleanup_snapshots) {
       DeleteSnapshot(id);
+    }
+    for (const auto& id : delete_snapshots) {
+      SubmitDelete(id, nullptr);
     }
     ExecuteOperations(operations);
     for (const auto& operation : schedule_operations) {
@@ -514,15 +524,23 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  HybridTime LastSnapshotTime(const SnapshotScheduleId& schedule_id) REQUIRES(mutex_) {
+  SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)
+      REQUIRES(mutex_) {
     auto& index = snapshots_.get<ScheduleTag>();
-    auto it = index.upper_bound(schedule_id);
-    if (it == index.begin()) {
-      return HybridTime::kInvalid;
+    decltype(index.begin()) it;
+    if (bound == Bound::kFirst) {
+      it = index.lower_bound(schedule_id);
+      if (it == index.end()) {
+        return nullptr;
+      }
+    } else {
+      it = index.upper_bound(schedule_id);
+      if (it == index.begin()) {
+        return nullptr;
+      }
+      --it;
     }
-    --it;
-    return (**it).schedule_id() == schedule_id ? (**it).snapshot_hybrid_time()
-                                               : HybridTime::kInvalid;
+    return (**it).schedule_id() == schedule_id ? it->get() : nullptr;
   }
 
   void DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -601,6 +619,41 @@ class MasterSnapshotCoordinator::Impl {
     context_.Submit(std::move(operation));
 
     return snapshot_id;
+  }
+
+  void SubmitDelete(const TxnSnapshotId& snapshot_id,
+                    const std::shared_ptr<Synchronizer>& synchronizer) {
+    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
+    auto request = operation_state->AllocateRequest();
+
+    request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
+    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+
+    operation_state->set_completion_callback(tablet::MakeFunctorOperationCompletionCallback(
+        [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
+        (const Status& status) {
+          auto synchronizer = wsynchronizer.lock();
+          if (synchronizer) {
+            synchronizer->StatusCB(status);
+          }
+          if (!status.ok()) {
+            DeleteSnapshotAborted(status, snapshot_id);
+          }
+        }));
+    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
+
+    context_.Submit(std::move(operation));
+  }
+
+  void DeleteSnapshotAborted(
+      const Status& status, const TxnSnapshotId& snapshot_id) {
+    LOG(INFO) << __func__ << ", snapshot: " << snapshot_id << ", status: " << status;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = snapshots_.find(snapshot_id);
+    if (it == snapshots_.end()) {
+      return;
+    }
+    (**it).DeleteAborted(status);
   }
 
   void UpdateSnapshot(SnapshotState* snapshot, std::unique_lock<std::mutex>* lock)

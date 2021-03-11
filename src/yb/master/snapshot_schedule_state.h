@@ -50,6 +50,10 @@ class SnapshotScheduleState {
     return true;
   }
 
+  const SnapshotScheduleOptionsPB& options() const {
+    return options_;
+  }
+
   void PrepareOperations(
       HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
