@@ -10,7 +10,6 @@ ansible-vault==1.0.4
 ansible==2.2.3.0
 apache-libcloud==2.8.3
 auth0-python==3.0.0
-awscli==1.11.1
 azure-common==1.1.25
 azure-mgmt-compute==12.1.0
 azure-mgmt-network==10.2.0
@@ -32,7 +31,6 @@ click==7.1.2
 colorama==0.3.7
 cryptography==1.7.2
 distro==1.5.0
-docker-compose==1.9.0
 docker-py==1.7.0
 dockerpty==0.4.1
 docopt==0.6.2
