@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert.State;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,8 @@ import javax.mail.MessagingException;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Singleton
 public class AlertManager {
@@ -79,11 +82,11 @@ public class AlertManager {
           : null;
       if (universe != null) {
         content = String.format(
-            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s.",
+            "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
             universe.name, state, alert.message);
       } else {
         content = String.format(
-            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s.",
+            "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
             customer.name, state, alert.message);
       }
     }
@@ -127,5 +130,23 @@ public class AlertManager {
     }
 
     return alert;
+  }
+
+  /**
+   * Updates states of all active alerts (according to criteria) to RESOLVED.
+   *
+   * @param customerUUID
+   * @param universeUUID
+   * @param errorCode    Error code string (LIKE wildcards allowed)
+   */
+  public void resolveAlerts(UUID customerUUID, UUID universeUUID, String errorCode) {
+    List<Alert> activeAlerts = Alert.list(customerUUID, errorCode, universeUUID)
+        .stream().filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
+        .collect(Collectors.toList());
+    LOG.debug("Resetting alerts for '{}', count {}", errorCode, activeAlerts.size());
+    for (Alert alert : activeAlerts) {
+      alert.setState(State.RESOLVED);
+      alert.save();
+    }
   }
 }

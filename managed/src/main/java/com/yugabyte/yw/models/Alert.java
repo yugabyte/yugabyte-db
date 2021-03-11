@@ -215,7 +215,7 @@ public class Alert extends Model {
 
   public static List<Alert> list(UUID customerUUID, String errCode, UUID targetUUID) {
     return find.query().where().eq("customer_uuid", customerUUID)
-                               .eq("err_code", errCode)
+                               .like("err_code", errCode)
                                .eq("target_uuid", targetUUID)
                                .orderBy("create_time desc")
                                .findList();
