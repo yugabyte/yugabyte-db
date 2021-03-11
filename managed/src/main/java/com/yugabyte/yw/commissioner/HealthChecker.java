@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 import javax.mail.MessagingException;
 
@@ -32,7 +31,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import org.apache.commons.lang3.StringUtils;
@@ -192,7 +190,7 @@ public class HealthChecker {
             (hasErrors ? "errors" : " success"), durationMs);
 
         if (!hasErrors) {
-          resolveHealthCheckAlerts(c, u);
+          alertManager.resolveAlerts(c.uuid, u.universeUUID, ALERT_ERROR_CODE);
         }
 
       } catch (Exception e) {
@@ -213,23 +211,6 @@ public class HealthChecker {
           createAlert(c, u, "Error sending Health check email: " + mailError);
         }
       }
-    }
-  }
-
-  /**
-   * Updates states of all active health-check alerts to RESOLVED.
-   *
-   * @param c Customer
-   * @param u Universe
-   */
-  private void resolveHealthCheckAlerts(Customer c, Universe u) {
-    List<Alert> activeAlerts = Alert.list(c.uuid, ALERT_ERROR_CODE, u.universeUUID).stream()
-        .filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
-        .collect(Collectors.toList());
-    LOG.debug("Resetting health-check alerts, count: " + activeAlerts.size());
-    for (Alert alert : activeAlerts) {
-        alert.setState(State.RESOLVED);
-        alert.save();
     }
   }
 
@@ -445,6 +426,16 @@ public class HealthChecker {
     }
 
     for (NodeDetails nd : details.nodeDetailsSet) {
+      if (nd.cloudInfo.private_ip == null) {
+        invalidUniverseData = true;
+        LOG.warn(String.format("Universe %s has unprovisioned node %s.", u.name, nd.nodeName));
+        createAlert(c, u,
+            String.format(
+                "Can't run health check for the universe due to missing IP address for node %s.",
+                nd.nodeName));
+        break;
+      }
+
       HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
       if (info == null) {
         invalidUniverseData = true;
