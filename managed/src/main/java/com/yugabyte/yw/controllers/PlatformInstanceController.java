@@ -204,7 +204,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       String localInstanceAddr = instance.getAddress();
 
       // Restore the backup.
-      backup.ifPresent(file -> replicationManager.restoreBackup(file.getAbsolutePath()));
+      backup.ifPresent(replicationManager::restoreBackup);
 
       // Fail any incomplete tasks that may be leftover from the backup that was restored.
       taskManager.failAllPendingTasks();
