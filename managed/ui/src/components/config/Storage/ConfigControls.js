@@ -8,14 +8,13 @@
 import React from "react";
 import { YBButton } from "../../common/forms/fields";
 
-const updateBackupConfig = (values) => {
-  console.log(values, "Edit button clicked.");
-}
-
 const ConfigControls = (props) => {
   const {
     activeTab,
     editView,
+    editView: {
+      [activeTab]: { data }
+    },
     listView,
     showListView
   } = props;
@@ -35,7 +34,7 @@ const ConfigControls = (props) => {
         <YBButton
           btnText="Update"
           btnClass="btn btn-orange"
-          onClick={updateBackupConfig}
+          btnType="submit"
         />
       }
 

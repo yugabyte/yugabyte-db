@@ -8,13 +8,10 @@
 import { Field } from "redux-form";
 import React from "react";
 import { Col, Row } from "react-bootstrap";
-import { isDefinedNotNull } from "../../../utils/ObjectUtils";
-import { YBTextInputWithLabel } from "../../common/forms/fields";
 
 // This method will handle the disable validation for the
 // input fields.
 const disbaleFields = (data, fieldId, configName) => {
-  // data.inUse = true;
   if (data.inUse) {
     if (fieldId !== `${configName}_CONFIGURATION_NAME`) {
       return true;

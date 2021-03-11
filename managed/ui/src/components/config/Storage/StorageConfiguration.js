@@ -6,7 +6,6 @@ import { withRouter } from 'react-router';
 import { SubmissionError, change } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
-import { YBButton } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
@@ -140,7 +139,7 @@ class StorageConfiguration extends Component {
         if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
-          dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
@@ -148,7 +147,7 @@ class StorageConfiguration extends Component {
           ]);
         } else {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
-          dataPayload['BACKUP_LOCATION'] = dataPayload['AWS_BACKUP_LOCATION'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
@@ -159,30 +158,56 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    return (
-      this.props
-      .addCustomerConfig({
-        type: 'STORAGE',
-        name: type,
-        configName: configName,
-        data: dataPayload
-      })
-      .then((resp) => {
-        if (getPromiseState(this.props.addConfig).isSuccess()) {
-          // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
-          this.props.reset();
-          this.props.fetchCustomerConfigs();
-        } else if (getPromiseState(this.props.addConfig).isError()) {
-          // show server-side validation errors under form inputs
-          throw new SubmissionError(this.props.addConfig.error);
-        }
-      }), this.setState({
-        listView: {
-          ...this.state.listView,
-          [props.activeTab]: true
-        }
-      })
-    );
+    if (values.type === "edit") {
+      return (
+        this.props
+        .editCustomerConfig({
+          type: 'STORAGE',
+          name: type,
+          configName: configName,
+          data: dataPayload,
+          configUUID: values.configUUID
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.editConfig).isSuccess()) {
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.editConfig).isError()) {
+            throw new SubmissionError(this.props.editConfig.error);
+          }
+        }), this.setState({
+          listView: {
+            ...this.state.listView,
+            [props.activeTab]: true
+          }
+        })
+      )
+    } else {
+      return (
+        this.props
+          .addCustomerConfig({
+            type: 'STORAGE',
+            name: type,
+            configName: configName,
+            data: dataPayload
+          })
+          .then((resp) => {
+            if (getPromiseState(this.props.addConfig).isSuccess()) {
+              // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+              this.props.reset();
+              this.props.fetchCustomerConfigs();
+            } else if (getPromiseState(this.props.addConfig).isError()) {
+              // show server-side validation errors under form inputs
+              throw new SubmissionError(this.props.addConfig.error);
+            }
+          }), this.setState({
+            listView: {
+              ...this.state.listView,
+              [props.activeTab]: true
+            }
+          })
+      );
+    }
   };
 
   deleteStorageConfig = (configUUID) => {
@@ -198,6 +223,8 @@ class StorageConfiguration extends Component {
     const tab = activeTab.toUpperCase();
     const data = {
       ...row.data,
+      "type": "edit",
+      "configUUID": row.configUUID,
       "inUse": row.inUse,
       [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
       [`${tab}_CONFIGURATION_NAME`]: row.configName,
