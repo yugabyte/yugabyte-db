@@ -122,8 +122,12 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
-          snapshot_id_, tablet_.get(), resp_.has_error());
+      // HandleDeleteTabletSnapshotResponse handles only non transaction aware snapshots.
+      // So prevent log flooding for transaction aware snapshots.
+      if (!TryFullyDecodeTxnSnapshotId(snapshot_id_)) {
+        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
+            snapshot_id_, tablet_.get(), resp_.has_error());
+      }
       return;
     }
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
