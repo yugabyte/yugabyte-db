@@ -8,8 +8,6 @@
 import { Field } from "redux-form";
 import React from "react";
 import { Col, Row } from "react-bootstrap";
-import { isDefinedNotNull } from "../../../utils/ObjectUtils";
-import { YBTextInputWithLabel } from "../../common/forms/fields";
 
 // This method will handle the disable validation for the
 // input fields.
@@ -37,11 +35,8 @@ const EditBackupList = (props) => {
         <Field
           name={field.id}
           placeHolder={field.placeHolder}
-          input={{
-            value: data[field.id],
-            disabled: disbaleFields(data, field.id, configName)
-          }}
           component={field.component}
+          isReadOnly={disbaleFields(data, field.id, configName)}
         />
       </Col>
     </Row>
