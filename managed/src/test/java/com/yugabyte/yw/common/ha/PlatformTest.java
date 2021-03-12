@@ -99,7 +99,7 @@ public class PlatformTest extends FakeDBApplication {
 
   @After
   public void tearDown() throws IOException {
-    Util.listFiles(backupDir, PlatformReplicationManager.BACKUP_FILE_PATTERN)
+    Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN)
       .forEach(File::delete);
     backupDir.toFile().delete();
     stopRemoteApp();
@@ -191,7 +191,7 @@ public class PlatformTest extends FakeDBApplication {
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
-    return PlatformInstance.get(instanceUUID);
+    return PlatformInstance.get(instanceUUID).orElse(null);
   }
 
   private String createClusterKey() {
