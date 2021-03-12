@@ -135,15 +135,33 @@ set_python_vars() {
   if [ -z "$PYTHON_EXECUTABLE" ]; then
     fatal "Failed to find python executable."
   fi
+
+    # Basename (i.e. name excluding the directory path) of our virtualenv.
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
+    YB_VIRTUALENV_BASENAME=venv
+    REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
+    FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+    YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
+    YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
+    YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
+  else
+    YB_VIRTUALENV_BASENAME=python_virtual_env
+    REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
+    FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
+    YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
+    YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
+    YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-PYTHON2_EXECUTABLES="python2 python2.7"
-PYTHON3_EXECUTABLES="python3 python3.7"
+readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
+readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
 PYTHON_EXECUTABLE=""
-YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-""}
+USER_INPUT_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-""}
+YB_MANAGED_DEVOPS_USE_PYTHON3=""
 
 readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
@@ -172,22 +190,12 @@ set +u
 readonly MANAGED_PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
 set -u
 
-# Basename (i.e. name excluding the directory path) of our virtualenv.
-if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-  readonly YB_VIRTUALENV_BASENAME=venv
-  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
-  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
-  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
-  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
-  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
-else
-  readonly YB_VIRTUALENV_BASENAME=python_virtual_env
-  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
-  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
-  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
-  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
-  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
-fi
+YB_VIRTUALENV_BASENAME=venv
+REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
+FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
+YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
+YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
 readonly YBOPS_PACKAGE_NAME=ybops
@@ -312,6 +320,8 @@ activate_virtualenv() {
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
     # Reset python variables after deactivating virtualenv
+    PYTHON_EXECUTABLE=""
+    YB_MANAGED_DEVOPS_USE_PYTHON3=$USER_INPUT_MANAGED_DEVOPS_USE_PYTHON3
     set_python_vars
 
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
