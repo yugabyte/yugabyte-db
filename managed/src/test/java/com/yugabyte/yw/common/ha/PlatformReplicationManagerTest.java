@@ -137,22 +137,24 @@ public class PlatformReplicationManagerTest extends TestCase {
     File inputPath,
     boolean isCreate
   ) {
-    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
     }
 
     RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
-    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
 
     when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
       .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    mockReplicationUtil.shellProcessHandler = shellProcessHandler;
+    doCallRealMethod().when(mockReplicationUtil)
+      .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
+    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
+    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
       actorSystem,
       executionContext,
-      shellProcessHandler,
       mockReplicationUtil
     ));
 
@@ -199,16 +201,17 @@ public class PlatformReplicationManagerTest extends TestCase {
       URL testUrl = new URL(testAddr);
       Path tmpDir = testFile1.toPath().getParent();
       RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
       when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
       when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
       when(mockReplicationUtil.getReplicationDirFor(anyString()))
         .thenReturn(tmpDir);
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
-      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+      doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
+      doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
       PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
         actorSystem,
         executionContext,
-        shellProcessHandler,
         mockReplicationUtil
       ));
 
