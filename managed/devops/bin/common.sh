@@ -78,8 +78,8 @@ get_timestamp() {
 }
 
 check_python_executables() {
-  executables="$1"
-  for py_executable in $executables; do
+  executables=("$@")
+  for py_executable in "${executables[@]}"; do
     if which "$py_executable" > /dev/null 2>&1; then
       PYTHON_EXECUTABLE="$py_executable"
       return 0
@@ -91,9 +91,9 @@ check_python_executables() {
 set_python_vars() {
   # Prioritize python3 over python2.
   if [ -z "$YB_MANAGED_DEVOPS_USE_PYTHON3" ]; then
-    if check_python_executables "$PYTHON3_EXECUTABLES"; then
+    if check_python_executables "${PYTHON3_EXECUTABLES[@]}"; then
       YB_MANAGED_DEVOPS_USE_PYTHON3="1"
-    elif check_python_executables "$PYTHON2_EXECUTABLES"; then
+    elif check_python_executables "${PYTHON2_EXECUTABLES[@]}"; then
       YB_MANAGED_DEVOPS_USE_PYTHON3="0"
     fi
 
@@ -123,7 +123,7 @@ set_python_vars() {
       if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
         POSSIBLE_EXECUTABLES="$PYTHON2_EXECUTABLES"
       fi
-      check_python_executables "$POSSIBLE_EXECUTABLES"
+      check_python_executables "${POSSIBLE_EXECUTABLES[@]}"
     fi
   fi
 
