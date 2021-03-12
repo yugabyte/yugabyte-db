@@ -8,7 +8,7 @@ DECLARE
   modifiers text;
 BEGIN
   -- Check that we don't have modifier not supported by Oracle
-  IF regexp_match($1, '[^icnsmx]') IS NOT NULL THEN
+  IF $1 ~ '[^icnsmx]' THEN
     -- Modifier 's' is not supported by Oracle but it is a synonym
     -- of 'n', we translate 'n' into 's' bellow. It is safe to allow it.
     RAISE EXCEPTION 'argument ''flags'' has unsupported modifier(s).';
