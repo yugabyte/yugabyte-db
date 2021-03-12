@@ -35,19 +35,6 @@ END;
 $$;
 ```
 
-For example:
-
-```sql
-create procedure insert_data(a integer, b integer)
-  language sql
-as $$
-begin
-  insert into tbl values (a);
-  insert into tbl values (b);
-end;
-$$;
-```
-
 {{< note title="Using return" >}}
 
 Stored procedures don't return any values, other than errors. In a function, you use `return <expression>` to return a value. In a stored procedure, `return` does not support an expression, and ends the procedure immediately.
@@ -64,10 +51,10 @@ To invoke a stored procedure, use the [`CALL`](../../../api/ysql/the-sql-languag
 CALL stored_procedure_name(argument_list)
 ```
 
-Using the procedure from the previous section:
+For example, drawing from the [Example workflow](#example-workflow) on this page:
 
 ```sql
-yugabyte=# call insert_data(1, 2);
+yugabyte=# call move_money(1,2,1000);
 ```
 
 ## Deleting a Stored Procedure
@@ -82,7 +69,7 @@ DROP PROCEDURE [IF EXISTS] stored_procedure_name(argument_list)
 For example,
 
 ```sql
-yugabyte=# drop procedure insert_data(integer, integer);
+yugabyte=# drop procedure move_money(integer, integer, decimal);
 ```
 
 If the name of the stored procedure is not unique (for example, if you had two `insert_data()` procedures, one of which accepted two integers and another which accepted an integer and a varchar), you must specify the data types in the `DROP PROCEDURE` statement. Otherwise, you can omit the data types.
