@@ -106,7 +106,7 @@ class GcpCloud(AbstractCloud):
         try:
             return GoogleCloudAdmin.get_current_host_info()
         except YBOpsRuntimeError as e:
-            return {"error": get_exception_message(e)}
+            return get_exception_message(e)
 
     def get_instance_types_map(self, args):
         """This method returns a dictionary mapping regions to a dictionary of zones

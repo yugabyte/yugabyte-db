@@ -228,7 +228,7 @@ class AwsCloud(AbstractCloud):
                     self.get_instance_metadata(metadata_type).replace("\n", ",")
             return metadata
         except (URLError, socket.timeout):
-            raise YBOpsRuntimeError("Unable to fetch host metadata")
+            raise YBOpsRuntimeError("Unable to auto-discover AWS provider information")
 
     def get_instance_metadata(self, metadata_type):
         """This method fetches instance metadata using AWS metadata api
@@ -290,7 +290,8 @@ class AwsCloud(AbstractCloud):
         search_pattern = args.search_pattern
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
-    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None, filters=None):
+    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None,
+                                    filters=None):
         if not filters:
             filters = [
                 {

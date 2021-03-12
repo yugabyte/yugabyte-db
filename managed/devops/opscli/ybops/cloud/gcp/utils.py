@@ -531,7 +531,7 @@ class GoogleCloudAdmin():
         host_project = GcpMetadata.host_project()
         project = GcpMetadata.project()
         if network is None or project is None:
-            raise YBOpsRuntimeError("Host not in GCP.")
+            raise YBOpsRuntimeError("Unable to auto-discover GCP provider information")
         return {
             "network": network.split("/")[-1],
             "host_project": host_project,
