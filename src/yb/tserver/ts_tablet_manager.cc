@@ -1768,6 +1768,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
     for (const auto& peer : *tablet_peers) {
+      if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);

@@ -1237,12 +1237,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
           server_->tablet_peer_lookup(), id, resp, &context));
       tablet_peers.push_back(std::move(tablet_peer.tablet_peer));
-      tablet_ptrs.push_back(std::move(tablet_peer.tablet));
+      auto tablet = tablet_peer.tablet;
+      if (tablet != nullptr) {
+        tablet_ptrs.push_back(std::move(tablet));
+      }
     }
   }
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    auto tablet = tablet_peer->tablet();
+  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+    resp->set_failed_tablet_id(tablet->tablet_id());
     if (req->is_compaction()) {
       tablet->ForceRocksDBCompactInTest();
     } else {
@@ -1252,9 +1254,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   }
 
   // Wait for end of all flush operations.
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet_peer->tablet()->WaitForFlush(), resp, &context);
+  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+    resp->set_failed_tablet_id(tablet->tablet_id());
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
     resp->clear_failed_tablet_id();
   }
 
