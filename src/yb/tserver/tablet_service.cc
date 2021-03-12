@@ -1267,12 +1267,14 @@ void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
     rpc::RpcContext context) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  TabletPeers tablet_peers;
+  TSTabletManager::TabletPtrs tablet_ptrs;
+  server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
   int64_t total_intents = 0;
   // TODO: do this in parallel.
   // TODO: per-tablet intent counts.
-  for (const auto& peer : tablet_peers) {
-    auto num_intents = peer->tablet()->CountIntents();
+  for (const auto& tablet : tablet_ptrs) {
+    auto num_intents = tablet->CountIntents();
     if (!num_intents.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), num_intents.status(), TabletServerErrorPB_Code_UNKNOWN_ERROR,
