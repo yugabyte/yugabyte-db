@@ -242,7 +242,7 @@ class AwsQueryCurrentHostMethod(AbstractMethod):
         try:
             print(json.dumps(self.cloud.get_current_host_info(args)))
         except YBOpsRuntimeError as ye:
-            print(json.dumps({"error": ye.message}))
+            print(json.dumps(ye.message))
 
 
 class AwsQueryPricingMethod(AbstractMethod):
