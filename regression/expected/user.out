@@ -1,5 +1,5 @@
-DROP USER IF EXISTS su;
 CREATE USER su WITH SUPERUSER;
+ERROR:  role "su" already exists
 SET ROLE su;
 CREATE EXTENSION pg_stat_monitor;
 CREATE USER u1;
