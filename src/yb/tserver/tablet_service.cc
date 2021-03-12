@@ -1651,7 +1651,7 @@ struct ReadContext {
     VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
     auto result = read_time;
     result.read = std::min(std::max(restart_time, safe_ht_to_read), read_time.global_limit);
-    result.local_limit = safe_ht_to_read;
+    result.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
     return result;
   }
 
@@ -1685,8 +1685,8 @@ struct ReadContext {
       // So we should restart it in server in case of failure.
       read_time.read = safe_ht_to_read;
       if (transactional()) {
-        read_time.local_limit = clock->MaxGlobalNow();
-        read_time.global_limit = read_time.local_limit;
+        read_time.global_limit = clock->MaxGlobalNow();
+        read_time.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
 
         VLOG(1) << "Read time: " << read_time.ToString();
       } else {
@@ -2001,7 +2001,16 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     }
     read_context->read_time = *result;
     // If read was successful, then restart time is invalid. Finishing.
+    // (If a read restart was requested, then read_time would be set to the time at which we have
+    // to restart.)
     if (!read_context->read_time) {
+      // allow_retry means that that the read time was not set in the request and therefore we can
+      // retry read restarts on the tablet server.
+      if (!read_context->allow_retry) {
+        auto local_limit = std::min(
+            read_context->safe_ht_to_read, read_context->used_read_time.global_limit);
+        read_context->resp->set_local_limit_ht(local_limit.ToUint64());
+      }
       break;
     }
     if (!read_context->allow_retry) {

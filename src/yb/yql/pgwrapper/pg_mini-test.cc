@@ -1362,5 +1362,30 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
 }
 
+// Test that we don't sequential restart read on the same table if intents were written
+// after the first read. GH #6972.
+TEST_F(PgMiniTest, NoRestartSecondRead) {
+  FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn1.Execute("INSERT INTO t VALUES (1, 1), (2, 1), (3, 1)"));
+  auto start_time = MonoTime::Now();
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "Select1";
+  auto res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 1"));
+  ASSERT_EQ(res, 1);
+  LOG(INFO) << "Update";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("UPDATE t SET b = 2 WHERE a = 2"));
+  ASSERT_OK(conn2.CommitTransaction());
+  auto update_time = MonoTime::Now();
+  ASSERT_LE(update_time, start_time + FLAGS_max_clock_skew_usec * 1us);
+  LOG(INFO) << "Select2";
+  res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 2"));
+  ASSERT_EQ(res, 1);
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 } // namespace pgwrapper
 } // namespace yb
