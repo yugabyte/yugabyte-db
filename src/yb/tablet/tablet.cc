@@ -2250,11 +2250,24 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
       b2a_hex(partition_key));
   VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
-  // Connect and execute.
+  // Connect.
   pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
   if (!conn) {
     return STATUS(IllegalState, "backfill failed to connect to DB");
   }
+  if (PQstatus(conn.get()) == CONNECTION_BAD) {
+    std::string msg(PQerrorMessage(conn.get()));
+
+    // Avoid double newline (postgres adds a newline after the error message).
+    if (msg.back() == '\n') {
+      msg.resize(msg.size() - 1);
+    }
+    LOG(WARNING) << "libpq connection \"" << conn_str
+                 << "\" failed: " << msg;
+    return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", msg);
+  }
+
+  // Execute.
   pgwrapper::PGResultPtr res(PQexec(conn.get(), query_str.c_str()));
   if (!res) {
     std::string msg(PQerrorMessage(conn.get()));
@@ -2265,10 +2278,9 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     }
     LOG(WARNING) << "libpq query \"" << query_str
                  << "\" was not sent: " << msg;
-    return STATUS(IllegalState, "backfill query couldn't be sent");
+    return STATUS_FORMAT(IllegalState, "backfill query couldn't be sent: $0", msg);
   }
   ExecStatusType status = PQresultStatus(res.get());
-
   // TODO(jason): more properly handle bad statuses
   // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
   if (status != PGRES_COMMAND_OK) {
@@ -2283,6 +2295,7 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
                  << ": " << msg;
     return STATUS(IllegalState, msg);
   }
+
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
   return "";
