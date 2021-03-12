@@ -200,3 +200,50 @@ SELECT REGEXP_SUBSTR('1234567890 1234567890', '(123)(4(56)(78))', -1, 1, 'i', 0)
 SELECT REGEXP_SUBSTR('1234567890 1234567890', '(123)(4(56)(78))', 1, -1, 'i', 0);
 SELECT REGEXP_SUBSTR('1234567890 1234567890', '(123)(4(56)(78))', 1, 1, 'i', -1);
 
+----
+-- Tests for REGEXP_REPLACE()
+----
+
+-- ORACLE> SELECT REGEXP_REPLACE('512.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3') FROM DUAL; -> (512) 123-4567
+SELECT REGEXP_REPLACE('512.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3');
+-- ORACLE> SELECT REGEXP_REPLACE('512.123.4567 612.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3') FROM DUAL; -> (512) 123-4567 (612) 123-4567
+SELECT oracle.REGEXP_REPLACE('512.123.4567 612.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3');
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ') FROM DUAL; -> number your street, zipcode town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ');
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,'||CHR(10)||'    zipcode  town, FR', '( ){2,}', ' ') FROM DUAL; -> number your street,
+-- zipcode town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,'||CHR(10)||'    zipcode  town, FR', '( ){2,}', ' ');
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9) FROM DUAL; -> number    your street, zipcode town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9);
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 0) FROM DUAL; -> number    your street, zipcode town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 0);
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2) FROM DUAL; -> number    your     street, zipcode  town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2);
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2, 'm') FROM DUAL; -> number    your     street, zipcode  town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2, 'm');
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '([EURT]){2,}', '[\1]', 9, 2, 'i') FROM DUAL; -> number    your     s[t],    zipcode  town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '([EURT]){2,}', '[\1]', 9, 2, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '[ ]{2,}', ' ', 9, 2) FROM DUAL; -> number    your     street, zipcode  town, FR
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2);
+
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2) FROM DUAL; -> A PXstgreSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2);
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i') FROM DUAL; -> X PXstgrXSQL fXnctXXn
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'i') FROM DUAL; -> X PostgreSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 2, 'i') FROM DUAL; -> A PXstgreSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 2, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i') FROM DUAL; -> A PostgrXSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 9, 'i') FROM DUAL; -> A PostgreSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 9, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 9) FROM DUAL; -> A PostgreSQL function
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 9);
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', -1, 0, 'i') FROM DUAL; -> ORA-01428
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', -1, 0, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 'i') FROM DUAL; -> ORA-01428
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g') FROM DUAL; -> ORA-01760
+SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
+

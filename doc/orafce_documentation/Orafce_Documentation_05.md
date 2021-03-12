@@ -766,7 +766,50 @@ SELECT regexp_substr('1234567890 1234567890', '(123)(4(56)(78))', 1, 1, 'i', 0) 
 
 ----
 
-#### 5.2.12 RPAD
+#### 5.2.12 REGEXP_REPLACE
+
+**Description**
+
+Returns the string that matches the pattern specified in the call to the function.
+
+**Syntax**
+
+![REGEXP_REPLACE]( gif/REGEXP_REPLACE.gif) 
+
+**General rules**
+
+ - REGEXP_REPLACE returns a modified version of the source string where occurrences of a POSIX regular expression pattern found in the source string are replaced with the specified replacement string. If no match is found or the occurrence queried exceed the number of match, then the source string untouched is returned.
+ - The search and replacement starts from the specified start position *startPos* in *string*, default starts from the beginning of *string*.
+ - *startPos* is a positive integer, negative values to search from the end of *string* are not allowed.
+ - *occurrence* is a positive integer indicating which occurrence of *pattern* in *string* should be search for and replaced. The default is 0, meaning all occurrences of *pattern* in *string*.
+ - *flags* is a character expression that lets you change the default matching behavior of the function.  See [REGEXP_COUNT](#REGEXP_COUNT) for detailed information.
+
+**Example**
+
+~~~
+SELECT regexp_replace('512.123.4567 612.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3') FROM DUAL;
+        regexp_replace
+-------------------------------
+ (512) 123-4567 (612) 123-4567
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9);
+             regexp_replace             
+----------------------------------------
+ number   your street, zipcode town, FR
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 2);
+               regexp_replace                
+---------------------------------------------
+ number   your     street, zipcode  town, FR
+(1 row)
+~~~
+
+----
+
+#### 5.2.13 RPAD
+
 **Description**
 
 Right-pads a string to a specified length with a sequence of characters.
@@ -827,7 +870,7 @@ SELECT RPAD('abc',10,'a') FROM DUAL;
 
 ----
 
-#### 5.2.13 RTRIM
+#### 5.2.14 RTRIM
 
 **Description**
 
@@ -889,7 +932,7 @@ SELECT RTRIM('aabcab','ab') FROM DUAL;
 
 ----
 
-#### 5.2.14 SUBSTR
+#### 5.2.15 SUBSTR
 
 **Description**
 
@@ -967,7 +1010,7 @@ SELECT SUBSTR('ABCDEFG',-5,4) "Substring" FROM DUAL;
 ----
 
 
-#### 5.2.15 SUBSTRB
+#### 5.2.16 SUBSTRB
 
 **Description**
 
