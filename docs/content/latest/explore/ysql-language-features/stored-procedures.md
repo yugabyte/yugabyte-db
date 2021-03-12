@@ -21,7 +21,7 @@ Stored procedures, in large part, are simply functions that support transactions
 
 ## Creating a Stored Procedure
 
-To create a stored procedure in YSQL, use the `CREATE PROCEDURE` statement, which has the following syntax:
+To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
 
 ```sql
 CREATE [OR REPLACE] PROCEDURE procedure_name(parameter_list)
@@ -58,7 +58,7 @@ To return a value from a stored procedure, use an [`INOUT`](../../../api/ysql/ke
 
 ## Invoking a Stored Procedure
 
-To invoke a stored procedure, use the `CALL` statement, which has the following syntax:
+To invoke a stored procedure, use the [`CALL`](../../../api/ysql/the-sql-language/statements/cmd_call/) statement, which has the following syntax:
 
 ```sql
 CALL stored_procedure_name(argument_list)
@@ -72,7 +72,7 @@ yugabyte=# call insert_data(1, 2);
 
 ## Deleting a Stored Procedure
 
-To remove a stored procedure, use the `DROP PROCEDURE` statement, which has the following syntax:
+To remove a stored procedure, use the [`DROP PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_drop_procedure/) statement, which has the following syntax:
 
 ```sql
 DROP PROCEDURE [IF EXISTS] stored_procedure_name(argument_list)
