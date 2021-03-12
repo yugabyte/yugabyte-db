@@ -307,6 +307,8 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestMultipleEntriesInABatch);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
+  FRIEND_TEST(LogTest, TestLogMetrics);
+
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
 
