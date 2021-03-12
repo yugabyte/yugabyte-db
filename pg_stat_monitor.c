@@ -16,13 +16,13 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
+#include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "0.7.0"
-#define PG_STAT_STATEMENTS_COLS         47  /* maximum of above */
+#define BUILD_VERSION                   "devel"
+#define PG_STAT_STATEMENTS_COLS         49  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
@@ -62,14 +62,10 @@ void _PG_fini(void);
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
+static int plan_nested_level = 0;
 
 /* The array to store outer layer query id*/
 uint64 *nested_queryids;
-
-#if PG_VERSION_NUM >= 130000
-static int	plan_nested_level = 0;
-static int	exec_nested_level = 0;
-#endif
 
 FILE *qfile;
 static bool system_init = false;
@@ -77,10 +73,16 @@ static struct rusage  rusage_start;
 static struct rusage  rusage_end;
 static unsigned char *pgss_qbuf[MAX_BUCKETS];
 
+static char *pgss_explain(QueryDesc *queryDesc);
+static bool pgss_get_plan(uint64 query_hash, PlanInfo *plan_info);
+static bool pgss_store_plan(uint64 query_hash, PlanInfo *plan_info);
+
 static int  get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
 static double time_diff(struct timeval end, struct timeval start);
+
+static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
 
 /* Saved hook values in case of unload */
 static planner_hook_type planner_hook_next = NULL;
@@ -108,9 +110,7 @@ static int pg_get_application_name(char* application_name);
 static PgBackendStatus *pg_get_backend_status(void);
 static Datum intarray_get_datum(int32 arr[], int len);
 
-#if PG_VERSION_NUM >= 130000
-static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
-#else
+#if PG_VERSION_NUM < 130000
 static void BufferUsageAccumDiff(BufferUsage* bufusage, BufferUsage* pgBufferUsage, BufferUsage* bufusage_start);
 static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param);
 #endif
@@ -140,22 +140,27 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static uint64 pgss_hash_string(const char *str, int len);
 char *unpack_sql_state(int sql_state);
 
-static void pgss_store(uint64 queryId,
-				const char *query,
-				CmdType	cmd_type,
-				uint64 elevel,
-				char *sqlerrcode,
-				const char *message,
-				int query_location,
-				int query_len,
-				pgssStoreKind kind,
-				double total_time, uint64 rows,
-				const BufferUsage *bufusage,
-#if PG_VERSION_NUM >= 130000
-				const WalUsage *walusage,
-#endif
-				pgssJumbleState *jstate,
-				float utime, float stime);
+static void pgss_store_error(uint64 queryid, const char * query, ErrorData *edata);
+static void pgss_store_query(uint64 queryid, const char * query, CmdType cmd_type, int query_location, int query_len, pgssJumbleState *jstate);
+
+static void pgss_store_utility(const char *query,
+					double total_time,
+					uint64 rows,
+					BufferUsage *bufusage,
+					WalUsage *walusage);
+
+static void pgss_store(uint64 queryid,
+						const char *query,
+						PlanInfo *plan_info,
+						CmdType cmd_type,
+						SysInfo *sys_info,
+						ErrorInfo *error_info,
+						double total_time,
+						uint64 rows,
+						BufferUsage *bufusage,
+						WalUsage *walusage,
+						pgssJumbleState *jstate,
+						pgssStoreKind kind);
 
 static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 							bool showtext);
@@ -239,7 +244,7 @@ _PG_init(void)
 	prev_ProcessUtility 			= ProcessUtility_hook;
 	ProcessUtility_hook 			= pgss_ProcessUtility;
 	planner_hook_next       		= planner_hook;
-	planner_hook            		= pgss_planner_hook;
+	planner_hook                    = pgss_planner_hook;
 	emit_log_hook                   = pgsm_emit_log_hook;
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
 	ExecutorCheckPerms_hook			= pgss_ExecutorCheckPerms;
@@ -294,7 +299,6 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
 }
 
-
 /*
  * Post-parse-analysis hook: mark query with a queryId
  */
@@ -325,6 +329,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	}
 
 	query->queryId = get_query_id(&jstate, query);
+
 	/*
 	 * If we are unlucky enough to get a hash of zero, use 1 instead, to
 	 * prevent confusion with the utility-statement case.
@@ -335,24 +340,12 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	if (jstate.clocations_count <= 0)
 		return;
 
-	pgss_store(query->queryId,
-				pstate->p_sourcetext,
-				query->commandType,
-				0,						/* error elevel */
-				"",					/* error sqlcode */
-				NULL,					/* error message */
-				query->stmt_location,
-				query->stmt_len,
-				PGSS_INVALID,
-				0,
-				0,
-				NULL,
-#if PG_VERSION_NUM >= 130000
-				NULL,
-#endif
-					&jstate,
-					0.0,
-					0.0);
+	pgss_store_query(query->queryId,          /* queryid */
+               pstate->p_sourcetext,          /* query */
+               query->commandType,            /* CmdType */
+			   query->stmt_location,		  /* Query Location */
+               query->stmt_len,			  	  /* Quer Len */
+               &jstate);                      /* pgssJumbleState */
 }
 
 /*
@@ -445,19 +438,98 @@ pgss_ExecutorFinish(QueryDesc *queryDesc)
 	PG_END_TRY();
 }
 
+
+static bool
+pgss_get_plan(uint64 query_hash, PlanInfo *plan_info)
+{
+	pgssPlanHashKey		key;
+	pgssPlanEntry		*entry;
+	HTAB                *pgss_plan_hash = pgsm_get_plan_hash();
+
+	key.query_hash = query_hash;
+	entry = (pgssPlanEntry *) hash_search(pgss_plan_hash, &key, HASH_FIND, NULL);
+	if(entry)
+	{
+		memcpy(plan_info,  &entry->plan_info, sizeof(PlanInfo));
+		return true;
+	}
+	return false;
+}
+
+static bool
+pgss_store_plan(uint64 query_hash, PlanInfo *plan_info)
+{
+	pgssPlanHashKey		key;
+	pgssPlanEntry		*entry;
+	HTAB                *pgss_plan_hash = pgsm_get_plan_hash();
+	pgssSharedState     *pgss = pgsm_get_ss();
+	bool				found = true;
+
+	LWLockAcquire(pgss->lock, LW_SHARED);
+
+	/* Set up key for hashtable search */
+	key.query_hash = query_hash;
+	entry = (pgssPlanEntry *) hash_search(pgss_plan_hash, &key, HASH_FIND, NULL);
+	if (!entry)
+	{
+		entry = hash_plan_entry_alloc(pgss, &key);
+		if (entry == NULL)
+		{
+			LWLockRelease(pgss->lock);
+			return found;
+		}
+		found = false;
+	}
+	SpinLockAcquire(&entry->mutex);
+	memcpy(&entry->plan_info, plan_info, sizeof(PlanInfo));
+	SpinLockRelease(&entry->mutex);
+	LWLockRelease(pgss->lock);
+	return found;
+}
+
+static char *
+pgss_explain(QueryDesc *queryDesc)
+{
+    ExplainState *es = NewExplainState();
+
+	es->buffers = false;
+	es->analyze = false;
+    es->verbose = false;
+	es->costs = false;
+	es->format = EXPLAIN_FORMAT_TEXT;
+
+	ExplainBeginOutput(es);
+    ExplainPrintPlan(es, queryDesc);
+    ExplainEndOutput(es);
+
+	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+		es->str->data[--es->str->len] = '\0';
+    return es->str->data;
+}
+
 /*
  * ExecutorEnd hook: store results if needed
  */
 static void
 pgss_ExecutorEnd(QueryDesc *queryDesc)
 {
-	uint64	queryId = queryDesc->plannedstmt->queryId;
-	pgssSharedState *pgss = pgsm_get_ss();
+	uint64             queryId       = queryDesc->plannedstmt->queryId;
+	pgssSharedState    *pgss         = pgsm_get_ss();
+    SysInfo            sys_info;
+	PlanInfo           plan_info;
+
+	/* Extract the plan information in case of SELECT statment */
+	memset(&plan_info, 0, sizeof(PlanInfo));
+	if (queryDesc->operation == CMD_SELECT && PGSM_QUERY_PLAN)
+	{
+		MemoryContext mct = MemoryContextSwitchTo(TopMemoryContext);
+		snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgss_explain(queryDesc));
+		plan_info.planid = DatumGetUInt64(hash_any_extended((const unsigned char*)plan_info.plan_text, strlen(plan_info.plan_text), 0));
+		MemoryContextSwitchTo(mct);
+	}
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
 	{
-		float   utime;
-		float   stime;
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
@@ -465,29 +537,23 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		InstrEndLoop(queryDesc->totaltime);
 		if(getrusage(RUSAGE_SELF, &rusage_end) != 0)
 			elog(WARNING, "pg_stat_monitor: failed to execute getrusage");
-		utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
-		stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
 
-		pgss_store(queryId,
-					queryDesc->sourceText,
-					queryDesc->operation,
-					0, 						/* error elevel */
-					"", 						/* error sqlcode */
-					NULL, 					/* error message */
-					queryDesc->plannedstmt->stmt_location,
-					queryDesc->plannedstmt->stmt_len,
-					PGSS_EXEC,
-					queryDesc->totaltime->total * 1000.0,	/* convert to msec */
-					queryDesc->estate->es_processed,
-					&queryDesc->totaltime->bufusage,
-#if PG_VERSION_NUM >= 130000
-					&queryDesc->totaltime->walusage,
-#endif
+		sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
+		sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+
+		pgss_store(queryId,                                 /* query id */
+					queryDesc->sourceText,					/* query text */
+					&plan_info,								/* PlanInfo */
+					queryDesc->operation,					/* CmdType */
+					&sys_info,								/* SysInfo */
+					NULL,									/* ErrorInfo */
+					queryDesc->totaltime->total * 1000.0,	/* totaltime */
+					queryDesc->estate->es_processed,		/* rows */
+					&queryDesc->totaltime->bufusage,		/*  bufusage */
+					&queryDesc->totaltime->walusage,		/* walusage */
 					NULL,
-					utime,
-					stime);
+					PGSS_EXEC); 							/* pgssStoreKind */
 	}
-
 	if (prev_ExecutorEnd)
 		prev_ExecutorEnd(queryDesc);
 	else
@@ -529,7 +595,10 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 				list_oid[j] = rte->relid;
 				namespace_name = get_namespace_name(get_rel_namespace(rte->relid));
 				relation_name = get_rel_name(rte->relid);
-				snprintf(pgss->relations[i++], REL_LEN, "%s.%s", namespace_name, relation_name);
+				if (rte->relkind == 'v')
+					snprintf(pgss->relations[i++], REL_LEN, "%s.%s*", namespace_name, relation_name);
+				else
+					snprintf(pgss->relations[i++], REL_LEN, "%s.%s", namespace_name, relation_name);
 			}
 		}
 	}
@@ -540,6 +609,76 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
         return prev_ExecutorCheckPerms_hook(rt, abort);
 
     return true;
+}
+
+static PlannedStmt *
+pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
+{
+	PlannedStmt			*result;
+
+	if (PGSM_TRACK_PLANNING && query_string && parse->queryId != UINT64CONST(0))
+	{
+		PlanInfo	plan_info;
+		instr_time	start;
+		instr_time	duration;
+		BufferUsage bufusage_start;
+		BufferUsage bufusage;
+		WalUsage	walusage_start;
+		WalUsage    walusage;
+
+		/* We need to track buffer usage as the planner can access them. */
+		bufusage_start = pgBufferUsage;
+
+		/*
+		 * Similarly the planner could write some WAL records in some cases
+		 * (e.g. setting a hint bit with those being WAL-logged)
+		 */
+		walusage_start = pgWalUsage;
+		INSTR_TIME_SET_CURRENT(start);
+
+		plan_nested_level++;
+		PG_TRY();
+		{
+    		if (planner_hook_next)
+        		result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
+    		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+		}
+		PG_FINALLY();
+		{
+			plan_nested_level--;
+		}
+		PG_END_TRY();
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+
+		/* calc differences of buffer counters. */
+		memset(&bufusage, 0, sizeof(BufferUsage));
+		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
+
+		/* calc differences of WAL counters. */
+		memset(&walusage, 0, sizeof(WalUsage));
+		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
+		pgss_store(parse->queryId,          		/* query id */
+				query_string,						/* query */
+				&plan_info,							/* PlanInfo */
+				parse->commandType,					/* CmdType */
+				NULL,								/* SysInfo */
+				NULL,								/* ErrorInfo */
+				INSTR_TIME_GET_MILLISEC(duration),	/* totaltime */
+				0,									/* rows */
+				&bufusage,							/*  bufusage */
+				&walusage,							/* walusage */
+				NULL,								/* pgssJumbleState */
+				PGSS_PLAN); 						/* pgssStoreKind */
+	}
+	else
+	{
+		if (planner_hook_next)
+			result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+	}
+	return result;
 }
 
 /*
@@ -583,25 +722,19 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		instr_time	start;
 		instr_time	duration;
 		uint64		rows;
-		BufferUsage bufusage_start,
-					bufusage;
-#if PG_VERSION_NUM >= 130000
-		WalUsage	walusage_start,
-					walusage;
-		walusage_start = pgWalUsage;
-		exec_nested_level++;
-#endif
+		BufferUsage bufusage_start;
+		BufferUsage bufusage;
+		WalUsage    walusage_start;
+		WalUsage    walusage;
 
-	bufusage_start = pgBufferUsage;
-#if PG_VERSION_NUM >= 130000
-	walusage_start = pgWalUsage;
-#endif
-	INSTR_TIME_SET_CURRENT(start);
-	PG_TRY();
-	{
-		if (prev_ProcessUtility)
-			prev_ProcessUtility(pstmt, queryString,
-								context, params, queryEnv,
+		bufusage_start = pgBufferUsage;
+		walusage_start = pgWalUsage;
+		INSTR_TIME_SET_CURRENT(start);
+		PG_TRY();
+		{
+			if (prev_ProcessUtility)
+				prev_ProcessUtility(pstmt, queryString,
+									context, params, queryEnv,
 									dest
 #if PG_VERSION_NUM >= 130000
 									,qc
@@ -620,19 +753,12 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 #endif
 									);
 		}
-#if PG_VERSION_NUM >= 130000
-		PG_FINALLY();
-		{
-			exec_nested_level--;
-		}
-#else
 		PG_CATCH();
         {
 			nested_level--;
 			PG_RE_THROW();
 
 		}
-#endif
 
 		PG_END_TRY();
 		INSTR_TIME_SET_CURRENT(duration);
@@ -654,24 +780,11 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		/* calc differences of buffer counters. */
 		memset(&bufusage, 0, sizeof(BufferUsage));
 		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
-		pgss_store(0,						/* query id, passing 0 to signal that it's a utility stmt */
-					queryString,			/* query text */
-					0,
-					0, 						/* error elevel */
-					"", 						/* error sqlcode */
-					NULL, 					/* error message */
-					pstmt->stmt_location,
-					pstmt->stmt_len,
-					PGSS_EXEC,
-					INSTR_TIME_GET_MILLISEC(duration),
-					rows,
-					&bufusage,
-#if PG_VERSION_NUM >= 130000
-					&walusage,
-#endif
-					NULL,
-					0,
-					0);
+		pgss_store_utility(queryString,								/* query text */
+							INSTR_TIME_GET_MILLISEC(duration),		/* totaltime */
+							rows,									/* rows */
+							&bufusage,								/* bufusage */
+							&walusage);								/* walusage */
 	}
 	else
 	{
@@ -790,66 +903,160 @@ pg_get_client_addr(void)
 	return ntohl(inet_addr(remote_host));
 }
 
-
-/*
- * Store some statistics for a statement.
- *
- * If queryId is 0 then this is a utility statement and we should compute
- * a suitable queryId internally.
- *
- * If jstate is not NULL then we're trying to create an entry for which
- * we have no statistics as yet; we just want to record the normalized
- * query string.  total_time, rows, bufusage are ignored in this case.
- */
-static void pgss_store(uint64 queryId,
+static void
+pgss_update_entry(pgssEntry *entry,
+						int bucketid,
+						uint64 queryid,
 						const char *query,
-						CmdType	cmd_type,
-						uint64 elevel,
-						char *sqlcode,
-						const char *message,
-						int query_location,
-						int query_len,
-						pgssStoreKind kind,
+						PlanInfo *plan_info,
+						CmdType cmd_type,
+						SysInfo *sys_info,
+						ErrorInfo *error_info,
 						double total_time,
 						uint64 rows,
-						const BufferUsage *bufusage,
-#if PG_VERSION_NUM >= 130000
-						const WalUsage *walusage,
-#endif
-						pgssJumbleState *jstate,
-						float utime,
-						float stime)
+						BufferUsage *bufusage,
+						WalUsage *walusage,
+						bool reset)
 {
+	int                 index;
+	char			    application_name[APPLICATIONNAME_LEN];
+	int				    application_name_len = pg_get_application_name(application_name);
+	pgssSharedState     *pgss = pgsm_get_ss();
+	double              old_mean;
+	int             	message_len = error_info ? strlen (error_info->message) : 0;
+	int             	sqlcode_len = error_info ? strlen (error_info->sqlcode) : 0;
+
+	/* volatile block */
+	{
+		volatile pgssEntry *e = (volatile pgssEntry *) entry;
+		SpinLockAcquire(&e->mutex);
+		/* Start collecting data for next bucket and reset all counters */
+		if (reset)
+			memset(&entry->counters, 0, sizeof(Counters));
+
+		if (e->counters.calls.calls == 0)
+			e->counters.calls.usage = USAGE_INIT;
+		e->counters.calls.calls += 1;
+		e->counters.time.total_time += total_time;
+
+		if (e->counters.calls.calls == 1)
+		{
+			e->counters.time.min_time = total_time;
+			e->counters.time.max_time = total_time;
+			e->counters.time.mean_time = total_time;
+		}
+
+		/* Increment the counts, except when jstate is not NULL */
+		old_mean = e->counters.time.mean_time;
+		e->counters.time.mean_time += (total_time - old_mean) / e->counters.calls.calls;
+		e->counters.time.sum_var_time +=(total_time - old_mean) * (total_time - e->counters.time.mean_time);
+
+		/* calculate min and max time */
+		if (e->counters.time.min_time > total_time) e->counters.time.min_time = total_time;
+		if (e->counters.time.max_time < total_time) e->counters.time.max_time = total_time;
+
+		index = get_histogram_bucket(total_time);
+		e->counters.resp_calls[index]++;
+
+		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
+
+		e->counters.info.num_relations = pgss->num_relations;
+		_snprintf2(e->counters.info.relations, pgss->relations, pgss->num_relations,  REL_LEN);
+
+		e->counters.info.cmd_type = cmd_type;
+
+		if(nested_level > 0)
+		{
+			if (nested_level >=0 && nested_level < max_stack_depth)
+				e->counters.info.parentid = nested_queryids[nested_level - 1];
+		}
+		else
+		{
+			e->counters.info.parentid = UINT64CONST(0);
+		}
+
+		if (error_info)
+		{
+			e->counters.error.elevel = error_info->elevel;
+			_snprintf(e->counters.error.sqlcode, error_info->sqlcode, sqlcode_len, SQLCODE_LEN);
+			_snprintf(e->counters.error.message, error_info->message, message_len, ERROR_MESSAGE_LEN);
+		}
+		e->counters.calls.rows += rows;
+		if (bufusage)
+		{
+			e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
+			e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
+			e->counters.blocks.shared_blks_dirtied += bufusage->shared_blks_dirtied;
+			e->counters.blocks.shared_blks_written += bufusage->shared_blks_written;
+			e->counters.blocks.local_blks_hit += bufusage->local_blks_hit;
+			e->counters.blocks.local_blks_read += bufusage->local_blks_read;
+			e->counters.blocks.local_blks_dirtied += bufusage->local_blks_dirtied;
+			e->counters.blocks.local_blks_written += bufusage->local_blks_written;
+			e->counters.blocks.temp_blks_read += bufusage->temp_blks_read;
+			e->counters.blocks.temp_blks_written += bufusage->temp_blks_written;
+			e->counters.blocks.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
+			e->counters.blocks.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+		}
+		e->counters.calls.usage += USAGE_EXEC(total_time);
+		e->counters.info.host = pg_get_client_addr();
+		if (sys_info)
+		{
+			e->counters.sysinfo.utime = sys_info->utime;
+			e->counters.sysinfo.stime = sys_info->stime;
+		}
+		if (walusage)
+		{
+			e->counters.walusage.wal_records += walusage->wal_records;
+			e->counters.walusage.wal_fpi += walusage->wal_fpi;
+			e->counters.walusage.wal_bytes += walusage->wal_bytes;
+		}
+		SpinLockRelease(&e->mutex);
+	}
+}
+
+static pgssEntry*
+pgss_get_entry(uint64 bucket_id,
+			   uint64 userid,
+			   uint64 dbid,
+			   uint64 queryid,
+			   uint64 ip,
+			   bool *found)
+{
+	pgssEntry       *entry;
 	pgssHashKey		key;
-	int             bucket_id;
-	pgssEntry		*entry;
-	char			*norm_query = NULL;
-	int				encoding = GetDatabaseEncoding();
-	bool			reset = false;
-	pgssSharedState *pgss = pgsm_get_ss();
 	HTAB            *pgss_hash = pgsm_get_hash();
-	int				message_len = message ? strlen(message) : 0;
-	char			application_name[APPLICATIONNAME_LEN];
-	int				application_name_len;
-	int				sqlcode_len = strlen(sqlcode);
+	pgssSharedState *pgss = pgsm_get_ss();
 
-	/*  Monitoring is disabled */
-	if (!PGSM_ENABLED)
-		return;
+	key.bucket_id = bucket_id;
+	key.userid = userid;
+	key.dbid = MyDatabaseId;
+	key.queryid = queryid;
+	key.ip = pg_get_client_addr();
 
-	Assert(query != NULL);
-	application_name_len = pg_get_application_name(application_name);
+	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
+	if(!entry)
+	{
+		if (found)
+			*found = false;
+		 /* OK to create a new hashtable entry */
+		entry = hash_entry_alloc(pgss, &key, GetDatabaseEncoding());
+		if (entry == NULL)
+			return NULL;
+	}
+	Assert(entry);
+	return entry;
+}
 
-	/* Safety check... */
-	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
-		return;
+static void
+pgss_store_query(uint64 queryid,
+                  const char * query,
+				  CmdType cmd_type,
+				  int query_location,
+				  int query_len,
+				  pgssJumbleState *jstate)
+{
+	char *norm_query = NULL;
 
-	/*
-	 * Confine our attention to the relevant part of the string, if the query
-	 * is a portion of a multi-statement source string.
-	 *
-	 * First apply starting offset, unless it's -1 (unknown).
-	 */
 	if (query_location >= 0)
 	{
 		Assert(query_location <= strlen(query));
@@ -876,189 +1083,205 @@ static void pgss_store(uint64 queryId,
 	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
 		query_len--;
 
+	if (jstate)
+		norm_query = generate_normalized_query(jstate, query,
+											   query_location,
+											   &query_len,
+											   GetDatabaseEncoding());
 	/*
-	 * For utility statements, we just hash the query string to get an ID.
-	 */
-	if (queryId == UINT64CONST(0))
-		queryId = pgss_hash_string(query, query_len);
+     * For utility statements, we just hash the query string to get an ID.
+     */
+	if (queryid == UINT64CONST(0))
+		queryid = pgss_hash_string(query, query_len);
+
+	pgss_store(queryid,                 /* query id */
+				PGSM_NORMALIZED_QUERY ? (norm_query ? norm_query : query) : query, /* query */
+				NULL,					/* PlanInfo */
+				cmd_type,				/* CmdType */
+				NULL,					/* SysInfo */
+				NULL,					/* ErrorInfo */
+				0,						/* totaltime */
+				0,						/* rows */
+				NULL,					/*  bufusage */
+				NULL,					/* walusage */
+				jstate,					/* pgssJumbleState */
+				PGSS_EXEC);				/* pgssStoreKind */
+}
+
+static void
+pgss_store_error(uint64 queryid,
+				const char * query,
+				ErrorData *edata)
+{
+	ErrorInfo		error_info;
+
+	error_info.elevel = edata->elevel;
+	snprintf(error_info.message, ERROR_MESSAGE_LEN, "%s", edata->message);
+	snprintf(error_info.sqlcode, ERROR_MESSAGE_LEN, "%s", unpack_sql_state(edata->sqlerrcode));
+
+	pgss_store(queryid,                 /* query id */
+				query,					/* query text */
+				NULL,					/* PlanInfo */
+				0,						/* CmdType */
+				NULL,					/* SysInfo */
+				&error_info, 			/* ErrorInfo */
+				0,						/* total_time */
+				0,						/* rows */
+				NULL,					/* bufusage */
+				NULL,					/* walusage */
+				NULL,					/* pgssJumbleState */
+				PGSS_EXEC);				/* pgssStoreKind */
+}
+
+static void
+pgss_store_utility(const char *query,
+					double total_time,
+					uint64 rows,
+					BufferUsage *bufusage,
+					WalUsage *walusage)
+{
+	uint64          queryid = pgss_hash_string(query, strlen(query));
+
+	pgss_store(queryid,                 /* query id */
+				query,					/* query text */
+				NULL,					/* PlanInfo */
+				0,						/* CmdType */
+				NULL,					/* SysInfo */
+				NULL, 					/* ErrorInfo */
+				total_time,				/* total_time */
+				rows,					/* rows */
+				bufusage,				/* bufusage */
+				walusage,				/* walusage */
+				NULL,					/* pgssJumbleState */
+				PGSS_EXEC);				/* pgssStoreKind */
+}
+
+static void
+update_planinfo(PlanInfo *plan_info, pgssStoreKind kind, double total_time, uint64 userid, uint64 dbid, uint64 queryid, uint64 ip)
+{
+	char 		str[64];
+	uint64 		query_hash;
+	PlanInfo 	pi;
+
+	if (plan_info == NULL)
+		return;
+
+	snprintf(str, 64, "%08lx%08lX%08lX%08lX", userid, dbid, queryid, ip);
+	query_hash = DatumGetUInt64(hash_any_extended((const unsigned char*)str, strlen(str), 0));
+
+	if (pgss_get_plan(query_hash, &pi))
+	{
+		if (kind == PGSS_PLAN)
+		{
+			double old_mean = 0;
+
+			pi.plans += 1;
+			pi.time.total_time += total_time;
+			if (pi.plans == 0)
+			if (pi.plans == 1)
+			{
+				pi.time.min_time = total_time;
+				pi.time.max_time = total_time;
+				pi.time.mean_time = total_time;
+			}
+
+			/* Increment the counts, except when jstate is not NULL */
+			old_mean = pi.time.mean_time;
+			pi.time.mean_time += (total_time - old_mean) / pi.plans;
+			pi.time.sum_var_time +=(total_time - old_mean) * (total_time - pi.time.mean_time);
+
+			/* calculate min and max time */
+			if (pi.time.min_time > total_time) pi.time.min_time = total_time;
+			if (pi.time.max_time < total_time) pi.time.max_time = total_time;
+			pgss_store_plan(query_hash, &pi);
+		}
+	}
+	else
+	{
+		if (kind == PGSS_EXEC)
+		{
+			pgss_store_plan(query_hash, plan_info);
+		}
+	}
+}
+
+/*
+ * Store some statistics for a statement.
+ *
+ * If queryId is 0 then this is a utility statement and we should compute
+ * a suitable queryId internally.
+ *
+ * If jstate is not NULL then we're trying to create an entry for which
+ * we have no statistics as yet; we just want to record the normalized
+ * query string.  total_time, rows, bufusage are ignored in this case.
+ */
+static void
+pgss_store(uint64 queryid,
+			const char *query,
+			PlanInfo *plan_info,
+			CmdType cmd_type,
+			SysInfo *sys_info,
+			ErrorInfo *error_info,
+			double total_time,
+			uint64 rows,
+			BufferUsage *bufusage,
+			WalUsage *walusage,
+			pgssJumbleState *jstate,
+			pgssStoreKind kind)
+{
+	int             bucket_id;
+	pgssEntry		*entry;
+	pgssSharedState *pgss = pgsm_get_ss();
+	bool 			reset = false;
+	bool			found = true;
+
+	/*  Monitoring is disabled */
+	if (!PGSM_ENABLED)
+		return;
+
+	Assert(query != NULL);
+
+	/* Safety check... */
+	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
+		return;
 
 	bucket_id = get_next_wbucket(pgss);
-
 	if (bucket_id != pgss->current_wbucket)
 	{
 		reset = true;
 		pgss->current_wbucket = bucket_id;
 	}
 
-	/* Lookup the hash table entry with shared lock. */
-	LWLockAcquire(pgss->lock, LW_SHARED);
+	update_planinfo(plan_info, kind, total_time, (uint64)GetUserId(), (uint64)MyDatabaseId, queryid, (uint64)pg_get_client_addr());
 
-	/* Set up key for hashtable search */
-	key.bucket_id = bucket_id;
-	key.userid = (elevel == 0) ? GetUserId() : 0;
-	key.dbid = MyDatabaseId;
-	key.queryid = queryId;
-	key.ip = pg_get_client_addr();
-
-	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
-	if(!entry)
+	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
+	entry = pgss_get_entry(bucket_id, GetUserId(), MyDatabaseId, queryid, pg_get_client_addr(), &found);
+	if (entry == NULL)
 	{
-		/*
-		 * Create a new, normalized query string if caller asked.  We don't
-		 * need to hold the lock while doing this work.  (Note: in any case,
-		 * it's possible that someone else creates a duplicate hashtable entry
-		 * in the interval where we don't hold the lock below.  That case is
-		 * handled by entry_alloc.)
-		 */
-		if (jstate)
-		{
-			LWLockRelease(pgss->lock);
-			norm_query = generate_normalized_query(jstate, query,
-												   query_location,
-												   &query_len,
-												   encoding);
-			LWLockAcquire(pgss->lock, LW_SHARED);
-		}
-
 		LWLockRelease(pgss->lock);
-		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-
-		  /* OK to create a new hashtable entry */
-		entry = hash_entry_alloc(pgss, &key, encoding);
-		if (entry == NULL)
-		{
-			goto exit;
-		}
-		if (PGSM_NORMALIZED_QUERY)
-			store_query(key.bucket_id, queryId, norm_query ? norm_query : query, query_len);
-		else
-			store_query(key.bucket_id, queryId, query, query_len);
+		return;
 	}
 
-	/*
-	 * Grab the spinlock while updating the counters (see comment about
-	 * locking rules at the head of the file)
-	 */
-	{
-		volatile pgssEntry *e = (volatile pgssEntry *) entry;
-		/* Increment the counts, except when jstate is not NULL */
-		if (!jstate)
-		{
+	/* In case query is not found in the hash, add that into hash. */
+	if (!found)
+		store_query(bucket_id, queryid, query, strlen(query));
 
-			SpinLockAcquire(&e->mutex);
-
-			/* Start collecting data for next bucket and reset all counters */
-			if (reset)
-				memset(&entry->counters, 0, sizeof(Counters));
-
-		/* "Unstick" entry if it was previously sticky */
-		if (e->counters.calls[kind].calls == 0)
-			e->counters.calls[kind].usage = USAGE_INIT;
-		e->counters.calls[kind].calls += 1;
-		e->counters.time[kind].total_time += total_time;
-
-		if (e->counters.calls[kind].calls == 1)
-		{
-			e->counters.time[kind].min_time = total_time;
-			e->counters.time[kind].max_time = total_time;
-			e->counters.time[kind].mean_time = total_time;
-		}
-		else
-		{
-			/*
-			 * Welford's method for accurately computing variance. See
-			 * <http://www.johndcook.com/blog/standard_deviation/>
-			 */
-			double old_mean = e->counters.time[kind].mean_time;
-
-			e->counters.time[kind].mean_time +=
-				(total_time - old_mean) / e->counters.calls[kind].calls;
-			e->counters.time[kind].sum_var_time +=
-				(total_time - old_mean) * (total_time - e->counters.time[kind].mean_time);
-
-			/* calculate min and max time */
-			if (e->counters.time[kind].min_time > total_time)
-				e->counters.time[kind].min_time = total_time;
-			if (e->counters.time[kind].max_time < total_time)
-				e->counters.time[kind].max_time = total_time;
-		}
-
-
-		/* increment only in case of PGSS_EXEC */
-		if (kind == PGSS_EXEC)
-		{
-			int index = get_histogram_bucket(total_time);
-			e->counters.resp_calls[index]++;
-		}
-		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
-
-		e->counters.info.num_relations = pgss->num_relations;
-		_snprintf2(e->counters.info.relations, pgss->relations, pgss->num_relations,  REL_LEN);
-
-		e->counters.info.cmd_type = cmd_type;
-		e->counters.error.elevel = elevel;
-
-		_snprintf(e->counters.error.sqlcode, sqlcode, sqlcode_len, SQLCODE_LEN);
-		_snprintf(e->counters.error.message, message, message_len, ERROR_MESSAGE_LEN);
-
-		if(nested_level > 0)
-		{
-			if (nested_level >=0 && nested_level < max_stack_depth)
-				e->counters.info.parentid = nested_queryids[nested_level - 1];
-		}
-		else
-		{
-			e->counters.info.parentid = UINT64CONST(0);
-		}
-		e->counters.calls[kind].rows += rows;
-		e->counters.blocks.shared_blks_hit += bufusage->shared_blks_hit;
-		e->counters.blocks.shared_blks_read += bufusage->shared_blks_read;
-		e->counters.blocks.shared_blks_dirtied += bufusage->shared_blks_dirtied;
-		e->counters.blocks.shared_blks_written += bufusage->shared_blks_written;
-		e->counters.blocks.local_blks_hit += bufusage->local_blks_hit;
-		e->counters.blocks.local_blks_read += bufusage->local_blks_read;
-		e->counters.blocks.local_blks_dirtied += bufusage->local_blks_dirtied;
-		e->counters.blocks.local_blks_written += bufusage->local_blks_written;
-		e->counters.blocks.temp_blks_read += bufusage->temp_blks_read;
-		e->counters.blocks.temp_blks_written += bufusage->temp_blks_written;
-		e->counters.blocks.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
-		e->counters.blocks.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
-		e->counters.calls[kind].usage += USAGE_EXEC(total_time);
-		e->counters.info.host = pg_get_client_addr();
-		e->counters.sysinfo.utime = utime;
-		e->counters.sysinfo.stime = stime;
-		if (sqlcode[0] != 0)
-			memset(&entry->counters.blocks, 0, sizeof(entry->counters.blocks));
-#if PG_VERSION_NUM >= 130000
-		if (sqlcode[0] == 0)
-		{
-			e->counters.walusage.wal_records += walusage->wal_records;
-			e->counters.walusage.wal_fpi += walusage->wal_fpi;
-			e->counters.walusage.wal_bytes += walusage->wal_bytes;
-		}
-		else
-		{
-			e->counters.walusage.wal_records = 0;
-			e->counters.walusage.wal_fpi = 0;
-			e->counters.walusage.wal_bytes  = 0;
-		}
-#else
-		e->counters.walusage.wal_records = 0;
-		e->counters.walusage.wal_fpi = 0;
-		e->counters.walusage.wal_bytes  = 0;
-#endif
-		SpinLockRelease(&e->mutex);
-		}
-	}
-
-exit:
+	if (jstate == NULL && kind == PGSS_EXEC)
+		pgss_update_entry(entry,			/* entry */
+						bucket_id,			/* bucketid */
+						queryid,			/* queryid */
+						query, 				/* query */
+						plan_info,			/* PlanInfo */
+						cmd_type,			/* CmdType */
+						sys_info,			/* SysInfo */
+						error_info,			/* ErrorInfo */
+						total_time,			/* total_time */
+						rows,				/* rows */
+						bufusage,			/* bufusage */
+						walusage,			/* walusage */
+						reset);				/* reset */
 	LWLockRelease(pgss->lock);
-
-	/* We postpone this clean-up until we're out of the lock */
-	if (norm_query)
-		pfree(norm_query);
 }
-
 /*
  * Reset all statement statistics.
  */
@@ -1100,6 +1323,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	pgssEntry		     *entry;
 	char			     *query_txt;
 	char			     queryid_txt[64];
+	char			     planid_txt[64];
 	char			     parentid_txt[64];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
@@ -1134,6 +1358,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
+	if (tupdesc->natts != 46)
+		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
+
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
 	rsinfo->returnMode = SFRM_Materialize;
 	rsinfo->setResult = tupstore;
@@ -1149,13 +1376,20 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		Datum       values[PG_STAT_STATEMENTS_COLS];
 		bool        nulls[PG_STAT_STATEMENTS_COLS];
 		int		    i = 0;
-		int		    kind;
 		Counters    tmp;
 		double      stddev;
-		int64       queryid = entry->key.queryid;
+		uint64      queryid = entry->key.queryid;
 		struct tm   tm;
-		time_t bucket_t,current_t;
-		double diff_t;
+		time_t      bucket_t,current_t;
+		double      diff_t;
+		char 		str[64];
+		uint64 		query_hash;
+		PlanInfo	plan_info;
+
+		memset(&plan_info, 0, sizeof(plan_info));
+		snprintf(str, 64, "%08lx%08lX%08lX%08lX", (uint64)entry->key.userid, (uint64)entry->key.dbid, queryid, (uint64)entry->key.ip);
+		query_hash = DatumGetUInt64(hash_any_extended((const unsigned char*)str, strlen(str), 0));
+		pgss_get_plan(query_hash, &plan_info);
 
 		memset(&tm, 0, sizeof(tm));
 		strptime(pgss->bucket_start_time[entry->key.bucket_id],  "%Y-%m-%d %H:%M:%S", &tm);
@@ -1199,9 +1433,18 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		else
 			sprintf(queryid_txt, "%08lX", (long unsigned int)0);
 
+		sprintf(planid_txt, "%08lX", plan_info.planid);
+
+		/* bucketid at column number 0 */
 		values[i++] = ObjectIdGetDatum(entry->key.bucket_id);
+
+		/* userid at column number 1 */
 		values[i++] = ObjectIdGetDatum(entry->key.userid);
+
+		/* dbid at column number 2 */
 		values[i++] = ObjectIdGetDatum(entry->key.dbid);
+
+		/* ip address at column number 3 */
 		/* Superusers or members of pg_read_all_stats members are allowed */
 		if (is_allowed_role || entry->key.userid == userid)
 			values[i++] = Int64GetDatumFast(entry->key.ip);
@@ -1216,8 +1459,16 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			SpinLockRelease(&e->mutex);
 		}
 
+		/* queryid at column number 4 */
 		values[i++] = CStringGetTextDatum(queryid_txt);
 
+		/* planid at column number 5 */
+		if (plan_info.planid != 0)
+			values[i++] = CStringGetTextDatum(planid_txt);
+		else
+			nulls[i++] = true;
+
+		/* parentid at column number 6 */
         if (tmp.info.parentid != UINT64CONST(0))
 		{
             sprintf(parentid_txt,"%08lX",tmp.info.parentid);
@@ -1230,6 +1481,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 
 		if (is_allowed_role || entry->key.userid == userid)
 		{
+			/* query at column number 7 */
+			/* plan at column number 8 */
 			if (showtext)
 			{
 					if (query_txt)
@@ -1237,11 +1490,13 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 						char	*enc;
 						enc = pg_any_to_server(query_txt, strlen(query_txt), entry->encoding);
 						values[i++] = CStringGetTextDatum(enc);
+						values[i++] = CStringGetTextDatum(plan_info.plan_text);
 						if (enc != query_txt)
 							pfree(enc);
 					}
 					else
 					{
+						nulls[i++] = true;
 						nulls[i++] = true;
 					}
 			}
@@ -1249,13 +1504,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			{
 				/* Query text not requested */
 				nulls[i++] = true;
+				nulls[i++] = true;
 			}
 		}
 		else
 		{
-			/*skip the query id and parent id*/
-			nulls[i++] = true;
-			nulls[i++] = true;
 			/*
 			 * Don't show query text, but hint as to the reason for not doing
 			 *	so if it was requested
@@ -1264,12 +1517,17 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				values[i++] = CStringGetTextDatum("<insufficient privilege>");
 			else
 				nulls[i++] = true;
+			/* skip plan_text */
+			nulls[i++] = true;
 		}
+
+		/* application_name at column number 9 */
 		if (strlen(tmp.info.application_name) == 0)
 			nulls[i++] = true;
 		else
 			values[i++] = CStringGetTextDatum(tmp.info.application_name);
 
+		/* relations at column number 10 */
 		if (tmp.info.num_relations > 0)
 		{
 			int     j;
@@ -1295,39 +1553,77 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		else
 			nulls[i++] = true;
 
-		values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
+		/* cmd_type at column number 11 */
+		if (tmp.info.cmd_type < 0)
+			nulls[i++] = true;
+		else
+			values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
+
+		/* elevel at column number 12 */
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
+
+		/* sqlcode at column number 13 */
 		if (strlen(tmp.error.sqlcode) == 0)
-			values[i++] = CStringGetTextDatum("0");
+			nulls[i++] = true;
 		else
 			values[i++] = CStringGetTextDatum(tmp.error.sqlcode);
 
+		/* message at column number 14 */
 		if (strlen(tmp.error.message) == 0)
 			nulls[i++] = true;
 		else
 			values[i++] = CStringGetTextDatum(tmp.error.message);
+
+		/* bucket_start_time at column number 15 */
 		values[i++] = CStringGetTextDatum(pgss->bucket_start_time[entry->key.bucket_id]);
-		for (kind = 0; kind < PGSS_NUMKIND; kind++)
+		if (tmp.calls.calls == 0)
 		{
-			if (tmp.calls[kind].calls == 0)
-			{
-				/*  Query of pg_stat_monitor itslef started from zero count */
-				tmp.calls[kind].calls++;
-				if (kind == PGSS_EXEC)
-					tmp.resp_calls[0]++;
-			}
-			values[i++] = Int64GetDatumFast(tmp.calls[kind].calls);
-			values[i++] = Float8GetDatumFast(tmp.time[kind].total_time);
-			values[i++] = Float8GetDatumFast(tmp.time[kind].min_time);
-			values[i++] = Float8GetDatumFast(tmp.time[kind].max_time);
-			values[i++] = Float8GetDatumFast(tmp.time[kind].mean_time);
-			if (tmp.calls[kind].calls > 1)
-				stddev = sqrt(tmp.time[kind].sum_var_time / tmp.calls[kind].calls);
-			else
-				stddev = 0.0;
-			values[i++] = Float8GetDatumFast(stddev);
-			values[i++] = Int64GetDatumFast(tmp.calls[kind].rows);
+			/*  Query of pg_stat_monitor itslef started from zero count */
+			tmp.calls.calls++;
+			tmp.resp_calls[0]++;
 		}
+
+		/* calls at column number 16 */
+		values[i++] = Int64GetDatumFast(tmp.calls.calls);
+
+		/* total_time at column number 17 */
+		values[i++] = Float8GetDatumFast(tmp.time.total_time);
+
+		/* min_time at column number 18 */
+		values[i++] = Float8GetDatumFast(tmp.time.min_time);
+
+		/* max_time at column number 19 */
+		values[i++] = Float8GetDatumFast(tmp.time.max_time);
+
+		/* mean_time at column number 20 */
+		values[i++] = Float8GetDatumFast(tmp.time.mean_time);
+		if (tmp.calls.calls > 1)
+			stddev = sqrt(tmp.time.sum_var_time / tmp.calls.calls);
+		else
+			stddev = 0.0;
+
+		/* calls at column number 21 */
+		values[i++] = Float8GetDatumFast(stddev);
+
+		/* calls at column number 22 */
+		values[i++] = Int64GetDatumFast(tmp.calls.rows);
+
+		/* plan_calls at column number 23 */
+		values[i++] = Int64GetDatumFast(plan_info.plans);
+
+		/* plan_total_time at column number 24 */
+		values[i++] = Float8GetDatumFast(plan_info.time.total_time);
+
+		/* plan_min_time at column number 25 */
+		values[i++] = Float8GetDatumFast(plan_info.time.min_time);
+
+		/* plan_max_time at column number 26 */
+		values[i++] = Float8GetDatumFast(plan_info.time.max_time);
+
+		/* plan_mean_time at column number 27 */
+		values[i++] = Float8GetDatumFast(plan_info.time.mean_time);
+
+		/* blocks are from column number 28 - 39 */
 		values[i++] = Int64GetDatumFast(tmp.blocks.shared_blks_hit);
 		values[i++] = Int64GetDatumFast(tmp.blocks.shared_blks_read);
 		values[i++] = Int64GetDatumFast(tmp.blocks.shared_blks_dirtied);
@@ -1340,23 +1636,33 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_written);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
+
+		/* resp_calls at column number 40 */
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
+
+		/* utime at column number 41 */
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
+
+		/* stime at column number 42 */
 		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
 		{
 			char		buf[256];
 			Datum		wal_bytes;
 
+			/* wal_records at column number 43 */
 			values[i++] = Int64GetDatumFast(tmp.walusage.wal_records);
+
+			/* wal_fpi at column number 44 */
 			values[i++] = Int64GetDatumFast(tmp.walusage.wal_fpi);
 
 			snprintf(buf, sizeof buf, UINT64_FORMAT, tmp.walusage.wal_bytes);
 
-			/* Convert to numeric. */
+			/* Convert to numeric */
 			wal_bytes = DirectFunctionCall3(numeric_in,
 											CStringGetDatum(buf),
 											ObjectIdGetDatum(0),
 											Int32GetDatum(-1));
+			/* wal_bytes at column number 45 */
 			values[i++] = wal_bytes;
 		}
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
@@ -2441,88 +2747,6 @@ store_query(int bucket_id, uint64 queryid, const char *query, uint64 query_len)
 	memcpy(buf, &buf_len, sizeof (uint64));
 }
 
-#if PG_VERSION_NUM >= 130000
-static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
-#else
-static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param)
-#endif
-{
-	PlannedStmt *result;
-#if PG_VERSION_NUM >= 130000
-	if (PGSM_TRACK_PLANNING && query_string
-		&& parse->queryId != UINT64CONST(0))
-	{
-		instr_time	start;
-		instr_time	duration;
-		BufferUsage bufusage_start,
-					bufusage;
-		WalUsage	walusage_start,
-					walusage;
-
-		/* We need to track buffer usage as the planner can access them. */
-		bufusage_start = pgBufferUsage;
-
-		/*
-		 * Similarly the planner could write some WAL records in some cases
-		 * (e.g. setting a hint bit with those being WAL-logged)
-		 */
-		walusage_start = pgWalUsage;
-		INSTR_TIME_SET_CURRENT(start);
-
-		plan_nested_level++;
-		PG_TRY();
-		{
-    		if (planner_hook_next)
-        		result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-    		result = standard_planner(parse, query_string, cursorOptions, boundParams);
-		}
-		PG_FINALLY();
-		{
-			plan_nested_level--;
-		}
-		PG_END_TRY();
-
-		INSTR_TIME_SET_CURRENT(duration);
-		INSTR_TIME_SUBTRACT(duration, start);
-
-		/* calc differences of buffer counters. */
-		memset(&bufusage, 0, sizeof(BufferUsage));
-		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
-
-		/* calc differences of WAL counters. */
-		memset(&walusage, 0, sizeof(WalUsage));
-		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
-		pgss_store(parse->queryId,				/* query id */
-					query_string,				/* query text */
-					parse->commandType,
-					0, 							/* error elevel */
-					"", 							/* error sqlcode */
-					NULL, 						/* error message */
-					parse->stmt_location,
-					parse->stmt_len,
-					PGSS_PLAN,
-					INSTR_TIME_GET_MILLISEC(duration),
-					0,
-					&bufusage,
-					&walusage,
-					NULL,
-					0,
-					0);
-	}
-	else
-	{
-		if (planner_hook_next)
-			result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-		result = standard_planner(parse, query_string, cursorOptions, boundParams);
-	}
-#else
-	if (planner_hook_next)
-		result = planner_hook_next(parse, opt, param);
-	result = standard_planner(parse, opt, param);
-#endif
-	return result;
-}
-
 static uint64
 get_query_id(pgssJumbleState *jstate, Query *query)
 {
@@ -2552,6 +2776,13 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 	MemoryContext		oldcontext;
 	int					i;
 
+	/* Safety check... */
+	if (!IsSystemInitialized())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
+
+	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2606,38 +2837,21 @@ set_qbuf(int i, unsigned char *buf)
 void
 pgsm_emit_log_hook(ErrorData *edata)
 {
-	BufferUsage bufusage;
-#if PG_VERSION_NUM >= 130000
-	WalUsage walusage;
-#endif
+	if (!IsSystemInitialized())
+		goto exit;
 
-	if (IsSystemInitialized() &&
-		(edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1) )
+	if ((edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1))
 	{
 		uint64 queryid = 0;
 
 		if (debug_query_string)
 			queryid = DatumGetUInt64(hash_any_extended((const unsigned char *)debug_query_string, strlen(debug_query_string), 0));
 
-		pgss_store(queryid,
-					debug_query_string ? debug_query_string : "",
-					0,
-					edata->elevel,
-					unpack_sql_state(edata->sqlerrcode),
-					edata->message,
-					0,
-					debug_query_string ? strlen(debug_query_string) : 0,
-					PGSS_EXEC,
-					0,
-					0,
-					&bufusage,
-#if PG_VERSION_NUM >= 130000
-					&walusage,
-#endif
-					NULL,
-					0,
-					0);
+		pgss_store_error(queryid,
+						debug_query_string ? debug_query_string : "",
+						edata);
 	}
+exit:
 	if (prev_emit_log_hook)
         prev_emit_log_hook(edata);
 }

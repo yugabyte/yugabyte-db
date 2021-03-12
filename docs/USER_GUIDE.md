@@ -400,3 +400,53 @@ postgres=# SELECT queryid, top_queryid, query, top_query FROM pg_stat_monitor;
  762B99349F6C7F31 | 3408CA84B2353094 | SELECT (select $1 + $2)                                | select add2($1,$2)
 (3 rows)
 ```
+
+#### Monitor Query Execution Plan.
+
+```sql
+postgres=# SELECT substr(query,0,50), query_plan from pg_stat_monitor limit 10;
+                      substr                       |                                                  query_plan
+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------
+ select o.n, p.partstrat, pg_catalog.count(i.inhpa | Limit                                                                                                        +
+                                                   |   ->  GroupAggregate                                                                                         +
+                                                   |         Group Key: (array_position(current_schemas(true), n.nspname)), p.partstrat                           +
+                                                   |         ->  Sort                                                                                             +
+                                                   |               Sort Key: (array_position(current_schemas(true), n.nspname)), p.partstrat                      +
+                                                   |               ->  Nested Loop Left Join                                                                      +
+                                                   |                     ->  Nested Loop Left Join                                                                +
+                                                   |                           ->  Nested Loop                                                                    +
+                                                   |                                 Join Filter: (c.relnamespace = n.oid)                                        +
+                                                   |                                 ->  Index Scan using pg_class_relname_nsp_index on pg_class c                +
+                                                   |                                       Index Cond: (relname = 'pgbench_accounts'::name)                       +
+                                                   |                                 ->  Seq Scan on pg_namespace n                                               +
+                                                   |                                       Filter: (array_position(current_schemas(true), nspname) IS NOT NULL)   +
+                                                   |                           ->  Index Scan using pg_partitioned_table_partrelid_index on pg_partitioned_table p+
+                                                   |                                 Index Cond: (partrelid = c.oid)                                              +
+                                                   |                     ->  Bitmap Heap Scan on pg_inherits i                                                    +
+                                                   |                           R
+ SELECT abalance FROM pgbench_accounts WHERE aid = | Index Scan using pgbench_accounts_pkey on pgbench_accounts                                                   +
+                                                   |   Index Cond: (aid = 102232)
+ BEGIN;                                            |
+ END;                                              |
+ SELECT substr(query,$1,$2), query_plan from pg_st |
+ SELECT substr(query,$1,$2),calls, planid,query_pl | Limit                                                                                                        +
+                                                   |   ->  Subquery Scan on pg_stat_monitor                                                                       +
+                                                   |         ->  Result                                                                                           +
+                                                   |               ->  Sort                                                                                       +
+                                                   |                     Sort Key: p.bucket_start_time                                                            +
+                                                   |                     ->  Hash Join                                                                            +
+                                                   |                           Hash Cond: (p.dbid = d.oid)                                                        +
+                                                   |                           ->  Function Scan on pg_stat_monitor_internal p                                    +
+                                                   |                           ->  Hash                                                                           +
+                                                   |                                 ->  Seq Scan on pg_database d                                                +
+                                                   |               SubPlan 1                                                                                      +
+                                                   |                 ->  Function Scan on pg_stat_monitor_internal s                                              +
+                                                   |                       Filter: (queryid = p.top_queryid)
+ select count(*) from pgbench_branches             | Aggregate                                                                                                    +
+                                                   |   ->  Seq Scan on pgbench_branches
+ UPDATE pgbench_tellers SET tbalance = tbalance +  |
+ vacuum pgbench_tellers                            |
+ UPDATE pgbench_accounts SET abalance = abalance + |
+(10 rows)
+
+```

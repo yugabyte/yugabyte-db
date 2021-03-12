@@ -24,32 +24,27 @@ RETURNS text[] AS $$
 SELECT string_to_array(get_histogram_timings(), ','); 
 $$ LANGUAGE SQL;
 
-CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
-    OUT bucket              int,
+CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
+    OUT bucket              int,   -- 0
     OUT userid              oid,
     OUT dbid                oid,
     OUT client_ip           int8,
 
-    OUT queryid             text,
-    OUT top_queryid            text,
+    OUT queryid             text,  -- 4
+    OUT planid              text,
+    OUT top_queryid         text,
     OUT query               text,
+    OUT query_plan          text,
 	OUT application_name	text,
-	OUT relations			text,
+
+	OUT relations			text, -- 10
 	OUT cmd_type			int,
 	OUT elevel              int,
     OUT sqlcode             TEXT,
     OUT message             text,
     OUT bucket_start_time   text,
 
-	OUT plans          		int8,
-    OUT plan_total_time     float8,
-    OUT plan_min_time       float8,
-    OUT plan_max_time       float8,
-    OUT plan_mean_time      float8,
-    OUT plan_stddev_time    float8,
-    OUT plan_rows           int8,
-
-	OUT calls         		int8,
+	OUT calls         		int8,  -- 16
     OUT total_time          float8,
     OUT min_time            float8,
     OUT max_time            float8,
@@ -57,7 +52,13 @@ CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
     OUT stddev_time         float8,
     OUT rows       			int8,
 
-	OUT shared_blks_hit     int8,
+	OUT plans_calls    	 	int8,  -- 23
+    OUT plan_total_time     float8,
+    OUT plan_min_time       float8,
+    OUT plan_max_time       float8,
+    OUT plan_mean_time      float8,
+
+	OUT shared_blks_hit     int8, -- 28
     OUT shared_blks_read    int8,
     OUT shared_blks_dirtied int8,
     OUT shared_blks_written int8,
@@ -128,7 +129,9 @@ CREATE VIEW pg_stat_monitor AS SELECT
     queryid,
     top_queryid,
     query,
-	(SELECT query from pg_stat_monitor(true) s where s.queryid = p.top_queryid) AS top_query,
+	planid,
+	query_plan,
+	(SELECT query from pg_stat_monitor_internal(true) s where s.queryid = p.top_queryid) AS top_query,
 	application_name,
 	string_to_array(relations, ',') AS relations,
 	cmd_type,
@@ -136,12 +139,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	elevel,
 	sqlcode,
 	message,
-	plans,
-	round( CAST(plan_total_time as numeric), 4)::float8 as plan_total_time,
-	round( CAST(plan_min_time as numeric), 4)::float8 as plan_min_time,
-	round( CAST(plan_max_time as numeric), 4)::float8 as plan_max_time,
-	round( CAST(plan_mean_time as numeric), 4)::float8 as plan_mean_time,
-	round( CAST(plan_stddev_time as numeric), 4)::float8 as plan_stddev_time,
     calls,
 	round( CAST(total_time as numeric), 4)::float8 as total_time,
 	round( CAST(min_time as numeric), 4)::float8 as min_time,
@@ -149,7 +146,13 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	round( CAST(mean_time as numeric), 4)::float8 as mean_time,
 	round( CAST(stddev_time as numeric), 4)::float8 as stddev_time,
 	rows,
-    shared_blks_hit,
+	plans_calls,
+	round( CAST(plan_total_time as numeric), 4)::float8 as plan_total_time,
+	round( CAST(plan_min_time as numeric), 4)::float8 as plan_min_time,
+	round( CAST(plan_max_time as numeric), 4)::float8 as plan_max_time,
+	round( CAST(plan_mean_time as numeric), 4)::float8 as plan_mean_time,
+ 
+	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
     shared_blks_written,
@@ -167,7 +170,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes
-FROM pg_stat_monitor(TRUE) p, pg_database d  WHERE dbid = oid
+FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 
 CREATE FUNCTION decode_error_level(elevel int)

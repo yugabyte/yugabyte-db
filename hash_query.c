@@ -21,8 +21,7 @@
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
 static HTAB *pgss_query_hash;
-
-
+static HTAB *pgss_plan_hash;
 
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 
@@ -73,6 +72,7 @@ pgss_startup(void)
 
 	pgss_hash = hash_init("pg_stat_monitor: bucket hashtable", sizeof(pgssHashKey), sizeof(pgssEntry), MAX_BUCKET_ENTRIES);
 	pgss_query_hash = hash_init("pg_stat_monitor: query hashtable", sizeof(pgssQueryHashKey), sizeof(pgssQueryEntry),500000);
+	pgss_plan_hash = hash_init("pg_stat_monitor: plan hashtable", sizeof(pgssPlanHashKey), sizeof(pgssPlanEntry), MAX_BUCKET_ENTRIES);
 
 	LWLockRelease(AddinShmemInitLock);
 
@@ -81,6 +81,12 @@ pgss_startup(void)
 	 * exit hook to dump the statistics to disk.
 	 */
 	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
+}
+
+HTAB*
+pgsm_get_plan_hash(void)
+{
+	return pgss_plan_hash;
 }
 
 pgssSharedState*
@@ -122,11 +128,32 @@ hash_memsize(void)
 	size = MAXALIGN(sizeof(pgssSharedState));
 	size += MAXALIGN(MAX_QUERY_BUF);
 	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssEntry)));
+	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssPlanEntry)));
 	size = add_size(size, hash_estimate_size(500000, sizeof(pgssQueryEntry)));
 
 	return size;
 }
 
+pgssPlanEntry *
+hash_plan_entry_alloc(pgssSharedState *pgss, pgssPlanHashKey *key)
+{
+	pgssPlanEntry   *entry = NULL;
+	bool        found = false;
+
+	if (hash_get_num_entries(pgss_plan_hash) >= MAX_BUCKET_ENTRIES)
+		return NULL;
+
+	/* Find or create an entry with desired hash code */
+	entry = (pgssPlanEntry *) hash_search(pgss_plan_hash, key, HASH_ENTER, &found);
+	if (!found)
+	{
+		memset(&entry->plan_info, 0, sizeof(PlanInfo));
+		SpinLockInit(&entry->mutex);
+	}
+	if (entry == NULL)
+		elog(FATAL, "%s", "pg_stat_monitor: out of memory");
+	return entry;
+}
 
 pgssEntry *
 hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
@@ -135,8 +162,10 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 	bool		found = false;
 
 	if (hash_get_num_entries(pgss_hash) >= MAX_BUCKET_ENTRIES)
+	{
+		elog(DEBUG2, "%s", "pg_stat_monitor: out of memory");
 		return NULL;
-
+	}
 	/* Find or create an entry with desired hash code */
 	entry = (pgssEntry *) hash_search(pgss_hash, key, HASH_ENTER, &found);
 	if (!found)

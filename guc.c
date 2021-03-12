@@ -173,6 +173,19 @@ init_guc(void)
 	};
 	DefineIntGUC(&conf[i++]);
 
+	conf[i] = (GucVariable) {
+		.guc_name = "pg_stat_monitor.pgsm_enable_query_plan",
+		.guc_desc = "Enable/Disable query plan monitoring",
+		.guc_default = 0,
+		.guc_min = 0,
+		.guc_max = 0,
+		.guc_restart = false,
+		.guc_unit = 0,
+		.guc_value = &PGSM_QUERY_PLAN
+	};
+	DefineBoolGUC(&conf[i++]);
+
+
 #if PG_VERSION_NUM >= 130000
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_track_planning",

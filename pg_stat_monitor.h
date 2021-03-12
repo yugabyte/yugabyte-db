@@ -79,7 +79,7 @@
 #define CMD_LEN				20
 #define APPLICATIONNAME_LEN	100
 #define PGSM_OVER_FLOW_MAX	10
-
+#define PLAN_TEXT_LEN		1024
 /* the assumption of query max nested level */
 #define DEFAULT_MAX_NESTED_LEVEL	10
 
@@ -94,9 +94,9 @@
 #define SQLCODE_LEN                         20
 
 #if PG_VERSION_NUM >= 130000
-#define	MAX_SETTINGS                        13
+#define	MAX_SETTINGS                        14
 #else
-#define MAX_SETTINGS                        12
+#define MAX_SETTINGS                        13
 #endif
 
 typedef struct GucVariables
@@ -149,6 +149,15 @@ typedef enum AGG_KEY
 #define MAX_QUERY_LEN 1024
 
 /* shared nenory storage for the query */
+typedef struct CallTime
+{
+	double		total_time;					/* total execution time, in msec */
+	double		min_time;					/* minimum execution time in msec */
+	double		max_time;					/* maximum execution time in msec */
+	double		mean_time;					/* mean execution time in msec */
+	double		sum_var_time;				/* sum of variances in execution time in msec */
+} CallTime;
+
 typedef struct pgssQueryHashKey
 {
 	uint64		queryid;		/* query identifier */
@@ -160,6 +169,27 @@ typedef struct pgssQueryEntry
 	pgssQueryHashKey	key;		/* hash key of entry - MUST BE FIRST */
 	uint64			    pos;		/* bucket number */
 } pgssQueryEntry;
+
+typedef struct PlanInfo
+{
+	uint64		planid;						/* plan identifier */
+	uint64		plans;						/* how many times plan */
+	CallTime	time;
+	char 		plan_text[PLAN_TEXT_LEN];	/* plan text */
+} PlanInfo;
+
+/* shared nenory storage for the query */
+typedef struct pgssPlanHashKey
+{
+	uint64		query_hash;		/* query reference identifier */
+} pgssPlanHashKey;
+
+typedef struct pgssPlanEntry
+{
+	pgssPlanHashKey	key;			/* hash key of entry - MUST BE FIRST */
+	PlanInfo 		plan_info;		/* planning information */
+	slock_t			mutex;			/* protects the counters only */
+} pgssPlanEntry;
 
 typedef struct pgssHashKey
 {
@@ -187,7 +217,7 @@ typedef struct QueryInfo
 typedef struct ErrorInfo
 {
 	int64	elevel;							/* error elevel */
-	char    sqlcode[SQLCODE_LEN];						/* error sqlcode  */
+	char    sqlcode[SQLCODE_LEN];			/* error sqlcode  */
 	char	message[ERROR_MESSAGE_LEN];   	/* error message text */
 } ErrorInfo;
 
@@ -198,14 +228,6 @@ typedef struct Calls
 	double		usage;						/* usage factor */
 } Calls;
 
-typedef struct CallTime
-{
-	double		total_time;					/* total execution time, in msec */
-	double		min_time;					/* minimum execution time in msec */
-	double		max_time;					/* maximum execution time in msec */
-	double		mean_time;					/* mean execution time in msec */
-	double		sum_var_time;				/* sum of variances in execution time in msec */
-} CallTime;
 
 typedef struct Blocks
 {
@@ -235,15 +257,14 @@ typedef struct Wal_Usage
 	int64		wal_fpi;		/* # of WAL full page images generated */
 	uint64		wal_bytes;		/* total amount of WAL bytes generated */
 } Wal_Usage;
-/*
- * The actual stats counters kept within pgssEntry.
- */
+
 typedef struct Counters
 {
 	uint64		bucket_id;		/* bucket id */
-	Calls		calls[PGSS_NUMKIND];
+	Calls		calls;
 	QueryInfo	info;
-	CallTime	time[PGSS_NUMKIND];
+	PlanInfo    plan_info;
+	CallTime	time;
 	Blocks		blocks;
 	SysInfo		sysinfo;
 	ErrorInfo   error;
@@ -340,18 +361,19 @@ void pgss_shmem_startup(void);
 void pgss_shmem_shutdown(int code, Datum arg);
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
-HTAB* pgsm_get_hash(void);
+HTAB *pgsm_get_plan_hash(void);
+HTAB *pgsm_get_hash(void);
+HTAB *pgsm_get_plan_hash(void);
 HTAB* pgsm_get_query_hash(void);
 void hash_entry_reset(void);
 void hash_query_entry_dealloc(int bucket);
 void hash_entry_dealloc(int bucket);
+pgssPlanEntry *hash_plan_entry_alloc(pgssSharedState *pgss, pgssPlanHashKey *key);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
 bool hash_find_query_entry(uint64 bucket_id, uint64 queryid);
 bool hash_create_query_entry(uint64 bucket_id, uint64 queryid);
-
-/* hash_query.c */
 void pgss_startup(void);
 void set_qbuf(int i, unsigned char *);
 
@@ -369,7 +391,8 @@ void pgss_startup(void);
 #define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
 #define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
 #define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
-#define PGSM_TRACK_PLANNING get_conf(11)->guc_variable
 #define PGSM_OVERFLOW_TARGET get_conf(12)->guc_variable
+#define PGSM_QUERY_PLAN get_conf(12)->guc_variable
+#define PGSM_TRACK_PLANNING get_conf(13)->guc_variable
 
 #endif
