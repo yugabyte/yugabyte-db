@@ -3561,6 +3561,12 @@ AS $$
 DECLARE
   modifiers text;
 BEGIN
+  -- Check that we don't have modifier not supported by Oracle
+  IF regexp_match($1, '[^icnsmx]') IS NOT NULL THEN
+    -- Modifier 's' is not supported by Oracle but it is a synonym
+    -- of 'n', we translate 'n' into 's' bellow. It is safe to allow it.
+    RAISE EXCEPTION 'argument ''flags'' has unsupported modifier(s).';
+  END IF;
   -- Oracle 'n' modifier correspond to 's' POSIX modifier
   -- Oracle 'm' modifier correspond to 'n' POSIX modifier
   modifiers := translate($1, 'nm', 'sn');
@@ -4052,3 +4058,128 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+
+-- REGEXP_REPLACE( string text, pattern text, replace_string text ) -> text
+CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text)
+RETURNS text
+AS $$
+  -- Oracle default behavior is to replace all occurence
+  -- whereas PostgreSQL only replace the first occurrence
+  -- so we need to add 'g' modifier.
+  SELECT pg_catalog.regexp_replace($1, $2, $3, 'g');
+$$
+LANGUAGE sql;
+
+-- REGEXP_REPLACE( string text, pattern text, replace_string text, position int ) -> text
+CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text, integer)
+RETURNS text
+AS $$
+DECLARE
+  v_replaced_str text;
+  v_before text;
+BEGIN
+  -- Check numeric arguments
+  IF $4 < 1 THEN
+    RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
+  END IF;
+
+  v_before = substr($1, 1, $4 - 1);
+
+  -- Oracle default behavior is to replace all occurence
+  -- whereas PostgreSQL only replace the first occurrence
+  -- so we need to add 'g' modifier.
+  v_replaced_str := v_before || pg_catalog.regexp_replace(substr($1, $4), $2, $3, 'g');
+  RETURN v_replaced_str;
+END;
+$$
+LANGUAGE plpgsql;
+
+-- REGEXP_REPLACE( string text, pattern text, replace_string text, position int, occurence int ) -> text
+CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text, integer, integer)
+RETURNS text
+AS $$
+DECLARE
+  v_replaced_str text;
+  v_pos integer := $4;
+  v_nummatch integer;
+  v_before text := '';
+BEGIN
+  -- Check numeric arguments
+  IF $4 < 1 THEN
+    RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
+  END IF;
+  IF $5 < 0 THEN
+    RAISE EXCEPTION 'argument ''occurrence'' must be a positive number';
+  END IF;
+  -- Check if the occurrence queried exceeds the number of occurrences
+  IF $5 > 1 THEN
+    v_nummatch := (SELECT count(*) FROM regexp_matches(substr($1, $4), $2, 'g'));
+    IF $5 > v_nummatch THEN
+      RETURN $1;
+    END IF;
+    -- Get the position of the occurrence we are looking for
+    v_pos := oracle.regexp_instr($1, $2, $4, $5, 0, '', 1);
+    IF v_pos = 0 THEN
+      RETURN $1;
+    END IF;
+  END IF;
+  -- Get the substring before this position we will need to restore it
+  v_before := substr($1, 1, v_pos - 1);
+  -- Replace all occurrences
+  IF $5 = 0 THEN
+    v_replaced_str := v_before || pg_catalog.regexp_replace(substr($1, v_pos), $2, $3, 'g');
+  ELSE
+    -- Replace the first occurrence
+    v_replaced_str := v_before || pg_catalog.regexp_replace(substr($1, v_pos), $2, $3);
+  END IF;
+
+  RETURN v_replaced_str;
+END;
+$$
+LANGUAGE plpgsql;
+
+-- REGEXP_REPLACE( string text, pattern text, replace_string text, position int, occurence int, flags text ) -> text
+CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text, integer, integer, text)
+RETURNS text
+AS $$
+DECLARE
+  v_replaced_str text;
+  v_pos integer := $4;
+  v_nummatch integer;
+  v_before text := '';
+  modifiers text := '';
+BEGIN
+  -- Check numeric arguments
+  IF $4 < 1 THEN
+    RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
+  END IF;
+  IF $5 < 0 THEN
+    RAISE EXCEPTION 'argument ''occurrence'' must be a positive number';
+  END IF;
+  -- Set the modifiers
+  IF $5 = 0 THEN
+    modifiers := oracle.translate_oracle_modifiers($6, true);
+  ELSE
+    modifiers := oracle.translate_oracle_modifiers($6, false);
+  END IF;
+  -- Check if the occurrence queried exceeds the number of occurrences
+  IF $5 > 1 THEN
+    v_nummatch := (SELECT count(*) FROM regexp_matches(substr($1, $4), $2, $6||'g'));
+    IF $5 > v_nummatch THEN
+      RETURN $1;
+    END IF;
+    -- Get the position of the occurrence we are looking for
+    v_pos := oracle.regexp_instr($1, $2, $4, $5, 0, $6, 1);
+    IF v_pos = 0 THEN
+      RETURN $1;
+    END IF;
+  END IF;
+  -- Get the substring before this position we will need to restore it
+  v_before := substr($1, 1, v_pos - 1);
+  -- Replace occurrence(s)
+  v_replaced_str := v_before || pg_catalog.regexp_replace(substr($1, v_pos), $2, $3, modifiers);
+  RETURN v_replaced_str;
+END;
+$$
+LANGUAGE plpgsql;
+

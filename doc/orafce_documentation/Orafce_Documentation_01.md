@@ -60,6 +60,7 @@ The table below lists features compatible with Oracle databases.
 |REGEXP_INSTR|returns the beginning or ending position within the string where the match for a pattern was located|
 |REGEXP_LIKE|condition in the WHERE clause of a query, causing the query to return rows that match the given pattern|
 |REGEXP_SUBSTR|returns the string that matches the pattern specified in the call to the function|
+|REGEXP_REPLACE|replace substring(s) matching a POSIX regular expression|
 |RPAD|Right-pads a string to a specified length with a sequence of characters|
 |RTRIM|Removes the specified characters from the end of a string|
 |SUBSTR|Extracts part of a string using characters to specify position and length|
