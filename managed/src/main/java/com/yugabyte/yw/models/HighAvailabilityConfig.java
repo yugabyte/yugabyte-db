@@ -30,6 +30,9 @@ public class HighAvailabilityConfig extends Model {
   private static final Finder<UUID, HighAvailabilityConfig> find =
     new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class){};
 
+  @JsonIgnore
+  private final int id = 1;
+
   @Id
   @Constraints.Required
   @Column(nullable = false, unique = true)
@@ -94,19 +97,17 @@ public class HighAvailabilityConfig extends Model {
   }
 
   @JsonIgnore
-  public PlatformInstance getLocal() {
+  public Optional<PlatformInstance> getLocal() {
     return this.instances.stream()
       .filter(PlatformInstance::getIsLocal)
-      .findFirst()
-      .orElse(null);
+      .findFirst();
   }
 
   @JsonIgnore
-  public PlatformInstance getLeader() {
+  public Optional<PlatformInstance> getLeader() {
     return this.instances.stream()
       .filter(PlatformInstance::getIsLeader)
-      .findFirst()
-      .orElse(null);
+      .findFirst();
   }
 
   public static HighAvailabilityConfig create(String clusterKey) {
@@ -124,18 +125,18 @@ public class HighAvailabilityConfig extends Model {
     config.update();
   }
 
-  public static HighAvailabilityConfig get(UUID uuid) {
-    return find.byId(uuid);
+  public static Optional<HighAvailabilityConfig> get(UUID uuid) {
+    return Optional.ofNullable(find.byId(uuid));
   }
 
-  public static HighAvailabilityConfig getByClusterKey(String clusterKey) {
+  public static Optional<HighAvailabilityConfig> get() {
+    return find.query().where().findOneOrEmpty();
+  }
+
+  public static Optional<HighAvailabilityConfig> getByClusterKey(String clusterKey) {
     return find.query().where()
       .eq("cluster_key", clusterKey)
-      .findOne();
-  }
-
-  public static List<HighAvailabilityConfig> list() {
-    return find.all();
+      .findOneOrEmpty();
   }
 
   public static void delete(UUID uuid) {
@@ -151,12 +152,9 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static boolean isFollower() {
-    // This is assuming there is only a single HA config existing
-    // (which there is protection for at the API level).
-    // TODO: (Daniel) - https://github.com/yugabyte/yugabyte-db/issues/7545
-    return list().stream()
-      .map(HighAvailabilityConfig::getLocal)
-      .filter(Objects::nonNull)
-      .anyMatch(i -> !i.getIsLeader());
+    return get()
+      .flatMap(HighAvailabilityConfig::getLocal)
+      .map(i -> !i.getIsLeader())
+      .orElse(false);
   }
 }

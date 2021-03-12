@@ -31,6 +31,8 @@ import java.io.File;
 import java.net.URL;
 import java.util.Map;
 import java.util.Date;
+import java.util.Optional;
+import java.util.Set;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {
@@ -52,9 +54,14 @@ public class InternalHAController extends Controller {
 
   public Result getHAConfigByClusterKey() {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+      Optional<HighAvailabilityConfig> config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
 
-      return ApiResponse.success(config);
+      if (!config.isPresent()) {
+        return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
+      }
+
+      return ApiResponse.success(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config");
 
@@ -64,20 +71,21 @@ public class InternalHAController extends Controller {
 
   public Result syncInstances(long timestamp) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      PlatformInstance localInstance = config.getLocal();
+      Optional<PlatformInstance> localInstance = config.get().getLocal();
 
-      if (localInstance == null) {
+      if (!localInstance.isPresent()) {
         LOG.warn("No local instance configured");
 
         return ApiResponse.error(BAD_REQUEST, "No local instance configured");
       }
 
-      if (localInstance.getIsLeader()) {
+      if (localInstance.get().getIsLeader()) {
         LOG.warn(
           "Rejecting request to import instances due to this process being designated a leader"
         );
@@ -86,7 +94,7 @@ public class InternalHAController extends Controller {
       }
 
       Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.getLastFailover();
+      Date localLastFailover = config.get().getLastFailover();
 
       // Reject the request if coming from a platform instance that was failed over to earlier.
       if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
@@ -95,10 +103,12 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
       }
 
-      replicationManager.importPlatformInstances(config, (ArrayNode) request().body().asJson());
-      config.refresh();
+      Set<PlatformInstance> processedInstances = replicationManager.importPlatformInstances(
+        config.get(),
+        (ArrayNode) request().body().asJson()
+      );
 
-      return ApiResponse.success(config);
+      return ApiResponse.success(processedInstances);
     } catch (Exception e) {
       LOG.error("Error importing platform instances", e);
 
@@ -131,8 +141,14 @@ public class InternalHAController extends Controller {
         " does not match leader: " + leader);
     }
 
-    HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-    if (config.getLocal() != null && leader.equals(config.getLocal().getAddress())) {
+    Optional<HighAvailabilityConfig> config =
+      HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+    if (!config.isPresent()) {
+      return ApiResponse.error(BAD_REQUEST, "Could not find HA Config");
+    }
+
+    Optional<PlatformInstance> localInstance = config.get().getLocal();
+    if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
       return ApiResponse.error(BAD_REQUEST,
         "Backup originated on the node itself. Leader: " + leader);
     }
@@ -153,8 +169,9 @@ public class InternalHAController extends Controller {
 
   public Result demoteLocalLeader(long timestamp) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+      if (!config.isPresent()) {
         LOG.warn("No HA configuration configured, skipping request");
 
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
@@ -166,16 +183,16 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
 
-      PlatformInstance localInstance = config.getLocal();
+      Optional<PlatformInstance> localInstance = config.get().getLocal();
 
-      if (localInstance == null) {
+      if (!localInstance.isPresent()) {
         LOG.warn("No local instance configured");
 
         return ApiResponse.error(BAD_REQUEST, "No local instance configured");
       }
 
       Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.getLastFailover();
+      Date localLastFailover = config.get().getLastFailover();
 
       // Reject the request if coming from a platform instance that was failed over to earlier.
       if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
@@ -184,11 +201,11 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
       } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
         // Otherwise, update the last failover timestamp and proceed with demotion request.
-        config.setLastFailover(requestLastFailover);
+        config.get().setLastFailover(requestLastFailover);
       }
 
       // Demote the local instance.
-      replicationManager.demoteLocalInstance(localInstance, formData.get().leader_address);
+      replicationManager.demoteLocalInstance(localInstance.get(), formData.get().leader_address);
 
       return ApiResponse.success(localInstance);
     } catch (Exception e) {
