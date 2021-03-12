@@ -96,7 +96,9 @@ void HistogramImpl::Clear() {
   num_ = 0;
   sum_ = 0;
   sum_squares_ = 0;
-  memset(buckets_, 0, sizeof buckets_);
+  for (int i = 0; i < kHistogramNumBuckets; ++i) {
+    set_bucket(i, 0);
+  }
 }
 
 bool HistogramImpl::Empty() { return num_ == 0; }
