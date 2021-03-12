@@ -21,12 +21,15 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/read_hybrid_time.h"
 
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/locks.h"
+
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(HadReadTime);
 
-// ConsistentReadPoint tracks a consistent read point to read across tablets. Note that this class
-// is not thread-safe except otherwise noted below.
+// ConsistentReadPoint tracks a consistent read point to read across tablets.
 class ConsistentReadPoint {
  public:
   // A map of tablet id to local limits.
@@ -34,65 +37,73 @@ class ConsistentReadPoint {
 
   explicit ConsistentReadPoint(const scoped_refptr<ClockBase>& clock);
 
+  void MoveFrom(ConsistentReadPoint* rhs);
+
   // Set the current time as the read point.
-  void SetCurrentReadTime();
+  void SetCurrentReadTime() EXCLUDES(mutex_);
 
   // Set the read point to the specified read time with local limits.
-  void SetReadTime(const ReadHybridTime& read_time, HybridTimeMap&& local_limits);
+  void SetReadTime(const ReadHybridTime& read_time, HybridTimeMap&& local_limits) EXCLUDES(mutex_);
 
-  const ReadHybridTime& GetReadTime() const { return read_time_; }
+  ReadHybridTime GetReadTime() const;
 
   // Get the read time of this read point for a tablet.
-  ReadHybridTime GetReadTime(const TabletId& tablet) const;
+  ReadHybridTime GetReadTime(const TabletId& tablet) const EXCLUDES(mutex_);
 
   // Notify that a tablet requires restart. This method is thread-safe.
-  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time);
+  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) EXCLUDES(mutex_);
+
+  void UpdateLocalLimit(const TabletId& tablet, HybridTime local_limit) EXCLUDES(mutex_);
 
   // Does the current read require restart?
-  bool IsRestartRequired() const;
+  bool IsRestartRequired() const EXCLUDES(mutex_);
 
   // Restart read.
-  void Restart();
+  void Restart() EXCLUDES(mutex_);
 
   // Defer read hybrid time to global limit.
-  void Defer();
+  void Defer() EXCLUDES(mutex_);
 
   // Update the clock used by this consistent read point with the propagated time.
-  void UpdateClock(HybridTime propagated_hybrid_time);
+  void UpdateClock(HybridTime propagated_hybrid_time) EXCLUDES(mutex_);
 
   // Return the current time to propagate.
-  HybridTime Now() const;
+  HybridTime Now() const EXCLUDES(mutex_);
 
   // Prepare the read time and local limits in a child transaction.
-  void PrepareChildTransactionData(ChildTransactionDataPB* data) const;
+  void PrepareChildTransactionData(ChildTransactionDataPB* data) const EXCLUDES(mutex_);
 
   // Finish a child transaction and populate the restart read times in the result.
   void FinishChildTransactionResult(
-      HadReadTime had_read_time, ChildTransactionResultPB* result) const;
+      HadReadTime had_read_time, ChildTransactionResultPB* result) const EXCLUDES(mutex_);
 
   // Apply restart read times from a child transaction result. This method is thread-safe.
-  void ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+  void ApplyChildTransactionResult(const ChildTransactionResultPB& result) EXCLUDES(mutex_);
 
   // Sets in transaction limit.
-  void SetInTxnLimit(HybridTime value);
-
-  ConsistentReadPoint& operator=(ConsistentReadPoint&& other);
+  void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
 
  private:
-  scoped_refptr<ClockBase> clock_;
+  void UpdateLimitsMapUnlocked(
+      const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
+  void RestartRequiredUnlocked(const TabletId& tablet, const ReadHybridTime& restart_time)
+      REQUIRES(mutex_);
+  bool IsRestartRequiredUnlocked() const REQUIRES(mutex_);
 
-  std::mutex mutex_;
-  ReadHybridTime read_time_;
-  HybridTime restart_read_ht_;
+  const scoped_refptr<ClockBase> clock_;
+
+  mutable simple_spinlock mutex_;
+  ReadHybridTime read_time_ GUARDED_BY(mutex_);
+  HybridTime restart_read_ht_ GUARDED_BY(mutex_);
 
   // Local limits for separate tablets. Does not change during lifetime of a consistent read.
   // Times such that anything happening at that hybrid time or later is definitely after the
   // original request arrived and therefore does not have to be shown in results.
-  HybridTimeMap local_limits_;
+  HybridTimeMap local_limits_ GUARDED_BY(mutex_);
 
   // Restarts that happen during a consistent read. Used to initialise local_limits for restarted
   // read.
-  HybridTimeMap restarts_;
+  HybridTimeMap restarts_ GUARDED_BY(mutex_);
 };
 
 } // namespace yb

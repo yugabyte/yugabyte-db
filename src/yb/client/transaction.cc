@@ -198,7 +198,7 @@ class YBTransaction::Impl final {
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_point.GetReadTime() << ")";
 
-    read_point_ = std::move(read_point);
+    read_point_.MoveFrom(&read_point);
     CompleteInit(isolation);
   }
 
@@ -224,7 +224,7 @@ class YBTransaction::Impl final {
             IllegalState, "Restart of transaction that does not require restart: $0",
             metadata_.transaction_id);
       }
-      other->read_point_ = std::move(read_point_);
+      other->read_point_.MoveFrom(&read_point_);
       other->read_point_.Restart();
       other->metadata_.isolation = metadata_.isolation;
       if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {

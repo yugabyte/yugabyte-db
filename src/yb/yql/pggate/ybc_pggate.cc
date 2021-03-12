@@ -82,6 +82,10 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbac
 
   YBCInitFlags();
 
+#ifndef NDEBUG
+  HybridTime::TEST_SetPrettyToString(true);
+#endif
+
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count, pg_callbacks);
   VLOG(1) << "PgGate open";

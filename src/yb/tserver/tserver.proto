@@ -237,6 +237,8 @@ message WriteResponsePB {
 
   // Used to report used read time when transaction asked for it.
   optional ReadHybridTimePB used_read_time = 13;
+
+  optional fixed64 local_limit_ht = 14;
 }
 
 // A list tablets request
@@ -319,6 +321,8 @@ message ReadResponsePB {
 
   // Used to report used read time when transaction asked for it.
   optional ReadHybridTimePB used_read_time = 9;
+
+  optional fixed64 local_limit_ht = 10;
 }
 
 message TransactionStatePB {
