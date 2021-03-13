@@ -794,18 +794,19 @@ The project was founded in 2008 by Pavel Stehule <stehule@kix.fsv.cvut.cz>.
 
 Other contributors:
 
+* Gabriele Bartolini (gbartolini)
+* Jeffrey Cohen (jcohen)
+* Giles Darold (darold)
+* Pavan Deolasee (pavanvd)
 * Peter Eisentraut (petere)
+* Beena Emerson (b-emerson)
+* Takahiro Itagaki (itagaki)
+* Zdenek Kotala (hlipa)
+* Amit Langote (amitlan)
+* Heikki Linnakangas (hlinnaka)
+* Fujii Masao
+* Marco Nenciarini (mnencia)
+* Vinayak Pokale
 * Gavin Sherry (swm)
 * Pavel Stehule (okbob)
-* Heikki Linnakangas (hlinnaka)
-* Gabriele Bartolini (gbartolini)
-* Zdenek Kotala (hlipa)
-* Takahiro Itagaki (itagaki)
-* Marco Nenciarini (mnencia)
-* Pavan Deolasee (pavanvd)
-* Jeffrey Cohen (jcohen)
-* Amit Langote (amitlan)
 * Rahila Syed (rahila)
-* Beena Emerson (b-emerson)
-* Vinayak Pokale
-* Fujii Masao
