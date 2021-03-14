@@ -47,7 +47,7 @@ const mapDispatchToProps = (dispatch) => {
         if (typeof regionFormVals[key] === 'string' || regionFormVals[key] instanceof String)
           regionFormVals[key] = regionFormVals[key].trim();
       });
-      dispatch(createProvider('aws', name.trim(), config)).then((response) => {
+      dispatch(createProvider('aws', name.trim(), config, regionFormVals)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());
@@ -56,6 +56,9 @@ const mapDispatchToProps = (dispatch) => {
             toast.success('Successfully created AWS Provider!');
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
+        } else {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
         }
       });
     },
