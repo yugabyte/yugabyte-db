@@ -2,7 +2,9 @@ package com.yugabyte.yw.cloud.aws;
 
 import com.amazonaws.auth.*;
 import com.amazonaws.services.ec2.AmazonEC2;
+import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ec2.model.*;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -13,21 +15,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.util.stream.Collectors.*;
 
 //TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 // site admin knows about it
 class AWSCloudImpl implements CloudAPI {
+  public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEcC2Client(Provider provider, Region r) {
-    Map<String, String> config = provider.getConfig();
+    return getEC2ClientInternal(provider.getConfig(), r.code);
+  }
+
+  private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(
       config.get("AWS_ACCESS_KEY_ID"),
       config.get("AWS_SECRET_ACCESS_KEY"));
     return AmazonEC2ClientBuilder.standard()
-      .withRegion(r.code)
+      .withRegion(regionCode)
       .withCredentials(credentialsProvider)
       .build();
   }
@@ -80,5 +88,22 @@ class AWSCloudImpl implements CloudAPI {
     return results.stream().flatMap(result -> result.getInstanceTypeOfferings().stream())
       .collect(groupingBy(InstanceTypeOffering::getInstanceType,
         mapping(InstanceTypeOffering::getLocation, toSet())));
+  }
+
+  @Override
+  public boolean isValidCreds(Map<String, String> config, String region) {
+    try {
+      AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
+      DryRunResult<DescribeInstancesRequest> dryRunResult = ec2Client
+        .dryRun(new DescribeInstancesRequest());
+      if(!dryRunResult.isSuccessful()) {
+        LOG.error(dryRunResult.getDryRunResponse().getMessage());
+        return false;
+      }
+      return dryRunResult.isSuccessful();
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      return false;
+    }
   }
 }
