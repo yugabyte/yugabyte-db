@@ -499,14 +499,17 @@ public class YBClient implements AutoCloseable {
    * @return Master leader uuid on success, null otherwise.
    */
   private String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {
+    LOG.info("Waiting for master leader (timeout: " + timeoutMs + " ms)");
     long start = System.currentTimeMillis();
-
     // Retry till we get a valid UUID (or timeout) for the new leader.
     do {
       String leaderUuid = getLeaderMasterUUID();
 
+      long elapsedTimeMs = System.currentTimeMillis() - start;
       // Done if we got a valid one.
       if (leaderUuid != null) {
+        LOG.info("Fininshed waiting for master leader in " + elapsedTimeMs + " ms. Leader UUID: " +
+                 leaderUuid);
         return leaderUuid;
       }
 

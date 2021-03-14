@@ -71,9 +71,5 @@ add_dependencies(postgres configure_postgres)
 # Dependencies between postgres and other targets
 # ------------------------------------------------------------------------------------------------
 
-if("${YB_BUILD_TYPE}" STREQUAL "compilecmds")
-  message("Not making postgres depend on other libraries in the compilecmds build type.")
-else()
-  # Libraries that we link into the postgres binary.
-  add_dependencies(postgres yb_pggate server_process)
-endif()
+# Libraries that we link into the postgres binary.
+add_dependencies(postgres yb_pggate server_process)

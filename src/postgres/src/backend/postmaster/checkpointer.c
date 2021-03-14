@@ -956,10 +956,22 @@ CheckpointerShmemInit(void)
  *		just signal checkpointer to do it, and return).
  *	CHECKPOINT_CAUSE_XLOG: checkpoint is requested due to xlog filling.
  *		(This affects logging, and in particular enables CheckPointWarning.)
+ *	CHECKPOINT_CAUSE_CLIENT: (YB) Client explicitly requested checkpoint
  */
 void
 RequestCheckpoint(int flags)
 {
+  /*
+   * YB: ignoring user requested checkpoints for now
+   */
+  if(flags & CHECKPOINT_CAUSE_CLIENT)
+  {
+    ereport(WARNING,
+            (errmsg("CHECKPOINT will be ignored")));
+     return;
+  }
+
+
 	int			ntries;
 	int			old_failed,
 				old_started;

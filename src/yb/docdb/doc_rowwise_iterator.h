@@ -17,6 +17,7 @@
 #include <string>
 #include <atomic>
 
+#include "yb/docdb/doc_reader.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
@@ -28,7 +29,6 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/util/status.h"
 #include "yb/util/operation_counter.h"
 
@@ -65,7 +65,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   virtual ~DocRowwiseIterator();
 
   // Init scan iterator.
-  CHECKED_STATUS Init();
+  CHECKED_STATUS Init(TableType table_type);
 
   // Init QL read scan.
   CHECKED_STATUS Init(const common::QLScanSpec& spec);
@@ -215,13 +215,12 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Used for keeping track of errors in HasNext.
   mutable Status has_next_status_;
 
-  mutable boost::optional<DeadlineInfo> deadline_info_;
-
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
 
-  // Hybrid time of the table tombstone, if found.
-  mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
+  mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
+
+  mutable bool ignore_ttl_ = false;
 };
 
 }  // namespace docdb

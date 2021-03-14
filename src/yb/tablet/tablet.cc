@@ -1061,7 +1061,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_op_counter_);
-  RETURN_NOT_OK(result->Init());
+  RETURN_NOT_OK(result->Init(table_type_));
   return std::move(result);
 }
 

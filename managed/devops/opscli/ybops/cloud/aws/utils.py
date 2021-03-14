@@ -15,7 +15,7 @@ import os
 import re
 
 from ipaddress import ip_network
-from ybops.utils import get_or_create, get_and_cleanup
+from ybops.utils import get_or_create, get_and_cleanup, DNS_RECORD_SET_TTL
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
 
@@ -210,7 +210,7 @@ class AwsBootstrapClient():
         self._validate_cidr_overlap()
 
     def _validate_cidr_overlap(self):
-        region_networks = [ip_network(cidr.decode('utf-8')) for cidr in self.region_cidrs.values()]
+        region_networks = [ip_network(cidr) for cidr in self.region_cidrs.values()]
         all_networks = region_networks
         for i in range(len(all_networks)):
             for j in range(i + 1, len(all_networks)):
@@ -1042,7 +1042,7 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
             'ResourceRecordSet': {
                 'Name': "{}.{}".format(domain_name_prefix, hosted_zone_name),
                 'Type': 'A',
-                'TTL': 5,
+                'TTL': DNS_RECORD_SET_TTL,
                 'ResourceRecords': records
             }
         }]

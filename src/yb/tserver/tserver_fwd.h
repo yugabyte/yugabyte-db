@@ -25,6 +25,7 @@ class TabletPeerLookupIf;
 class TabletServerOptions;
 class TabletServerServiceProxy;
 class TabletSnapshotOpRequestPB;
+class TabletSnapshotOpResponsePB;
 class TSTabletManager;
 
 } // namespace tserver

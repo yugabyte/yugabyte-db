@@ -17,14 +17,13 @@
 
 #include <atomic>
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
-
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 
 #include "yb/yql/cql/ql/ql_session.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 namespace yb {
 namespace cqlserver {
@@ -42,18 +41,18 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
               rpc::RpcConnectionPB* resp) override;
 
   // Accessor methods for CQL message compression scheme to use.
-  CQLMessage::CompressionScheme compression_scheme() const {
+  ql::CQLMessage::CompressionScheme compression_scheme() const {
     return compression_scheme_;
   }
-  void set_compression_scheme(CQLMessage::CompressionScheme compression_scheme) {
+  void set_compression_scheme(ql::CQLMessage::CompressionScheme compression_scheme) {
     compression_scheme_ = compression_scheme;
   }
 
   // Accessor methods for registered CQL events.
-  CQLMessage::Events registered_events() const {
+  ql::CQLMessage::Events registered_events() const {
     return registered_events_;
   }
-  void add_registered_events(CQLMessage::Events events) {
+  void add_registered_events(ql::CQLMessage::Events events) {
     registered_events_ |= events;
   }
 
@@ -82,10 +81,10 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   ql::QLSession::SharedPtr ql_session_;
 
   // CQL message compression scheme to use.
-  CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::kNone;
+  ql::CQLMessage::CompressionScheme compression_scheme_ = ql::CQLMessage::CompressionScheme::kNone;
 
   // Stored registered events for the connection.
-  CQLMessage::Events registered_events_ = CQLMessage::kNoEvents;
+  ql::CQLMessage::Events registered_events_ = ql::CQLMessage::kNoEvents;
 
   rpc::BinaryCallParser parser_;
 
@@ -130,7 +129,7 @@ class CQLInboundCall : public rpc::InboundCall {
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
   void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
-  void SetRequest(std::shared_ptr<const CQLRequest> request, CQLServiceImpl* service_impl) {
+  void SetRequest(std::shared_ptr<const ql::CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;
 #ifdef THREAD_SANITIZER
     request_ = request;
@@ -150,7 +149,7 @@ class CQLInboundCall : public rpc::InboundCall {
   RefCntBuffer response_msg_buf_;
   const ql::QLSession::SharedPtr ql_session_;
   uint16_t stream_id_;
-  std::shared_ptr<const CQLRequest> request_;
+  std::shared_ptr<const ql::CQLRequest> request_;
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* service_impl_;
 

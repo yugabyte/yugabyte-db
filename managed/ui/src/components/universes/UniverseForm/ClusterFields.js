@@ -499,6 +499,7 @@ export default class ClusterFields extends Component {
       this.setState({ maxNumNodes: numNodesAvailable });
     }
   }
+
   componentDidUpdate(prevProps, prevState) {
     const {
       universe: { currentUniverse, universeConfigTemplate },
@@ -876,62 +877,31 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-            this.reloadInstanceTypes();
-          });
+          this.props.submitConfigureUniverse(universeTaskParams);
         }
       } else {
         // Create flow
         if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
-          this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-            this.reloadInstanceTypes();
-          });
+          this.props.submitConfigureUniverse(universeTaskParams);
         } else {
           const currentClusterConfiguration = getClusterByType(
             universeConfigTemplate.data.clusters,
             clusterType
           );
           if (!isDefinedNotNull(currentClusterConfiguration)) {
-            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-              this.reloadInstanceTypes();
-            });
+            this.props.submitConfigureUniverse(universeTaskParams);
           } else if (
             !areIntentsEqual(
               getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
               currentClusterConfiguration.userIntent
             )
           ) {
-            this.props.submitConfigureUniverse(universeTaskParams).then(() => {
-              this.reloadInstanceTypes();
-            });
+            this.props.submitConfigureUniverse(universeTaskParams);
           }
         }
       }
     }
   }
-
-  // fetch instance types with respect to selected availability zones (AZ)
-  reloadInstanceTypes = () => {
-    const {
-      universe: { universeConfigTemplate },
-      clusterType,
-      getInstanceTypeListItems
-    } = this.props;
-
-    const cluster = clusterType === 'async'
-      ? getReadOnlyCluster(universeConfigTemplate.data.clusters)
-      : getPrimaryCluster(universeConfigTemplate.data.clusters);
-
-    // AZs are available as part of universeConfigTemplate store record only
-    if (cluster) {
-      const provider = cluster.userIntent.provider;
-      const zones = cluster.placementInfo.cloudList[0].regionList
-        .flatMap(item => item.azList)
-        .map(item => item.name);
-
-      getInstanceTypeListItems(provider, zones);
-    }
-  };
 
   configureUniverseNodeList() {
     const {
@@ -969,7 +939,8 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      this.getCurrentProvider(currentProviderUUID).code === 'aws'
+      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
+        this.getCurrentProvider(currentProviderUUID).code === 'azu')
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1486,8 +1457,10 @@ export default class ClusterFields extends Component {
         />
       );
     }
-    // Only enable Time Sync Service toggle for AWS.
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === 'aws') {
+    // Only enable Time Sync Service toggle for AWS/GCP.
+    if (isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === 'aws' || currentProvider.code === 'gcp')) {
+      const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
       useTimeSync = (
         <Field
           name={`${clusterType}.useTimeSync`}
@@ -1495,8 +1468,8 @@ export default class ClusterFields extends Component {
           isReadOnly={isFieldReadOnly}
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
-          label="Use AWS Time Sync"
-          subLabel="Enable the AWS Time Sync functionality for the DB servers."
+          label={`Use ${providerCode} Time Sync`}
+          subLabel={`Enable the ${providerCode} Time Sync functionality for the DB servers.`}
         />
       );
     }
@@ -1591,7 +1564,7 @@ export default class ClusterFields extends Component {
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
           placementCloud={placementCloud}
-          providerCode={currentProvider.code}
+          providerCode={currentProvider?.code}
         />
       );
     } else if (currentProvider?.code === 'onprem'
@@ -1625,7 +1598,6 @@ export default class ClusterFields extends Component {
           maxNumNodes={this.state.maxNumNodes}
           currentProvider={this.getCurrentProvider(currentProviderUUID)}
           isKubernetesUniverse={this.state.isKubernetesUniverse}
-          reloadInstanceTypes={this.reloadInstanceTypes}
         />
         {showPlacementStatus && placementStatus}
       </div>
@@ -1657,22 +1629,24 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      tagsArray = (
-        <Row>
-          <Col md={12}>
-            <h4>User Tags</h4>
-          </Col>
-          <Col md={6}>
-            <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.instanceTags`}
-              flagType="tag"
-              operationType="Create"
-              isReadOnly={false}
-            />
-          </Col>
-        </Row>
-      );
+      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+        tagsArray = (
+          <Row>
+            <Col md={12}>
+              <h4>User Tags</h4>
+            </Col>
+            <Col md={6}>
+              <FieldArray
+                component={GFlagArrayComponent}
+                name={`${clusterType}.instanceTags`}
+                flagType="tag"
+                operationType="Create"
+                isReadOnly={false}
+              />
+            </Col>
+          </Row>
+        );
+      }
     }
 
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
@@ -2127,7 +2101,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
-        {currentProviderCode === 'aws' && clusterType === 'primary' && (
+        {clusterType === 'primary' && (
           <div className="form-section no-border">{tagsArray}</div>
         )}
       </div>

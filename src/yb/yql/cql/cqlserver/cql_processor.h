@@ -15,6 +15,8 @@
 // This module is to define CQL processor. Each processor will be handling one and only one request
 // at a time. As a result all processing code in this module and the modules that it is calling
 // does not need to be thread safe.
+// Notably, this does NOT apply to Reschedule implementation methods, which are called from
+// different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
@@ -22,12 +24,12 @@
 
 #include "yb/rpc/service_if.h"
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/statement.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 namespace yb {
 namespace cqlserver {
@@ -80,37 +82,44 @@ class CQLProcessor : public ql::QLProcessor {
   void Reschedule(rpc::ThreadPoolTask* task) override;
 
  private:
-  bool CheckAuthentication(const CQLRequest& req) const;
+  bool CheckAuthentication(const ql::CQLRequest& req) const;
 
   // Process a CQL request.
-  std::unique_ptr<CQLResponse> ProcessRequest(const CQLRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::CQLRequest& req);
 
   // Process specific CQL requests.
-  std::unique_ptr<CQLResponse> ProcessRequest(const OptionsRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const StartupRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const PrepareRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const ExecuteRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const QueryRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const BatchRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const AuthResponseRequest& req);
-  std::unique_ptr<CQLResponse> ProcessRequest(const RegisterRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::OptionsRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::StartupRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::PrepareRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::ExecuteRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::QueryRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::BatchRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::AuthResponseRequest& req);
+  std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::RegisterRequest& req);
 
   // Get a prepared statement and adds it to the set of statements currently being executed.
-  std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const ql::CQLMessage::QueryId& id);
 
   // Statement executed callback.
   void StatementExecuted(const Status& s, const ql::ExecutedResult::SharedPtr& result = nullptr);
 
   // Process statement execution result and error.
-  std::unique_ptr<CQLResponse> ProcessResult(const ql::ExecutedResult::SharedPtr& result);
-  std::unique_ptr<CQLResponse> ProcessAuthResult(const string& saved_hash, bool can_login);
-  std::unique_ptr<CQLResponse> ProcessError(
+  std::unique_ptr<ql::CQLResponse> ProcessResult(const ql::ExecutedResult::SharedPtr& result);
+  std::unique_ptr<ql::CQLResponse> ProcessAuthResult(const string& saved_hash, bool can_login);
+  std::unique_ptr<ql::CQLResponse> ProcessError(
       const Status& s,
-      boost::optional<CQLMessage::QueryId> query_id = boost::none);
+      boost::optional<ql::CQLMessage::QueryId> query_id = boost::none);
 
   // Send response back to client.
-  void PrepareAndSendResponse(const std::unique_ptr<CQLResponse>& response);
-  void SendResponse(const CQLResponse& response);
+  void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
+  void SendResponse(const ql::CQLResponse& response);
+
+  const unordered_map<string, vector<string>> kSupportedOptions = {
+      {ql::CQLMessage::kCQLVersionOption,
+          {"3.0.0" /* minimum */, "3.4.2" /* current */}},
+      {ql::CQLMessage::kCompressionOption,
+          {ql::CQLMessage::kLZ4Compression, ql::CQLMessage::kSnappyCompression}}
+  };
 
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;
@@ -125,7 +134,7 @@ class CQLProcessor : public ql::QLProcessor {
 
   // Current call, request, prepared statements and parse trees being processed.
   CQLInboundCallPtr call_;
-  std::shared_ptr<const CQLRequest> request_;
+  std::shared_ptr<const ql::CQLRequest> request_;
   std::unordered_set<std::shared_ptr<const CQLStatement>> stmts_;
   std::unordered_set<ql::ParseTree::UniPtr> parse_trees_;
 
@@ -156,7 +165,7 @@ class CQLProcessor : public ql::QLProcessor {
     void Run() override {
       auto processor = processor_;
       processor_ = nullptr;
-      std::unique_ptr<CQLResponse> response(processor->ProcessRequest(*processor->request_));
+      std::unique_ptr<ql::CQLResponse> response(processor->ProcessRequest(*processor->request_));
       if (response != nullptr) {
         processor->SendResponse(*response);
       }

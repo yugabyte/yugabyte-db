@@ -20,7 +20,6 @@
 
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 namespace rocksdb {
 namespace {
@@ -46,9 +45,6 @@ void InstrumentedMutex::Lock() {
 }
 
 void InstrumentedMutex::LockInternal() {
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
-#endif
   mutex_.Lock();
 }
 
@@ -68,9 +64,6 @@ void InstrumentedCondVar::Wait() {
 }
 
 void InstrumentedCondVar::WaitInternal() {
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
-#endif
   cond_.Wait();
 }
 
@@ -92,9 +85,6 @@ bool InstrumentedCondVar::TimedWait(uint64_t abs_time_us) {
 }
 
 bool InstrumentedCondVar::TimedWaitInternal(uint64_t abs_time_us) {
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
-#endif
   return cond_.TimedWait(abs_time_us);
 }
 

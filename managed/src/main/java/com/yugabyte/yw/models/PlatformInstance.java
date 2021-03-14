@@ -28,6 +28,7 @@ import javax.persistence.*;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 
 @Entity
@@ -175,14 +176,14 @@ public class PlatformInstance extends Model {
     instance.update();
   }
 
-  public static PlatformInstance get(UUID uuid) {
-    return find.byId(uuid);
+  public static Optional<PlatformInstance> get(UUID uuid) {
+    return Optional.ofNullable(find.byId(uuid));
   }
 
-  public static PlatformInstance getByAddress(String address) {
+  public static Optional<PlatformInstance> getByAddress(String address) {
     return find.query().where()
       .eq("address", address)
-      .findOne();
+      .findOneOrEmpty();
   }
 
   public static void delete(UUID uuid) {
@@ -212,8 +213,8 @@ public class PlatformInstance extends Model {
           json.has("is_local") && json.has("last_backup")) {
           PlatformInstance instance = new PlatformInstance();
           instance.uuid = UUID.fromString(json.get("uuid").asText());
-          instance.config =
-            HighAvailabilityConfig.get(UUID.fromString(json.get("config_uuid").asText()));
+          UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
+          instance.config = HighAvailabilityConfig.get(configUUID).orElse(null);
           instance.address = json.get("address").asText();
           instance.setIsLeader(json.get("is_leader").asBoolean());
           instance.setIsLocal(json.get("is_local").asBoolean());

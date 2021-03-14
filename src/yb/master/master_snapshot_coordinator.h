@@ -33,40 +33,6 @@
 namespace yb {
 namespace master {
 
-using TabletSnapshotOperationCallback =
-    std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
-
-// Context class for MasterSnapshotCoordinator.
-class SnapshotCoordinatorContext {
- public:
-  // Return tablet infos for specified tablet ids.
-  // The returned vector is always of the same length as the input vector,
-  // with null entries returned for unknown tablet ids.
-  virtual TabletInfos GetTabletInfos(const std::vector<TabletId>& id) = 0;
-
-  virtual void SendCreateTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
-
-  virtual void SendRestoreTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime restore_at, TabletSnapshotOperationCallback callback) = 0;
-
-  virtual void SendDeleteTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      TabletSnapshotOperationCallback callback) = 0;
-
-  virtual const Schema& schema() = 0;
-
-  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
-
-  virtual rpc::Scheduler& Scheduler() = 0;
-
-  virtual bool IsLeader() = 0;
-
-  virtual ~SnapshotCoordinatorContext() = default;
-};
-
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
@@ -74,8 +40,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
-      CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
 
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 
@@ -94,6 +59,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp);
+
+  Result<SnapshotScheduleId> CreateSchedule(
+      const CreateSnapshotScheduleRequestPB& request, CoarseTimePoint deadline);
+
+  CHECKED_STATUS ListSnapshotSchedules(
+      const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp);
 
   // Load snapshots data from system catalog.
   CHECKED_STATUS Load(tablet::Tablet* tablet) override;

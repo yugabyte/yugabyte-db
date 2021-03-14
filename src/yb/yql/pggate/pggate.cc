@@ -183,8 +183,10 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
                          messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())),
-      pg_callbacks_(callbacks) {
+      pg_callbacks_(callbacks),
+      pg_txn_manager_(
+          new PgTxnManager(
+              &async_client_init_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -357,10 +359,6 @@ void PgApiImpl::DeleteStatement(PgStatement *handle) {
   if (handle) {
     PgMemctx::Destroy(handle);
   }
-}
-
-Status PgApiImpl::ClearBinds(PgStatement *handle) {
-  return handle->ClearBinds();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -827,10 +825,6 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
-}
-
-Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondEq(attr_num, attr_value);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,

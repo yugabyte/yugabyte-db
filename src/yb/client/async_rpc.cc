@@ -368,6 +368,13 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
                   TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }
+  auto local_limit_ht = resp_.local_limit_ht();
+  if (local_limit_ht) {
+    auto read_point = batcher_->read_point();
+    if (read_point) {
+      read_point->UpdateLocalLimit(req_.tablet_id(), HybridTime(local_limit_ht));
+    }
+  }
   return true;
 }
 

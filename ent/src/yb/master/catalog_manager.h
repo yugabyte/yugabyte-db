@@ -63,6 +63,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                     ImportSnapshotMetaResponsePB* resp);
 
+  CHECKED_STATUS CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
+                                        CreateSnapshotScheduleResponsePB* resp,
+                                        rpc::RpcContext* rpc);
+
+  CHECKED_STATUS ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
+                                       ListSnapshotSchedulesResponsePB* resp,
+                                       rpc::RpcContext* rpc);
+
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
@@ -74,7 +82,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
-  void HandleDeleteTabletSnapshotResponse(SnapshotId snapshot_id, TabletInfo *tablet, bool error);
+  void HandleDeleteTabletSnapshotResponse(
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
@@ -229,6 +238,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                    ExternalTableSnapshotDataMap* table_map);
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  Result<SysRowEntries> CollectEntries(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table) override;
+
+  server::Clock* Clock() override;
 
   const Schema& schema() override;
 
