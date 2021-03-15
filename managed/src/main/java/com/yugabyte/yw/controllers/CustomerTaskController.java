@@ -9,7 +9,11 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
 
+import io.ebean.Ebean;
 import io.ebean.Query;
+import io.ebean.RawSql;
+import io.ebean.RawSqlBuilder;
+
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
@@ -61,15 +65,30 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().setMaxRows(2000).where()
-      .eq("customer_uuid", customerUUID)
-      .orderBy("create_time desc");
-
+    // Query<CustomerTask> customerTaskQuery = CustomerTask.find.query().setMaxRows(2000).where()
+    //   .eq("customer_uuid", customerUUID)
+    //   .orderBy("create_time desc");
+  
+    Query<CustomerTask> customerTaskQuery;
+    Set<CustomerTask> pendingTasks;
     if (targetUUID != null) {
-      customerTaskQuery.where().eq("target_uuid", targetUUID);
+      String selectQuery = "SELECT * FROM customer_task " +
+      "WHERE customer_uuid = " + "'" + customerUUID + "'" + " AND target_uuid = " + "'" + targetUUID + "'" + "ORDER BY create_time DESC LIMIT 2000";
+      RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).create();
+      customerTaskQuery = Ebean.find(CustomerTask.class);
+      customerTaskQuery.setRawSql(rawSql);
+      pendingTasks = customerTaskQuery.findSet();
+    }
+    else { 
+      String selectQuery = "SELECT * FROM customer_task " +
+      "WHERE customer_uuid = " + "'" + customerUUID + "'" + " ORDER BY create_time DESC LIMIT 2000";
+      RawSql rawSql = RawSqlBuilder.unparsed(selectQuery).create();
+      customerTaskQuery = Ebean.find(CustomerTask.class);
+      pendingTasks = customerTaskQuery.setRawSql(rawSql).findSet();
     }
 
-    Set<CustomerTask> pendingTasks = customerTaskQuery.findSet();
+
+    // Set<CustomerTask> pendingTasks = customerTaskQuery.findSet();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
