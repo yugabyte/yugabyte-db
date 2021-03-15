@@ -156,6 +156,13 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
       env->SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
+  auto schedule_id = TryFullyDecodeSnapshotScheduleId(tx_state->request()->schedule_id());
+  if (schedule_id) {
+    if (tablet().metadata()->AddSnapshotSchedule(schedule_id)) {
+      RETURN_NOT_OK(tablet().metadata()->Flush());
+    }
+  }
+
   // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
   // the flushed frontier to have this exact value, although in practice it will, since this is the
   // latest operation we've ever executed in this Raft group. This way we keep the current value
