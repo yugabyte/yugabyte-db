@@ -350,12 +350,19 @@ DEFINE_int32(txn_table_wait_min_ts_count, 1,
              " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
-DEFINE_bool(enable_ysql_tablespaces_for_placement, false,
+DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
             "If set, tablespaces will be used for placement of YSQL tables.");
+TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
 
-DEFINE_int32(ysql_tablespace_info_refresh_secs, -1,
+DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "Frequency at which the table to tablespace information will be updated in master "
-             "from pg catalog tables.");
+             "from pg catalog tables. A value of -1 disables the refresh task.");
+TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
+
+DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
+                 "When set, placement of the tablets of a newly created table will not honor "
+                 "its tablespace placement policy until the loadbalancer runs.");
+TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
 namespace yb {
 namespace master {
