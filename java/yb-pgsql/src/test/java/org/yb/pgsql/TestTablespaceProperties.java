@@ -19,11 +19,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet.Replica;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.Master;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.util.*;
@@ -33,35 +35,41 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertTrue;
+import com.google.common.net.HostAndPort;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
 
-  private static final String CUSTOM_PLACEMENT_TABLE = "test1";
-
-  private static final String DEFAULT_PLACEMENT_TABLE = "test2";
-
-  private static final String CUSTOM_PLACEMENT_INDEX = "idx1";
-
-  private static final String DEFAULT_PLACEMENT_INDEX = "idx2";
-
-  private static final String CUSTOM_PLACEMENT_INDEX2 = "idx3";
-
-  private static final String DEFAULT_PLACEMENT_INDEX2 = "idx4";
+  ArrayList<String> tablesWithDefaultPlacement = new ArrayList<String>();
+  ArrayList<String> tablesWithCustomPlacement = new ArrayList<String>();
 
   private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    return getPerfMaxRuntime(800, 1000, 1500, 1500, 1500);
   }
 
-  @Test
-  public void testTablespaces() throws Exception {
-    // Destroy the cluster so we can create a new one.
+  void setupCluster() throws Exception {
     destroyMiniCluster();
+    createMiniCluster(3, masterArgs, getTserverArgs(), true /* enable_pg_transactions */);
 
+    pgInitialized = false;
+    initPostgresBefore();
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          " CREATE TABLESPACE testTablespace " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+    }
+  }
+
+  private List<List<String>> getTserverArgs() {
     List<String> zone1Placement = Arrays.asList(
             "--placement_cloud=cloud1", "--placement_region=region1",
             "--placement_zone=zone1");
@@ -78,63 +86,152 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     tserverArgs.add(zone1Placement);
     tserverArgs.add(zone2Placement);
     tserverArgs.add(zone3Placement);
+    return tserverArgs;
+  }
 
-    List<String> masterArgs = Arrays.asList(
-        "--ysql_tablespace_info_refresh_secs=" + MASTER_REFRESH_TABLESPACE_INFO_SECS,
-        "--enable_ysql_tablespaces_for_placement=true");
-    createMiniCluster(3, masterArgs, tserverArgs, true /* enable_pg_transactions */);
-    pgInitialized = false;
-    initPostgresBefore();
-
-    // Create a tablespace with replication info.
+  private void createTestData (String prefixName) throws Exception {
+    // Setup tables.
+    String defaultTable = prefixName + "_default_table";
+    String customTable = prefixName + "_custom_table";
+    String defaultIndex = prefixName + "_default_index";
+    String customIndex = prefixName + "_custom_index";
+    String defaultIndexCustomTable = prefixName + "_default_idx_on_custom_table";
+    String customIndexCustomTable = prefixName + "_custom_idx_on_custom_table";
     try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(
-          " CREATE TABLESPACE testTablespace " +
-          "  WITH (replica_placement=" +
-          "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
-          "\"min_num_replicas\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
-          "\"min_num_replicas\":1}]}')");
-
       // Create tables in default and custom tablespaces.
       setupStatement.execute(
-          "CREATE TABLE " + CUSTOM_PLACEMENT_TABLE + "(a int) TABLESPACE testTablespace");
+          "CREATE TABLE " +  customTable + "(a int) TABLESPACE testTablespace");
       setupStatement.execute(
-          "CREATE TABLE " + DEFAULT_PLACEMENT_TABLE + "(a int)");
+          "CREATE TABLE " + defaultTable + "(a int)");
 
       // Create indexes in default and custom tablespaces.
-      setupStatement.execute("CREATE INDEX " + CUSTOM_PLACEMENT_INDEX + " on " +
-          DEFAULT_PLACEMENT_TABLE + "(a) TABLESPACE testTablespace");
+      setupStatement.execute("CREATE INDEX " + customIndex + " on " +
+          defaultTable + "(a) TABLESPACE testTablespace");
 
-      setupStatement.execute("CREATE INDEX " + DEFAULT_PLACEMENT_INDEX + " on " +
-          CUSTOM_PLACEMENT_TABLE + "(a)");
+      setupStatement.execute("CREATE INDEX " + defaultIndexCustomTable + " on " +
+          customTable + "(a)");
 
-      setupStatement.execute("CREATE INDEX " + CUSTOM_PLACEMENT_INDEX2 + " on " +
-          CUSTOM_PLACEMENT_TABLE + "(a) TABLESPACE testTablespace");
+      setupStatement.execute("CREATE INDEX " + customIndexCustomTable + " on " +
+          customTable + "(a) TABLESPACE testTablespace");
 
-      setupStatement.execute("CREATE INDEX " + DEFAULT_PLACEMENT_INDEX2 + " on " +
-          DEFAULT_PLACEMENT_TABLE + "(a)");
+      setupStatement.execute("CREATE INDEX " + defaultIndex + " on " +
+          defaultTable + "(a)");
     }
+    tablesWithDefaultPlacement.addAll(Arrays.asList(defaultTable, defaultIndex,
+          defaultIndexCustomTable));
+    tablesWithCustomPlacement.addAll(Arrays.asList(customTable, customIndex,
+          customIndexCustomTable));
+  }
+
+  private void addTserversAndWaitForLB() throws Exception {
+    int expectedTServers = miniCluster.getTabletServers().size() + 2;
+    List<List<String>> tserverArgs = getTserverArgs();
+    miniCluster.startTServer(tserverArgs.get(1));
+    miniCluster.startTServer(tserverArgs.get(2));
+    miniCluster.waitForTabletServers(expectedTServers);
+
+    // Wait for loadbalancer to run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(30000 /* timeoutMs */));
+
+    // Wait for load balancer to become idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
+  }
+
+  @Test
+  public void testTablespaces() throws Exception {
+    // First setup tablespaces.
+    setupCluster();
+
+    // Run sanity tests for tablespaces.
+    sanityTest();
+
+    // Test with tablespaces disabled.
+    testDisabledTablespaces();
+
+    // Test load balancer functions as expected when
+    // tables are placed incorrectly at creation time.
+    testLBTablespacePlacement();
+  }
+
+  public void sanityTest() throws Exception {
+    YBClient client = miniCluster.getClient();
+
+    // Set required YB-Master flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "ysql_tablespace_info_refresh_secs",
+            Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS)));
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+      assertTrue(client.setFlag(hp, "v", "3"));
+    }
+
+    createTestData("sanity_test");
 
     // Verify that the table was created and its tablets were placed
     // according to the tablespace replication info.
     verifyPlacement();
 
     // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS);
+    Thread.sleep(2 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
 
-    // Add 2 tservers, one in zone 2 and the other in zone 3.
-    int expectedTServers = miniCluster.getTabletServers().size() + 2;
-    miniCluster.startTServer(zone2Placement);
-    miniCluster.startTServer(zone3Placement);
-    miniCluster.waitForTabletServers(expectedTServers);
-
-    // Wait for loadbalancer to run.
-    final boolean isBalanced = miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, 0);
-    assertTrue(isBalanced);
+    addTserversAndWaitForLB();
 
     // Verify that the loadbalancer also placed the tablets of the table based on the
+    // tablespace replication info.
+    verifyPlacement();
+
+    // Trigger a master leader change.
+    LeaderStepDownResponse resp = client.masterLeaderStepDown();
+    assertFalse(resp.hasError());
+
+    Thread.sleep(5 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+
+    verifyPlacement();
+  }
+
+  public void testDisabledTablespaces() throws Exception {
+    YBClient client = miniCluster.getClient();
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
+      assertTrue(client.setFlag(hp, "v", "3"));
+    }
+
+    // At this point, since tablespaces are disabled, the LB will detect that the older
+    // tables have not been correctly placed. Wait until the load balancer is active.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(30000 /* timeoutMs */));
+
+    // Wait for LB to finish its run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(200000 /* timeoutMs */));
+
+    createTestData("disabled_tablespace_test");
+
+    // Verify that the loadbalancer also placed the tablets of the table based on the
+    // tablespace replication info.
+    verifyDefaultPlacementForAll();
+  }
+
+  public void testLBTablespacePlacement() throws Exception {
+    // This test disables setting the tablespace id at creation time. Thus, the
+    // tablets of the table will be incorrectly placed based on cluster config
+    // at creation time, and we will rely on the LB to correctly place the table
+    // based on its tablespace.
+    // Set master flags.
+    YBClient client = miniCluster.getClient();
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+      assertTrue(client.setFlag(hp, "TEST_disable_setting_tablespace_id_at_creation", "true"));
+      assertTrue(client.setFlag(hp, "v", "3"));
+    }
+    createTestData("test_lb_placement");
+
+    // Since the tablespace-id was not checked during creation, the tablet replicas
+    // would have been placed wrongly. This condition will be detected by the load
+    // balancer. Wait until it starts running to fix these wrongly placed tablets.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(30000 /* timeoutMs */));
+
+    // Wait for LB to finish its run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(200000 /* timeoutMs */));
+
+    // Verify that the loadbalancer placed the tablets of the table based on the
     // tablespace replication info.
     verifyPlacement();
   }
@@ -142,12 +239,21 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   // Verify that the tables and indices have been placed in appropriate
   // zones.
   void verifyPlacement() throws Exception {
-    verifyCustomPlacement(CUSTOM_PLACEMENT_TABLE);
-    verifyCustomPlacement(CUSTOM_PLACEMENT_INDEX);
-    verifyCustomPlacement(CUSTOM_PLACEMENT_INDEX2);
-    verifyDefaultPlacement(DEFAULT_PLACEMENT_TABLE);
-    verifyDefaultPlacement(DEFAULT_PLACEMENT_INDEX);
-    verifyDefaultPlacement(DEFAULT_PLACEMENT_INDEX2);
+    for (final String table : tablesWithDefaultPlacement) {
+      verifyDefaultPlacement(table);
+    }
+    for (final String table : tablesWithCustomPlacement) {
+      verifyCustomPlacement(table);
+    }
+  }
+
+  void verifyDefaultPlacementForAll() throws Exception {
+    for (final String table : tablesWithDefaultPlacement) {
+      verifyDefaultPlacement(table);
+    }
+    for (final String table : tablesWithCustomPlacement) {
+      verifyDefaultPlacement(table);
+    }
   }
 
   void verifyCustomPlacement(final String table) throws Exception {
@@ -157,7 +263,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     for (LocatedTablet tablet : tabletLocations) {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
       // Replication factor should be 2.
-      assertEquals(2, replicas.size());
+      assertEquals("Mismatch of replication factor for table:" + table, replicas.size(), 2);
 
       // Verify that both tablets either belong to zone1 or zone2.
       for (LocatedTablet.Replica replica : replicas) {
@@ -181,7 +287,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     for (LocatedTablet tablet : tabletLocations) {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
       // Replication factor should be 3.
-      assertEquals(3, replicas.size());
+      assertEquals("Mismatch of replication factor for table:" + table, 3, replicas.size());
 
       // Verify that tablets can be present in any zone.
       for (LocatedTablet.Replica replica : replicas) {
