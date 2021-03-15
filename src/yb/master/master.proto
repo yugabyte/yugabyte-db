@@ -722,6 +722,15 @@ message TabletForSplitPB {
   required bytes split_encoded_key = 3;
 }
 
+message TSSnapshotScheduleInfoPB {
+  optional bytes id = 1;
+  optional fixed64 last_snapshot_hybrid_time = 2;
+}
+
+message TSSnapshotSchedulesInfoPB {
+  repeated TSSnapshotScheduleInfoPB schedules = 1;
+}
+
 // Heartbeat sent from the tablet-server to the master
 // to establish liveness and report back any status changes.
 message TSHeartbeatRequestPB {
@@ -812,6 +821,8 @@ message TSHeartbeatResponsePB {
   optional int64 tablet_split_size_threshold_bytes = 14;
 
   optional int32 tablet_report_limit = 16;
+
+  optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
 }
 
 message TSInformationPB {

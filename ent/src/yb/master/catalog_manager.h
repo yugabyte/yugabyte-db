@@ -252,6 +252,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
+                                       const SnapshotScheduleId& schedule_id,
                                        HybridTime snapshot_hybrid_time,
                                        TabletSnapshotOperationCallback callback) override;
 

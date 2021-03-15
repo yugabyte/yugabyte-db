@@ -125,6 +125,7 @@ void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
   DoPrepareOperations([this, out](const TabletData& tablet) {
     out->push_back(TabletSnapshotOperation {
       .tablet_id = tablet.id,
+      .schedule_id = schedule_id_,
       .snapshot_id = id_,
       .state = initial_state(),
       .snapshot_hybrid_time = snapshot_hybrid_time_,

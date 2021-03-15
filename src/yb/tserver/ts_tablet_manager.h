@@ -49,9 +49,12 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/constants.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -82,11 +85,6 @@ class BackgroundTask;
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
-
-namespace master {
-class ReportedTabletPB;
-class TabletReportPB;
-} // namespace master
 
 namespace tserver {
 class TabletServer;
@@ -329,6 +327,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Flush some tablet if the memstore memory limit is exceeded
   void MaybeFlushTablet();
 
+  CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
+
   client::YBClient& client();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
@@ -491,6 +491,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
+  HybridTime AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -585,6 +587,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+
+  mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
+  std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
+      snapshot_schedule_allowed_history_cutoff_
+      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

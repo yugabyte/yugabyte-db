@@ -446,7 +446,8 @@ Tablet::Tablet(const TabletInitData& data)
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
-      retention_policy_(std::make_shared<TabletRetentionPolicy>(clock_, metadata_.get())) {
+      retention_policy_(std::make_shared<TabletRetentionPolicy>(
+          clock_, data.allowed_history_cutoff_provider, metadata_.get())) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();

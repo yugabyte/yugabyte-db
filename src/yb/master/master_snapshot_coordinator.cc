@@ -366,6 +366,24 @@ class MasterSnapshotCoordinator::Impl {
     return FillSchedule(schedule, resp->add_schedules());
   }
 
+  CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (schedules_.empty()) {
+      return Status::OK();
+    }
+    auto* out = resp->mutable_snapshot_schedules();
+    for (const auto& schedule : schedules_) {
+      const auto& id = schedule->id();
+      auto* out_schedule = out->add_schedules();
+      out_schedule->set_id(id.data(), id.size());
+      auto time = LastSnapshotTime(id);
+      if (time) {
+        out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
+      }
+    }
+    return Status::OK();
+  }
+
   void Start() {
     poller_.Start(&context_.Scheduler(), FLAGS_snapshot_coordinator_poll_interval_ms * 1ms);
   }
@@ -471,20 +489,26 @@ class MasterSnapshotCoordinator::Impl {
           tablet_info, snapshot_id_str, callback);
     } else if (operation.state == SysSnapshotEntryPB::CREATING) {
       context_.SendCreateTabletSnapshotRequest(
-          tablet_info, snapshot_id_str, operation.snapshot_hybrid_time, callback);
+          tablet_info, snapshot_id_str, operation.schedule_id, operation.snapshot_hybrid_time,
+          callback);
     } else {
       LOG(DFATAL) << "Unsupported snapshot operation: " << operation.ToString();
     }
   }
+
+  struct PollSchedulesData {
+    std::vector<TxnSnapshotId> delete_snapshots;
+    SnapshotScheduleOperations schedule_operations;
+  };
 
   void Poll() {
     if (!context_.IsLeader()) {
       return;
     }
     VLOG(4) << __func__ << "()";
-    std::vector<TxnSnapshotId> cleanup_snapshots, delete_snapshots;
+    std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;
-    SnapshotScheduleOperations schedule_operations;
+    PollSchedulesData schedules_data;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& p : snapshots_) {
@@ -494,35 +518,43 @@ class MasterSnapshotCoordinator::Impl {
           p->PrepareOperations(&operations);
         }
       }
-      auto now = context_.Clock()->Now();
-      for (const auto& p : schedules_) {
-        auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
-        auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
-        if (first_snapshot && first_snapshot != last_snapshot) {
-          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
-          if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
-            auto delete_status = first_snapshot->TryStartDelete();
-            if (delete_status.ok()) {
-              delete_snapshots.push_back(first_snapshot->id());
-            } else {
-              VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
-                      << delete_status;
-            }
-          }
-        }
-        auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
-                                                : HybridTime::kInvalid;
-        p->PrepareOperations(last_snapshot_time, now, &schedule_operations);
-      }
+      PollSchedulesPrepare(&schedules_data);
     }
     for (const auto& id : cleanup_snapshots) {
       DeleteSnapshot(id);
     }
-    for (const auto& id : delete_snapshots) {
+    ExecuteOperations(operations);
+    PollSchedulesComplete(schedules_data);
+  }
+
+  void PollSchedulesPrepare(PollSchedulesData* data) REQUIRES(mutex_) {
+    auto now = context_.Clock()->Now();
+    for (const auto& p : schedules_) {
+      auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
+      auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
+      if (first_snapshot && first_snapshot != last_snapshot) {
+        auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+        if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+          auto delete_status = first_snapshot->TryStartDelete();
+          if (delete_status.ok()) {
+            data->delete_snapshots.push_back(first_snapshot->id());
+          } else {
+            VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
+                    << delete_status;
+          }
+        }
+      }
+      auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
+                                              : HybridTime::kInvalid;
+      p->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
+    }
+  }
+
+  void PollSchedulesComplete(const PollSchedulesData& data) EXCLUDES(mutex_) {
+    for (const auto& id : data.delete_snapshots) {
       SubmitDelete(id, nullptr);
     }
-    ExecuteOperations(operations);
-    for (const auto& operation : schedule_operations) {
+    for (const auto& operation : data.schedule_operations) {
       WARN_NOT_OK(ExecuteScheduleOperation(operation),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
@@ -545,6 +577,11 @@ class MasterSnapshotCoordinator::Impl {
       --it;
     }
     return (**it).schedule_id() == schedule_id ? it->get() : nullptr;
+  }
+
+  HybridTime LastSnapshotTime(const SnapshotScheduleId& schedule_id) REQUIRES(mutex_) {
+    auto snapshot = BoundingSnapshot(schedule_id, Bound::kLast);
+    return snapshot ? snapshot->snapshot_hybrid_time() : HybridTime::kInvalid;
   }
 
   void DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -837,6 +874,10 @@ void MasterSnapshotCoordinator::Shutdown() {
 
 Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& value) {
   return impl_->ApplyWritePair(key, value);
+}
+
+Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
+  return impl_->FillHeartbeatResponse(resp);
 }
 
 } // namespace master

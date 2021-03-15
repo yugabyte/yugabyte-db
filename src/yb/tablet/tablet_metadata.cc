@@ -173,7 +173,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 }
 
 Status KvStoreInfo::LoadTablesFromPB(
-    google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id) {
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
   tables.clear();
   for (const auto& table_pb : pbs) {
     auto table_info = std::make_shared<TableInfo>();
@@ -195,16 +195,21 @@ Status KvStoreInfo::LoadTablesFromPB(
   return Status::OK();
 }
 
-Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id) {
+Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id) {
   kv_store_id = KvStoreId(pb.kv_store_id());
   rocksdb_dir = pb.rocksdb_dir();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+
+  for (const auto& schedule_id : pb.snapshot_schedules()) {
+    snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
+  }
+
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
-void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
+void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const {
   pb->set_kv_store_id(kv_store_id.ToString());
   pb->set_rocksdb_dir(rocksdb_dir);
   if (lower_bound_key.empty()) {
@@ -228,6 +233,10 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
     if (it.first != primary_table_id) {
       it.second->ToPB(pb->add_tables());
     }
+  }
+
+  for (const auto& schedule_id : snapshot_schedules) {
+    pb->add_snapshot_schedules(schedule_id.data(), schedule_id.size());
   }
 }
 

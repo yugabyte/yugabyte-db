@@ -43,8 +43,10 @@ using docdb::TableTTL;
 using docdb::HistoryRetentionDirective;
 
 TabletRetentionPolicy::TabletRetentionPolicy(
-    server::ClockPtr clock, const RaftGroupMetadata* metadata)
-    : clock_(std::move(clock)), metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
+    server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
+    const RaftGroupMetadata* metadata)
+    : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
+      metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
 }
 
 HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value) {
@@ -147,8 +149,16 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
     allowed_cutoff = std::min(proposed_cutoff, *active_readers_.begin());
   }
 
-  VLOG_WITH_PREFIX(4) << __func__ << ", result: " << allowed_cutoff << ", active readers: "
-                      << active_readers_.size();
+  HybridTime provided_allowed_cutoff;
+  if (allowed_history_cutoff_provider_) {
+    provided_allowed_cutoff = allowed_history_cutoff_provider_(metadata_);
+    allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
+  }
+
+  VLOG_WITH_PREFIX(4) << __func__ << ", result: " << allowed_cutoff
+                      << ", active readers: " << active_readers_.size()
+                      << ", provided_allowed_cutoff: " << provided_allowed_cutoff
+                      << ", schedules: " << AsString(metadata_.SnapshotSchedules());
 
   return allowed_cutoff;
 }

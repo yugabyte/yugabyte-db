@@ -30,6 +30,7 @@ YB_STRONGLY_TYPED_BOOL(ForClient);
 
 struct TabletSnapshotOperation {
   TabletId tablet_id;
+  SnapshotScheduleId schedule_id;
   TxnSnapshotId snapshot_id;
   SysSnapshotEntryPB::State state;
   HybridTime snapshot_hybrid_time;
