@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
@@ -2058,16 +2059,23 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   // For update/delete, check if it just deletes some columns. If so, add the rest columns to be
-  // read so that tserver can check if they are all null also, in which case the row will be
-  // removed after the DML.
+  // read so that tserver can check if they are all null also. We require this information (whether
+  // all columns are null) for rows which don't have a liveness column - for such a row (i.e.,
+  // without liveness column, if all columns are null, the row is as good as deleted. And in this
+  // case, the tserver will have to remove the corresponding index entries from indexes.
   if ((req->type() == QLWriteRequestPB::QL_STMT_UPDATE ||
        req->type() == QLWriteRequestPB::QL_STMT_DELETE) &&
       !req->column_values().empty()) {
     bool all_null = true;
     std::set<int32> column_dels;
+    const Schema& schema = tnode->table()->InternalSchema();
     for (const QLColumnValuePB& column_value : req->column_values()) {
+      const ColumnSchema& col_desc = VERIFY_RESULT(
+        schema.column_by_id(ColumnId(column_value.column_id())));
+
       if (column_value.has_expr() &&
           column_value.expr().has_value() &&
+          !col_desc.is_static() && // Don't consider static column values.
           !IsNull(column_value.expr().value())) {
         all_null = false;
         break;
@@ -2075,13 +2083,13 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
       column_dels.insert(column_value.column_id());
     }
     if (all_null) {
-      const Schema& schema = tnode->table()->InternalSchema();
+      // Ensure all columns of row are read by docdb layer before performing the write operation.
       const MCSet<int32>& column_refs = tnode->column_refs();
       for (size_t idx = schema.num_key_columns(); idx < schema.num_columns(); idx++) {
         const int32 column_id = schema.column_id(idx);
         if (!schema.column(idx).is_static() &&
-            column_refs.count(column_id) != 0 &&
-            column_dels.count(column_id) != 0) {
+            column_refs.count(column_id) == 0 && // Add col only if not already in column_refs.
+            column_dels.count(column_id) == 0) { // If col is already in delete list, don't add it.
           req->mutable_column_refs()->add_ids(column_id);
         }
       }

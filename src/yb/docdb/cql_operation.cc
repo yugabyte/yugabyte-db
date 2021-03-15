@@ -36,6 +36,7 @@
 
 #include "yb/util/bfpg/tserver_opcodes.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -1064,11 +1065,15 @@ ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
 
 } // namespace
 
-bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
-                                    const QLTableRow& new_row) const {
+Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
+                                            const QLTableRow& new_row) const {
   // Delete the whole row?
   if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
     return true;
+  }
+
+  if (existing_row.IsEmpty()) { // If the row doesn't exist, don't check further.
+    return false;
   }
 
   // For update/delete, if there is no liveness column, the row will be deleted after the DML unless
@@ -1089,9 +1094,14 @@ bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing: break;
+        case ValueState::kMissing:
+          // In case there exists a row with the same primary key, we definitely need to know if its
+          // columns have value NULL or not. Populate the column before executing this function.
+          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
+            "QLWriteRequestPB's column_refs.");
       }
     }
+
     return true;
   }
 
@@ -1127,7 +1137,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
-    if (IsRowDeleted(existing_row, new_row)) {
+    bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
+    if (is_row_deleted) {
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
