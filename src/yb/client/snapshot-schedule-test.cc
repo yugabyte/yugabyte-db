@@ -65,6 +65,21 @@ class SnapshotScheduleTest : public SnapshotTestBase {
     LOG(INFO) << "Schedules: " << resp.ShortDebugString();
     return std::move(resp.schedules());
   }
+
+  CHECKED_STATUS WaitScheduleSnapshot(const SnapshotScheduleId& schedule_id) {
+    return WaitFor([this, schedule_id]() -> Result<bool> {
+      auto snapshots = VERIFY_RESULT(ListSnapshots());
+      EXPECT_LE(snapshots.size(), 1);
+      LOG(INFO) << "Snapshots: " << AsString(snapshots);
+      for (const auto& snapshot : snapshots) {
+        EXPECT_EQ(TryFullyDecodeSnapshotScheduleId(snapshot.entry().schedule_id()), schedule_id);
+        if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+          return true;
+        }
+      }
+      return false;
+    }, kSnapshotInterval / 2, "First snapshot");
+  }
 };
 
 TEST_F(SnapshotScheduleTest, Create) {
@@ -97,18 +112,7 @@ TEST_F(SnapshotScheduleTest, Create) {
 TEST_F(SnapshotScheduleTest, Snapshot) {
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(CreateSchedule());
-  ASSERT_OK(WaitFor([this, schedule_id]() -> Result<bool> {
-    auto snapshots = VERIFY_RESULT(ListSnapshots());
-    EXPECT_LE(snapshots.size(), 1);
-    LOG(INFO) << "Snapshots: " << AsString(snapshots);
-    for (const auto& snapshot : snapshots) {
-      EXPECT_EQ(TryFullyDecodeSnapshotScheduleId(snapshot.entry().schedule_id()), schedule_id);
-      if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
-        return true;
-      }
-    }
-    return false;
-  }, kSnapshotInterval / 2, "First snapshot"));
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
 
   auto schedules = ASSERT_RESULT(ListSchedules());
   ASSERT_EQ(schedules.size(), 1);
@@ -139,6 +143,18 @@ TEST_F(SnapshotScheduleTest, GC) {
     ASSERT_LE(snapshots.size(), 2);
     std::this_thread::sleep_for(100ms);
   }
+}
+
+TEST_F(SnapshotScheduleTest, Restart) {
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto schedules = ASSERT_RESULT(ListSchedules());
+  ASSERT_EQ(schedules.size(), 1);
+  ASSERT_EQ(schedules[0].snapshots().size(), 1);
+  ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
 }
 
 } // namespace client
