@@ -446,6 +446,27 @@ public class UniverseController extends AuthenticatedController {
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
       Cluster c = taskParams.currentClusterType .equals(ClusterType.PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
+      UserIntent primaryIntent = c.userIntent;
+      for (Map.Entry<String, String> intent : primaryIntent.masterGFlags.entrySet()) {
+        String key  = intent.getKey();
+        if(key!=key.trim()) {
+          primaryIntent.masterGFlags.put(key.trim(), intent.getValue().trim());
+          primaryIntent.masterGFlags.remove(key);
+        }
+        else {
+          primaryIntent.masterGFlags.put(key, intent.getValue().trim());
+        }
+      }
+      for (Map.Entry<String, String> intent : primaryIntent.tserverGFlags.entrySet()) {
+        String key  = intent.getKey();
+        if(key!=key.trim()) {
+          primaryIntent.tserverGFlags.put(key.trim(), intent.getValue().trim());
+          primaryIntent.tserverGFlags.remove(key);
+        }
+        else {
+          primaryIntent.tserverGFlags.put(key, intent.getValue().trim());
+        }
+      }
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid, clusterOpType);
       } else {
@@ -586,6 +607,27 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
       if (primaryCluster != null) {
+        UserIntent primaryIntent = primaryCluster.userIntent;
+        for (Map.Entry<String, String> intent : primaryIntent.masterGFlags.entrySet()) {
+          String key  = intent.getKey();
+          if(key!=key.trim()) {
+            primaryIntent.masterGFlags.put(key.trim(), intent.getValue().trim());
+            primaryIntent.masterGFlags.remove(key);
+          }
+          else {
+            primaryIntent.masterGFlags.put(key, intent.getValue().trim());
+          }
+        }
+        for (Map.Entry<String, String> intent : primaryIntent.tserverGFlags.entrySet()) {
+          String key  = intent.getKey();
+          if(key!=key.trim()) {
+            primaryIntent.tserverGFlags.put(key.trim(), intent.getValue().trim());
+            primaryIntent.tserverGFlags.remove(key);
+          }
+          else {
+            primaryIntent.tserverGFlags.put(key, intent.getValue().trim());
+          }
+        }
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
@@ -1481,6 +1523,26 @@ public class UniverseController extends AuthenticatedController {
       // instead of top level task param, for now just copy the master flag and tserver flag
       // from primary cluster.
       UserIntent primaryIntent = taskParams.getPrimaryCluster().userIntent;
+      for (Map.Entry<String, String> intent : primaryIntent.masterGFlags.entrySet()) {
+        String key  = intent.getKey();
+        if(key!=key.trim()) {
+          primaryIntent.masterGFlags.put(key.trim(), intent.getValue().trim());
+          primaryIntent.masterGFlags.remove(key);
+        }
+        else {
+          primaryIntent.masterGFlags.put(key, intent.getValue().trim());
+        }
+      }
+      for (Map.Entry<String, String> intent : primaryIntent.tserverGFlags.entrySet()) {
+        String key  = intent.getKey();
+        if(key!=key.trim()) {
+          primaryIntent.tserverGFlags.put(key.trim(), intent.getValue().trim());
+          primaryIntent.tserverGFlags.remove(key);
+        }
+        else {
+          primaryIntent.tserverGFlags.put(key, intent.getValue().trim());
+        }
+      }
       taskParams.masterGFlags = primaryIntent.masterGFlags;
       taskParams.tserverGFlags = primaryIntent.tserverGFlags;
     } catch (Throwable t) {
