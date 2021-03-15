@@ -397,7 +397,12 @@ class AwsCloud(AbstractCloud):
                 retry_count = retry_count + 1
                 result = sock.connect_ex((args["private_ip"], ssh_port))
                 if result == 0:
-                    break     
+                    break
+            else:
+                logging.error("Start instance %s exceeded maxRetries!", args["id"])
+                raise YBOpsRuntimeError(
+                    "Can not start the instance %s as the instance is not reachable.", args["id"]
+                    )   
         except ClientError as e:
             logging.error(e)
         finally:
