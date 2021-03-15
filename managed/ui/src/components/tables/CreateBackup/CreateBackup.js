@@ -215,6 +215,15 @@ export default class CreateBackup extends Component {
     }
   };
 
+  /**
+   * This is an onchange event for storage type.
+   * 
+   * @param {string} value Input field value.
+   */
+  backupConfigType = (value) => {
+    this.props.initialValues.storageConfigUUID.value = value;
+  }
+
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const { backupType } = this.state;
@@ -223,22 +232,28 @@ export default class CreateBackup extends Component {
       storageConfigs
       && isNonEmptyArray(storageConfigs)
       && storageConfigs.reduce((val, indx) => {
-        const configType = `${indx.name} Storage`;
+        const configType = indx.name;
         val[configType]
-          ? val[configType].push(indx.configName)
-          : (val[configType] = [indx.configName]);
+          ? val[configType].push({
+            "configName": indx.configName,
+            "configUUID": indx.configUUID
+          })
+          : (val[configType] = [{
+            "configName": indx.configName,
+            "configUUID": indx.configUUID
+          }]);
         return val;
-    }, {});
+      }, {});
 
     if (isNonEmptyObject(optGroups)) {
       configTypeList = Object.keys(optGroups).map(function (key, idx) {
         return (
-          <optgroup label={key.toUpperCase()} key={key + idx}>
+          <optgroup label={(key + " " + "storage").toUpperCase()} key={key + idx}>
             {optGroups[key]
               .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
               .map((item, arrIdx) => (
-                <option key={idx + arrIdx} value={item}>
-                  {item}
+                <option key={idx + arrIdx} value={item.configUUID}>
+                  {item.configName}
                 </option>
               ))}
           </optgroup>
@@ -521,6 +536,7 @@ export default class CreateBackup extends Component {
                       component={YBSelectWithLabel}
                       label={'Storage'}
                       options={configTypeList}
+                      onInputChanged={this.backupConfigType}
                     />
                     <Field
                       name="tableKeyspace"

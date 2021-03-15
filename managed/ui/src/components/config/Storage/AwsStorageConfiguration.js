@@ -4,15 +4,35 @@ import React, { Component } from "react";
 import { Row, Col } from "react-bootstrap";
 import { YBToggle, YBTextInputWithLabel } from "../../common/forms/fields";
 import { Field } from "redux-form";
-import { isEmptyObject } from "../../../utils/ObjectUtils";
+import { isEmptyObject, isDefinedNotNull } from "../../../utils/ObjectUtils";
 import YBInfoTip from "../../common/descriptors/YBInfoTip";
 
 const required = value => value ? undefined : "This field is required.";
 
+/**
+ * This method is used to validate the Access and the Secret key.
+ * 
+ * @param {any} value Input value.
+ * @param {boolean} iamRoleEnabled IAM enabled state.
+ * @returns "This field is required."
+ */
+const validateKeys = (value, iamRoleEnabled) => {
+  if (!isDefinedNotNull(value) && !iamRoleEnabled) {
+    return "This field is required.";
+  }
+};
+
 class AwsStorageConfiguration extends Component {
 
-  // This method will help us to disable the input fields
-  // based on the given conditions.
+  /**
+   * This method will help us to disable/enable the input fields
+   * based while updating the backup storage config.
+   * 
+   * @param {object} data Respective row deatils.
+   * @param {string} configName Input field name.
+   * @param {boolean} iamRoleEnabled IAM enabled state.
+   * @returns true
+   */
   disableInputFields = (data, configName, iamRoleEnabled) => {
     if (!isEmptyObject(data)) {
       if (data.inUse) {
@@ -23,7 +43,7 @@ class AwsStorageConfiguration extends Component {
     }
 
     if (iamRoleEnabled) {
-      if (configName === "AWS_ACCESS_KEY_ID" || configName === "AWS_SECRET_ACCESS_KEY") {
+      if (configName === "AWS_ACCESS_KEY_ID" || "AWS_SECRET_ACCESS_KEY") {
         return true;
       }
     }
@@ -82,7 +102,7 @@ class AwsStorageConfiguration extends Component {
                 name="AWS_ACCESS_KEY_ID"
                 placeHolder="AWS Access Key"
                 component={YBTextInputWithLabel}
-                validate={required}
+                validate={(value) => validateKeys(value, iamRoleEnabled)}
                 isReadOnly={this.disableInputFields(data, "AWS_ACCESS_KEY_ID", iamRoleEnabled)}
               />
             </Col>
@@ -96,7 +116,7 @@ class AwsStorageConfiguration extends Component {
                 name="AWS_SECRET_ACCESS_KEY"
                 placeHolder="AWS Access Secret"
                 component={YBTextInputWithLabel}
-                validate={required}
+                validate={(value) => validateKeys(value, iamRoleEnabled)}
                 isReadOnly={this.disableInputFields(data, "AWS_SECRET_ACCESS_KEY", iamRoleEnabled)}
               />
             </Col>

@@ -9,8 +9,15 @@ import { Field } from "redux-form";
 import React from "react";
 import { Col, Row } from "react-bootstrap";
 
-// This method will handle the disable validation for the
-// input fields.
+/**
+ * This method is used to handle the edit backup storage
+ * config form.
+ * 
+ * @param {object} data Respective row details.
+ * @param {string} fieldId Input field id.
+ * @param {string} configName Input field name.
+ * @returns inUse ? true : false;
+ */
 const disbaleFields = (data, fieldId, configName) => {
   if (data.inUse) {
     if (fieldId !== `${configName}_CONFIGURATION_NAME`) {

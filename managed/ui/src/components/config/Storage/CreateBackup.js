@@ -9,6 +9,12 @@ import { Field } from "redux-form";
 import React from "react";
 import { Col, Row } from "react-bootstrap";
 
+/**
+ * This method will handle the validation for current
+ * field.
+ * 
+ * @param {any} value Input field value.
+ */
 const required = value => value ? undefined : "This field is required.";
 
 const CreateBackup = (props) => {

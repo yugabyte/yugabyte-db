@@ -60,6 +60,15 @@ export default class RestoreBackup extends Component {
     return isNonEmptyObject(this.props.backupInfo);
   };
 
+  /**
+   * This is an onchange event for storage type.
+   * 
+   * @param {string} value Input field value.
+   */
+   backupConfigType = (value) => {
+    this.props.initialValues.storageConfigUUID.value = value;
+  }
+
   render() {
     const {
       backupInfo,
@@ -124,8 +133,14 @@ export default class RestoreBackup extends Component {
       && storageConfigs.reduce((val, indx) => {
         const configType = `${indx.name} Storage`;
         val[configType]
-          ? val[configType].push(indx.configName)
-          : (val[configType] = [indx.configName]);
+          ? val[configType].push({
+            "configName": indx.configName,
+            "configUUID": indx.configUUID
+          })
+          : (val[configType] = [{
+            "configName": indx.configName,
+            "configUUID": indx.configUUID
+          }]);
         return val;
     }, {});
 
@@ -136,8 +151,8 @@ export default class RestoreBackup extends Component {
             {optGroups[key]
               .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
               .map((item, arrIdx) => (
-                <option key={idx + arrIdx} value={item}>
-                  {item}
+                <option key={idx + arrIdx} value={item.configUUID}>
+                  {item.configName}
                 </option>
               ))}
           </optgroup>
@@ -196,6 +211,7 @@ export default class RestoreBackup extends Component {
             component={YBSelectWithLabel}
             label={'Storage'}
             options={configTypeList}
+            onInputChanged={this.backupConfigType}
           />
           <Field
             name="storageLocation"

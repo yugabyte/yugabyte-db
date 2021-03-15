@@ -98,6 +98,17 @@ class StorageConfiguration extends Component {
     );
   };
 
+  /**
+   * This method will handle the edit as well as the add action
+   * for the respective backup configuration. It will also setup
+   * the datapayload accrodingly and update the state based on the
+   * config type.
+   * 
+   * @param {any} values Input values.
+   * @param action no-use for now.
+   * @param {props} props is used to maintain the repsective tab actions.
+   * @returns 
+   */
   addStorageConfig = (values, action, props) => {
     const type =
       (props.activeTab && props.activeTab.toUpperCase())
@@ -176,6 +187,13 @@ class StorageConfiguration extends Component {
             throw new SubmissionError(this.props.editConfig.error);
           }
         }), this.setState({
+          editView: {
+            ...this.state.editView,
+            [props.activeTab]: {
+              isEdited: false,
+              data: {}
+            }
+          },
           listView: {
             ...this.state.listView,
             [props.activeTab]: true
@@ -210,6 +228,11 @@ class StorageConfiguration extends Component {
     }
   };
 
+  /**
+   * This method is used to remove the backup storage config.
+   * 
+   * @param {string} configUUID Unique id for respective backup config.
+   */
   deleteStorageConfig = (configUUID) => {
     this.props.deleteCustomerConfig(configUUID)
       .then(() => {
@@ -218,7 +241,14 @@ class StorageConfiguration extends Component {
       });
   };
 
-  // This method will enable the edit config form.
+  /**
+   * This method is used to update the backup config details and setup
+   * the initial state accordingly. We're also setting up the data
+   * object which will help us to setup the payload.
+   * 
+   * @param {object} row It's a respective row details for any config.
+   * @param {string} activeTab It's a respective active tab.
+   */
   editBackupConfig = (row, activeTab) => {
     const tab = activeTab.toUpperCase();
     const data = {
@@ -251,7 +281,11 @@ class StorageConfiguration extends Component {
     });
   };
 
-  // This method will enable the create backup form.
+  /**
+   * This method will enable the create backup config form.
+   * 
+   * @param {string} activeTab It's a respective active tab.
+   */
   createBackupConfig = (activeTab) => {
     this.props.reset();
     this.setState({
@@ -262,7 +296,11 @@ class StorageConfiguration extends Component {
     });
   };
 
-  // This method will enable the backup list view.
+  /**
+   * This method will enable the list view of backup storage config.
+   * 
+   * @param {string} activeTab It's a respective active tab.
+   */
   showListView = (activeTab) => {
     this.props.reset();
     this.setState({
@@ -281,8 +319,12 @@ class StorageConfiguration extends Component {
     });
   };
 
-  // This method will disbale the access key and secret key
-  // field if IAM role is enabled.
+  /**
+   * This method will disbale the access key and secret key
+   * field if IAM role is enabled.
+   * 
+   * @param {event} event Toggle input value.
+   */
   iamInstanceToggle = (event) => {
     this.setState({ iamRoleEnabled: event.target.checked });
   };

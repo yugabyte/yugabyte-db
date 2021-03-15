@@ -13,23 +13,51 @@ import { FlexContainer, FlexShrink } from "../../common/flexbox/YBFlexBox";
 import { YBConfirmModal } from "../../modals";
 import { YBPanelItem } from "../../panels";
 
-// Data format for configuration name column.
+/**
+ * This method is used to show the config name on the
+ * list view.
+ * 
+ * @param {string} cell Not in-use.
+ * @param {object} row Respective row details.
+ * @returns Config name
+ */
 const getBackupConfigName = (cell, row) => {
   return row.configName;
 };
 
-// Data format for status column.
+/**
+ * This method is used to return the current in-use status
+ * of the backup storage config.
+ * 
+ * @param {string} cell Not in-use.
+ * @param {object} row Respective row details.
+ * @returns "Used" || "Not Used".
+ */
 const getBackupStatus = (cell, row) => {
   return row.inUse ? "Used" : "Not Used";
 };
 
-// Data format for backup location column.
+/**
+ * This method is used to return the backup location of
+ * respective backup config.
+ * 
+ * @param {string} cell Not in-use.
+ * @param {object} row Respective row details.
+ * @returns Backup storage location.
+ */
 const getBackupLocation = (cell, row) => {
   return row.data.BACKUP_LOCATION;
 };
 
-// This method will return all the necessary actions
-// for the give list.
+/**
+ * This method will handle all the required actions for
+ * the particular row.
+ * 
+ * @param {string} cell Not in-use.
+ * @param {object} row Respective row details.
+ * @param {object} operations Actions.
+ * @returns Actions.
+ */
 const foramtConfigActions = (cell, row, operations) => {
   const {
     configUUID,
@@ -97,6 +125,12 @@ const foramtConfigActions = (cell, row, operations) => {
   );
 };
 
+/**
+ * This is the header for YB Panel Item.
+ * 
+ * @param {string} currTab Active tab.
+ * @param {prop} onCreateBackup Click event.
+ */
 const header = (currTab, onCreateBackup) => (
   <>
     <h2 className="table-container-title pull-left">Backup List</h2>
