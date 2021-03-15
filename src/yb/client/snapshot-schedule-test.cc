@@ -15,11 +15,16 @@
 
 #include "yb/master/master_backup.proxy.h"
 
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_retention_policy.h"
+
 using namespace std::literals;
 
+DECLARE_bool(enable_history_cutoff_propagation);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
-
 namespace yb {
 namespace client {
 
@@ -29,7 +34,10 @@ constexpr auto kSnapshotInterval = 10s * kTimeMultiplier;
 class SnapshotScheduleTest : public SnapshotTestBase {
  public:
   void SetUp() override {
+    FLAGS_enable_history_cutoff_propagation = true;
     FLAGS_snapshot_coordinator_poll_interval_ms = 250;
+    FLAGS_history_cutoff_propagation_interval_ms = 100;
+    num_tablets_ = 1;
     SnapshotTestBase::SetUp();
   }
 
@@ -110,23 +118,53 @@ TEST_F(SnapshotScheduleTest, Create) {
 }
 
 TEST_F(SnapshotScheduleTest, Snapshot) {
+  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(CreateSchedule());
   ASSERT_OK(WaitScheduleSnapshot(schedule_id));
 
+  // Write data to update history retention.
+  ASSERT_NO_FATALS(WriteData());
+
   auto schedules = ASSERT_RESULT(ListSchedules());
   ASSERT_EQ(schedules.size(), 1);
   ASSERT_EQ(schedules[0].snapshots().size(), 1);
-  ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
 
   std::this_thread::sleep_for(kSnapshotInterval / 4);
   auto snapshots = ASSERT_RESULT(ListSnapshots());
   ASSERT_EQ(snapshots.size(), 1);
 
+  HybridTime first_snapshot_hybrid_time(schedules[0].snapshots()[0].entry().snapshot_hybrid_time());
+  auto peers = ListTabletPeers(cluster_.get(), [table_id = table_->id()](const auto& peer) {
+    return peer->tablet_metadata()->table_id() == table_id;
+  });
+  for (const auto& peer : peers) {
+    SCOPED_TRACE(Format(
+        "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
+        peer->tablet_metadata()->table_name()));
+    auto tablet = peer->tablet();
+    auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    ASSERT_LE(history_cutoff, first_snapshot_hybrid_time);
+  }
+
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
     return snapshots.size() == 2;
   }, kSnapshotInterval, "Second snapshot"));
+
+  ASSERT_NO_FATALS(WriteData());
+
+  ASSERT_OK(WaitFor([first_snapshot_hybrid_time, peers]() -> Result<bool> {
+    for (const auto& peer : peers) {
+      auto tablet = peer->tablet();
+      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      if (history_cutoff <= first_snapshot_hybrid_time) {
+        return false;
+      }
+    }
+    return true;
+  }, FLAGS_timestamp_history_retention_interval_sec * 1s + 5s, "History cutoff update"));
 }
 
 TEST_F(SnapshotScheduleTest, GC) {
