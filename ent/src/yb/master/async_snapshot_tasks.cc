@@ -146,6 +146,9 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   req.add_tablet_id(tablet_->tablet_id());
   req.set_snapshot_id(snapshot_id_);
   req.set_operation(operation_);
+  if (snapshot_schedule_id_) {
+    req.set_schedule_id(snapshot_schedule_id_.data(), snapshot_schedule_id_.size());
+  }
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   }

@@ -1492,6 +1492,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
       .snapshot_coordinator = nullptr,
       .tablet_splitter = this,
+      .allowed_history_cutoff_provider = std::bind(
+          &TSTabletManager::AllowedHistoryCutoff, this, _1),
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2464,6 +2466,38 @@ void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes
 
   LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
             << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
+}
+
+Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
+  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+  snapshot_schedule_allowed_history_cutoff_.clear();
+  for (const auto& schedule : info.schedules()) {
+    snapshot_schedule_allowed_history_cutoff_.emplace(
+        VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())),
+        HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+  }
+  return Status::OK();
+}
+
+HybridTime TSTabletManager::AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata) {
+  auto schedules = metadata.SnapshotSchedules();
+  if (schedules.empty()) {
+    return HybridTime::kMax;
+  }
+  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+  HybridTime result = HybridTime::kMax;
+  for (const auto& schedule_id : schedules) {
+    auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
+    // it == snapshot_schedule_allowed_history_cutoff_.end() - we don't know this schedule.
+    // !it->second - schedules does not have snapshots yet.
+    if (it == snapshot_schedule_allowed_history_cutoff_.end() || !it->second) {
+      // TODO handle schedule deletion
+      return HybridTime::kMin;
+    } else {
+      result = std::min(result, it->second);
+    }
+  }
+  return result;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

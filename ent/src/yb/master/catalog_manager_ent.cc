@@ -366,7 +366,8 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
     // Send Create Tablet Snapshot request to each tablet leader.
     SendCreateTabletSnapshotRequest(
-        tablet, snapshot_id, HybridTime::kInvalid, TabletSnapshotOperationCallback());
+        tablet, snapshot_id, SnapshotScheduleId::Nil(), HybridTime::kInvalid,
+        TabletSnapshotOperationCallback());
   }
 
   resp->set_snapshot_id(snapshot_id);
@@ -1341,10 +1342,12 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
 
 void CatalogManager::SendCreateTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-    HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) {
+    const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+    TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+  call->SetSnapshotScheduleId(schedule_id);
   call->SetSnapshotHybridTime(snapshot_hybrid_time);
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -1730,9 +1733,9 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
   SysClusterConfigEntryPB cluster_config;
   RETURN_NOT_OK(GetClusterConfig(&cluster_config));
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
-
 
 Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                                 const TSHeartbeatRequestPB* req,

@@ -502,6 +502,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
     }
   }
 
+  RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotSchedules(
+      last_hb_response_.snapshot_schedules()));
+
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);
 }
