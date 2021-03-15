@@ -14,15 +14,19 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.mvc.Http;
+import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import java.util.function.BiFunction;
 
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.route;
 
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -87,5 +91,25 @@ public class FakeDBApplication extends WithApplication {
 
   public Application getApp() {
     return app;
+  }
+
+  /**
+   * If you want to quickly fix existing test that returns YWError json when exception
+   * gets thrown then use this function. Alternatively change the test to expect that
+   * YWException get thrown
+   */
+  public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
+    throws InterruptedException, ExecutionException, TimeoutException {
+    YWErrorHandler ywErrorHandler = getApp().injector().instanceOf(YWErrorHandler.class);
+    CompletableFuture<Result> future =
+      CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
+    BiFunction<Result, Throwable, CompletionStage<Result>> f =
+      (result, throwable) -> {
+        if (throwable == null)
+          return CompletableFuture.supplyAsync(() -> result);
+        return ywErrorHandler.onServerError(null, throwable);
+      };
+
+    return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);
   }
 }

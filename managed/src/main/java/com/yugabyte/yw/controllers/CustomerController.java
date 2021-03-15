@@ -14,18 +14,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
@@ -35,36 +28,36 @@ import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   MetricQueryHelper metricQueryHelper;
 
   @Inject
   CloudQueryHelper cloudQueryHelper;
+
+  private static boolean checkNonNullMountRoots(NodeDetails n) {
+    return n.cloudInfo != null
+      && n.cloudInfo.mount_roots != null
+      && !n.cloudInfo.mount_roots.isEmpty();
+  }
 
   public Result list() {
     ArrayNode responseJson = Json.newArray();
@@ -77,10 +70,10 @@ public class CustomerController extends AuthenticatedController {
     if (customer == null) {
       ObjectNode responseJson = Json.newObject();
       responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-      return badRequest(responseJson);
+      return status(BAD_REQUEST, responseJson);
     }
 
-    ObjectNode responseJson = (ObjectNode)Json.toJson(customer);
+    ObjectNode responseJson = (ObjectNode) Json.toJson(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
     if (config != null) {
       responseJson.set("alertingData", config.data);
@@ -93,7 +86,8 @@ public class CustomerController extends AuthenticatedController {
     } else {
       responseJson.set("smtpData", null);
     }
-    responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
+    responseJson.put(
+      "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
     Users user = (Users) ctx().args.get("user");
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
@@ -110,20 +104,11 @@ public class CustomerController extends AuthenticatedController {
   }
 
   public Result update(UUID customerUUID) {
-    ObjectNode responseJson = Json.newObject();
 
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-      return badRequest(responseJson);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     JsonNode request = request().body().asJson();
-    Form<AlertingFormData> formData = formFactory.form(AlertingFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
-    }
+    Form<AlertingFormData> formData = formFactory.getFormDataOrBadRequest(AlertingFormData.class);
 
     if (formData.get().name != null) {
       customer.name = formData.get().name;
@@ -166,11 +151,8 @@ public class CustomerController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
     List<Users> users = Users.getAll(customerUUID);
     for (Users user : users) {
       user.delete();
@@ -181,16 +163,13 @@ public class CustomerController extends AuthenticatedController {
       Audit.createAuditEntry(ctx(), request());
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
-    } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
+    throw new YWServiceException(
+      INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
   }
 
   public Result upsertFeatures(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     JsonNode requestBody = request().body().asJson();
     ObjectMapper mapper = new ObjectMapper();
@@ -198,37 +177,28 @@ public class CustomerController extends AuthenticatedController {
     try {
       formData = mapper.treeToValue(requestBody, FeatureUpdateFormData.class);
     } catch (RuntimeException | JsonProcessingException e) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid JSON");
+      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
     }
 
-    try {
-      customer.upsertFeatures(formData.features);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, "Failed to update features: " + e.getMessage());
-    }
+    customer.upsertFeatures(formData.features);
+
     Audit.createAuditEntry(ctx(), request(), requestBody);
     return ok(customer.getFeatures());
   }
 
   public Result metrics(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
+    Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
 
-    Form<MetricQueryParams> formData = formFactory.form(MetricQueryParams.class).bindFromRequest();
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-    Map<String, String> params = formData.data();
+    Map<String, String> params = new HashMap<>(formData.rawData());
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
     // Given we have a limitation on not being able to rename the pod labels in
     // kubernetes cadvisor metrics, we try to see if the metric being queried is for
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
-    boolean hasContainerMetric = formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
+    boolean hasContainerMetric =
+      formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
     String containerLabel = "container_name";
@@ -236,8 +206,10 @@ public class CustomerController extends AuthenticatedController {
 
     ObjectNode filterJson = Json.newObject();
     if (!params.containsKey("nodePrefix")) {
-      String universePrefixes = customer.getUniverses().stream()
-        .map((universe -> universe.getUniverseDetails().nodePrefix)).collect(Collectors.joining("|"));
+      String universePrefixes =
+        customer.getUniverses().stream()
+          .map((universe -> universe.getUniverseDetails().nodePrefix))
+          .collect(Collectors.joining("|"));
       filterJson.put(universeFilterLabel, String.join("|", universePrefixes));
     } else {
       // Check if it is a Kubernetes deployment.
@@ -259,8 +231,7 @@ public class CustomerController extends AuthenticatedController {
 
           filterJson.put(containerLabel, containerName);
           filterJson.put(pvcLabel, pvcName);
-          filterJson.put(universeFilterLabel, getNamespacesFilter(customer,
-                                                                  nodePrefix, azName));
+          filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix, azName));
         } else {
           filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix));
         }
@@ -278,15 +249,11 @@ public class CustomerController extends AuthenticatedController {
       filterJson.put("table_name", params.remove("tableName"));
     }
     params.put("filters", Json.stringify(filterJson));
-    try {
-      JsonNode response = metricQueryHelper.query(formData.get().metrics, params, filterOverrides);
-      if (response.has("error")) {
-        return ApiResponse.error(BAD_REQUEST, response.get("error"));
-      }
-      return ApiResponse.success(response);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    JsonNode response = metricQueryHelper.query(formData.get().metrics, params, filterOverrides);
+    if (response.has("error")) {
+      throw new YWServiceException(BAD_REQUEST, response.get("error"));
     }
+    return ApiResponse.success(response);
   }
 
   private String getNamespacesFilter(Customer customer, String nodePrefix) {
@@ -302,14 +269,17 @@ public class CustomerController extends AuthenticatedController {
     // We need to figure out the correct namespace for each AZ.  We do
     // that by getting the correct universe and its provider and then
     // go through the azConfigs.
-    List<Universe> universes =  customer.getUniverses().stream()
-      .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-      .collect(Collectors.toList());
+    List<Universe> universes =
+      customer.getUniverses().stream()
+        .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+        .collect(Collectors.toList());
     // TODO: account for readonly replicas when we support them for
     // Kubernetes providers.
-    Provider provider = Provider.get(UUID.fromString(
-      universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    List<String> namespaces = new ArrayList<String>();
+    Provider provider =
+      Provider.get(
+        UUID.fromString(
+          universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    List<String> namespaces = new ArrayList<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
     for (Region r : Region.getByProvider(provider.uuid)) {
@@ -317,8 +287,9 @@ public class CustomerController extends AuthenticatedController {
         if (azName != null && !azName.equals(az.code)) {
           continue;
         }
-        namespaces.add(PlacementInfoUtil.getKubernetesNamespace(isMultiAZ, nodePrefix,
-                                                                az.code, az.getConfig()));
+        namespaces.add(
+          PlacementInfoUtil.getKubernetesNamespace(
+            isMultiAZ, nodePrefix, az.code, az.getConfig()));
       }
     }
 
@@ -326,41 +297,41 @@ public class CustomerController extends AuthenticatedController {
   }
 
   public Result getHostInfo(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+    Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();
-    hostInfo.put(Common.CloudType.aws.name(), cloudQueryHelper.currentHostInfo(
-        Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")));
-    hostInfo.put(Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(
-        Common.CloudType.gcp, null));
+    hostInfo.put(
+      Common.CloudType.aws.name(),
+      cloudQueryHelper.currentHostInfo(
+        Common.CloudType.aws,
+        ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")));
+    hostInfo.put(
+      Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
 
     return ApiResponse.success(hostInfo);
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(
-    Customer customer,
-    String nodePrefix,
-    MetricQueryParams mqParams) {
+    Customer customer, String nodePrefix, MetricQueryParams mqParams) {
 
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
     if (mqParams.metrics.contains("disk_usage")) {
-      List<Universe> universes =  customer.getUniverses().stream()
-        .filter(u -> u.getUniverseDetails().nodePrefix != null &&
-                     u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-        .collect(Collectors.toList());
-      if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType ==
-          CloudType.onprem) {
-        final String mountRoots = universes.get(0).getNodes().stream().
-                                  filter(n -> n.cloudInfo != null &&
-                                         n.cloudInfo.mount_roots != null &&
-                                         !n.cloudInfo.mount_roots.isEmpty()).
-                                  map(n -> n.cloudInfo.mount_roots).
-                                  findFirst().
-                                  orElse("");
+      List<Universe> universes =
+        customer.getUniverses().stream()
+          .filter(
+            u ->
+              u.getUniverseDetails().nodePrefix != null
+                && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+          .collect(Collectors.toList());
+      if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
+        == CloudType.onprem) {
+        final String mountRoots =
+          universes.get(0).getNodes().stream()
+            .filter(CustomerController::checkNonNullMountRoots)
+            .map(n -> n.cloudInfo.mount_roots)
+            .findFirst()
+            .orElse("");
         // TODO: technically, this code is based on the primary cluster being onprem
         // and will return inaccurate results if the universe has a read replica that is
         // not onprem.

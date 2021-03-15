@@ -2,33 +2,20 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Joiner;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.CreatedTimestamp;
+import io.ebean.annotation.DbJson;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
+import play.mvc.Http;
 
-import com.yugabyte.yw.models.Users;
-
+import javax.persistence.*;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.SequenceGenerator;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.data.validation.Constraints;
-import play.libs.Json;
-import play.mvc.Http;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 
 @Entity
 public class Audit extends Model {
@@ -37,29 +24,46 @@ public class Audit extends Model {
 
   // An auto incrementing, user-friendly id for the audit entry.
   @Id
-  @SequenceGenerator(name="audit_id_seq", sequenceName="audit_id_seq", allocationSize=1)
-  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="audit_id_seq")  private Long id;
-  public Long getAuditID() { return this.id; }
+  @SequenceGenerator(name = "audit_id_seq", sequenceName = "audit_id_seq", allocationSize = 1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "audit_id_seq")
+  private Long id;
+
+  public Long getAuditID() {
+    return this.id;
+  }
 
   @Constraints.Required
   @Column(nullable = false)
   private UUID userUUID;
-  public UUID getUserUUID() { return this.userUUID; }
+
+  public UUID getUserUUID() {
+    return this.userUUID;
+  }
 
   @Constraints.Required
   @Column(nullable = false)
   private UUID customerUUID;
-  public UUID getCustomerUUID() { return this.customerUUID; }
+
+  public UUID getCustomerUUID() {
+    return this.customerUUID;
+  }
 
   // The task creation time.
   @CreatedTimestamp
-  private Date timestamp;
-  public Date getTimestamp() { return this.timestamp; }
+  private final Date timestamp;
+
+  public Date getTimestamp() {
+    return this.timestamp;
+  }
 
   @Column(columnDefinition = "TEXT")
   @DbJson
   private JsonNode payload;
-  public JsonNode getPayload() { return this.payload; }
+
+  public JsonNode getPayload() {
+    return this.payload;
+  }
+
   public void setPayload(JsonNode payload) {
     this.payload = payload;
     this.save();
@@ -68,19 +72,27 @@ public class Audit extends Model {
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   private String apiCall;
-  public String getApiCall() { return this.apiCall; }
+
+  public String getApiCall() {
+    return this.apiCall;
+  }
 
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   private String apiMethod;
-  public String getApiMethod() { return this.apiMethod; }
+
+  public String getApiMethod() {
+    return this.apiMethod;
+  }
 
   @Column(unique = true)
   private UUID taskUUID;
+
   public void setTaskUUID(UUID uuid) {
     this.taskUUID = uuid;
     this.save();
   }
+
   public UUID getTaskUUID() {
     return this.taskUUID;
   }
@@ -89,7 +101,8 @@ public class Audit extends Model {
     this.timestamp = new Date();
   }
 
-  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class){};
+  public static final Finder<UUID, Audit> find = new Finder<UUID, Audit>(Audit.class) {
+  };
 
   public static void createAuditEntry(Http.Context ctx, Http.Request request) {
     createAuditEntry(ctx, request, null, null);
@@ -103,8 +116,8 @@ public class Audit extends Model {
     createAuditEntry(ctx, request, null, taskUUID);
   }
 
-  public static void createAuditEntry(Http.Context ctx, Http.Request request, JsonNode params,
-                                      UUID taskUUID) {
+  public static void createAuditEntry(
+    Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
     Users user = (Users) ctx.args.get("user");
     String method = request.method();
     String path = request.path();
@@ -114,15 +127,15 @@ public class Audit extends Model {
   /**
    * Create new audit entry.
    *
-   * @param userUUID
-   * @param customerUUID
-   * @param payload
-   * @param apiCall
-   * @param apiMethod
    * @return Newly Created Audit table entry.
    */
-  public static Audit create(UUID userUUID, UUID customerUUID, String apiCall,
-                             String apiMethod, JsonNode body, UUID taskUUID) {
+  public static Audit create(
+    UUID userUUID,
+    UUID customerUUID,
+    String apiCall,
+    String apiMethod,
+    JsonNode body,
+    UUID taskUUID) {
     Audit entry = new Audit();
     entry.customerUUID = customerUUID;
     entry.userUUID = userUUID;

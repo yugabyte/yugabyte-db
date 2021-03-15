@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -19,6 +20,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class Customer extends Model {
@@ -27,8 +29,14 @@ public class Customer extends Model {
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
   public UUID uuid = UUID.randomUUID();
-  public void setUuid(UUID uuid) { this.uuid = uuid;}
-  public UUID getUuid() { return uuid; }
+
+  public void setUuid(UUID uuid) {
+    this.uuid = uuid;
+  }
+
+  public UUID getUuid() {
+    return uuid;
+  }
 
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
@@ -38,7 +46,9 @@ public class Customer extends Model {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  public Long getCustomerId() { return id; }
+  public Long getCustomerId() {
+    return id;
+  }
 
   @Column(length = 15, nullable = false)
   @Constraints.Required
@@ -76,7 +86,7 @@ public class Customer extends Model {
   public Set<UUID> getUniverseUUIDs() {
     Set<UUID> uuids = new HashSet<UUID>();
     if (!universeUUIDs.isEmpty()) {
-      List<String> ids = Arrays.asList(universeUUIDs.split(","));
+      String[] ids = universeUUIDs.split(",");
       for (String id : ids) {
         uuids.add(UUID.fromString(id));
       }
@@ -94,8 +104,9 @@ public class Customer extends Model {
 
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(UUID providerUUID) {
-    Set<Universe> universesInProvider = getUniverses()
-        .stream().filter(u -> checkClusterInProvider(u, providerUUID))
+    Set<Universe> universesInProvider =
+      getUniverses().stream()
+        .filter(u -> checkClusterInProvider(u, providerUUID))
         .collect(Collectors.toSet());
     return universesInProvider;
   }
@@ -111,6 +122,14 @@ public class Customer extends Model {
 
   public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {
   };
+
+  public static Customer getOrBadRequest(UUID customerUUID) {
+    Customer customer = get(customerUUID);
+    if (customer == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+    }
+    return customer;
+  }
 
   public static Customer get(UUID customerUUID) {
     return find.query().where().eq("uuid", customerUUID).findOne();
@@ -148,12 +167,12 @@ public class Customer extends Model {
   }
 
   /**
-   * Upserts features for this customer. If updating a feature, only specified features will
-   * be updated.
+   * Upserts features for this customer. If updating a feature, only specified features will be
+   * updated.
    */
   public void upsertFeatures(JsonNode input) {
     if (!input.isObject()) {
-      throw new RuntimeException("Features must be Jsons.");
+      throw new YWServiceException(BAD_REQUEST, "Features must be Jsons.");
     } else if (features == null || features.isNull() || features.size() == 0) {
       features = input;
     } else {
