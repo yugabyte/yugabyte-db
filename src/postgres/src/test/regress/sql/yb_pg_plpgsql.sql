@@ -4409,6 +4409,7 @@ ANALYZE transition_table_status;
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
+CHECKPOINT;
 
 -- behave reasonably if someone tries to modify a transition table
 CREATE FUNCTION transition_table_level2_bad_usage_func()

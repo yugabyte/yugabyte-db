@@ -3,9 +3,11 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -56,6 +58,13 @@ import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadat
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 
 public class CloudProviderController extends AuthenticatedController {
+  private final Config config;
+
+  @Inject
+  public CloudProviderController(Config config) {
+    this.config = config;
+  }
+
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
 
@@ -96,6 +105,9 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   private play.Environment environment;
+
+  @Inject
+  CloudAPI.Factory cloudAPIFactory;
 
   /**
    * GET endpoint for listing providers
@@ -138,6 +150,13 @@ public class CloudProviderController extends AuthenticatedController {
         accessKey.delete();
       }
       NodeInstance.deleteByProvider(providerUUID);
+
+      int providersCount = Provider.getByCode(provider.code).size();
+      // Instance type has been shared across providers.
+      // We can’t delete instance types if multiple providers exist with the same provider code.
+      if (providersCount == 1) {
+        InstanceType.deleteInstanceTypesForProvider(provider, config);
+      }
       provider.delete();
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted provider: " + providerUUID);
@@ -177,6 +196,13 @@ public class CloudProviderController extends AuthenticatedController {
         String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
+            CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+            if (cloudAPI != null && !cloudAPI.isValidCreds(config, requestBody.get("region")
+                .textValue())) {
+              provider.delete();
+              return ApiResponse.error(BAD_REQUEST, "Invalid AWS Credentials.");
+            }
+            String hostedZoneId = provider.getAwsHostedZoneId();
             if (hostedZoneId != null) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }

@@ -40,9 +40,7 @@ const mapDispatchToProps = (dispatch) => {
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then((response) => {
-          return dispatch(createKMSProviderConfigResponse(response.payload)).then(
-            () => toast.success('Successfully added the configuration')
-          );
+          return dispatch(createKMSProviderConfigResponse(response.payload))
         })
         .catch((err) => toast.error(`Error submitting KMS configuration: ${err}`));
     },

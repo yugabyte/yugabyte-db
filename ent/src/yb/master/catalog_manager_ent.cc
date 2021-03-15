@@ -379,19 +379,32 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation) {
   tablet_peer()->Submit(std::move(operation), leader_ready_term());
 }
 
-Status CatalogManager::CreateTransactionAwareSnapshot(
-    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+Result<SysRowEntries> CatalogManager::CollectEntries(
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+    bool add_indexes,
+    bool include_parent_colocated_table) {
   SysRowEntries entries;
-  auto tables = VERIFY_RESULT(CollectTables(req.tables(),
-                                            req.add_indexes(),
-                                            true /* include_parent_colocated_table */));
+  auto tables = VERIFY_RESULT(CollectTables(
+      table_identifiers, add_indexes, include_parent_colocated_table));
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
     SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr);
   }
 
+  return entries;
+}
+
+server::Clock* CatalogManager::Clock() {
+  return master_->clock();
+}
+
+Status CatalogManager::CreateTransactionAwareSnapshot(
+    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
+      req.tables(), req.add_indexes(), true /* include_parent_colocated_table */));
+
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, req.imported(), master_->clock()->MaxGlobalNow(), rpc->GetClientDeadline()));
+      entries, req.imported(), rpc->GetClientDeadline()));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -1535,7 +1548,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 }
 
 void CatalogManager::HandleDeleteTabletSnapshotResponse(
-    SnapshotId snapshot_id, TabletInfo *tablet, bool error) {
+    const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) {
   LOG(INFO) << "Handling Delete Tablet Snapshot Response for tablet "
             << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
 
@@ -1548,7 +1561,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
 
     if (!snapshot) {
-      LOG(WARNING) << "Snapshot not found: " << snapshot_id;
+      LOG(WARNING) << __func__ << " Snapshot not found: " << snapshot_id;
       return;
     }
   }

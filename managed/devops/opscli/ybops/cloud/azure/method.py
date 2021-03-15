@@ -62,7 +62,7 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
 
     def run_ansible_create(self, args):
         self.update_ansible_vars(args)
-        self.cloud.create_instance(args, self.extra_vars["ssh_user"])
+        self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
 
 
 class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
@@ -249,3 +249,14 @@ class AzureListDnsEntryMethod(AbstractDnsMethod):
             }))
         except Exception as e:
             print(json.dumps({'error': repr(e)}))
+class AzureTagsMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AzureTagsMethod, self).__init__(base_command, "tags")
+
+    def add_extra_args(self):
+        super(AzureTagsMethod, self).add_extra_args()
+        self.parser.add_argument("--remove_tags", required=False,
+                                 help="Tag keys to remove. Noop for Azure.")
+
+    def callback(self, args):
+        self.cloud.modify_tags(args)

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/yql/cql/ql/util/cql_message.h"
+
 #include <lz4.h>
 #include <snappy.h>
 
@@ -21,7 +23,6 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
 #include "yb/gutil/endian.h"
@@ -30,7 +31,7 @@
 #include "yb/util/random_util.h"
 
 namespace yb {
-namespace cqlserver {
+namespace ql {
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -754,8 +755,6 @@ Status RegisterRequest::ParseBody() {
 
 // --------------------------- Serialization utility functions -------------------------------
 namespace {
-
-using yb::cqlserver::CQLMessage;
 
 // Serialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
 // <converter> converts the number from machine byte-order to network order and <data_type>
@@ -1817,5 +1816,5 @@ void CQLServerEventList::AddEvent(std::unique_ptr<CQLServerEvent> event) {
   cql_server_events_.push_back(std::move(event));
 }
 
-}  // namespace cqlserver
+}  // namespace ql
 }  // namespace yb

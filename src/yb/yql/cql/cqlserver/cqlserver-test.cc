@@ -20,8 +20,8 @@
 
 #include "yb/tserver/heartbeater.h"
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 #include "yb/gutil/strings/join.h"
 #include "yb/util/cast.h"
@@ -34,6 +34,7 @@ DECLARE_bool(use_cassandra_authentication);
 namespace yb {
 namespace cqlserver {
 
+using namespace yb::ql; // NOLINT
 using std::string;
 using std::unique_ptr;
 using std::vector;

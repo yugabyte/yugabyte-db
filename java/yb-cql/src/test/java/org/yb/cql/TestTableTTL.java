@@ -25,9 +25,12 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestTableTTL extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestTableTTL.class);
 
   private Iterator<Row> execQuery(String tableName, int primaryKey) {
     ResultSet rs = session.execute(String.format("SELECT c1, c2, c3 FROM %s WHERE c1 = %d;",

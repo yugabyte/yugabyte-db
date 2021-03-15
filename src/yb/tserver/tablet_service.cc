@@ -1237,12 +1237,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
           server_->tablet_peer_lookup(), id, resp, &context));
       tablet_peers.push_back(std::move(tablet_peer.tablet_peer));
-      tablet_ptrs.push_back(std::move(tablet_peer.tablet));
+      auto tablet = tablet_peer.tablet;
+      if (tablet != nullptr) {
+        tablet_ptrs.push_back(std::move(tablet));
+      }
     }
   }
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    auto tablet = tablet_peer->tablet();
+  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+    resp->set_failed_tablet_id(tablet->tablet_id());
     if (req->is_compaction()) {
       tablet->ForceRocksDBCompactInTest();
     } else {
@@ -1252,9 +1254,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   }
 
   // Wait for end of all flush operations.
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet_peer->tablet()->WaitForFlush(), resp, &context);
+  for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+    resp->set_failed_tablet_id(tablet->tablet_id());
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
     resp->clear_failed_tablet_id();
   }
 
@@ -1265,12 +1267,14 @@ void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
     rpc::RpcContext context) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  TabletPeers tablet_peers;
+  TSTabletManager::TabletPtrs tablet_ptrs;
+  server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
   int64_t total_intents = 0;
   // TODO: do this in parallel.
   // TODO: per-tablet intent counts.
-  for (const auto& peer : tablet_peers) {
-    auto num_intents = peer->tablet()->CountIntents();
+  for (const auto& tablet : tablet_ptrs) {
+    auto num_intents = tablet->CountIntents();
     if (!num_intents.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), num_intents.status(), TabletServerErrorPB_Code_UNKNOWN_ERROR,
@@ -1651,7 +1655,7 @@ struct ReadContext {
     VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time;
     auto result = read_time;
     result.read = std::min(std::max(restart_time, safe_ht_to_read), read_time.global_limit);
-    result.local_limit = safe_ht_to_read;
+    result.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
     return result;
   }
 
@@ -1685,8 +1689,8 @@ struct ReadContext {
       // So we should restart it in server in case of failure.
       read_time.read = safe_ht_to_read;
       if (transactional()) {
-        read_time.local_limit = clock->MaxGlobalNow();
-        read_time.global_limit = read_time.local_limit;
+        read_time.global_limit = clock->MaxGlobalNow();
+        read_time.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
 
         VLOG(1) << "Read time: " << read_time.ToString();
       } else {
@@ -2001,7 +2005,16 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     }
     read_context->read_time = *result;
     // If read was successful, then restart time is invalid. Finishing.
+    // (If a read restart was requested, then read_time would be set to the time at which we have
+    // to restart.)
     if (!read_context->read_time) {
+      // allow_retry means that that the read time was not set in the request and therefore we can
+      // retry read restarts on the tablet server.
+      if (!read_context->allow_retry) {
+        auto local_limit = std::min(
+            read_context->safe_ht_to_read, read_context->used_read_time.global_limit);
+        read_context->resp->set_local_limit_ht(local_limit.ToUint64());
+      }
       break;
     }
     if (!read_context->allow_retry) {
