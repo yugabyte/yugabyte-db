@@ -129,9 +129,11 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
 
-    return !getPromiseState(rollingUpgrade).isLoading() &&
-      updateAvailable &&
-      !(showModal && visibleModal === 'softwareUpgradesModal');
+    return (
+      !getPromiseState(rollingUpgrade).isLoading() &&
+      (updateAvailable !== 0) &&
+      !(showModal && visibleModal === 'softwareUpgradesModal')
+    );
   };
 
   stripQueryParams = () => {
@@ -572,13 +574,13 @@ class UniverseDetail extends Component {
                       providers and once that's done this condition needs to be removed.
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
-                      {isAWSUniverse(currentUniverse?.data) &&
+                      {/* isAWSUniverse(currentUniverse?.data) &&
                         <YBMenuItem onClick={showToggleUniverseStateModal}>
                           <YBLabelWithIcon icon="fa fa-pause-circle-o">
                             {!universePaused ? 'Pause Universe' : 'Resume Universe'}
                           </YBLabelWithIcon>
                         </YBMenuItem>
-                      }
+                       */}
 
                       <YBMenuItem
                         onClick={showDeleteUniverseModal}

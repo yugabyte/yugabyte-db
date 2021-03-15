@@ -337,10 +337,10 @@ Result<int64_t> DateTime::IntervalFromString(const std::string& str) {
       // ISO 8601: '3d 4h 5m 6s'
       // Abbreviated Postgres: '3 d 4 hrs 5 mins 6 secs'
       // Traditional Postgres: '3 days 4 hours 5 minutes 6 seconds'
-      regex("(?:(\\d) ?d(?:ay)?s?)? *(?:(\\d) ?h(?:ou)?r?s?)? *"
-            "(?:(\\d) ?m(?:in(?:ute)?s?)?)? *(?:(\\d) ?s(?:ec(?:ond)?s?)?)?"),
+      regex("(?:(\\d+) ?d(?:ay)?s?)? *(?:(\\d+) ?h(?:ou)?r?s?)? *"
+            "(?:(\\d+) ?m(?:in(?:ute)?s?)?)? *(?:(\\d+) ?s(?:ec(?:ond)?s?)?)?"),
       // SQL Standard: 'D H:M:S'
-      regex("(?:(\\d) )?(\\d{1,2}):(\\d{1,2}):(\\d{1,2})")
+      regex("(?:(\\d+) )?(\\d{1,2}):(\\d{1,2}):(\\d{1,2})")
   };
   // Try each regex to see if one matches.
   for (const auto& reg : regexes) {
@@ -355,7 +355,7 @@ Result<int64_t> DateTime::IntervalFromString(const std::string& str) {
       return 1000000L * (seconds + (60 * (minutes + 60 * (hours + 24 * day))));
     }
   }
-  return STATUS(InvalidArgument, "Invalid interval", "Wrong format of input string");
+  return STATUS(InvalidArgument, "Invalid interval", "Wrong format of input string: " + str);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -385,7 +385,7 @@ const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
   string time_fmt = "(\\d{1,2}):(\\d{1,2}):(\\d{1,2})";
   string time_fmt_no_sec = "(\\d{1,2}):(\\d{1,2})" + fmt_empty;
   string time_empty = fmt_empty + fmt_empty + fmt_empty;
-  string frac_fmt = "\\.(\\d{1,3})";
+  string frac_fmt = "\\.(\\d{6}|\\d{1,3})";
   // Offset, i.e. +/-xx:xx, +/-0000, timezone parser will do additional checking.
   string tzX_fmt = "((?:\\+|-)\\d{2}:?\\d{2})";
   // Zulu Timezone e.g allows user to just add z or Z at the end with no space in front to indicate

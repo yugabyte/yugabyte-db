@@ -43,6 +43,27 @@ public class AZUInitializer extends AbstractInitializer {
 
   private Provider provider;
 
+  private void storeInstancePriceComponents(String instanceTypeCode,
+                                           JsonNode instanceTypeToDetailsMap) {
+    JsonNode regionToPriceMap = instanceTypeToDetailsMap.get("prices");
+    String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+
+    Iterator<String> regionCodeItr = regionToPriceMap.fieldNames();
+    while (regionCodeItr.hasNext()) {
+      String regionCode = regionCodeItr.next();
+      PriceDetails priceDetails = new PriceDetails();
+      priceDetails.unit = PriceDetails.Unit.Hours;
+      priceDetails.pricePerUnit = regionToPriceMap.get(regionCode).asDouble();
+      priceDetails.pricePerHour = priceDetails.pricePerUnit;
+      priceDetails.pricePerDay = priceDetails.pricePerHour * 24.0;
+      priceDetails.pricePerMonth = priceDetails.pricePerDay * 30.0;
+      priceDetails.currency = PriceDetails.Currency.USD;
+      priceDetails.effectiveDate = now;
+
+      PriceComponent.upsert(provider.code, regionCode, instanceTypeCode, priceDetails);
+    }
+  }
+
    /**
    * Entry point to initialize AZU. This will create the various InstanceTypes and their
    * corresponding PriceComponents per Region for AZU.
@@ -85,9 +106,8 @@ public class AZUInitializer extends AbstractInitializer {
                             instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
                             instanceTypeDetails
         );
-
+        storeInstancePriceComponents(instanceTypeCode, instanceTypeToDetailsMap);
       }
-
     }
     catch (Exception e) {
       LOG.error("Azure Initialize failed", e);

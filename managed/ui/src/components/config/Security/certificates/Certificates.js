@@ -15,6 +15,7 @@ import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
+import { YBConfirmModal } from '../../../modals';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -117,6 +118,11 @@ class Certificates extends Component {
       .finally(() => this.setState({ showSubmitting: false }));
   };
 
+  showDeleteCertificateModal = (certificateModal) => {
+    this.setState({ certificateModal });
+    this.props.showConfirmDeleteModal();
+  }
+
   /**
    * Delete the root certificate if certificate is safe to remove,
    * i.e - Certificate is not attached to any universe for current user.
@@ -177,7 +183,7 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => { 
-            this.deleteCertificate(payload?.uuid)
+            this.showDeleteCertificateModal(payload)
           }}
           disabled={deleteDisabled}
         >
@@ -197,20 +203,22 @@ class Certificates extends Component {
     const { showSubmitting } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-    ? userCertificates.data.map((cert) => {
-      return {
-        type: cert.certType,
-        uuid: cert.uuid,
-        name: cert.label,
-        expiryDate: cert.expiryDate,
-        certificate: cert.certificate,
-        creationTime: cert.startDate,
-        privateKey: cert.privateKey,
-        customCertInfo: cert.customCertInfo,
-        inUse: cert.inUse
-      };
-    })
-    : [];
+    ? userCertificates.data
+        .map((cert) => {
+          return {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse
+          };
+        })
+        .sort((a, b) => (new Date(b.creationTime) - new Date(a.creationTime)))
+      : [];
 
     return (
       <div id="page-wrapper">
@@ -238,6 +246,7 @@ class Certificates extends Component {
             <Fragment>
               <BootstrapTable
                 data={certificateArray}
+                pagination
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
               >
@@ -263,7 +272,12 @@ class Certificates extends Component {
                 <TableHeaderColumn dataField="certificate" width="240px" dataAlign="left">
                   Certificate
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateKey" width="240px" headerAlign="left" dataAlign="left">
+                <TableHeaderColumn
+                  dataField="privateKey"
+                  width="240px"
+                  headerAlign="left"
+                  dataAlign="left"
+                >
                   Private Key
                 </TableHeaderColumn>
                 <TableHeaderColumn
@@ -300,6 +314,19 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
+        <YBConfirmModal
+          name="deleteCertificateModal"
+          title="Delete Certificate"
+          hideConfirmModal={ this.props.closeModal }
+          currentModal="deleteCertificateModal"
+          visibleModal={ visibleModal }
+          onConfirm={ () => this.deleteCertificate(this.state.certificateModal?.uuid) }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        >
+          Are you sure you want to delete certificate{' '}
+          <strong>{ this.state.certificateModal?.name }</strong> ?
+        </YBConfirmModal>
       </div>
     );
   }

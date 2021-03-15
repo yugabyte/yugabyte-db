@@ -58,6 +58,8 @@ message TabletSnapshotOpRequestPB {
   google.protobuf.Any extra_data = 8;
 
   bool imported = 9;
+
+  bytes schedule_id = 10;
 }
 
 message TabletSnapshotOpResponsePB {

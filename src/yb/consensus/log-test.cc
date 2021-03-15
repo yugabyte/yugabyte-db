@@ -432,6 +432,34 @@ TEST_F(LogTest, TestCorruptLogInHeader) {
   DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
+// Tests log metrics for WAL files size
+TEST_F(LogTest, TestLogMetrics) {
+  BuildLog();
+// Set a small segment size so that we have roll overs.
+  log_->SetMaxSegmentSizeForTests(990);
+  const int kNumEntriesPerBatch = 100;
+
+  OpIdPB op_id = MakeOpId(1, 1);
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+
+  while (segments.size() < 3) {
+    ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch));
+    // Update the segments
+    ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  }
+
+  ASSERT_OK(log_->Close());
+
+  int64_t wal_size_old = log_->metrics_->wal_size->value();
+  BuildLog();
+  int64_t wal_size_new = log_->metrics_->wal_size->value();
+
+  ASSERT_EQ(wal_size_old, wal_size_new);
+}
+
 // Tests that segments roll over when max segment size is reached
 // and that the player plays all entries in the correct order.
 TEST_F(LogTest, TestSegmentRollover) {
