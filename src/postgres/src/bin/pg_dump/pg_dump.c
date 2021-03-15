@@ -433,7 +433,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:n:N:oOp:RsS:t:T:U:vwWxZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:m:n:N:oOp:RsS:t:T:U:vwWxZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -478,12 +478,12 @@ main(int argc, char **argv)
 				dopt.pghost = pg_strdup(optarg);
 				break;
 
-			case 'm':			/* YB master hosts */
-				dopt.master_hosts = pg_strdup(optarg);
-				break;
-
 			case 'j':			/* number of dump jobs */
 				numWorkers = atoi(optarg);
+				break;
+
+			case 'm':			/* YB master hosts */
+				dopt.master_hosts = pg_strdup(optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -1058,6 +1058,7 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
+	printf(_("  -m, --masters=IPS        YugaByte Master hosts IP addresses\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
