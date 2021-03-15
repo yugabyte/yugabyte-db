@@ -51,8 +51,8 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 
 #### Yugabyte Platform
 
+* Yugabyte Platform High Availability is now available in BETA. With this feature, you can deploy multiple platforms in an active-standby cluster, ensuring you can always monitor and manage your platform-managed universes regardless of outages to any particular platform in the HA cluster.
 * [[7225](https://github.com/yugabyte/yugabyte-db/issues/7225)] [[7228](https://github.com/yugabyte/yugabyte-db/issues/7228)] [UI] Enable the OpenShift tab, marked as beta
-* Yugabyte Platform now supports High Availability, as a BETA feature
 
 #### Core Database
 
