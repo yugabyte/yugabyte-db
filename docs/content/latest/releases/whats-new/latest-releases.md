@@ -51,8 +51,8 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 
 #### Yugabyte Platform
 
-* [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Introduce snapshot schedule
-* [[7225](https://github.com/yugabyte/yugabyte-db/issues/7225)] [[7228](https://github.com/yugabyte/yugabyte-db/issues/7228)] [Platform] [UI] Enable the OpenShift tab, marked as beta
+* [[7225](https://github.com/yugabyte/yugabyte-db/issues/7225)] [[7228](https://github.com/yugabyte/yugabyte-db/issues/7228)] [UI] Enable the OpenShift tab, marked as beta
+* Yugabyte Platform now supports High Availability, as a BETA feature
 
 #### Core Database
 
@@ -63,42 +63,38 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 
 #### Yugabyte Platform
 
-* [[5628](https://github.com/yugabyte/yugabyte-db/issues/5628)] [yugaware] [azure] Support regions with no availability zones
-* [[5807](https://github.com/yugabyte/yugabyte-db/issues/5807)] [Platform] Added toggle to show deleted backups
-* [[6373](https://github.com/yugabyte/yugabyte-db/issues/6373)] Platform: Pause/Resume universe. (#6846)
-* [[6962](https://github.com/yugabyte/yugabyte-db/issues/6962)] Platform: Exposes endpoint for downloading log files.
-* [[7121](https://github.com/yugabyte/yugabyte-db/issues/7121)] Extend yb-admin restore_snapshot to use a custom time
+* [[5628](https://github.com/yugabyte/yugabyte-db/issues/5628)] [Azure] Support regions with no availability zones
+* [[5807](https://github.com/yugabyte/yugabyte-db/issues/5807)] Add toggle to show deleted backups
+* [[6373](https://github.com/yugabyte/yugabyte-db/issues/6373)] Pause/Resume universe
+* [[6962](https://github.com/yugabyte/yugabyte-db/issues/6962)] Expose endpoint for downloading log files
+* [[7475](https://github.com/yugabyte/yugabyte-db/issues/7475)] Use more recent centos-7 base image for GCP universe VMs
 
 #### Core Database
 
+* [[7121](https://github.com/yugabyte/yugabyte-db/issues/7121)] Extend yb-admin restore_snapshot to use a custom time
+* [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Introduce snapshot schedule
 * [[7366](https://github.com/yugabyte/yugabyte-db/issues/7366)] YSQL: Allow getting current SQL query in pggate for debug logging
-* [[7418](https://github.com/yugabyte/yugabyte-db/issues/7418)] [[7463](https://github.com/yugabyte/yugabyte-db/issues/7463)] YSQL: Import Introduce the 'force' option for the Drop Database command.
+* [[7418](https://github.com/yugabyte/yugabyte-db/issues/7418)] [[7463](https://github.com/yugabyte/yugabyte-db/issues/7463)] YSQL: Import the 'force' option for the Drop Database command
 
 ### Bug Fixes
 
 #### Yugabyte Platform
 
-* [[4742](https://github.com/yugabyte/yugabyte-db/issues/4742)] [Platform] Plotly tooltip is overlaping with no data on zero pozitions (on x or y)
-* [[5383](https://github.com/yugabyte/yugabyte-db/issues/5383)] Fix conflict resolution while adding read intents
-* [[6213](https://github.com/yugabyte/yugabyte-db/issues/6213)] [Platform] Fixed poor visual feedback for the node staus change
-* [[6530](https://github.com/yugabyte/yugabyte-db/issues/6530)] [Platform] Enforced better password strength for registration
-* [[6611](https://github.com/yugabyte/yugabyte-db/issues/6611)] [Platform] [Kubernetes] Consider AZ level namespace for the metrics (#7479)
-* [[6718](https://github.com/yugabyte/yugabyte-db/issues/6718)] [Platform]: Health check emails should include Yugaware Hostname (#7337)
-* [[7024](https://github.com/yugabyte/yugabyte-db/issues/7024)] Platform: Unable to edit number of nodes in AZ section (#7350)
-* [[7149](https://github.com/yugabyte/yugabyte-db/issues/7149)] Platform: Trigger trying to take a platform backup when a task has completed
-* [[7161](https://github.com/yugabyte/yugabyte-db/issues/7161)] Platform UI: fix loading instance types on AZ change and inability to edit volume size
-* [[7234](https://github.com/yugabyte/yugabyte-db/issues/7234)] [Platform] UI fixes for platform
-* [[7342](https://github.com/yugabyte/yugabyte-db/issues/7342)] [Platform] [UI] add Beta tag to HA tab + address feedback
-* [[7363](https://github.com/yugabyte/yugabyte-db/issues/7363)] [Platform] [UI] Certificate list improvements
-* [[7372](https://github.com/yugabyte/yugabyte-db/issues/7372)] Platform: Skip running periodic schedules when in follower mode
-* [[7392](https://github.com/yugabyte/yugabyte-db/issues/7392)] [Platform] Fix the cqlsh healthcheck failures happening because of warnings in the output (#7364)
-* [[7423](https://github.com/yugabyte/yugabyte-db/issues/7423)] Platform: Fix AvailabilityZone::getByCode
-* [[7468](https://github.com/yugabyte/yugabyte-db/issues/7468)] [Platform] Fixed issues of deleting a backup goes to "unknown" state for that backup
-* [[7488](https://github.com/yugabyte/yugabyte-db/issues/7488)] Platform: Fix a sync backup bug due to File::renameTo behavior
-* [[7490](https://github.com/yugabyte/yugabyte-db/issues/7490)] Platform: Ensure prom config is reverted to non-federated when deleting a follower HA config
-* [[7494](https://github.com/yugabyte/yugabyte-db/issues/7494)] [YW] Hide Pause Universe in universe actions dropdown
-* [[7496](https://github.com/yugabyte/yugabyte-db/issues/7496)] Platform: Alerts should not be triggered for a paused universe when running health check
-* [Platform] [UI] - User menu not clickable
+* [[4742](https://github.com/yugabyte/yugabyte-db/issues/4742)] Plotly tooltip is overlaping with no data on zero pozitions (on x or y)
+* [[6213](https://github.com/yugabyte/yugabyte-db/issues/6213)] Fixed poor visual feedback for the node staus change
+* [[6530](https://github.com/yugabyte/yugabyte-db/issues/6530)] Enforced better password strength for registration
+* [[6611](https://github.com/yugabyte/yugabyte-db/issues/6611)] [Kubernetes] Consider AZ level namespace for the metrics
+* [[6718](https://github.com/yugabyte/yugabyte-db/issues/6718)] Health check emails should include Yugaware Hostname
+* [[7024](https://github.com/yugabyte/yugabyte-db/issues/7024)] Unable to edit number of nodes in AZ section
+* [[7149](https://github.com/yugabyte/yugabyte-db/issues/7149)] Trigger trying to take a platform backup when a task has completed
+* [[7161](https://github.com/yugabyte/yugabyte-db/issues/7161)] Fix loading instance types on AZ change and inability to edit volume size
+* [[7234](https://github.com/yugabyte/yugabyte-db/issues/7234)] UI fixes for platform
+* [[7363](https://github.com/yugabyte/yugabyte-db/issues/7363)] [UI] Certificate list improvements
+* [[7392](https://github.com/yugabyte/yugabyte-db/issues/7392)] Fix the cqlsh healthcheck failures happening because of warnings in the output
+* [[7468](https://github.com/yugabyte/yugabyte-db/issues/7468)] Fixed issues of deleting a backup goes to "unknown" state for that backup
+* [[7490](https://github.com/yugabyte/yugabyte-db/issues/7490)] Ensure prom config is reverted to non-federated when deleting a follower HA config
+* [[7496](https://github.com/yugabyte/yugabyte-db/issues/7496)] Alerts should not be triggered for a paused universe when running health check
+* User menu not clickable in Platform UI
 
 #### Core Database
 
@@ -107,19 +103,13 @@ docker pull yugabytedb/yugabyte:2.5.3.1-bxx
 * [[6183](https://github.com/yugabyte/yugabyte-db/issues/6183)] YSQL: Import Fix memory leak in plpgsql's CALL processing
 * [[6241](https://github.com/yugabyte/yugabyte-db/issues/6241)] YSQL: Make row key share lock less restrictive
 * [[6253](https://github.com/yugabyte/yugabyte-db/issues/6253)] YCQL: Create Index does not have to wait for the backfill to complete
-* [[7065](https://github.com/yugabyte/yugabyte-db/issues/7065)] [YCQL] Fixed incorrect CQL response in case of IN() with no argument.
-* [[7380](https://github.com/yugabyte/yugabyte-db/issues/7380)] YSQL: Import Fix another ancient bug in parsing of BRE-mode regular expressions.
-* [[7386](https://github.com/yugabyte/yugabyte-db/issues/7386)] YSQL: Import Fix ancient bug in parsing of BRE-mode regular expressions.
+* [[7065](https://github.com/yugabyte/yugabyte-db/issues/7065)] YCQL: Fixed incorrect CQL response in case of IN() with no argument
+* [[7380](https://github.com/yugabyte/yugabyte-db/issues/7380)] YSQL: Import Fix another ancient bug in parsing of BRE-mode regular expressions
+* [[7386](https://github.com/yugabyte/yugabyte-db/issues/7386)] YSQL: Import Fix ancient bug in parsing of BRE-mode regular expressions
 * [[7397](https://github.com/yugabyte/yugabyte-db/issues/7397)] Tablet splitting: Crash during generating TSHeartbeat report after split
 * [[7400](https://github.com/yugabyte/yugabyte-db/issues/7400)] YSQL: Prevent drop of database when there is active connection to the DB
-* [[7413](https://github.com/yugabyte/yugabyte-db/issues/7413)] docdb: Fixed MetaCache::ProcessTabletLocations to reuse partitions list for co-located tables
+* [[7413](https://github.com/yugabyte/yugabyte-db/issues/7413)] DocDB: Fixed MetaCache::ProcessTabletLocations to reuse partitions list for co-located tables
 * [[7480](https://github.com/yugabyte/yugabyte-db/issues/7480)] Remove reference to user from YSQLsh health check output
-
-### Known Issues
-
-#### Yugabyte Platform
-
-#### Core Database
 
 ## v2.5.2 - Feb 23, 2021
 
@@ -153,24 +143,24 @@ docker pull yugabytedb/yugabyte:2.5.2.0-b104
 * [[5376](https://github.com/yugabyte/yugabyte-db/issues/5376)] Added EULA in user registration flow during Platform installation
 * [[5732](https://github.com/yugabyte/yugabyte-db/issues/5732)] Disable "Delete provider" for on-premise provider with active universes
 * [[5836](https://github.com/yugabyte/yugabyte-db/issues/5836)] Package managed python packages in a portable manner
-* [[5919](https://github.com/yugabyte/yugabyte-db/issues/5919)] Platform: change default storage option for AWS provider to 1x250GB
-* [[6017](https://github.com/yugabyte/yugabyte-db/issues/6017)] Platform: Need ability for platform to check for actual clock synchronization
+* [[5919](https://github.com/yugabyte/yugabyte-db/issues/5919)] change default storage option for AWS provider to 1x250GB
+* [[6017](https://github.com/yugabyte/yugabyte-db/issues/6017)] Need ability for platform to check for actual clock synchronization
 * [[6035](https://github.com/yugabyte/yugabyte-db/issues/6035)] Platform UI: show region level config paths for k8s providers
 * [[6084](https://github.com/yugabyte/yugabyte-db/issues/6084)] Platform UI: disable STOP and REMOVE actions for kubernetes pods
-* [[6165](https://github.com/yugabyte/yugabyte-db/issues/6165)] Platform: Renamed "Universe backups" label for keyspace -or- namespace level backups.
-* [[6230](https://github.com/yugabyte/yugabyte-db/issues/6230)] Platform: Add tooltips to KMS Configuration UI
+* [[6165](https://github.com/yugabyte/yugabyte-db/issues/6165)] Renamed "Universe backups" label for keyspace -or- namespace level backups.
+* [[6230](https://github.com/yugabyte/yugabyte-db/issues/6230)] Add tooltips to KMS Configuration UI
 * [[6346](https://github.com/yugabyte/yugabyte-db/issues/6346)] UI visual feedback for KMS related tasks
 * [[6421](https://github.com/yugabyte/yugabyte-db/issues/6421)] Edit Universe fails silently in case when it has decommissioned node(s)
 * [[6477](https://github.com/yugabyte/yugabyte-db/issues/6477)] UI validation for duplicate region codes
 * [[6540](https://github.com/yugabyte/yugabyte-db/issues/6540)] Add ability to remove certificates from UI
-* [[6655](https://github.com/yugabyte/yugabyte-db/issues/6655)] Platform: Enabled AWS timeSync as a default on AWS universe
-* [[6680](https://github.com/yugabyte/yugabyte-db/issues/6680)] [[6882](https://github.com/yugabyte/yugabyte-db/issues/6882)] Platform: Disabled deleting storage configuration when it is in use
+* [[6655](https://github.com/yugabyte/yugabyte-db/issues/6655)] Enabled AWS timeSync as a default on AWS universe
+* [[6680](https://github.com/yugabyte/yugabyte-db/issues/6680)] [[6882](https://github.com/yugabyte/yugabyte-db/issues/6882)] Disabled deleting storage configuration when it is in use
 * [[6708](https://github.com/yugabyte/yugabyte-db/issues/6708)] For AWS universes fetch instance types with respect to selected availability zones
 * [[6740](https://github.com/yugabyte/yugabyte-db/issues/6740)] Update clients to support mTLS in YB clusters.
-* [[6807](https://github.com/yugabyte/yugabyte-db/issues/6807)] Platform: Kubernetes: Allow specifying namespace in the AZ config
+* [[6807](https://github.com/yugabyte/yugabyte-db/issues/6807)] Kubernetes: Allow specifying namespace in the AZ config
 * [[6838](https://github.com/yugabyte/yugabyte-db/issues/6838)] [[6839](https://github.com/yugabyte/yugabyte-db/issues/6839)] [YW] Remove YSQL transactions metrics from Metrics tab
-* [[6858](https://github.com/yugabyte/yugabyte-db/issues/6858)] Platform: Preflight checks for NFS backup storage configuration
-* [[6893](https://github.com/yugabyte/yugabyte-db/issues/6893)] Platform: Allow platform to specify min TLS version for its own frontend
+* [[6858](https://github.com/yugabyte/yugabyte-db/issues/6858)] Preflight checks for NFS backup storage configuration
+* [[6893](https://github.com/yugabyte/yugabyte-db/issues/6893)] Allow platform to specify min TLS version for its own frontend
 
 #### Core Database
 
@@ -211,22 +201,22 @@ docker pull yugabytedb/yugabyte:2.5.2.0-b104
 * [[5489](https://github.com/yugabyte/yugabyte-db/issues/5489)] Fix slow query panel returning TypeError from API request.
 * [[5489](https://github.com/yugabyte/yugabyte-db/issues/5489)] [YW] Add tab panels to Queries tab to separate live from slow queries.
 * [[5571](https://github.com/yugabyte/yugabyte-db/issues/5571)] Use local YSQL socket for backups if --ysql_enable_auth is true
-* [[5594](https://github.com/yugabyte/yugabyte-db/issues/5594)] Platform: Handle invalid certs/keys correctly
-* [[5694](https://github.com/yugabyte/yugabyte-db/issues/5694)] Platform: Fixed Metrics custom time window issue
+* [[5594](https://github.com/yugabyte/yugabyte-db/issues/5594)] Handle invalid certs/keys correctly
+* [[5694](https://github.com/yugabyte/yugabyte-db/issues/5694)] Fixed Metrics custom time window issue
 * [[6164](https://github.com/yugabyte/yugabyte-db/issues/6164)] Manual backup of ysql task is not showing up in the universe tasks page 
-* [[6320](https://github.com/yugabyte/yugabyte-db/issues/6320)] Platform: Create Universe does not validate encryption-at-rest
-* [[6583](https://github.com/yugabyte/yugabyte-db/issues/6583)] Platform: Fixed the UI alignment for on-prem universes
+* [[6320](https://github.com/yugabyte/yugabyte-db/issues/6320)] Create Universe does not validate encryption-at-rest
+* [[6583](https://github.com/yugabyte/yugabyte-db/issues/6583)] Fixed the UI alignment for on-prem universes
 * [[6758](https://github.com/yugabyte/yugabyte-db/issues/6758)] For on-prem universes, unable to reuse certain instances that are disassociated from a universe
-* [[6759](https://github.com/yugabyte/yugabyte-db/issues/6759)] [[6760](https://github.com/yugabyte/yugabyte-db/issues/6760)] [[6814](https://github.com/yugabyte/yugabyte-db/issues/6814)] Platform: Fixed availability zone error scenarios
+* [[6759](https://github.com/yugabyte/yugabyte-db/issues/6759)] [[6760](https://github.com/yugabyte/yugabyte-db/issues/6760)] [[6814](https://github.com/yugabyte/yugabyte-db/issues/6814)] Fixed availability zone error scenarios
 * [[6817](https://github.com/yugabyte/yugabyte-db/issues/6817)] [[6904](https://github.com/yugabyte/yugabyte-db/issues/6904)] Restore of large number of keyspaces/tables fails with '413 Request Entity Too Large
-* [[6901](https://github.com/yugabyte/yugabyte-db/issues/6901)] Platform: YW Fails to send alert email
-* [[6911](https://github.com/yugabyte/yugabyte-db/issues/6911)] Platform: Alert for removed universe fires forever
+* [[6901](https://github.com/yugabyte/yugabyte-db/issues/6901)] YW Fails to send alert email
+* [[6911](https://github.com/yugabyte/yugabyte-db/issues/6911)] Alert for removed universe fires forever
 * [[6919](https://github.com/yugabyte/yugabyte-db/issues/6919)] Fix crashing on-prem provider page due to missing instance type details
 * [[6965](https://github.com/yugabyte/yugabyte-db/issues/6965)] YSQL backups with node-to-node TLS encryption enabled hang forever
 * [[6983](https://github.com/yugabyte/yugabyte-db/issues/6983)] Increase ssh timeout for checking instance availability
-* [[7082](https://github.com/yugabyte/yugabyte-db/issues/7082)] Platform: Health-check script generates an alert for 2.5.x when using Python 3
-* [[7107](https://github.com/yugabyte/yugabyte-db/issues/7107)] Platform: Changing node filter for universe metrics does not update the graphs
-* [[7114](https://github.com/yugabyte/yugabyte-db/issues/7114)] Platform: Fixes a bug while backing up multiple ysql namespaces for encrypted at rest universe
+* [[7082](https://github.com/yugabyte/yugabyte-db/issues/7082)] Health-check script generates an alert for 2.5.x when using Python 3
+* [[7107](https://github.com/yugabyte/yugabyte-db/issues/7107)] Changing node filter for universe metrics does not update the graphs
+* [[7114](https://github.com/yugabyte/yugabyte-db/issues/7114)] Fixes a bug while backing up multiple ysql namespaces for encrypted at rest universe
 * [[7159](https://github.com/yugabyte/yugabyte-db/issues/7159)] Allow only one cluster per K8s provider with namespace
 * [[7196](https://github.com/yugabyte/yugabyte-db/issues/7196)] Health checks should default to TLSv1.2
 * [[7233](https://github.com/yugabyte/yugabyte-db/issues/7233)] Fix data format for slow query top sql statement data cells
@@ -337,7 +327,7 @@ docker pull yugabytedb/yugabyte:2.5.1.0-b153
 * [[6175](https://github.com/yugabyte/yugabyte-db/issues/6175)] Use sudo when removing prometheus snapshots during platform backup
 * [[6602](https://github.com/yugabyte/yugabyte-db/issues/6602)] Fix TLS directory while provisioning YB nodes.
 * [[6683](https://github.com/yugabyte/yugabyte-db/issues/6683)] Use a timeout mechanism in cluster_health.py that is more compatible with docker's lack of zombie reaping
-* [[6633](https://github.com/yugabyte/yugabyte-db/issues/6633)] Platform: rename Pivotal to VMware Tanzu, add Red Hat OpenShift cloud provider
+* [[6633](https://github.com/yugabyte/yugabyte-db/issues/6633)] Rename Pivotal to VMware Tanzu, add Red Hat OpenShift cloud provider
 
 #### Core Database
 
