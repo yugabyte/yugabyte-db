@@ -153,6 +153,9 @@ class Heartbeater::Thread {
   // The server for which we are heartbeating.
   TabletServer* const server_;
 
+  // Roundtrip time of previous heartbeat to yb-master.
+  MonoDelta heartbeat_rtt_ = MonoDelta::kZero;
+
   // The actual running thread (NULL before it is started)
   scoped_refptr<yb::Thread> thread_;
 
@@ -381,6 +384,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
+  req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
 
   // Include the hybrid time of this tablet server in the heartbeat.
   auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
@@ -401,9 +405,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
+    heartbeat_rtt_ = MonoDelta::kZero;
+    MonoTime start_time = MonoTime::Now();
     master::TSHeartbeatResponsePB resp;
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                           "Failed to send heartbeat");
+    MonoTime end_time = MonoTime::Now();
     if (resp.has_error()) {
       if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
         return StatusFromPB(resp.error().status());
@@ -458,6 +465,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
     last_hb_response_.Swap(&resp);
+    heartbeat_rtt_ = end_time.GetDeltaSince(start_time);
   }
 
   if (last_hb_response_.has_cluster_uuid() && !last_hb_response_.cluster_uuid().empty()) {

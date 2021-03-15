@@ -761,6 +761,9 @@ message TSHeartbeatRequestPB {
 
   // Hybrid time on tablet server
   optional fixed64 ts_hybrid_time = 11;
+
+  // Roundtrip time for previous heartbeat in microseconds.
+  optional int64 rtt_us = 12;
 }
 
 message TSHeartbeatResponsePB {
