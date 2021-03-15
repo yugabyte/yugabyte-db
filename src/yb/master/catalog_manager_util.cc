@@ -170,8 +170,15 @@ Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
   return Status::OK();
 }
 
+bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs) {
+  return (lhs.placement_cloud() == rhs.placement_cloud() &&
+          lhs.placement_region() == rhs.placement_region() &&
+          lhs.placement_zone() == rhs.placement_zone());
+}
+
 Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
                                                              const CloudInfoPB& cloud_info) {
+  // TODO(zhaoalex): replace logic with IsCloudInfoEqual
   const string& cloud_info_string = TSDescriptor::generate_placement_id(cloud_info);
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (TSDescriptor::generate_placement_id(placement_block.cloud_info()) == cloud_info_string) {

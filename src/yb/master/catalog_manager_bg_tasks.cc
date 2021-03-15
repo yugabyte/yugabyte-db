@@ -53,6 +53,10 @@ DEFINE_int32(load_balancer_initial_delay_secs, 120,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
+DEFINE_bool(sys_catalog_respect_affinity_task, true,
+            "Whether the master sys catalog tablet respects cluster config preferred zones "
+            "and sends step down requests to a preferred leader.");
+
 namespace yb {
 namespace master {
 
@@ -156,6 +160,14 @@ void CatalogManagerBgTasks::Run() {
       auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
       if (s.ok() && !streams.empty()) {
         s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
+      }
+
+      // Ensure the master sys catalog tablet follows the cluster's affinity specification.
+      if (FLAGS_sys_catalog_respect_affinity_task) {
+        s = catalog_manager_->SysCatalogRespectLeaderAffinity();
+        if (!s.ok()) {
+          YB_LOG_EVERY_N(INFO, 10) << s.message().ToBuffer();
+        }
       }
     }
     WARN_NOT_OK(catalog_manager_->encryption_manager_->

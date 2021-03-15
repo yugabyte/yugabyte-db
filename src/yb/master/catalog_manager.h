@@ -1229,6 +1229,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual void Started() {}
 
+  // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
+  // the cluster config affinity specification.
+  CHECKED_STATUS SysCatalogRespectLeaderAffinity();
+
   // ----------------------------------------------------------------------------------------------
   // Private member fields
   // ----------------------------------------------------------------------------------------------
