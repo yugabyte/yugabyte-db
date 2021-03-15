@@ -327,21 +327,16 @@ Status PgWrapper::Start() {
           << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
           << EXPR_VALUE_FOR_LOG(log_to_file);
 
-  // Configure UNIX domain socket.
+  // Configure UNIX domain socket for index backfill tserver-postgres communication and for
+  // Yugabyte Platform backups.
   argv.push_back("-k");
-  if (FLAGS_ysql_disable_index_backfill) {
-    // Disable listening on a UNIX domain socket.
-    argv.push_back("");
-  } else {
-    // Set up a unix domain socket for index backfill tserver-postgres communication.
-    const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
-    RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
-    argv.push_back(socket_dir);
+  const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
+  RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
+  argv.push_back(socket_dir);
 
-    // Also tighten permissions on the socket.
-    argv.push_back("-c");
-    argv.push_back("unix_socket_permissions=0700");
-  }
+  // Also tighten permissions on the socket.
+  argv.push_back("-c");
+  argv.push_back("unix_socket_permissions=0700");
 
   if (log_to_file) {
     argv.push_back("-c");
