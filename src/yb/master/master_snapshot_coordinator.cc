@@ -165,9 +165,13 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Load(tablet::Tablet* tablet) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
+    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
+    }));
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT_SCHEDULE,
+        [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+      return LoadEntry<SnapshotScheduleOptionsPB>(id, data, &schedules_);
     });
   }
 
