@@ -43,6 +43,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
@@ -129,12 +131,12 @@ struct KvStoreInfo {
       : kv_store_id(kv_store_id_),
         rocksdb_dir(rocksdb_dir_) {}
 
-  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id);
+  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id);
 
   CHECKED_STATUS LoadTablesFromPB(
-      google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id);
+      const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
-  void ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const;
+  void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
 
   KvStoreId kv_store_id;
 
@@ -155,6 +157,8 @@ struct KvStoreInfo {
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
   std::unordered_map<TableId, TableInfoPtr> tables;
+
+  std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -319,13 +323,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition schema of the Raft group's tables.
-  const std::shared_ptr<PartitionSchema> partition_schema() const {
+  std::shared_ptr<PartitionSchema> partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info = primary_table_info();
     return std::shared_ptr<PartitionSchema>(table_info, &table_info->partition_schema);
   }
 
-  const std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
+  std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
       const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info =
@@ -333,14 +337,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
   }
 
-  std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
   std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
 
-  std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
-  std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
+  const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
+  const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
-  std::string wal_dir() const { return wal_dir_; }
+  const std::string& wal_dir() const { return wal_dir_; }
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);
@@ -364,6 +368,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.insert(schedule_id).second;
+  }
+
+  std::vector<SnapshotScheduleId> SnapshotSchedules() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return std::vector<SnapshotScheduleId>(
+        kv_store_.snapshot_schedules.begin(), kv_store_.snapshot_schedules.end());
   }
 
   // Returns the data root dir for this Raft group, for example:

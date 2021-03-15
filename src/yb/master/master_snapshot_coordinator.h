@@ -74,6 +74,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // key and value are entry from the write batch.
   CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) override;
 
+  CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
+
   void Start();
 
   void Shutdown();

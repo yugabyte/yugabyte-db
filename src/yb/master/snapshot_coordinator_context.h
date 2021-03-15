@@ -16,6 +16,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -48,7 +49,8 @@ class SnapshotCoordinatorContext {
 
   virtual void SendCreateTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
+      const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
