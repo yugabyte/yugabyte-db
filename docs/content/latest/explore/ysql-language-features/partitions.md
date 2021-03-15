@@ -17,7 +17,7 @@ This section describes how to partition tables in YugabyteDB using YSQL.
 
 ## Overview
 
-Partitioning is another term for physically dividing large tables in YugabyteDB into smaller, more manageable tables to improve performance. With regards to the columns, the ones containing timestamps are usually subject to partitioning because of the historical and predictable nature of their data.
+Partitioning is another term for physically dividing large tables in YugabyteDB into smaller, more manageable tables to improve performance. Typically, tables with columns containing timestamps are subject to partitioning because of the historical and predictable nature of their data.
 
 Since partitioned tables do not appear nor act differently from the original table, applications accessing the database are not always aware of the fact that partitioning has taken place.
 
@@ -38,9 +38,10 @@ A regular table cannot become a partitioned table, just as a partitioned table c
 A partitioned table and its partitions have hierarchical structure and are subject to its rules, except the following:
 
 - If there are no partitions, you can use the `ONLY` clause to add or drop a constraint on the partitioned table. If there are partitions, you cannot use `ONLY` because adding or deleting constraints on the  partitioned table is not supported in such cases.
-- Partitions cannot have columns which do not exist in the partitioned table. You can add a partition using `ALTER TABLE ... ATTACH PARTITION` if their columns match the partitioned table, including a `oid` column.
-- Partitions inherit `CHECK` and `NOT NULL` constraints of their partitioned table. This does not include `CHECK` constraints marked `NO INHERIT`.
-- The `NOT NULL` constraint cannot be added to a partition's column if the constraint is present in their partitioned table.
+- You can add a regular table to the partition hierarchy using `ALTER TABLE ... ATTACH PARTITION` if their columns match the partitioned table, including a `oid` column.
+- Partitions inherit `CHECK` and `NOT NULL` constraints of the partitioned table, with the following exceptions: 
+  - `CHECK` constraints marked `NO INHERIT`be cannot be created on partitioned tables.
+  - The `NOT NULL` constraint cannot be dropped on a partition's column if the constraint is present in their partitioned table.
 
 Suppose you work with a database that includes the following table:
 
@@ -100,7 +101,7 @@ CREATE INDEX ON employees_2021_01 (change_date);
 
 Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for  new data when required. You do this by changing the partition structure instead of the actual data.
 
-The following example shows how to quickly remove old data via dropping the partition (you need to take an `ACCESS EXCLUSIVE` lock on the partitioned `employees` table):
+The following example shows how to quickly remove old data via dropping the partition (this operation takes an `ACCESS EXCLUSIVE` lock on the partitioned `employees` table):
 
 ```sql
 DROP TABLE employees_2019_02;
