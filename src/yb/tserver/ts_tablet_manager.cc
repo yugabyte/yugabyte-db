@@ -1768,6 +1768,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
     for (const auto& peer : *tablet_peers) {
+      if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);
@@ -1777,7 +1778,16 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
-  AppendValuesFromMap(tablet_map_, tablet_peers);
+  DCHECK(tablet_peers != NULL);
+  // See AppendKeysFromMap for why this is done.
+  if (tablet_peers->empty()) {
+    tablet_peers->reserve(tablet_map_.size());
+  }
+  for (const auto& entry : tablet_map_) {
+    if (entry.second != nullptr) {
+      tablet_peers->push_back(entry.second);
+    }
+  }
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const {

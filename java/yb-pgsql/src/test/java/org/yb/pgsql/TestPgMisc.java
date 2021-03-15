@@ -133,6 +133,21 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  /*
+   * Test for CHECKPOINT no-op functionality
+   */
+  @Test
+  public void testCheckpoint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CHECKPOINT");
+      if (statement.getWarnings() != null) {
+        throw statement.getWarnings();
+      }
+      fail("Checkpoint executed without warnings");
+    } catch(PSQLWarning w) {
+    }
+  }
+
   @Test
   public void testTemporaryTableTransactionInExecute() throws Exception {
     try (Statement statement = connection.createStatement()) {

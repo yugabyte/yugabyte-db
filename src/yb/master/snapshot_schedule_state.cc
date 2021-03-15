@@ -46,7 +46,7 @@ Status SnapshotScheduleState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out
   return Status::OK();
 }
 
-Status SnapshotScheduleState::ToPB(SnapshotScheduleInfoPB* pb) {
+Status SnapshotScheduleState::ToPB(SnapshotScheduleInfoPB* pb) const {
   pb->set_id(id_.data(), id_.size());
   *pb->mutable_options() = options_;
   return Status::OK();
@@ -54,6 +54,28 @@ Status SnapshotScheduleState::ToPB(SnapshotScheduleInfoPB* pb) {
 
 std::string SnapshotScheduleState::ToString() const {
   return YB_CLASS_TO_STRING(id, options);
+}
+
+void SnapshotScheduleState::PrepareOperations(
+    HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations) {
+  if (creating_snapshot_id_ ||
+      (last_snapshot_time && last_snapshot_time.AddSeconds(options_.interval_sec()) > now)) {
+    return;
+  }
+  creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
+  operations->push_back(SnapshotScheduleOperation {
+    .schedule_id = id_,
+    .filter = options_.filter(),
+    .snapshot_id = creating_snapshot_id_,
+  });
+}
+
+void SnapshotScheduleState::SnapshotFinished(
+    const TxnSnapshotId& snapshot_id, const Status& status) {
+  if (creating_snapshot_id_ != snapshot_id) {
+    return;
+  }
+  creating_snapshot_id_ = TxnSnapshotId::Nil();
 }
 
 } // namespace master

@@ -1,75 +1,68 @@
 ---
-title: Multi-DC deployments
-headerTitle: Multi-DC deployment
-linkTitle: Multi-DC deployments
-description: Deploy YugabyteDB across multiple data centers or cloud regions
-headcontent: Deploy YugabyteDB across multiple data centers (DC).
-image: /images/section_icons/explore/planet_scale.png
+title: YSQL vs PostgreSQL
+headerTitle: YSQL vs PostgreSQL
+linkTitle: YSQL vs PostgreSQL
+description: PostgreSQL features in YSQL
+headcontent: PostgreSQL features in YSQL
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
-    identifier: multi-dc
-    parent: deploy
-    weight: 631
+    identifier: explore-ysql-language-features
+    parent: explore
+    weight: 200
+isTocNested: true
+showAsideToc: true
 ---
 
-YugabyteDB is a geo-distributed SQL database that can be easily deployed across multiple data centers (DCs) or cloud regions. There are two primary configurations for such multi-DC deployments. 
-<p>
-First configuration uses a single cluster stretched across 3 or more data centers with data getting automatically sharded across all data centers. This configuration is default for <a href="../../architecture/docdb/">Spanner-inspired databases</a> like YugabyteDB. Data replication across data centers is synchronous and is based on the Raft consensus protocol. This means writes are globally consistent and reads are either globally consistent or timeline consistent (when application clients use follower reads). Additionally, resilience against data center failures is fully automatic. However, this configuration has the potential to incur Wide Area Network (WAN) latency in the write path if the data centers are geographically located far apart from each other and are connected through the shared/unreliable Internet. 
-<p>
-For users not requiring global consistency and automatic resilience to data center failures, the above WAN latency can be eliminated altogether through the second configuration where two independent, single-DC clusters are connected through asynchronous replication based on <a href="../../architecture/cdc-architecture/"> Change Data Capture</a>. 
-<p>
-<a href="https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/" target="_blank">9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency</a> highlights the various multi-DC deployment strategies for a distributed SQL database like YugabyteDB. Note that YugabyteDB is the only Spanner-inspired distributed SQL database to support a 2DC deployment.
-<p>
+The YSQL API of YugabyteDB reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architectural decision allows YSQL to support most of the PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
-<div class="row">
+{{< tip title="Tip" >}}
+A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="3dc-deployment/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Three+ data centers (3DC)</div>
-      </div>
-      <div class="body">
-        Deploy a single cluster across 3 or more DCs with global consistency (based on synchronous replication using Raft).
-      </div>
-    </a>
-  </div>
+{{< /tip >}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../kubernetes/multi-cluster/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Three+ data centers (3DC) on K8S</div>
-      </div>
-      <div class="body">
-        Deploy a single cluster across 3 or more Kubernetes clusters, each deployed in a different DC/region.
-      </div>
-    </a>
-  </div>
+The following diagram demonstrates how the query layer of PostgreSQL is reused, specifically its components that receive the query (*postman*), the query *parser*, *rewriter*, *analyzer*, as well as components responsible for *planning* and *executing* the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="2dc-deployment/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Two data centers (2DC)</div>
-      </div>
-      <div class="body">
-        Deploy 2 clusters in 2 DCs is master-follower or multi-master configuration (based on asynchronous replication using CDC).
-      </div>
-    </a>
-  </div>
+![Reusing the PostgreSQL query layer in YSQL](/images/section_icons/architecture/Reusing-PostgreSQL-query-layer.png)
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="read-replica-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Read replica clusters</div>
-      </div>
-      <div class="body">
-        Deploy a read replica cluster to serve low-latency reads from a remote DC.
-      </div>
-    </a>
-  </div>
+## PostgreSQL Features in YSQL
 
+The following table lists the most important YSQL features which you would find familiar if you have worked with PostgreSQL.
 
-</div>
+| YSQL Feature                                                 | Description                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| <span style="font-size:16px">[Basics](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
+| <span style="font-size:16px">[Data types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
+| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
+| <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
+| <span style="font-size:16px">[Triggers](triggers/)</span>    | Triggers (on data modification) and event triggers (on schema changes) |
+
+<!--
+| <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
+| <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for the various stored procedures |
+| <span style="font-size:16px">[Triggers](triggers/)</span>                   | Triggers (on data modification) and event triggers (on schema changes) |
+| <span style="font-size:16px">[Table Partitions](table-partitions)</span>    | List, range and hash partitioning of tables               |
+| <span style="font-size:16px">[Advanced Topics](advanced-topics/)</span>     | Using `VIEWS`, PostgreSQL extensions supported in YSQL, temporary tables, etc. |
+-->
+See also:
+
+* [Document data types (`JSONB` and `JSON`)](../json-support/jsonb-ysql)
+* [Distributed transactions](../transactions)
+
+<!--
+* [Indexes and constraints]()
+-->
+
+## What's Extra in YSQL?
+
+Since YugabyteDB is a distributed SQL database, there is a number of features that are availale in YSQL yet not present in PostgreSQL, as summarized in the following table.
+
+| YSQL Feature                                                 | Description                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| <span style="font-size:16px">Data distribution with `HASH`</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
+| <span style="font-size:16px">`TABLESPACES` for geographic placement</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">`TABLEGROUPS` for colocating tables</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
+
+<!--
+Read more about these [YSQL features not present in PostgreSQL](ysql-features-not-in-postgres/).
+-->

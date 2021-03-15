@@ -12,6 +12,9 @@ set -e
 . "${BASH_SOURCE%/*}"/common.sh
 
 activate_virtualenv
-cd "$yb_devops_home"
 
-python "$(which ybcloud.py)" "$@"
+if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
+  "$PYTHON_EXECUTABLE" "$yb_devops_home"/opscli/ybops/scripts/ybcloud.py "$@"
+else
+  "$PYTHON_EXECUTABLE" "$(which ybcloud.py)" "$@"
+fi

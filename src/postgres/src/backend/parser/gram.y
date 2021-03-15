@@ -972,6 +972,7 @@ stmt :
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index", false); }
+			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
@@ -996,7 +997,6 @@ stmt :
 			| AlterTSConfigurationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CheckPointStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1848,7 +1848,6 @@ constraints_set_mode:
 CheckPointStmt:
 			CHECKPOINT
 				{
-					parser_ybc_not_support(@1, "CHECKPOINT");
 					CheckPointStmt *n = makeNode(CheckPointStmt);
 					$$ = (Node *)n;
 				}

@@ -403,7 +403,7 @@ class UniverseForm extends Component {
             return { name: tserverFlag.name, value: tserverFlag.value.trim() };
           });
 
-        if (currentProvider === 'aws') {
+        if (currentProvider === 'aws' || currentProvider === 'azu') {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
               return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
@@ -533,6 +533,7 @@ class UniverseForm extends Component {
       showFullMoveModal,
       modal: { showModal, visibleModal }
     } = this.props;
+    const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
     const { disableSubmit, hasFieldChanged } = this.state;
     const createUniverseTitle = (
       <h2 className="content-title">
@@ -734,7 +735,7 @@ class UniverseForm extends Component {
           btnClass="btn btn-orange universe-form-submit-btn"
           btnText={submitTextLabel}
           btnType={'submit'}
-          disabled={formChangedOrInvalid}
+          disabled={ formChangedOrInvalid || updateInProgress }
         />
       );
     } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
@@ -825,7 +826,7 @@ class UniverseForm extends Component {
             onClick={showFullMoveModal}
             btnClass="btn btn-orange universe-form-submit-btn"
             btnText={submitTextLabel}
-            disabled={formChangedOrInvalid}
+            disabled={ formChangedOrInvalid || updateInProgress }
           />
           {visibleModal === 'fullMoveModal' && (
             <YBModal
@@ -905,7 +906,7 @@ class UniverseForm extends Component {
               {asyncReplicaBtn}
               <YBButton
                 btnClass="btn btn-orange universe-form-submit-btn"
-                disabled={disableSubmit}
+                disabled={ disableSubmit || updateInProgress }
                 btnText={submitTextLabel}
                 btnType={'submit'}
               />
