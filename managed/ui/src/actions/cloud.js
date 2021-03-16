@@ -207,10 +207,12 @@ export function resetProviderList() {
   };
 }
 
-export function createProvider(type, name, config, regionFormVals) {
+export function createProvider(type, name, config, regionFormVals = null) {
   const customerUUID = localStorage.getItem('customerId');
   const provider = PROVIDER_TYPES.find((providerType) => providerType.code === type);
-  const region = Object.keys(regionFormVals.perRegionMetadata)[0] || '';
+  if (regionFormVals) {
+    const region = Object.keys(regionFormVals?.perRegionMetadata)[0] || '';
+  }
   const formValues = {
     code: provider.code,
     name: name,
