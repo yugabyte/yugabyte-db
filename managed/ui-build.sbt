@@ -1,3 +1,4 @@
+import scala.sys.process.Process
 
 /**
   * Add UI Run hook to run UI alongside with API.
@@ -22,9 +23,9 @@ def runNpmBuild(implicit dir: File): Int =
   else Process("npm run build-and-copy", dir)!
 
 
-lazy val UIBuild = taskKey[Unit]("Build production version of UI code.")
+lazy val uIBuild = taskKey[Unit]("Build production version of UI code.")
 
-UIBuild := {
+uIBuild := {
   implicit val uiSource = baseDirectory.value / "ui"
   if (runNpmBuild != 0) throw new Exception("UI Build crashed.")
 }
@@ -32,4 +33,4 @@ UIBuild := {
 /**
  *  Make SBT packaging depend on the UI build hook.
  */
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(UIBuild).value
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(uIBuild).value

@@ -66,8 +66,9 @@ lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
 
-scalaVersion := "2.11.7"
-version := (sys.process.Process("cat version.txt").lines_!.head)
+scalaVersion := "2.12.10"
+version := (sys.process.Process("cat version.txt").lineStream_!.head)
+Global / onChangedBuildSource := ReloadOnSourceChanges
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -202,7 +203,7 @@ topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
-playMonitoredFiles := { if (autoReload) playMonitoredFiles.value else Seq() }
+playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
