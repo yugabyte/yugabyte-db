@@ -18,7 +18,7 @@
 #
 # TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
 
-ansible==2.2.3.0
+ansible==2.6.18
 ansible-vault==1.0.4
 apache-libcloud>=1.2.1
 auth0-python==3.0.0

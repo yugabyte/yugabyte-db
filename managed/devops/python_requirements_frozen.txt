@@ -7,7 +7,7 @@ PyYAML==3.13
 Werkzeug==1.0.1
 adal==1.2.6
 ansible-vault==1.0.4
-ansible==2.2.3.0
+ansible==2.6.18
 apache-libcloud==2.8.3
 auth0-python==3.0.0
 awscli==1.11.1

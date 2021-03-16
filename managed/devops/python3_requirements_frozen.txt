@@ -8,7 +8,7 @@ Werkzeug==1.0.1
 adal==1.2.6
 aiohttp==3.7.4.post0
 ansible-vault==1.0.4
-ansible==2.5.4
+ansible==2.6.18
 apache-libcloud==3.3.1
 async-timeout==3.0.1
 attrs==20.3.0
