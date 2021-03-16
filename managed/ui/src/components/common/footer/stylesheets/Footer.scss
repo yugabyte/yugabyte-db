@@ -5,8 +5,8 @@
 /* From gentelella.css need to cleanup */
 
 footer {
-  height: 45px;
-  margin-left: 110px;
+  height: $YB_FOOTER_HEIGHT;
+  margin-left: $YB_SIDEBAR_WIDTH;
   background-color: $YB_FOOTER_BACKGROUND;
   line-height: 46px;
   display: flex;

@@ -9,6 +9,7 @@ import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { FREQUENCY_MULTIPLIER } from './HAReplicationForm';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { YBCopyButton } from '../../common/descriptors';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './HAReplicationView.scss';
 
 interface HAReplicationViewProps {
@@ -34,6 +35,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
       <Grid fluid className="ha-replication-view">
         <DeleteModal
           configId={config.uuid}
+          isStandby={!currentInstance.is_leader}
           visible={isDeleteModalVisible}
           onClose={hideDeleteModal}
         />
@@ -53,12 +55,19 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
               <YBButton btnText="Edit Configuration" onClick={editConfig} />
             )}
             {!currentInstance.is_leader && (
-              <YBButton
-                btnText="Make Active"
-                btnClass="btn btn-orange"
-                btnIcon="fa fa-upload"
-                onClick={showPromoteModal}
-              />
+              <>
+                <YBInfoTip
+                  placement="left"
+                  title="Replication Configuration"
+                  content="Promote this platform to active and demote other platforms to standby"
+                />
+                <YBButton
+                  btnText="Make Active"
+                  btnClass="btn btn-orange"
+                  btnIcon="fa fa-upload"
+                  onClick={showPromoteModal}
+                />
+              </>
             )}
             <YBButton btnText="Delete Configuration" onClick={showDeleteModal} />
           </Col>

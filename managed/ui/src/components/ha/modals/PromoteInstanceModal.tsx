@@ -5,10 +5,12 @@ import * as Yup from 'yup';
 import { useMutation, useQuery } from 'react-query';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
+import { Alert } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { YBLoading } from '../../common/indicators';
-import { YBFormSelect } from '../../common/forms/fields';
+import { YBCheckBox, YBFormSelect } from '../../common/forms/fields';
+import './PromoteInstanceModal.scss';
 
 interface PromoteInstanceModalProps {
   visible: boolean;
@@ -19,14 +21,17 @@ interface PromoteInstanceModalProps {
 
 interface FormValues {
   backupFile: { value: string; label: string } | null;
+  confirmed: boolean;
 }
 
 const INITIAL_VALUES: FormValues = {
-  backupFile: null
+  backupFile: null,
+  confirmed: false
 };
 
 const validationSchema = Yup.object().shape({
-  backupFile: Yup.object().nullable().required('Backup file is required')
+  backupFile: Yup.object().nullable().required('Backup file is required'),
+  confirmed: Yup.boolean().oneOf([true])
 });
 
 const mapFileName = (value: string): FormValues['backupFile'] => {
@@ -52,7 +57,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
       onSuccess: (data) => {
         // pre-select first backup file from the list
         if (Array.isArray(data) && data.length) {
-          formik.current.setValues({ backupFile: mapFileName(data[0]) });
+          formik.current.setFieldValue('backupFile', mapFileName(data[0]));
         }
       }
     }
@@ -91,6 +96,9 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
         title="Make Active"
         onHide={closeModal}
         onFormSubmit={submitForm}
+        footerAccessory={
+          <Field name="confirmed" component={YBCheckBox} label="Confirm promotion" />
+        }
         render={(formikProps: FormikProps<FormValues>) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
@@ -99,7 +107,11 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
             return <YBLoading />;
           } else {
             return (
-              <>
+              <div className="ha-promote-instance-modal">
+                <Alert bsStyle="warning">
+                  Note: promotion will replace all existing data on this platform instance with the data from the selected backup.
+                  After promotion succeeds you will need to re-sign in with the credentials of the previously active platform instance.
+                </Alert>
                 <Field
                   name="backupFile"
                   component={YBFormSelect}
@@ -107,10 +119,8 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
                   label="Select the backup to restore from"
                   isSearchable
                 />
-                <div>
-                  Note: once the promotion succeeded you'll need to re-login with the credentials of the previously active platform.
-                </div>
-              </>
+
+              </div>
             );
           }
         }}

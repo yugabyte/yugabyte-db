@@ -1,15 +1,24 @@
 @import '../../../_style/colors';
 
 .standby-instance-overlay {
-  position: fixed;
-  left: 110px;
+  position: absolute;
+  left: $YB_SIDEBAR_WIDTH;
   right: 0;
-  top: 0;
-  bottom: 0;
+  top: $YB_HEADER_HEIGHT;
+  bottom: $YB_FOOTER_HEIGHT;
   background-color: $YB_TEXT_COLOR;
   opacity: 0.75;
-  z-index: 9999;
+  z-index: 1030;
   backdrop-filter: blur(5px);
+}
+
+.standby-instance-text {
+  z-index: 1030;
+  left: $YB_SIDEBAR_WIDTH;
+  top: $YB_HEADER_HEIGHT;
+  width: calc(100% - #{$YB_SIDEBAR_WIDTH});
+  height: calc(100% - #{$YB_HEADER_HEIGHT} - #{$YB_FOOTER_HEIGHT});
+  position: fixed;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -2,6 +2,8 @@
 
 @import '../../../_style/colors.scss';
 
+$padding: 30px;
+
 .detail-label-small {
   margin: 0 0 12px 0px;
   color: $YB_DARK_GRAY;
@@ -105,7 +107,7 @@
   position: fixed;
   z-index: 1031;
   top: 8px;
-  left: 140px;
+  left: $YB_SIDEBAR_WIDTH + $padding;
 
   em {
     font-style: normal;
@@ -209,7 +211,7 @@
     }
   }
   > .tab-content {
-    padding: 30px;
+    padding: $padding;
     background-color: transparent;
     border: none;
     box-shadow: none;
@@ -236,8 +238,8 @@
 .page-action-buttons {
   position: absolute;
   z-index: 1021;
-  top: 60px;
-  right: 30px;
+  top: $YB_HEADER_HEIGHT;
+  right: $padding;
   padding: 0;
   padding-top: 9px;
   width: auto;
@@ -264,7 +266,7 @@
   z-index: 1031;
   white-space: nowrap;
   top: 8px;
-  left: 140px;
+  left: $YB_SIDEBAR_WIDTH + $padding;
   margin-bottom: 0;
 
   @media (max-width: 991px) {
@@ -276,7 +278,7 @@
   }
 }
 .sidebar-hidden .content-title {
-  left: 30px;
+  left: $padding;
 }
 
 h2 {

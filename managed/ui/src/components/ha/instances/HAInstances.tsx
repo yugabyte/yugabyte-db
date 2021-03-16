@@ -28,16 +28,14 @@ const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement
 const renderLastBackup = (cell: HAPlatformInstance['last_backup']): string =>
   cell ? moment(cell).format('lll') : 'n/a';
 
-const tableOptions: Options = {
-  defaultSortName: 'address',
-  defaultSortOrder: 'asc'
-};
-
 export const HAInstances: FC = () => {
   const [isAddInstancesModalVisible, setAddInstancesModalVisible] = useState(false);
   const [instanceToDelete, setInstanceToDelete] = useState<string>();
   const [instanceToPromote, setInstanceToPromote] = useState<string>();
-  const { config, error, isNoHAConfigExists, isLoading } = useLoadHAConfiguration(false);
+  const { config, error, isNoHAConfigExists, isLoading } = useLoadHAConfiguration({
+    loadSchedule: false,
+    autoRefresh: true
+  });
 
   const showAddInstancesModal = () => setAddInstancesModalVisible(true);
   const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
@@ -93,7 +91,7 @@ export const HAInstances: FC = () => {
   }
 
   if (config && currentInstance) {
-    const sortedInstances = _.sortBy(config.instances, [item => !item.is_leader, 'address']);
+    const sortedInstances = _.sortBy(config.instances, [(item) => !item.is_leader, 'address']);
     return (
       <Grid fluid className="ha-instances">
         <AddStandbyInstanceModal
@@ -134,7 +132,7 @@ export const HAInstances: FC = () => {
         </Row>
         <Row>
           <Col xs={12}>
-            <BootstrapTable data={sortedInstances} options={tableOptions}>
+            <BootstrapTable data={sortedInstances}>
               <TableHeaderColumn dataField="uuid" isKey hidden />
               <TableHeaderColumn
                 dataField="address"
