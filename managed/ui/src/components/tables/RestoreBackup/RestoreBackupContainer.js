@@ -53,7 +53,7 @@ function mapStateToProps(state, ownProps) {
      * is a string while the other options, when selected, return an object
      * with the format { label: <display>, value: <internal> }
      */
-    initialFormValues.restoreToUniverseUUID = universeUUID;
+    initialFormValues.restoreToUniverseUUID = { value: universeUUID, label: currentUniverse.data.name };
 
     initialFormValues.restoreToTableName = tableName;
     initialFormValues.restoreTableNameList = tableNameList;
@@ -65,7 +65,7 @@ function mapStateToProps(state, ownProps) {
     initialFormValues.backupList = backupList;
   } else {
     if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
-      initialFormValues.restoreToUniverseUUID = currentUniverse.data.universeUUID;
+      initialFormValues.restoreToUniverseUUID = { value: currentUniverse.data.universeUUID, label: currentUniverse.data.name };
     }
     if (isNonEmptyArray(storageConfigs)) {
       initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
