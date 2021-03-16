@@ -23,13 +23,21 @@
         "editUniverse": "hidden",
         "manageEncryption": "hidden",
         "restartUniverse": "hidden",
-        "deleteUniverse": "hidden"
+        "deleteUniverse": "hidden",
+        "costs": "hidden"
+      },
+      "replication": "hidden",
+      "health": {
+        "alerts": "hidden"
       },
       "pageActions": "hidden",
-      "universeStatus": "hidden"
+      "universeStatus": "hidden",
+      "backups": {
+        "storageLocation": "hidden"
+      }
     },
     "proxyIp": "hidden",
-    "tableActions": "disabled",
+    "tableActions": "hidden",
     "backup": "hidden"
   }
 }

@@ -49,7 +49,7 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 SSH_RETRY_LIMIT = 20
 DEFAULT_SSH_PORT = 22
 # Timeout in seconds.
-SSH_TIMEOUT = 15
+SSH_TIMEOUT = 45
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
@@ -58,6 +58,13 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+
+# TTL in seconds for how long DNS records will be cached.
+DNS_RECORD_SET_TTL = 5
+
+# Minimum required resources on a VM.
+MIN_MEM_SIZE_GB = 2
+MIN_NUM_CORES = 2
 
 
 class ReleasePackage(object):
@@ -448,9 +455,9 @@ def format_rsa_key(key, public_key):
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
     if public_key:
-        return str(key.publickey().exportKey("OpenSSH"))
+        return key.publickey().exportKey("OpenSSH").decode('utf-8')
     else:
-        return str(key.exportKey("PEM"))
+        return key.exportKey("PEM").decode('utf-8')
 
 
 def validated_key_file(key_file):
@@ -602,7 +609,7 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
 
         _, stdout, stderr = ssh_client.exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
-        stdout = stdout.read()
+        stdout = stdout.read().decode('utf-8')
         return len(stderr.readlines()) == 0 and all(c in stdout for c in cronjobs)
     except (paramiko.ssh_exception.NoValidConnectionsError,
             paramiko.ssh_exception.AuthenticationException,

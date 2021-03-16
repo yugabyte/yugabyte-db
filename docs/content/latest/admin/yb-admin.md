@@ -45,14 +45,14 @@ $ ./bin/yb-admin --help
 - [Table](#table-commands)
 - [Backup and snapshot](#backup-and-snapshot-commands)
 - [Deployment topology](#deployment-topology-commands)
-  - [Multi-zone and multi-region](#multi-zone-and-multi-region-commands)
-  - [Master-follower](#master-follower-commands)
-  - [Read replica](#read-replica-commands)
+    - [Multi-zone and multi-region](#multi-zone-and-multi-region-deployment-commands)
+    - [Master-follower](#master-follower-deployment-commands)
+    - [Read replica](#read-replica-deployment-commands)
+- [Security](#security-commands)
+    - [Encryption at rest](#encryption-at-rest-commands)
 - [Change data capture (CDC)](#change-data-capture-cdc-commands)
 - [Decommissioning](#decommissioning-commands)
 - [Rebalancing](#rebalancing-commands)
-- [Security](#security-commands)
-  - [Encryption at rest](#encryption-at-rest-commands)
 
 ---
 
@@ -677,11 +677,11 @@ yb-admin -master_addresses <master-addresses> delete_snapshot <snapshot_id>
 
 ---
 
-### Deployment topology commands
+<a name="deployment-topology-commands"></a>
 
-#### Multi-zone and multi-region commands
+### Multi-zone and multi-region deployment commands
 
-##### modify_placement_info
+#### modify_placement_info
 
 Modifies the placement information (cloud, region, and zone) for a deployment.
 
@@ -710,7 +710,7 @@ You can verify the new placement information by running the following `curl` com
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-##### set_preferred_zones
+#### set_preferred_zones
 
 Sets the preferred availability zones (AZs) and regions.
 
@@ -829,9 +829,9 @@ replication_info {
 }
 ```
 
-#### Master-follower commands
+### Master-follower deployment commands
 
-##### setup_universe_replication
+#### setup_universe_replication
 
 **Syntax**
 
@@ -855,7 +855,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
 
-##### alter_universe_replication
+#### alter_universe_replication
 
 Changes the universe replication for the specified producer universe. Use this command to:
 
@@ -876,7 +876,7 @@ yb-admin master_addresses <master-addresses> alter_universe_replication <produce
 - remove_table: Subcommand to remove a table.
 - *table_id*: The identifier (ID) of the table.
 
-##### delete_universe_replication <producer_universe_uuid>
+#### delete_universe_replication <producer_universe_uuid>
 
 Deletes universe replication for the specified producer universe.
 
@@ -889,7 +889,7 @@ yb-admin -master_addresses <master-addresses> delete_universe_replication <produ
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *producer_universe_uuid*: The UUID of the producer universe.
 
-##### set_universe_replication_enabled
+#### set_universe_replication_enabled
 
 Sets the universe replication to be enabled or disabled.
 
@@ -903,9 +903,9 @@ yb-admin -master_addresses <master-addresses> set_universe_replication_enabled <
 - *producer_universe_uuid*: The UUID of the producer universe.
 - `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
-#### Read replica commands
+### Read replica deployment commands
 
-##### add_read_replica_placement_info
+#### add_read_replica_placement_info
 
 Add a read replica cluster to the master configuration.
 
@@ -920,7 +920,7 @@ yb-admin -master_addresses <master-addresses> add_read_replica_placement_info <p
 - *replication_factor*: The number of replicas.
 - *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
-##### modify_read_replica_placement_info
+#### modify_read_replica_placement_info
 
 **Syntax**
 
@@ -933,7 +933,7 @@ yb-admin -master_addresses <master-addresses> modify_read_replica_placement_info
 - *replication_factor*: The number of replicas.
 - *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
-##### delete_read_replica_placement_info
+#### delete_read_replica_placement_info
 
 Delete the read replica.
 
@@ -1009,7 +1009,7 @@ Disables the in-memory encryption at rest for newly-written data files.
 yb-admin -master_addresses <master-addresses> disable_encryption_in_memory
 ```
 
-##### is_encryption_enabled
+#### is_encryption_enabled
 
 Checks if cluster-wide encryption is enabled.
 

@@ -65,6 +65,10 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
+    if (!provider.code.equals("onprem")) {
+      commandArgs.add("--check_clock");
+    }
+
     // Start with a copy of the cloud config env vars.
     HashMap<String, String> extraEnvVars = provider == null ?
       new HashMap<>() : new HashMap<>(provider.getConfig());

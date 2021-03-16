@@ -15,18 +15,25 @@
 // Responsible for logging audit records in YCQL.
 // Audit is controlled through gflags. If the audit is not enabled, logging methods return
 // immediately without imposing overhead.
+// This class should be used for a single request at a time, as a part of (C)QLProcessor internals,
+// and thus isn't thread-safe.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
 #define YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
 
 #include "yb/common/common.pb.h"
-#include "yb/yql/cql/cqlserver/cql_message.h"
+#include "yb/yql/cql/ql/ql_fwd.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 namespace yb {
 namespace ql {
 namespace audit {
+
+// Whether the statement being logged is being PREPARE'd rather than executed.
+YB_STRONGLY_TYPED_BOOL(IsPrepare)
+YB_STRONGLY_TYPED_BOOL(ErrorIsFormatted)
 
 class Type;
 struct LogEntry;
@@ -35,16 +42,10 @@ class AuditLogger {
  public:
   explicit AuditLogger(const QLEnv& ql_env);
 
-  // Sets a connection for the current (new) user operation, resetting the rescheduled mark.
+  // Sets a connection for the current (new) user operation.
+  // Not called for internal requests, resulting in them not being audited.
   void SetConnection(const std::shared_ptr<const rpc::Connection>& conn) {
     conn_ = conn;
-    rescheduled_ = false;
-  }
-
-  // Marks a current execution as being rescheduled. This will suppress non-erroneous statement
-  // execution logging, and is reset by SetConnection().
-  void MarkRescheduled() {
-    rescheduled_ = true;
   }
 
   // Enters the batch request mode, should be called when driver-level batch is received.
@@ -54,32 +55,33 @@ class AuditLogger {
   // because in that case separate commands might arrive to different tservers.
   //
   // If this returns non-OK status, batch mode isn't activated.
-  CHECKED_STATUS StartBatchRequest(int statements_count);
+  CHECKED_STATUS StartBatchRequest(int statements_count,
+                                   IsRescheduled is_rescheduled);
 
   // Exits the batch request mode. Does nothing outside of a batch request.
   CHECKED_STATUS EndBatchRequest();
 
   // Log the response to a user's authentication request.
-  CHECKED_STATUS LogAuthResponse(const cqlserver::CQLResponse& response);
+  CHECKED_STATUS LogAuthResponse(const CQLResponse& response);
 
   // Log the statement execution start.
   // tnode might be nullptr, in which case this does nothing.
   CHECKED_STATUS LogStatement(const TreeNode* tnode,
                               const std::string& statement,
-                              bool is_prepare);
+                              IsPrepare is_prepare);
 
   // Log the statement analysis/execution failure.
   // tnode might be nullptr, in which case this does nothing.
   CHECKED_STATUS LogStatementError(const TreeNode* tnode,
                                    const std::string& statement,
                                    const Status& error_status,
-                                   bool error_is_formatted);
+                                   ErrorIsFormatted error_is_formatted);
 
   // Log a general statement processing failure.
   // We should only use this directly when the parse tree is not present.
   CHECKED_STATUS LogStatementError(const std::string& statement,
                                    const Status& error_status,
-                                   bool error_is_formatted);
+                                   ErrorIsFormatted error_is_formatted);
 
  private:
   using GflagName = std::string;
@@ -87,16 +89,12 @@ class AuditLogger {
   using GflagListValue = std::unordered_set<std::string>;
   using GflagsCache = std::unordered_map<GflagName, std::pair<GflagStringValue, GflagListValue>>;
 
-  // Whether the execution is being retried.
-  std::atomic<bool> rescheduled_{false};
-
   const QLEnv& ql_env_;
 
-  // Currently audited connection.
+  // Currently audited connection, if any.
   std::shared_ptr<const rpc::Connection> conn_;
 
   // Empty string means not in a batch processing mode.
-  // TODO(alex,mihnea): Look into potential races on this as well, see GH issue #5922.
   std::string batch_id_;
 
   // Cache of parsed gflags, to avoid re-parsing unchanged values.

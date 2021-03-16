@@ -56,7 +56,7 @@ void StateWithTablets::InitTablets(
   CheckCompleteness();
 }
 
-Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() {
+Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
   SysSnapshotEntryPB::State result = initial_state_;
   bool has_initial = false;
   for (const auto& tablet : tablets_) {
@@ -76,8 +76,17 @@ Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() {
   return has_initial ? initial_state_ : result;
 }
 
-Result<bool> StateWithTablets::Complete() {
+Result<bool> StateWithTablets::Complete() const {
   return VERIFY_RESULT(AggregatedState()) != initial_state_;
+}
+
+Status StateWithTablets::AnyFailure() const {
+  for (const auto& tablet : tablets_) {
+    if (tablet.state == SysSnapshotEntryPB::FAILED) {
+      return tablet.last_error;
+    }
+  }
+  return Status::OK();
 }
 
 bool StateWithTablets::AllTabletsDone() const {
