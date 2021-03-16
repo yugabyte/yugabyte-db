@@ -68,7 +68,7 @@ This page details how to configure Kubernetes for YugabyteDB universes using the
 
 ### Kubernetes
 
-If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide in the Yugabyte Platform console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+If you plan to run YugabyteDB nodes on Kubernetes, you'll need to generate a `kubeconfig` file, which Yugabyte Platform will use to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
 
 ## Configure Kubernetes credentials
 
