@@ -109,6 +109,11 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
                    int indexed_column_index = 1,
                    bool use_mangled_names = true);
 
+  void PrepareIndex(Transactional transactional,
+                    const YBTableName& index_name,
+                    int indexed_column_index = 1,
+                    bool use_mangled_names = true);
+
   Result<YBqlWriteOpPtr> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
       const WriteOpType op_type = WriteOpType::INSERT,
