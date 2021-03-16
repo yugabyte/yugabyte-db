@@ -37,6 +37,8 @@ import {
   isKubernetesUniverse,
   getPlacementCloud
 } from '../../../utils/UniverseUtils';
+import pluralize from 'pluralize';
+import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -1068,6 +1070,18 @@ export default class ClusterFields extends Component {
     return isFieldReadOnly || !enableNodeToNodeEncrypt;
   }
 
+  instanceTypeGroupsToOptions = (groups) => {
+    return Object.entries(groups).map(([group, list]) => (
+      <optgroup label={`${group} type instances`} key={group}>
+        {list.map(item => (
+          <option key={item.instanceTypeCode} value={item.instanceTypeCode}>
+            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+          </option>
+        ))}
+      </optgroup>
+    ));
+  };
+
   render() {
     const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
     const { hasInstanceTypeChanged } = this.state;
@@ -1493,9 +1507,7 @@ export default class ClusterFields extends Component {
         isNonEmptyArray(this.props.cloud.instanceTypes.data) &&
         this.props.cloud.instanceTypes.data.reduce(function (groups, it) {
           const prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf('.'));
-          groups[prefix]
-            ? groups[prefix].push(it.instanceTypeCode)
-            : (groups[prefix] = [it.instanceTypeCode]);
+          groups[prefix] ? groups[prefix].push(it) : (groups[prefix] = [it]);
           return groups;
         }, {});
       if (isNonEmptyObject(optGroups)) {
@@ -1505,14 +1517,51 @@ export default class ClusterFields extends Component {
               {optGroups[key]
                 .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
                 .map((item, arrIdx) => (
-                  <option key={idx + arrIdx} value={item}>
-                    {item}
+                  <option key={idx + arrIdx} value={item.instanceTypeCode}>
+                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
                   </option>
                 ))}
             </optgroup>
           );
         });
       }
+    } else if (currentProviderCode === 'gcp') {
+      const groups = {};
+      const list = cloud.instanceTypes?.data || [];
+      _.sortBy(list, 'instanceTypeCode');
+
+      list.forEach(item => {
+        const prefix = item.instanceTypeCode.split('-')[0].toUpperCase();
+        groups[prefix] = groups[prefix] || [];
+        groups[prefix].push(item);
+      });
+
+      universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
+    } else if (currentProviderCode === 'azu') {
+      const groups = {};
+      // clone as we'll mutate items by adding "processed" prop
+      const list = _.cloneDeep(cloud.instanceTypes?.data) || [];
+      _.sortBy(list, 'instanceTypeCode');
+
+      for (const [group, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
+        list.forEach(item => {
+          if (regexp.test(item.instanceTypeCode)) {
+            groups[group] = groups[group] || [];
+            groups[group].push(item);
+            item.processed = true;
+          }
+        });
+      }
+
+      // catch uncategorized instance types, if any
+      list.forEach(item => {
+        if (!item.processed) {
+          groups['Other'] = groups['Other'] || [];
+          groups['Other'].push(item);
+        }
+      });
+
+      universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
     } else if (currentProviderCode === 'kubernetes') {
       universeInstanceTypeList =
         cloud.instanceTypes.data &&
