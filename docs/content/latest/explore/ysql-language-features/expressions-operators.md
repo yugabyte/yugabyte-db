@@ -66,21 +66,38 @@ The following table lists comparison operators that you can use in YSQL.
 | <>       | Not equal                | a <> 5  |
 | !=       | Not equal                | a != 5  |
 
-The following examples show how to use comparison operators in a `SELECT` statement:
+Suppose you work with a database that includes the following table populated with data:
 
 ```sql
-SELECT 1+2;
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text,
+  salary integer
+);
+
+INSERT INTO employees (employee_no, name, department, salary) 
+  VALUES 	
+  (1221, 'John Smith', 'Marketing', 50000),
+  (1222, 'Bette Davis', 'Sales', 55000),
+  (1223, 'Lucille Ball', 'Operations', 70000),
+  (1224, 'John Zimmerman', 'Sales', 60000); 
 ```
+
+The following example shows a `SELECT` statement that returns employees whose employee numbers are greater than 1222:
 
 ```sql
-SELECT 6/2;
+SELECT * FROM employees WHERE employee_no > 1222;
 ```
 
-```sql
-SELECT ||/ 27.0;
-```
+The following is the output produced by the preceding example:
 
-### 
+```
+employee_no | name             | department   | salary
+------------+------------------+--------------+--------------
+1223        | Lucille Ball     | Operations   | 70000
+1224        | John Zimmerman   | Sales        | 60000
+```
 
 ### Logical Operators
 
@@ -91,6 +108,20 @@ The following table lists logical operators that you can use in YSQL.
 | AND      | Allows the existence of multiple conditions in a `WHERE` clause. |
 | NOT      | Negates the meaning of another operator. For example, `NOT IN`, `NOT BETWEEN`. |
 | OR       | Combines multiple conditions in a `WHERE` clause.            |
+
+The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose employee numbers are greater than or equal to 1222 and salary is greater than or equal to 70000:
+
+```sql
+SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
+```
+
+The following is the output produced by the preceding example:
+
+```
+employee_no | name             | department   | salary
+------------+------------------+--------------+--------------
+1223        | Lucille Ball     | Operations   | 70000
+```
 
 ### Bitwise Operators
 
@@ -107,219 +138,79 @@ The following table lists bitwise operators that you can use in YSQL.
 
 Bitwise operators can only be applied to integral data types.
 
-
-
-
-
 ## Expressions
 
-Creating a trigger in YSQL is a two-step process: you start by creating a trigger function via the `CREATE FUNCTION` statement, and then you bind the trigger function to a table using the `CREATE TRIGGER` statement.
+An expression combines values, operators, and YSQL functions that evaluate to a value.
 
-The `CREATE FUNCTION` statement has the following syntax:
+Typical YSQL expressions are similar to formulas. The following types of expressions are supported:
 
-```sql
-CREATE FUNCTION trigger_function() 
-RETURNS TRIGGER LANGUAGE PLPGSQL
-AS $$
-BEGIN
-   -- ...
-END;
-$$
-```
+### Boolean Expressions
 
-*trigger_function* obtains information about the environment that is invoking it via a container populated with local variables.
+Boolean expressions retrieve data by matching a single value. The expression is included in the `WHERE` clause.
 
-The `CREATE TRIGGER` statement has the following syntax:
+The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose salary is 60000:
 
 ```sql
-CREATE TRIGGER tr_name 
-{BEFORE | AFTER} { event } 
-ON tbl_name [FOR [EACH] { ROW | STATEMENT }]
-       EXECUTE PROCEDURE trigger_function
-```
-
-The trigger *tr_name* fires before or after *event* which can be set to `INSERT` , `DELETE`, `UPDATE`, or `TRUNCATE`. *tbl_name* represents the table associated with the trigger. If you use the `FOR EACH ROW` clause, the scope of the trigger would be one row. If you use the `FOR EACH STATEMENT` clause, the trigger would be fired for each statement. *trigger_function* represents the procedure to be performed when the trigger is fired.
-
-Suppose you work with a database that includes the following table populated with data:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text
-);
-
-INSERT INTO employees (employee_no, name, department) 
-  VALUES 	
-  (1221, 'John Smith', 'Marketing'),
-  (1222, 'Bette Davis', 'Sales'),
-  (1223, 'Lucille Ball', 'Operations'),
-  (1224, 'John Zimmerman', 'Sales'); 
-```
-
-If an employee is transferred to a different department, the change is recorded in a table called `employee_dept_changes`, as shown in the following example:
-
-```sql
-CREATE TABLE employee_dept_changes (
-  employee_no integer NOT NULL,
-  name text,
-  department text,
-  changed_on TIMESTAMP(6) NOT NULL
-);
-```
-
-To start recording changes, you create a function called `record_dept_changes`, as shown in the following example:
-
-```sql
-CREATE OR REPLACE FUNCTION record_dept_changes() 
-RETURNS TRIGGER LANGUAGE PLPGSQL
-AS
-$$
-BEGIN
-  IF NEW.department <> OLD.department THEN
-    INSERT INTO employee_dept_changes(employee_no, name, department, changed_on)
-    VALUES(OLD.employee_no, OLD.name, OLD.department, now());
-  END IF;
-
-  RETURN NEW;
-END;
-$$
-```
-
-The preceding function inserts the old department along with the rest of the employee data into the `employee_dept_changes` table and adds the time of change if the employee's department changes.
-
-The following example demonstrates how to bind the trigger function to the `employees` table: 
-
-```sql
-CREATE TRIGGER dept_changes
-  BEFORE UPDATE
-  ON employees
-  FOR EACH ROW
-  EXECUTE PROCEDURE record_dept_changes();
-```
-
-The trigger name in the preceding example is `dept_changes`. The trigger function is automatically invoked before the value of the `department` column is updated. 
-
-The following example updates the department for one of the employees from the `employees` table from Sales to Marketing: 
-
-```sql
-UPDATE employees
-SET department = 'Marketing'
-WHERE employee_no = 1222;
+SELECT * FROM employees WHERE salary = 60000;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-employee_no | name                | department
-------------+---------------------+------------------
-1221        | John Smith          | Marketing
-1222        | Bette Davis         | Marketing
-1223        | Lucille Ball        | Operations
-1224        | John Zimmerman      | Sales
+employee_no | name             | department   | salary
+------------+------------------+--------------+--------------
+1224        | John Zimmerman   | Sales        | 60000
 ```
 
-The following example retrieves all data from the `employee_dept_changes` table: 
+### Numeric Expressions
+
+The purpose of numeric expressions is to perform a mathematical operation on a query.
+
+The following example shows how to use a simple numerical expression in a `SELECT` statement:
 
 ```sql
-SELECT * FROM employee_dept_changes;
+SELECT (10 + 5) AS ADDITION;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
-employee_no | name            | department   | changed_on
-------------+-----------------+--------------+----------------------------
-1222        | Bette Davis     | Marketing    | 2021-02-11 16:12:09.248823
+addition
+--------------
+15
 ```
 
-The `employee_dept_changes` table is populated with a row containing the employee whose department has changed, as well as the date and time of the change.
+You can also use predefined functions such as `avg()`, `sum()`, or `count()` to perform aggregate data calculations on a table or a column.
 
-## Deleting Triggers
-
-The `DROP TRIGGER` statement allows you to delete the trigger from a table.
-
-The `DROP TRIGGER` statement has the following syntax:
+The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns the number of employee rows:
 
 ```sql
-DROP TRIGGER [IF EXISTS] tr_name 
-  ON tbl_name [ CASCADE | RESTRICT ];
+SELECT count(*) AS "rows" FROM employees;
 ```
 
-*tr_name* represents the trigger to be deleted if it exists. If you try to delete a non-existing trigger without using the `IF EXISTS` statement, the `DROP TRIGGER` statement results in an error, whereas using `IF EXISTS` to delete a non-existing trigger results in a notice. *tbl_name* represents the table associated with the trigger. The `CASCADE` option allows you to automatically delete objects that depend on the trigger and the `RESTRICT` option (default) allows you to refuse to delete the trigger if it has dependent objects.   
+The following is the output produced by the preceding example:
 
-The following example demonstrates how to delete the `dept_changes` trigger used in the examples from [Creating Triggers](#creating-triggers):
+```
+rows
+-----------
+4
+```
+
+### Date Expressions
+
+Date expressions retrieve the current system date and time, as shown in the following  `SELECT` statement example:
 
 ```sql
-DROP TRIGGER dept_changes ON employees;
+SELECT CURRENT_TIMESTAMP;
 ```
 
-## Enabling and Disabling Triggers
+The following is the output produced by the preceding example:
 
-You can disable one or more triggers associated with a table via the `ALTER TABLE DISABLE TRIGGER` statement that has the following syntax:
-
-```sql
-ALTER TABLE tbl_name
-  DISABLE TRIGGER tr_name |  ALL;
+```
+now
+--------------
+2021-03-15 14:38:28.078+05:30
 ```
 
-*tbl_name* represents the table whose trigger represented by *tr_name* you are disabling. Using the `ALL` option allows you to disable all triggers associated with the table. A disabled trigger, even though it exists in the database, cannot fire on an event associated with this trigger.
-
-The following example shows how to disable a trigger on the `employees` table:
-
-```sql
-ALTER TABLE employees
-  DISABLE TRIGGER dept_changes;
-```
-
-The following example shows how to disable all triggers associated with the `employees` table:
-
-```sql
-ALTER TABLE employees
-  DISABLE TRIGGER ALL;
-```
-
-You can enable one or more previously disabled triggers associated with a table via the `ALTER TABLE ENABLE TRIGGER` statement that has the following syntax:
-
-```sql
-ALTER TABLE tbl_name
-  ENABLE TRIGGER tr_name |  ALL;
-```
-
-*tbl_name* represents the table whose trigger represented by *tr_name* you are enabling. Using the `ALL` option allows you to enable all triggers associated with the table.
-
-The following example shows how to enable a trigger on the `employees` table:
-
-```sql
-ALTER TABLE employees
-  ENABLE TRIGGER dept_changes;
-```
-
-The following example shows how to enable all triggers associated with the `employees` table:
-
-```sql
-ALTER TABLE employees
-  ENABLE TRIGGER ALL;
-```
-
-## Using Event Triggers
-
-The main difference between regular triggers and event triggers is that the former capture data manipulation events on a single table, whereas the latter can capture data definition events on a database. 
-
-The `CREATE EVENT TRIGGER` statement has he following syntax:
-
-```sql
-CREATE EVENT TRIGGER tr_name ON event
-  [ WHEN filter_variable IN (filter_value [, ... ]) [ AND ... ] ]
-  EXECUTE PROCEDURE function_name();
-```
-
-*tr_name*, which is unique in the database, represents the new trigger. *event* represents the event that triggers a call to the function  *function_name* whose return type is `event_trigger` (optional). You can define more than one trigger for the same event, in which case the triggers fire in alphabetical order based on the name of the trigger. If a `WHEN` condition is included in the `CREATE EVENT TRIGGER` statement, then the trigger is fired for specific commands. *filter_variable* needs to be set to`TAG`, as this is the only supported variable, and *filter_value* represents a list of values for *filter_variable*.
-
-The following example is based on examples from [Creating Triggers](#creating-triggers) and shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
-
-```sql
-CREATE EVENT TRIGGER dept_changes ON sql_drop
-  EXECUTE PROCEDURE record_dept_changes();
-```
+ You can use these expressions during data manipulation.
 
