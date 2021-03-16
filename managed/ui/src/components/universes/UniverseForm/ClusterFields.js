@@ -77,6 +77,8 @@ const DEFAULT_STORAGE_TYPES = {
   AZU: 'Premium_LRS'
 };
 
+const FORBIDDEN_GFLAG_KEYS = new Set(['NAME']);
+
 export const EXPOSING_SERVICE_STATE_TYPES = {
   None: 'NONE',
   Exposed: 'EXPOSED',
@@ -148,6 +150,7 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.validateUserTags = this.validateUserTags.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -1057,6 +1060,13 @@ export default class ClusterFields extends Component {
     }
   }
 
+  validateUserTags(value) {
+    if (value.length) {
+      const forbiddenEntry = value.find(x => FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase()));
+      return forbiddenEntry ? `User tag "${forbiddenEntry.name}" is not allowed.` : undefined;
+    }
+  }
+
   /**
    * This method is used to disable the ClientToNodeTLS field initially.
    * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
@@ -1691,6 +1701,7 @@ export default class ClusterFields extends Component {
                 flagType="tag"
                 operationType="Create"
                 isReadOnly={false}
+                validate={this.validateUserTags}
               />
             </Col>
           </Row>

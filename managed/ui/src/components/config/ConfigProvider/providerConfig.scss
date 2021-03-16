@@ -116,10 +116,10 @@
       }
     }
     &.has-error {
-      border: 1px solid desaturate(#a94442, 20%);
+      border: 1px solid desaturate($YB_ERROR_TEXT_COLOR, 20%);
     }
     & + .standart-error {
-      color: #a94442;
+      color: $YB_ERROR_TEXT_COLOR;
       display: block;
       margin-top: 5px;
       margin-bottom: 10px;
