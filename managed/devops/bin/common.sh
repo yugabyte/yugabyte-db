@@ -47,120 +47,20 @@ regex_from_list() {
   echo "^($regex)$"
 }
 
-# This just logs to stderr.
-log() {
-  BEGIN_COLOR='\033[0;32m'
-  END_COLOR='\033[0m'
-  GREEN='\033[0;32m'
-  RED='\033[0;31m'
-
-  case ${_log_level:-info} in
-    error)
-      BEGIN_COLOR='\033[0;31m'
-      shift
-      ;;
-    warn)
-      BEGIN_COLOR='\033[0;33m'
-      shift
-      ;;
-  esac
-  echo -e "${BEGIN_COLOR}[$( get_timestamp ) \
-${BASH_SOURCE[1]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]${END_COLOR}" $* >&2
-}
-
-fatal() {
-  log "$@"
-  exit 1
-}
-
-get_timestamp() {
-  date +%Y-%m-%d_%H_%M_%S
-}
-
-check_python_executables() {
-  executables=("$@")
-  for py_executable in "${executables[@]}"; do
-    if which "$py_executable" > /dev/null 2>&1; then
-      PYTHON_EXECUTABLE="$py_executable"
-      return 0
-    fi
-  done
-  return 1
-}
-
-set_python_vars() {
-  # Prioritize python3 over python2.
-  if [ -z "$YB_MANAGED_DEVOPS_USE_PYTHON3" ]; then
-    if check_python_executables "${PYTHON3_EXECUTABLES[@]}"; then
-      YB_MANAGED_DEVOPS_USE_PYTHON3="1"
-    elif check_python_executables "${PYTHON2_EXECUTABLES[@]}"; then
-      YB_MANAGED_DEVOPS_USE_PYTHON3="0"
-    fi
-
-    if [ -z "$PYTHON_EXECUTABLE" ]; then
-      if which python > /dev/null 2>&1; then
-        PYTHON_EXECUTABLE="python"
-        if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
-          YB_MANAGED_DEVOPS_USE_PYTHON3="0"
-        else
-          YB_MANAGED_DEVOPS_USE_PYTHON3="1"
-        fi
-      fi
-    fi
-  else
-    if which python > /dev/null 2>&1; then
-      if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
-        if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
-          PYTHON_EXECUTABLE="python"
-        fi
-      elif [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "1" ]]; then
-        PYTHON_EXECUTABLE="python"
-      fi
-    fi
-
-    if [ -z "$PYTHON_EXECUTABLE" ]; then
-      POSSIBLE_EXECUTABLES="$PYTHON3_EXECUTABLES"
-      if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
-        POSSIBLE_EXECUTABLES="$PYTHON2_EXECUTABLES"
-      fi
-      check_python_executables "${POSSIBLE_EXECUTABLES[@]}"
-    fi
-  fi
-
-  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
-        $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
-    fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
-          "expected 0 or 1"
-  fi
-  if [ -z "$PYTHON_EXECUTABLE" ]; then
-    fatal "Failed to find python executable."
-  fi
-
-  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-    YB_VIRTUALENV_BASENAME=venv
-    REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
-    FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
-    YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
-    YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
-    YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
-  else
-    YB_VIRTUALENV_BASENAME=python_virtual_env
-    REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
-    FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
-    YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
-    YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
-    YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
-  fi
-}
-
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
-readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
-PYTHON_EXECUTABLE=""
-USER_INPUT_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-""}
-YB_MANAGED_DEVOPS_USE_PYTHON3=""
+DEFAULT_USE_PY3_VALUE="1"
+if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
+  DEFAULT_USE_PY3_VALUE="0"
+fi
+
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
+if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
+      $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
+  fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
+        "expected 0 or 1"
+fi
 
 readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
@@ -189,12 +89,22 @@ set +u
 readonly MANAGED_PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
 set -u
 
-YB_VIRTUALENV_BASENAME=venv
-REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
-FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
-YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
-YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
-YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
+# Basename (i.e. name excluding the directory path) of our virtualenv.
+if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
+  readonly YB_VIRTUALENV_BASENAME=venv
+  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
+  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
+else
+  readonly YB_VIRTUALENV_BASENAME=python_virtual_env
+  readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
+  readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
+fi
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
 readonly YBOPS_PACKAGE_NAME=ybops
@@ -215,6 +125,35 @@ log_warn() {
 log_error() {
  local _log_level="error"
  log "$@"
+}
+
+# This just logs to stderr.
+log() {
+  BEGIN_COLOR='\033[0;32m'
+  END_COLOR='\033[0m'
+  GREEN='\033[0;32m'
+  RED='\033[0;31m'
+
+  case ${_log_level:-info} in
+    error)
+      BEGIN_COLOR='\033[0;31m'
+      shift
+      ;;
+    warn)
+      BEGIN_COLOR='\033[0;33m'
+      shift
+      ;;
+  esac
+  echo -e "${BEGIN_COLOR}[$( get_timestamp ) ${BASH_SOURCE[1]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]${END_COLOR}" $* >&2
+}
+
+fatal() {
+  log "$@"
+  exit 1
+}
+
+get_timestamp() {
+  date +%Y-%m-%d_%H_%M_%S
 }
 
 ensure_log_dir_defined() {
@@ -268,7 +207,7 @@ deactivate_virtualenv() {
     return
   fi
 
-  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH=$MANAGED_PYTHONPATH_ORIGINAL
     return
   fi
@@ -306,7 +245,7 @@ activate_virtualenv() {
     return
   fi
 
-  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
     return
   fi
@@ -318,10 +257,6 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-    # Reset python variables after deactivating virtualenv
-    PYTHON_EXECUTABLE=""
-    YB_MANAGED_DEVOPS_USE_PYTHON3=$USER_INPUT_MANAGED_DEVOPS_USE_PYTHON3
-    set_python_vars
 
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
@@ -331,10 +266,10 @@ activate_virtualenv() {
       set -x
       cd "${virtualenv_dir%/*}"
       if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-        "$PYTHON_EXECUTABLE" -m venv "$YB_VIRTUALENV_BASENAME"
+        python3 -m venv "$YB_VIRTUALENV_BASENAME"
       else
         # Assuming that the default python binary is pointing to Python 2.7.
-        "$PYTHON_EXECUTABLE" -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+        python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
       fi
     )
   elif "$is_linux"; then
@@ -431,9 +366,9 @@ verbose_mkdir_p() {
 
 run_pip() {
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-    "$PYTHON_EXECUTABLE" -m pip "$@"
+    pip3 "$@"
   else
-    "$PYTHON_EXECUTABLE" "$(which pip)" "$@"
+    python "$(which pip)" "$@"
   fi
 }
 
@@ -531,7 +466,8 @@ install_ybops_package() {
   fi
   (
     cd "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME"
-    "$PYTHON_EXECUTABLE" setup.py install $user_flag
+    log "Using python: $( which python )"
+    python setup.py install $user_flag
     rm -rf build dist "$YBOPS_PACKAGE_NAME.egg-info"
   )
   virtualenv_aware_log "Installed the ybops package"
@@ -576,7 +512,6 @@ detect_os() {
 # Initialization
 # -------------------------------------------------------------------------------------------------
 
-set_python_vars
 detect_os
 
 #

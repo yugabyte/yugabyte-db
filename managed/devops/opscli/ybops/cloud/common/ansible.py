@@ -126,7 +126,7 @@ class AnsibleProcess(object):
         p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         if print_output:
-            print(stdout.decode('utf-8'))
+            print(stdout)
         EXCEPTION_MSG_FORMAT = ("Playbook run of {} against {} with args {} " +
                                 "failed with return code {} and error '{}'")
         if p.returncode != 0:

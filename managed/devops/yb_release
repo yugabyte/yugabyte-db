@@ -10,15 +10,11 @@
 
 set -e
 
-# Create the python package. Does not create the virtual env to be used later.
 bin/install_python_requirements.sh --create_package --use_dynamic_paths
+bin/install_ansible_requirements.sh --force
 
 export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 . "${BASH_SOURCE%/*}"/bin/common.sh
 activate_virtualenv
-# Create the virtual env.
-bin/install_python_requirements.sh
-bin/install_ansible_requirements.sh --force
-
 "$yb_devops_home"/yb_release.py "$@"
 rm -rf "$YB_PYTHON_MODULES_PACKAGE"
