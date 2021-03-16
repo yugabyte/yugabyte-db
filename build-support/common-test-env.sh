@@ -506,7 +506,9 @@ prepare_for_running_cxx_test() {
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
-  create_test_tmpdir
+  # Ensure we have a TEST_TMPDIR defined and it exists.
+  # If it doesn't exit, we need to make a new one
+  [[ -d "${TEST_TMPDIR:-}" ]] || create_test_tmpdir
   test_log_path="$test_log_path_prefix.log"
 
   # gtest won't overwrite old junit test files, resulting in a build failure
