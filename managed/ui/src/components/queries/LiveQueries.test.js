@@ -1,11 +1,10 @@
 import React from 'react';
 import axios from 'axios';
-import { QueryClient } from 'react-query';
 import { filterBySearchTokens } from './helpers/queriesHelper';
 import { LiveQueries } from './LiveQueries';
 import {
   mockYcqlQueries,
-  mockYsqlQueries,
+  mockLiveYsqlQueries,
   mockKeyMap,
   mockSearchTokens
 } from './helpers/mockQueryData';
@@ -52,9 +51,9 @@ const mockLocation = {
   search: ''
 };
 
-beforeEach(() => {  
+beforeEach(() => {
   const ysqlQueries = {
-    queries: mockYsqlQueries
+    queries: mockLiveYsqlQueries
   };
   const ycqlQueries = {
     queries: mockYcqlQueries
@@ -83,7 +82,7 @@ describe('Live query dashboard tests', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('row')).toHaveLength(2);
       userEvent.click(screen.getByText('YCQL'));
-      expect(screen.getAllByRole('row')).toHaveLength(4);  
+      expect(screen.getAllByRole('row')).toHaveLength(4);
     });
   });
 });

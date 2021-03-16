@@ -1,5 +1,5 @@
-import React from 'react'
-import { render } from '@testing-library/react'
+import React from 'react';
+import { render } from '@testing-library/react';
 import { createStore } from 'redux';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Provider } from 'react-redux';
@@ -18,18 +18,15 @@ const ConnectedComponent = ({ children }) => {
   let store = createStore(rootReducer, {});
   return (
     <Provider store={store}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </Provider>
   );
-}
+};
 
-const customRender = (ui, options) =>
-  render(ui, { wrapper: ConnectedComponent, ...options })
+const customRender = (ui, options) => render(ui, { wrapper: ConnectedComponent, ...options });
 
 // re-export everything
-export * from '@testing-library/react'
+export * from '@testing-library/react';
 
 // override render method
-export { customRender as render }
+export { customRender as render };
