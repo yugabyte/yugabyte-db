@@ -41,6 +41,7 @@
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
@@ -414,9 +415,22 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return is_backfilling_;
   }
 
-  void SetIsBackfilling(bool flag) {
+  CHECKED_STATUS SetIsBackfilling();
+
+  void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
-    is_backfilling_ = flag;
+    is_backfilling_ = false;
+  }
+
+  boost::optional<TabletId> AreAllTabletsRunning() const {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    for (const auto& tabletIt : tablet_map_) {
+      const auto& table = tabletIt.second;
+      if (table->LockForRead()->data().pb.state() != SysTabletsEntryPB::RUNNING) {
+        return table->tablet_id();
+      }
+    }
+    return boost::none;
   }
 
   // Returns true if an "Alter" operation is in-progress.

@@ -2051,10 +2051,16 @@ Status CatalogManager::DoSplitTablet(
                             source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
   }
 
-  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
-
   const auto source_table_lock = source_tablet_info->table()->LockForWrite();
   const auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+  if (source_tablet_info->table()->IsBackfilling()) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Backfill operation in progress, table_id: $0",
+                            source_tablet_info->table()->id());
+  }
+
+  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));

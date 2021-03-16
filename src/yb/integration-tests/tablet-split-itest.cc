@@ -71,6 +71,7 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tablet_split_limit_per_table);
 DECLARE_bool(TEST_pause_before_post_split_compation);
+DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
 
 namespace yb {
 
@@ -226,8 +227,10 @@ class TabletSplitITest : public client::TransactionTestBase<MiniCluster> {
   // overridden if needed to test behaviour of split tablet when its deletion is disabled.
   // If num_replicas_online is 0, uses replication factor.
   void WaitForTabletSplitCompletion(
-      const size_t expected_non_split_tablets, const size_t expected_split_tablets = 0,
-      size_t num_replicas_online = 0);
+      const size_t expected_non_split_tablets,
+      const size_t expected_split_tablets = 0,
+      size_t num_replicas_online = 0,
+      const client::YBTableName& table = client::kTableName);
 
   // Wait for all peers to complete post-split compaction.
   void WaitForTestTableTabletsCompactionFinish(MonoDelta timeout);
@@ -355,8 +358,10 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
 }
 
 void TabletSplitITest::WaitForTabletSplitCompletion(
-    const size_t expected_non_split_tablets, const size_t expected_split_tablets,
-    size_t num_replicas_online) {
+    const size_t expected_non_split_tablets,
+    const size_t expected_split_tablets,
+    size_t num_replicas_online,
+    const client::YBTableName& table) {
   if (num_replicas_online == 0) {
     num_replicas_online = FLAGS_replication_factor;
   }
@@ -380,7 +385,8 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
         if (!tablet || !consensus) {
           break;
         }
-        if (tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        if (tablet->metadata()->table_name() != table.table_name() ||
+            tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
           continue;
         }
         const auto raft_group_state = peer->state();
@@ -422,11 +428,10 @@ void TabletSplitITest::WaitForTabletSplitCompletion(
                 << " leader status: "
                 << AsString(consensus->GetLeaderStatus(/* allow_stale =*/true));
     }
-    LOG(INFO) << "Crashing test to avoid waiting on deadlock. Received error: " << s.ToString();
-    raise(SIGSEGV);
+    LOG(FATAL) << "Crashing test to avoid waiting on deadlock. Received error: " << s.ToString();
   }
 
-  DumpTableLocations(catalog_manager(), client::kTableName);
+  DumpTableLocations(catalog_manager(), table);
 }
 
 void TabletSplitITest::WaitForTestTableTabletsCompactionFinish(MonoDelta timeout) {
@@ -436,10 +441,14 @@ void TabletSplitITest::WaitForTestTableTabletsCompactionFinish(MonoDelta timeout
     if (!list.ok()) {
       return false;
     }
+    VLOG(1) << "Checking Tablets Peers:";
     for (auto peer : list.get()) {
-      if (!peer->tablet_metadata()->has_been_fully_compacted()) {
-          all_fully_compacted = false;
-          break;
+      bool compacted = peer->tablet_metadata()->has_been_fully_compacted();
+      VLOG(1) << peer->tablet_id() << " " << peer->permanent_uuid()
+             << (compacted ? " is compacted" : " is not compacted");
+      if (!compacted) {
+        all_fully_compacted = false;
+        break;
       }
     }
     return all_fully_compacted;
@@ -837,6 +846,85 @@ TEST_F(TabletSplitITest, TestLoadBalancerAndSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compation) = false;
 
   ASSERT_NO_FATALS(WaitForTestTableTabletsCompactionFinish(5s * kTimeMultiplier));
+}
+
+// Start tablet split, create Index to start backfill while split operation in progress
+// and check backfill state.
+TEST_F(TabletSplitITest, TestBackfillDuringSplit) {
+  constexpr auto kNumRows = 10000;
+  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  auto* catalog_mgr = catalog_manager();
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto source_tablet_id = source_tablet_info->id();
+
+  // Send SplitTablet RPC to the tablet leader.
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+
+  int indexed_column_index = 1;
+  const client::YBTableName index_name(
+        YQL_DATABASE_CQL, table_.name().namespace_name(),
+        table_.name().table_name() + '_' +
+          table_.schema().Column(indexed_column_index).name() + "_idx");
+  // Create index while split operation in progress
+  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
+               index_name, indexed_column_index);
+
+  // Check that source table is not backfilling and wait for tablet split completion
+  ASSERT_FALSE(table->IsBackfilling());
+  WaitForTabletSplitCompletion(2);
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
+
+  ASSERT_OK(index_.Open(index_name, client_.get()));
+  ASSERT_OK(WaitFor([&] {
+    auto rows_count = SelectRowsCount(NewSession(), index_);
+    if (!rows_count.ok()) {
+      return false;
+    }
+    return *rows_count == kNumRows;
+  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
+}
+
+// Create Index to start backfill, check split is not working while backfill in progress
+// and check backfill state.
+TEST_F(TabletSplitITest, TestSplitDuringBackfill) {
+  constexpr auto kNumRows = 10000;
+  FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms = 200 * kTimeMultiplier;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  int indexed_column_index = 1;
+  const client::YBTableName index_name(
+        YQL_DATABASE_CQL, table_.name().namespace_name(),
+        table_.name().table_name() + '_' +
+          table_.schema().Column(indexed_column_index).name() + "_idx");
+  // Create index and start backfill
+  PrepareIndex(client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
+               index_name, indexed_column_index);
+
+  auto* catalog_mgr = catalog_manager();
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto source_tablet_id = source_tablet_info->id();
+
+  // Check that source table is backfilling
+  ASSERT_OK(WaitFor([&] {
+    return table->IsBackfilling();
+  }, 30s * kTimeMultiplier, "Waiting for start backfill index"));
+
+  // Send SplitTablet RPC to the tablet leader while backfill in progress
+  ASSERT_NOK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+
+  ASSERT_OK(WaitFor([&] {
+    return !table->IsBackfilling();
+  }, 30s * kTimeMultiplier, "Waiting for backfill index"));
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+  WaitForTabletSplitCompletion(2);
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
 }
 
 // Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock

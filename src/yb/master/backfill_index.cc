@@ -383,14 +383,11 @@ Status MultiStageAlterTable::StartBackfillingData(
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false));
 
-  if (indexed_table->IsBackfilling()) {
-    return STATUS(AlreadyPresent, "Backfill already in progress");
-  }
+  RETURN_NOT_OK(indexed_table->SetIsBackfilling());
 
   TRACE("Starting backfill process");
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_info);
-  indexed_table->SetIsBackfilling(true);
 
   scoped_refptr<NamespaceInfo> ns_info;
   NamespaceIdentifierPB ns_identifier;
@@ -798,7 +795,7 @@ Status BackfillTable::AlterTableStateToSuccess() {
 
   VLOG(1) << __func__ << " done backfill on " << indexed_table_->ToString()
           << " for " << index_table_id;
-  indexed_table_->SetIsBackfilling(false);
+  indexed_table_->ClearIsBackfilling();
   backfill_job_->SetState(MonitoredTaskState::kComplete);
   return ClearCheckpointStateInTablets();
 }
@@ -813,7 +810,7 @@ Status BackfillTable::AlterTableStateToAbort() {
       "INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING. Possible that the "
       "master-leader has changed.");
   master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
-  indexed_table_->SetIsBackfilling(false);
+  indexed_table_->ClearIsBackfilling();
   backfill_job_->SetState(MonitoredTaskState::kFailed);
   return ClearCheckpointStateInTablets();
 }
