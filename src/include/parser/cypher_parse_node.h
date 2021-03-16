@@ -23,7 +23,8 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_node.h"
 
-#define AG_DEFAULT_ALIAS_BASE "_ag_default_alias_"
+#define AGE_DEFAULT_ALIAS_PREFIX "_age_default_alias_"
+#define AGE_DEFAULT_VARNAME_PREFIX "_age_varname_"
 
 typedef struct cypher_parsestate
 {

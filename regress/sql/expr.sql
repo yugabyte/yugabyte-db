@@ -2085,9 +2085,31 @@ SELECT * FROM cypher('order_by', $$
 	ORDER BY u.i DESC
 $$) AS (i agtype);
 
+-- RETURN * and (u)--(v) optional forms
+SELECT create_graph('opt_forms');
+SELECT * FROM cypher('opt_forms', $$CREATE ({i:1})-[:KNOWS]->({i:2})<-[:KNOWS]-({i:3})$$)AS (result agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u) RETURN u$$) AS (result agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u) RETURN *$$) AS (result agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u)--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u)<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u) CREATE (u)-[:edge]->() RETURN *$$) AS (results agtype);
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 agtype, col2 agtype);
+
+-- VLE
+SELECT create_graph('VLE');
+-- should fail
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('VLE', true);
+SELECT * FROM drop_graph('opt_forms', true);
 SELECT * FROM drop_graph('type_coercion', true);
 SELECT * FROM drop_graph('order_by', true);
 SELECT * FROM drop_graph('group_by', true);

@@ -142,6 +142,7 @@ typedef struct cypher_relationship
     char *name;
     char *label;
     Node *props; // map or parameter
+    Node *varlen; // variable length relationships (A_Indices)
     cypher_rel_dir dir;
     int location;
 } cypher_relationship;

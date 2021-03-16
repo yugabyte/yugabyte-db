@@ -167,7 +167,9 @@ void out_cypher_relationship(StringInfo str, const ExtensibleNode *node)
     write_string_field(name);
     write_string_field(label);
     write_node_field(props);
+    write_node_field(varlen);
     write_enum_field(dir, cypher_rel_dir);
+    write_location_field(location);
 }
 
 /*

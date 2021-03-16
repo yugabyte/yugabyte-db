@@ -59,6 +59,25 @@
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
+/*
+ * Variable string names for makeTargetEntry. As they are going to be variable
+ * names that will be hidden from the user, we need to do our best to make sure
+ * they won't be picked by mistake. Additionally, their form needs to be easily
+ * determined as ours. For now, prefix them as follows -
+ *
+ *     #define AGE_VARNAME_SOMETHING AGE_DEFAULT_VARNAME_PREFIX"something"
+ *
+ * We should probably make an automated variable generator, like for aliases,
+ * for this.
+ *
+ * Also, keep these here as nothing outside of this file needs to know these.
+ */
+#define AGE_VARNAME_CREATE_CLAUSE AGE_DEFAULT_VARNAME_PREFIX"create_clause"
+#define AGE_VARNAME_CREATE_NULL_VALUE AGE_DEFAULT_VARNAME_PREFIX"create_null_value"
+#define AGE_VARNAME_DELETE_CLAUSE AGE_DEFAULT_VARNAME_PREFIX"delete_clause"
+#define AGE_VARNAME_ID AGE_DEFAULT_VARNAME_PREFIX"id"
+#define AGE_VARNAME_SET_CLAUSE AGE_DEFAULT_VARNAME_PREFIX"set_clause"
+
 enum transform_entity_type
 {
     ENT_VERTEX = 0x0,
@@ -348,7 +367,7 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
 
     // Create the target entry
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
-                          "cypher_delete_clause", false);
+                          AGE_VARNAME_DELETE_CLAUSE, false);
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
@@ -480,7 +499,7 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     // Create the target entry
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
-                          SET_CLAUSE_FUNCTION_NAME, false);
+                          AGE_VARNAME_SET_CLAUSE, false);
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
@@ -1295,11 +1314,11 @@ static char *get_next_default_alias(cypher_parsestate *cpstate)
 
     sprintf(alias_num, "%d", cpstate->default_alias_num++);
 
-    base_length = strlen(AG_DEFAULT_ALIAS_BASE);
+    base_length = strlen(AGE_DEFAULT_ALIAS_PREFIX);
 
     alias = palloc0(sizeof(char) * (12 + base_length));
 
-    strncat(alias, AG_DEFAULT_ALIAS_BASE, base_length);
+    strncat(alias, AGE_DEFAULT_ALIAS_PREFIX, base_length);
 
     strncat(alias + base_length, alias_num, 12);
 
@@ -2051,6 +2070,14 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
     TargetEntry *te;
     Expr *expr;
 
+    if (rel->varlen != NULL)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("variable length relationships are not supported"),
+                 parser_errposition(pstate, rel->location)));
+    }
+
     if (!rel->label)
         rel->label = AG_DEFAULT_LABEL_EDGE;
     else
@@ -2389,7 +2416,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 
     null_const = makeNullConst(AGTYPEOID, -1, InvalidOid);
     tle = makeTargetEntry((Expr *)null_const, pstate->p_next_resno++,
-                          "cypher_create_null_value", false);
+                          AGE_VARNAME_CREATE_NULL_VALUE, false);
     query->targetList = lappend(query->targetList, tle);
 
     /*
@@ -2421,7 +2448,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 
     // Create the target entry
     tle = makeTargetEntry(func_expr, pstate->p_next_resno++,
-                          "cypher_create_clause", false);
+                          AGE_VARNAME_CREATE_CLAUSE, false);
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
@@ -2618,7 +2645,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     id = (Expr *)build_column_default(label_relation,
                                       Anum_ag_label_edge_table_id);
 
-    te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
+    te = makeTargetEntry(id, InvalidAttrNumber, AGE_VARNAME_ID, false);
     targetList = lappend(targetList, te);
 
     rel->targetList = targetList;
@@ -2865,7 +2892,7 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
     // id
     id = cypher_create_id_default(cpstate, label_relation, ENT_VERTEX);
 
-    te = makeTargetEntry((Expr *)id, InvalidAttrNumber, "id", false);
+    te = makeTargetEntry((Expr *)id, InvalidAttrNumber, AGE_VARNAME_ID, false);
     rel->targetList = list_make1(te);
     rel->id_var_no = -1;
 

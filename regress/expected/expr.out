@@ -5023,9 +5023,130 @@ $$) AS (i agtype);
  {"key": "value"}
 (9 rows)
 
+-- RETURN * and (u)--(v) optional forms
+SELECT create_graph('opt_forms');
+NOTICE:  graph "opt_forms" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('opt_forms', $$CREATE ({i:1})-[:KNOWS]->({i:2})<-[:KNOWS]-({i:3})$$)AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u) RETURN u$$) AS (result agtype);
+                                result                                
+----------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u) RETURN *$$) AS (result agtype);
+                                result                                
+----------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u)--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+ u | v 
+---+---
+ 2 | 3
+ 3 | 2
+ 1 | 2
+ 2 | 1
+(4 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+ u | v 
+---+---
+ 3 | 2
+ 1 | 2
+(2 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u)<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+ u | v 
+---+---
+ 2 | 3
+ 2 | 1
+(2 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN u.i, v.i$$) AS (u agtype, v agtype);
+ u | v 
+---+---
+ 3 | 1
+ 1 | 3
+(2 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u) CREATE (u)-[:edge]->() RETURN *$$) AS (results agtype);
+                               results                                
+----------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": 2}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 agtype, col2 agtype);
+                                 col1                                 |                                 col2                                 
+----------------------------------------------------------------------+----------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex | {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex | {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex
+(2 rows)
+
+-- VLE
+SELECT create_graph('VLE');
+NOTICE:  graph "VLE" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+ERROR:  variable length relationships are not supported
+LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*]-(v) RETURN u, v$...
+                                                ^
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+ERROR:  variable length relationships are not supported
+LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u...
+                                                ^
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+ERROR:  variable length relationships are not supported
+LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u,...
+                                                ^
+SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
+ERROR:  variable length relationships are not supported
+LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u,...
+                                                ^
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('VLE', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "VLE"._ag_label_vertex
+drop cascades to table "VLE"._ag_label_edge
+NOTICE:  graph "VLE" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('opt_forms', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table opt_forms._ag_label_vertex
+drop cascades to table opt_forms._ag_label_edge
+drop cascades to table opt_forms."KNOWS"
+drop cascades to table opt_forms.edge
+NOTICE:  graph "opt_forms" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('type_coercion', true);
 NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table type_coercion._ag_label_vertex

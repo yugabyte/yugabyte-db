@@ -104,8 +104,9 @@
 %type <integer> order_opt
 
 /* MATCH clause */
-%type <node> match
-
+%type <node> match cypher_varlen_opt cypher_range_opt cypher_range_idx
+             cypher_range_idx_opt
+%type <integer> Iconst
 /* CREATE clause */
 %type <node> create
 
@@ -291,6 +292,71 @@ updating_clause:
     | delete
     ;
 
+cypher_varlen_opt:
+    '*' cypher_range_opt
+        {
+            A_Indices *n = (A_Indices *) $2;
+
+            if (n->lidx == NULL)
+                n->lidx = make_int_const(1, @2);
+
+            if (n->uidx != NULL)
+            {
+                A_Const    *lidx = (A_Const *) n->lidx;
+                A_Const    *uidx = (A_Const *) n->uidx;
+
+                if (lidx->val.val.ival > uidx->val.val.ival)
+                    ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                                    errmsg("invalid range"),
+                                    ag_scanner_errposition(@2, scanner)));
+            }
+            $$ = (Node *) n;
+        }
+    | /* EMPTY */
+        {
+            $$ = NULL;
+        }
+    ;
+
+cypher_range_opt:
+    cypher_range_idx
+        {
+            A_Indices  *n;
+
+            n = makeNode(A_Indices);
+            n->lidx = copyObject($1);
+            n->uidx = $1;
+            $$ = (Node *) n;
+        }
+    | cypher_range_idx_opt DOT_DOT cypher_range_idx_opt
+        {
+            A_Indices  *n;
+
+            n = makeNode(A_Indices);
+            n->lidx = $1;
+            n->uidx = $3;
+            $$ = (Node *) n;
+        }
+    | /* EMPTY */
+        {
+            $$ = (Node *) makeNode(A_Indices);
+        }
+    ;
+
+cypher_range_idx:
+    Iconst
+        {
+            $$ = make_int_const($1, @1);
+        }
+    ;
+
+cypher_range_idx_opt:
+                        cypher_range_idx
+                        | /* EMPTY */                   { $$ = NULL; }
+                ;
+
+Iconst: INTEGER
+
 /*
  * RETURN and WITH clause
  */
@@ -360,6 +426,23 @@ return_item:
             n->location = @1;
 
             $$ = (Node *)n;
+        }
+    | '*'
+        {
+            ColumnRef *cr;
+            ResTarget *rt;
+
+            cr = makeNode(ColumnRef);
+            cr->fields = list_make1(makeNode(A_Star));
+            cr->location = @1;
+
+            rt = makeNode(ResTarget);
+            rt->name = NULL;
+            rt->indirection = NIL;
+            rt->val = (Node *)cr;
+            rt->location = @1;
+
+            $$ = (Node *)rt;
         }
     ;
 
@@ -794,14 +877,28 @@ path_relationship:
     ;
 
 path_relationship_body:
-    '[' var_name_opt label_opt properties_opt ']'
+    '[' var_name_opt label_opt cypher_varlen_opt properties_opt ']'
         {
             cypher_relationship *n;
 
             n = make_ag_node(cypher_relationship);
             n->name = $2;
             n->label = $3;
-            n->props = $4;
+            n->varlen = $4;
+            n->props = $5;
+
+            $$ = (Node *)n;
+        }
+    |
+    /* empty */
+        {
+            cypher_relationship *n;
+
+            n = make_ag_node(cypher_relationship);
+            n->name = NULL;
+            n->label = NULL;
+            n->varlen = NULL;
+            n->props = NULL;
 
             $$ = (Node *)n;
         }
