@@ -1,86 +1,82 @@
-import { useState } from 'react';
 import { useQuery } from 'react-query';
 import { fetchLiveQueries, fetchSlowQueries } from '../../../actions/universe';
 
 export const useLiveQueriesApi = ({ universeUUID }) => {
-  const [ycqlQueries, setYCQLQueryRowData] = useState([]);
-  const [ysqlQueries, setYSQLQueryRowData] = useState([]);
-  const [errors, setErrors] = useState({});
-  
-  const handleQueryResponse = (response) => {
-    const { error, data } = response;
-    if (!error) {
-      const allErrors = {};
-      if ('ysql' in data) {
-        if (Array.isArray(data.ysql.queries)) {
-          setYSQLQueryRowData(data.ysql.queries);
-        }
-        allErrors.ysql = data.ysql.errorCount;
-      }
-      if ('ycql' in data) {
-        if (Array.isArray(data.ycql.queries)) {
-          setYCQLQueryRowData(data.ycql.queries);
-        }
-        allErrors.ycql = data.ycql.errorCount;
-      }
-      setErrors(allErrors);
-    } else {
-      console.error(error);
-      setErrors({ message: error });
-    }
-  };
-
-  const { refetch, isFetching } = useQuery(
+  const { refetch, isFetching, data } = useQuery(
     ['getLiveQueries', universeUUID],
     () => fetchLiveQueries(universeUUID),
     {
-      retry: false,
-      refetchOnWindowFocus: true,
-      onSuccess: handleQueryResponse
+      refetchOnMount: 'always'
     }
   );
 
+  const handleQueryResponse = (response) => {
+    const { error, data } = response;
+    if (!error) {
+      if ('ysql' in data) {
+        if (Array.isArray(data.ysql.queries)) {
+          ysqlQueries = data.ysql.queries;
+        }
+        errors.ysql = data.ysql.errorCount;
+      }
+      if ('ycql' in data) {
+        if (Array.isArray(data.ycql.queries)) {
+          ycqlQueries = data.ycql.queries;
+        }
+        errors.ycql = data.ycql.errorCount;
+      }
+    } else {
+      console.error(error);
+      errors = { message: error };
+    }
+  };
+
+  let ycqlQueries = [];
+  let ysqlQueries = [];
+  let errors = {};
+
+  if (data) {
+    handleQueryResponse(data);
+  }
+
   return {
     ycqlQueries,
-    ysqlQueries,    
+    ysqlQueries,
     errors,
     loading: isFetching,
     getLiveQueries: refetch
   };
 };
 
-export const useSlowQueriesApi = ({ universeUUID }) => {
-  const [ysqlQueries, setYSQLQueryRowData] = useState([]);
-  const [errors, setErrors] = useState({});
-  
-  const handleQueryResponse = (response) => {    
-    const { data } = response;
-    if (!data.error) {
-      const allErrors = {};
-      if ('ysql' in data) {
-        if (Array.isArray(data.ysql.queries)) {
-          setYSQLQueryRowData(data.ysql.queries);
-        }
-        allErrors.ysql = data.ysql.errorCount;
-      }
-      setErrors(allErrors);
-    } else {
-      setErrors({ message: data.error });
-    }
-  };
-
-  const { refetch, isFetching } = useQuery(
+export const useSlowQueriesApi = ({ universeUUID, defaultStaleTime = 60000 }) => {
+  const { refetch, isFetching, data } = useQuery(
     ['getSlowQueries', universeUUID],
     () => fetchSlowQueries(universeUUID),
     {
-      retry: false,
-      refetchOnWindowFocus: true,
-      onSuccess: handleQueryResponse
+      staleTime: defaultStaleTime
     }
   );
 
+  const handleQueryResponse = (response) => {
+    const { data } = response;
+    if (!data.error) {
+      if ('ysql' in data) {
+        if (Array.isArray(data.ysql.queries)) {
+          return data.ysql.queries;
+        }
+        errors.ysql = data.ysql.errorCount;
+      }
+    } else {
+      errors = { message: data.error };
+    }
+    return [];
+  };
+
+  let errors = {};
+  const ysqlQueries = data ? handleQueryResponse(data) : [];
+
   return {
-    ysqlQueries,    
+    ysqlQueries,
     errors,
     loading: isFetching,
     getSlowQueries: refetch
