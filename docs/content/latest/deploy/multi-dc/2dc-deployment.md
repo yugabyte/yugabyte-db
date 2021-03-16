@@ -158,7 +158,13 @@ curl -X PUT \
 
 1. Click the person icon at the top left of any Platform page, and navigate to Profile.
 
-1. On the General tab, click Generate Key, and copy the resulting API token.
+1. On the General tab, copy your API token. If the API Token field is blank, click Generate Key, then copy the resulting API token.
+
+    {{< note >}}
+
+Generating a new API token invalidates your existing token. Only the most-recently generated API token is valid.
+
+    {{< /note >}}
 
 1. From a command line, issue a `curl` command of the following form:
 
