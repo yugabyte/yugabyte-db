@@ -3,7 +3,7 @@ Jinja2==2.11.3
 MarkupSafe==1.1.1
 PyJWT==1.7.1
 PyNaCl==1.4.0
-PyYAML==3.13
+PyYAML==5.1
 Werkzeug==1.0.1
 adal==1.2.6
 ansible-vault==1.0.4

@@ -46,7 +46,7 @@ pycodestyle>=2.2.0
 pycryptodome==3.6.1
 python-dateutil==2.5.3
 python-dotenv==0.6.4
-PyYAML==3.13
+PyYAML==5.1
 six==1.10.0
 slackclient
 stormssh
