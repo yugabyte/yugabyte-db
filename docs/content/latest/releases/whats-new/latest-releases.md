@@ -24,7 +24,7 @@ Included here are the release notes for all releases in the v2.5 latest release 
 
 ## v2.5.3 - Mar 9, 2021
 
-**Build:** `2.5.3.1-bxx`
+**Build:** `2.5.3.1-b10`
 
 ### Downloads
 
@@ -44,7 +44,7 @@ Included here are the release notes for all releases in the v2.5 latest release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.5.3.1-bxx
+docker pull yugabytedb/yugabyte:2.5.3.1-b10
 ```
 
 ### New Features
