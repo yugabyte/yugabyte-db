@@ -178,15 +178,14 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
 
 Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
                                                              const CloudInfoPB& cloud_info) {
-  // TODO(zhaoalex): replace logic with IsCloudInfoEqual
-  const string& cloud_info_string = TSDescriptor::generate_placement_id(cloud_info);
   for (const auto& placement_block : placement_info.placement_blocks()) {
-    if (TSDescriptor::generate_placement_id(placement_block.cloud_info()) == cloud_info_string) {
+    if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
       return Status::OK();
     }
   }
   return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                           placement_info.DebugString(), cloud_info_string);
+                           placement_info.DebugString(),
+                           TSDescriptor::generate_placement_id(cloud_info));
 }
 
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
