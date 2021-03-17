@@ -111,6 +111,12 @@ docker pull yugabytedb/yugabyte:2.5.3.1-b10
 * [[7413](https://github.com/yugabyte/yugabyte-db/issues/7413)] DocDB: Fixed MetaCache::ProcessTabletLocations to reuse partitions list for co-located tables
 * [[7480](https://github.com/yugabyte/yugabyte-db/issues/7480)] Remove reference to user from YSQLsh health check output
 
+### Known Issues
+
+#### Yugabyte Platform
+
+[7493](https://github.com/yugabyte/yugabyte-db/issues/7493) Menu shows 0 appended to "Upgrade Software0" when there is nothing to upgrade. When the universe is up-to-date (in other words, there are no upgrades available), the Action menu shows "Upgrade Software0". This is a cosmetic bug, and will be addressed in a future release.
+
 ## v2.5.2 - Feb 23, 2021
 
 **Build:** `2.5.2.0-b104`
