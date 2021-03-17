@@ -1952,4 +1952,27 @@ public class TestIndex extends BaseCQLTest {
     doTestInKeyword(new TableProperties(
         TableProperties.TP_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
+
+  @Test
+  public void testCreateIndexOnStaticCol() throws Exception {
+    // Create test table.
+    session.execute("create table test_create_index " +
+                    "(h1 int, r1 int, s1 int static, v1 int, " +
+                    "primary key (h1, r1)) with transactions = {'enabled' : true};");
+
+    // Index creation on static column should fail.
+    runInvalidStmt("create index i1 on test_create_index (s1)");
+
+    // Index creation should work if --cql_allow_static_column_index=true.
+    destroyMiniCluster();
+    BaseMiniClusterTest.tserverArgs.add("--cql_allow_static_column_index=true");
+    createMiniCluster();
+    setUpCqlClient();
+
+    session.execute("create table test_create_index " +
+                    "(h1 int, r1 int, s1 int static, v1 int, " +
+                    "primary key (h1, r1)) with transactions = {'enabled' : true};");
+
+    session.execute("create index i1 on test_create_index (s1)");
+  }
 }
