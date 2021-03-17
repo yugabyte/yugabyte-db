@@ -41,6 +41,7 @@ public class HealthManager extends DevopsBase {
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
+    public boolean enableYSQLAuth = false;
   }
 
   public ShellResponse runCommand(
