@@ -96,13 +96,13 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.5.2.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.5.3.1-linux.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.5.2.0-linux.tar.gz && cd yugabyte-2.5.2.0/
+    $ tar xvfz yugabyte-2.5.3.1-linux.tar.gz && cd yugabyte-2.5.3.1/
     ```
 
 ## Configure YugabyteDB
