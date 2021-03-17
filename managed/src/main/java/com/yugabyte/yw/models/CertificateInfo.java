@@ -4,10 +4,13 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +25,12 @@ import javax.persistence.Id;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 public class CertificateInfo extends Model {
@@ -169,5 +175,22 @@ public class CertificateInfo extends Model {
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
+  }
+
+  public ArrayNode getUniverseDetails() {
+    List<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid,
+        this.customerUUID);
+    ArrayNode detals = Json.newArray();
+    for (Universe universe: universes) {
+      ObjectNode universePayload = Json.newObject();
+      universePayload.put("name", universe.name);
+      // TODO replace with universe status once we introduce that flag.
+      universePayload.put("updateInProgress", universe.getUniverseDetails().updateInProgress);
+      universePayload.put("updateSucceeded", universe.getUniverseDetails().updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      detals.add(universePayload);
+    }
+    return detals;
   }
 }
