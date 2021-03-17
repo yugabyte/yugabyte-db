@@ -33,15 +33,7 @@ YSQL allows you to specify how exactly to divide a table. You provide a partitio
 
 You can nest partitions, in which case they woud have their own distinct indexes, constraints, and default values.
 
-A regular table cannot become a partitioned table, just as a partitioned table cannot become a regular table. That said, YSQL allows attaching a regular table (provided it has the same schema as that of the partitioned table) as a partition to the partitioned  table. Conversely, a partition can be detached from the partitioned table, in which case it can behave as a regular table that is not part of the partitioning hierarchy.
-
-A partitioned table and its partitions have hierarchical structure and are subject to its rules, except the following:
-
-- If there are no partitions, you can use the `ONLY` clause to add or drop a constraint on the partitioned table. If there are partitions, you cannot use `ONLY` because adding or deleting constraints on the  partitioned table is not supported in such cases.
-- You can add a regular table to the partition hierarchy using `ALTER TABLE ... ATTACH PARTITION` if their columns match the partitioned table, including a `oid` column.
-- Partitions inherit `CHECK` and `NOT NULL` constraints of the partitioned table, with the following exceptions: 
-  - `CHECK` constraints marked `NO INHERIT`be cannot be created on partitioned tables.
-  - The `NOT NULL` constraint cannot be dropped on a partition's column if the constraint is present in their partitioned table.
+A regular table cannot become a partitioned table, just as a partitioned table cannot become a regular table. That said, YSQL allows attaching a regular table (provided it has the same schema as that of the partitioned table) as a partition to the partitioned  table. Conversely, a partition can be detached from the partitioned table, in which case it can behave as a regular table that is not part of the partitioning hierarchy. A partitioned table and its partitions have hierarchical structure and are subject to most of its rules.
 
 Suppose you work with a database that includes the following table:
 
@@ -137,6 +129,25 @@ Note the following:
 
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
+
+## Partition Pruning
+
+YSQL allows you to optimize queries ran on partitioned tables by eliminating (pruning) partitions that are no longer needed.
+
+The following example shows a query that scans every partition of the `employees` table:
+
+```sql
+SELECT count(*) FROM employees WHERE change_date >= DATE '2020-01-01';
+```
+
+If you enable partition pruning on the preceding query by setting  `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
+
+```sql
+SET enable_partition_pruning = on;
+SELECT count(*) FROM employees WHERE change_date >= DATE '2020-01-01';
+```
+
+To disable partition pruning, set `enable_partition_pruning` to `off`.
 
 ## Constraint Exclusion
 
