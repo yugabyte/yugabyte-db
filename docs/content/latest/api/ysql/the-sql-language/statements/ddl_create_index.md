@@ -47,9 +47,57 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 `CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
+When an index is created on a populated table, YugabyteDB automatically
+backfills the existing data into the index.  In most cases, this uses an online
+schema migration.
+
+| | online | not online |
+| --- | --- | --- |
+| safe to do other DMLs during `CREATE INDEX`? | yes\* | no |
+| keeps other transactions alive during `CREATE INDEX`? | mostly | no |
+| parallelizes index loading? | yes | no |
+
+To disable online schema migration for YSQL `CREATE INDEX`, set the flag
+`ysql_disable_index_backfill=true` on **all** nodes and **both** master and
+tserver.  To disable online schema migration for one `CREATE INDEX`, use
+`CREATE INDEX NONCONCURRENTLY`.
+
+If online `CREATE INDEX` fails, it likely failed in the backfill step.  In that
+case, the index exists but is not usable.  Drop the index and try again.  If it
+still doesn't work,
+
+- did it time out?  Then, try increasing timeout flags:
+  - master `ysql_index_backfill_rpc_timeout_ms`
+  - tserver `ysql_wait_until_index_permissions_timeout_ms`
+- did you get "backfill failed to connect to DB"?  Then, you may be hitting an
+  issue with authentication.  If the version is <2.4 (stable) or <2.5.2
+  (latest), online `CREATE INDEX` does not work with authentication enabled.
+  - If the version is 2.5.1 (latest), then you can use `CREATE INDEX
+    NONCONCURRENTLY` as a workaround.
+  - If the version is >=2.3 (latest), then you can set
+    `ysql_disable_index_backfill=false` as a workaround.
+  - In any case, you can disable authentication (e.g. using `ysql_enable_auth`,
+    `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
+- did you get "duplicate key value" error?  Then, you have a unique constraint
+  violation.
+
+Please file a GitHub issue if you still have issues.
+
+To prioritize keeping other transactions alive during the index backfill, bump
+up flags
+
+- master `index_backfill_wait_for_old_txns_ms`
+- tserver `ysql_index_state_flags_update_delay_ms`
+
+\* - There is a slight chance that correctness is violated.  To reduce that
+chance, set tserver flag `ysql_index_state_flags_update_delay_ms` high.  For an
+estimate of how high, with heartbeat interval `t` and maximum master to tserver
+latency `l`, use `3t + l`.
+
 {{< note title="Note" >}}
 
-When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index. Currently, this is not done in an online manner. To online backfill an index, you can set the `ysql_disable_index_backfill` flag to `false` when starting yb-tservers. Note that we don't recommend setting this flag in a production cluster yet. For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+For details on how online index backfill works, see [Online Index
+Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
 
 {{< /note >}}
 
