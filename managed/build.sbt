@@ -110,7 +110,10 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
-  "org.apache.velocity" % "velocity-tools" % "2.0"
+  "org.apache.velocity" % "velocity-tools" % "2.0",
+  "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "commons-io" % "commons-io" % "2.8.0",
+  "commons-codec" % "commons-codec" % "1.15"
 )
 // Clear default resolvers.
 appResolvers := None
