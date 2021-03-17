@@ -81,7 +81,7 @@ class StorageConfiguration extends Component {
 
   wrapFields = (configFields, configName) => {
     const configNameFormatted = configName.toLowerCase();
-  
+
     return (
       <Tab
         eventKey={configNameFormatted}
@@ -89,11 +89,11 @@ class StorageConfiguration extends Component {
         key={configNameFormatted + '-tab'}
         unmountOnExit={true}
       >
-        {!this.state.listView[configNameFormatted] &&
+        {!this.state.listView[configNameFormatted] && (
           <Row className="config-section-header" key={configNameFormatted}>
             <Col lg={8}>{configFields}</Col>
           </Row>
-        }
+        )}
       </Tab>
     );
   };
@@ -103,22 +103,21 @@ class StorageConfiguration extends Component {
    * for the respective backup configuration. It will also setup
    * the datapayload accrodingly and update the state based on the
    * config type.
-   * 
+   *
    * @param {any} values Input values.
    * @param action no-use for now.
    * @param {props} props is used to maintain the repsective tab actions.
-   * @returns 
+   * @returns
    */
   addStorageConfig = (values, action, props) => {
     const type =
-      (props.activeTab && props.activeTab.toUpperCase())
-      || Object.keys(storageConfigTypes)[0];
+      (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
     Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
     });
     let dataPayload = { ...values };
-    let configName = "";
+    let configName = '';
 
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
@@ -131,19 +130,13 @@ class StorageConfiguration extends Component {
       case 'gcs':
         configName = dataPayload['GCS_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
-        dataPayload = _.pick(dataPayload, [
-          'BACKUP_LOCATION',
-          'GCS_CREDENTIALS_JSON'
-        ]);
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
         break;
 
       case 'az':
         configName = dataPayload['AZ_CONFIGURATION_NAME'];
         dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
-        dataPayload = _.pick(dataPayload, [
-          'BACKUP_LOCATION',
-          'AZURE_STORAGE_SAS_TOKEN'
-        ]);
+        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
         break;
 
       default:
@@ -169,7 +162,7 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    if (values.type === "edit") {
+    if (values.type === 'edit') {
       this.setState({
         editView: {
           ...this.state.editView,
@@ -184,23 +177,22 @@ class StorageConfiguration extends Component {
         }
       });
 
-      return (
-        this.props
-          .editCustomerConfig({
-            type: 'STORAGE',
-            name: type,
-            configName: configName,
-            data: dataPayload,
-            configUUID: values.configUUID
-          }).then(() => {
-            if (getPromiseState(this.props.editConfig).isSuccess()) {
-              this.props.reset();
-              this.props.fetchCustomerConfigs();
-            } else if (getPromiseState(this.props.editConfig).isError()) {
-              throw new SubmissionError(this.props.editConfig.error);
-            }
-          })
-      )
+      return this.props
+        .editCustomerConfig({
+          type: 'STORAGE',
+          name: type,
+          configName: configName,
+          data: dataPayload,
+          configUUID: values.configUUID
+        })
+        .then(() => {
+          if (getPromiseState(this.props.editConfig).isSuccess()) {
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.editConfig).isError()) {
+            throw new SubmissionError(this.props.editConfig.error);
+          }
+        });
     } else {
       this.setState({
         listView: {
@@ -209,46 +201,43 @@ class StorageConfiguration extends Component {
         }
       });
 
-      return (
-        this.props
-          .addCustomerConfig({
-            type: 'STORAGE',
-            name: type,
-            configName: configName,
-            data: dataPayload
-          })
-          .then((resp) => {
-            if (getPromiseState(this.props.addConfig).isSuccess()) {
-              // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
-              this.props.reset();
-              this.props.fetchCustomerConfigs();
-            } else if (getPromiseState(this.props.addConfig).isError()) {
-              // show server-side validation errors under form inputs
-              throw new SubmissionError(this.props.addConfig.error);
-            }
-          })
-      );
+      return this.props
+        .addCustomerConfig({
+          type: 'STORAGE',
+          name: type,
+          configName: configName,
+          data: dataPayload
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.addConfig).isSuccess()) {
+            // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.addConfig).isError()) {
+            // show server-side validation errors under form inputs
+            throw new SubmissionError(this.props.addConfig.error);
+          }
+        });
     }
   };
 
   /**
    * This method is used to remove the backup storage config.
-   * 
+   *
    * @param {string} configUUID Unique id for respective backup config.
    */
   deleteStorageConfig = (configUUID) => {
-    this.props.deleteCustomerConfig(configUUID)
-      .then(() => {
-        this.props.reset(); // reset form to initial values
-        this.props.fetchCustomerConfigs();
-      });
+    this.props.deleteCustomerConfig(configUUID).then(() => {
+      this.props.reset(); // reset form to initial values
+      this.props.fetchCustomerConfigs();
+    });
   };
 
   /**
    * This method is used to update the backup config details and setup
    * the initial state accordingly. We're also setting up the data
    * object which will help us to setup the payload.
-   * 
+   *
    * @param {object} row It's a respective row details for any config.
    * @param {string} activeTab It's a respective active tab.
    */
@@ -256,16 +245,16 @@ class StorageConfiguration extends Component {
     const tab = activeTab.toUpperCase();
     const data = {
       ...row.data,
-      "type": "edit",
-      "configUUID": row.configUUID,
-      "inUse": row.inUse,
+      type: 'edit',
+      configUUID: row.configUUID,
+      inUse: row.inUse,
       [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
-      [`${tab}_CONFIGURATION_NAME`]: row.configName,
+      [`${tab}_CONFIGURATION_NAME`]: row.configName
     };
 
     Object.keys(data).map((fieldName) => {
       const fieldValue = data[fieldName];
-      this.props.dispatch(change("storageConfigForm", fieldName, fieldValue));
+      this.props.dispatch(change('storageConfigForm', fieldName, fieldValue));
     });
 
     this.setState({
@@ -276,7 +265,7 @@ class StorageConfiguration extends Component {
           data: data
         }
       },
-      iamRoleEnabled: data["IAM_INSTANCE_PROFILE"],
+      iamRoleEnabled: data['IAM_INSTANCE_PROFILE'],
       listView: {
         ...this.state.listView,
         [activeTab]: false
@@ -286,7 +275,7 @@ class StorageConfiguration extends Component {
 
   /**
    * This method will enable the create backup config form.
-   * 
+   *
    * @param {string} activeTab It's a respective active tab.
    */
   createBackupConfig = (activeTab) => {
@@ -301,7 +290,7 @@ class StorageConfiguration extends Component {
 
   /**
    * This method will enable the list view of backup storage config.
-   * 
+   *
    * @param {string} activeTab It's a respective active tab.
    */
   showListView = (activeTab) => {
@@ -325,7 +314,7 @@ class StorageConfiguration extends Component {
   /**
    * This method will disbale the access key and secret key
    * field if IAM role is enabled.
-   * 
+   *
    * @param {event} event Toggle input value.
    */
   iamInstanceToggle = (event) => {
@@ -340,8 +329,7 @@ class StorageConfiguration extends Component {
       customerConfigs
     } = this.props;
     const { iamRoleEnabled } = this.state;
-    const activeTab = this.props.activeTab
-    || Object.keys(storageConfigTypes)[0].toLowerCase();
+    const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
@@ -358,19 +346,14 @@ class StorageConfiguration extends Component {
       getPromiseState(customerConfigs).isEmpty()
     ) {
       const configs = [
-        <Tab
-          eventKey={'s3'}
-          title={getTabTitle('S3')}
-          key={'s3-tab'}
-          unmountOnExit={true}
-        >
-          {!this.state.listView.s3 &&
+        <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
+          {!this.state.listView.s3 && (
             <AwsStorageConfiguration
               data={this.state.editView.s3.data}
               iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
             />
-          }
+          )}
         </Tab>
       ];
       Object.keys(storageConfigTypes).forEach((configName) => {
@@ -380,12 +363,7 @@ class StorageConfiguration extends Component {
           configTemplate.fields.forEach((field) => {
             const value = this.state.editView[activeTab].data;
             configFields.push(
-              <EditBackupList
-                key={field.id}
-                configName={configName}
-                data={value}
-                field={field}
-              />
+              <EditBackupList key={field.id} configName={configName} data={value} field={field} />
             );
           });
           configs.push(this.wrapFields(configFields, configName));
@@ -394,11 +372,7 @@ class StorageConfiguration extends Component {
           const config = storageConfigTypes[configName];
           config.fields.forEach((field) => {
             configFields.push(
-              <CreateBackup
-                key={field.id}
-                configName={configName}
-                field={field}
-              />
+              <CreateBackup key={field.id} configName={configName} field={field} />
             );
           });
           configs.push(this.wrapFields(configFields, configName));
@@ -415,7 +389,7 @@ class StorageConfiguration extends Component {
               className="config-tabs"
               routePrefix="/config/backup/"
             >
-              {this.state.listView[activeTab] &&
+              {this.state.listView[activeTab] && (
                 <BackupList
                   {...this.props}
                   activeTab={activeTab}
@@ -424,7 +398,7 @@ class StorageConfiguration extends Component {
                   onEditConfig={(row) => this.editBackupConfig(row, activeTab)}
                   deleteStorageConfig={(row) => this.deleteStorageConfig(row)}
                 />
-              }
+              )}
 
               {configs}
             </YBTabsPanel>

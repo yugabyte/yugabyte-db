@@ -1,57 +1,49 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from "react";
-import { Row, Col } from "react-bootstrap";
-import { YBToggle, YBTextInputWithLabel } from "../../common/forms/fields";
-import { Field } from "redux-form";
-import { isEmptyObject, isDefinedNotNull } from "../../../utils/ObjectUtils";
-import YBInfoTip from "../../common/descriptors/YBInfoTip";
+import React, { Component } from 'react';
+import { Row, Col } from 'react-bootstrap';
+import { YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
+import { Field } from 'redux-form';
+import { isEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
-const required = value => value ? undefined : "This field is required.";
+const required = (value) => (value ? undefined : 'This field is required.');
 
 /**
  * This method is used to validate the Access and the Secret key.
- * 
+ *
  * @param {any} value Input value.
  * @param {boolean} iamRoleEnabled IAM enabled state.
  * @returns "This field is required."
  */
 const validateKeys = (value, iamRoleEnabled) => {
   if (!isDefinedNotNull(value) && !iamRoleEnabled) {
-    return "This field is required.";
+    return 'This field is required.';
   }
 };
 
 class AwsStorageConfiguration extends Component {
-
   /**
    * This method will help us to disable/enable the input fields
    * based while updating the backup storage config.
-   * 
+   *
    * @param {object} data Respective row deatils.
    * @param {string} configName Input field name.
    * @param {boolean} iamRoleEnabled IAM enabled state.
    * @returns true
    */
   disableInputFields = (data, configName, iamRoleEnabled = false) => {
-    if (!isEmptyObject(data) &&
-      data.inUse &&
-      configName !== "S3_CONFIGURATION_NAME") {
+    if (!isEmptyObject(data) && data.inUse && configName !== 'S3_CONFIGURATION_NAME') {
       return true;
     }
 
-    if (iamRoleEnabled &&
-      (configName === "AWS_ACCESS_KEY_ID" || "AWS_SECRET_ACCESS_KEY")) {
+    if (iamRoleEnabled && (configName === 'AWS_ACCESS_KEY_ID' || 'AWS_SECRET_ACCESS_KEY')) {
       return true;
     }
   };
 
   render() {
-    const {
-      data,
-      iamInstanceToggle,
-      iamRoleEnabled
-    } = this.props;
+    const { data, iamInstanceToggle, iamRoleEnabled } = this.props;
 
     return (
       <Row className="config-section-header">
@@ -66,7 +58,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="Configuration Name"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={this.disableInputFields(data, "S3_CONFIGURATION_NAME")}
+                isReadOnly={this.disableInputFields(data, 'S3_CONFIGURATION_NAME')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -85,7 +77,7 @@ class AwsStorageConfiguration extends Component {
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
                 onToggle={iamInstanceToggle}
-                isReadOnly={this.disableInputFields(data, "IAM_INSTANCE_PROFILE")}
+                isReadOnly={this.disableInputFields(data, 'IAM_INSTANCE_PROFILE')}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
@@ -100,7 +92,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Key"
                 component={YBTextInputWithLabel}
                 validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(data, "AWS_ACCESS_KEY_ID", iamRoleEnabled)}
+                isReadOnly={this.disableInputFields(data, 'AWS_ACCESS_KEY_ID', iamRoleEnabled)}
               />
             </Col>
           </Row>
@@ -114,7 +106,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Secret"
                 component={YBTextInputWithLabel}
                 validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(data, "AWS_SECRET_ACCESS_KEY", iamRoleEnabled)}
+                isReadOnly={this.disableInputFields(data, 'AWS_SECRET_ACCESS_KEY', iamRoleEnabled)}
               />
             </Col>
           </Row>
@@ -128,14 +120,11 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="s3://bucket_name"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={this.disableInputFields(data, "S3_BACKUP_LOCATION")}
+                isReadOnly={this.disableInputFields(data, 'S3_BACKUP_LOCATION')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
-              <YBInfoTip
-                title="S3 Bucket"
-                content="S3 bucket format: s3://bucket_name."
-              />
+              <YBInfoTip title="S3 Bucket" content="S3 bucket format: s3://bucket_name." />
             </Col>
           </Row>
           <Row className="config-provider-row">
@@ -147,7 +136,7 @@ class AwsStorageConfiguration extends Component {
                 name="AWS_HOST_BASE"
                 placeHolder="s3.amazonaws.com"
                 component={YBTextInputWithLabel}
-                isReadOnly={this.disableInputFields(data, "AWS_HOST_BASE")}
+                isReadOnly={this.disableInputFields(data, 'AWS_HOST_BASE')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">

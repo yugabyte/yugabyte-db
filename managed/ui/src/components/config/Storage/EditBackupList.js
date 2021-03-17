@@ -5,32 +5,27 @@
 // This file will hold a editable view for the particular storage
 // configuration input fields.
 
-import { Field } from "redux-form";
-import React from "react";
-import { Col, Row } from "react-bootstrap";
+import { Field } from 'redux-form';
+import React from 'react';
+import { Col, Row } from 'react-bootstrap';
 
 /**
  * This method is used to handle the edit backup storage
  * config form.
- * 
+ *
  * @param {object} data Respective row details.
  * @param {string} fieldId Input field id.
  * @param {string} configName Input field name.
  * @returns inUse ? true : false;
  */
 const disableFields = (data, fieldId, configName) => {
-  if (data.inUse &&
-    fieldId !== `${configName}_CONFIGURATION_NAME`) {
+  if (data.inUse && fieldId !== `${configName}_CONFIGURATION_NAME`) {
     return true;
   }
-}
+};
 
 export const EditBackupList = (props) => {
-  const {
-    configName,
-    data,
-    field
-  } = props;
+  const { configName, data, field } = props;
 
   return (
     <Row className="config-provider-row" key={configName + field.id}>
@@ -46,5 +41,5 @@ export const EditBackupList = (props) => {
         />
       </Col>
     </Row>
-  )
-}
+  );
+};

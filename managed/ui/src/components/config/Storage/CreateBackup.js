@@ -5,23 +5,20 @@
 // This file is responsible for the creation of all the input
 // fields for it"s respective storage configuration type.
 
-import { Field } from "redux-form";
-import React from "react";
-import { Col, Row } from "react-bootstrap";
+import { Field } from 'redux-form';
+import React from 'react';
+import { Col, Row } from 'react-bootstrap';
 
 /**
  * This method will handle the validation for current
  * field.
- * 
+ *
  * @param {any} value Input field value.
  */
-const required = value => value ? undefined : "This field is required.";
+const required = (value) => (value ? undefined : 'This field is required.');
 
 export const CreateBackup = (props) => {
-  const {
-    configName,
-    field
-  } = props;
+  const { configName, field } = props;
 
   return (
     <Row className="config-provider-row" key={configName + field.id}>
@@ -37,5 +34,5 @@ export const CreateBackup = (props) => {
         />
       </Col>
     </Row>
-  )
-}
+  );
+};
