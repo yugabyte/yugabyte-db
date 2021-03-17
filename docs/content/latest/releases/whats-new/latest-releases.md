@@ -22,7 +22,7 @@ Included here are the release notes for all releases in the v2.5 latest release 
 
 {{< /note >}}
 
-## v2.5.3 - Mar 9, 2021
+## v2.5.3 - Mar 16, 2021
 
 **Build:** `2.5.3.1-b10`
 
