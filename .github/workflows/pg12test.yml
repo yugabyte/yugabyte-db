@@ -32,7 +32,7 @@ jobs:
           sudo rm -f /usr/bin/pg_config
 
       - name: Create pgsql dir
-        run: sudo mkdir -p /opt/pgsql
+        run: mkdir -p /opt/pgsql
 
       - name: Build postgres
         run: |
