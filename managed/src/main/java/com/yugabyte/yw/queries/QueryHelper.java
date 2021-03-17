@@ -2,13 +2,11 @@
 package com.yugabyte.yw.queries;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
@@ -22,7 +20,7 @@ import play.libs.Json;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +34,15 @@ import java.util.concurrent.Future;
 public class QueryHelper {
   public static final Logger LOG = LoggerFactory.getLogger(QueryHelper.class);
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
+
+  private static final String SLOW_QUERY_STATS_SQL = "SELECT a.rolname, t.datname, t.queryid, " +
+    "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, " +
+    "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM " +
+    "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
+  private static final Set<String> EXCLUDED_QUERY_STATEMENTS = new HashSet<>(Arrays.asList(
+    "SET extra_float_digits = 3",
+    SLOW_QUERY_STATS_SQL
+  ));
 
   public enum QueryApi {
     YSQL,
@@ -51,15 +58,19 @@ public class QueryHelper {
 
   public JsonNode slowQueries(Universe universe) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, " +
-      "t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit, " +
-      "t.local_blks_written FROM pg_authid a JOIN (" +
-        "SELECT * FROM pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid" +
-      ") t ON a.oid = t.userid";
+    ysqlQuery.query = SLOW_QUERY_STATS_SQL;
     ysqlQuery.db_name = "postgres";
-    JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery);
+    JsonNode ysqlResponse = ysqlQueryExecutor.executeQuery(universe, ysqlQuery).get("result");
+    ArrayNode queries = Json.newArray();
+    if (ysqlResponse.isArray()) {
+      for (JsonNode queryObject : ysqlResponse) {
+        if (!EXCLUDED_QUERY_STATEMENTS.contains(queryObject.get("query").asText())) {
+          queries.add(queryObject);
+        }
+      }
+    }
     ObjectNode ysqlJson = Json.newObject();
-    ysqlJson.set("queries", ysqlResponse.get("result"));
+    ysqlJson.set("queries", queries);
     ObjectNode responseJson = Json.newObject();
     responseJson.set("ysql", ysqlJson);
     return responseJson;
