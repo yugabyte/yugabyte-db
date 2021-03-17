@@ -138,11 +138,9 @@ Call `determine_repl_latency.sh -h` to get a summary of all command options.
 
 ## Enable universes in Platform
 
-If you're using Yugabyte Platform to manage your universes, you need to call the following REST API endpoint on your Platform instance _for each universe_:
+If you're using Yugabyte Platform to manage your universes, you need to call the following REST API endpoint on your Platform instance _for each universe_ (producer and consumer) involved in the 2DC replication:
 
-```http
-PUT /api/customers/<myUUID>/universes/<myUniUUID>/setup_universe_2dc
-```
+**PUT** /api/customers/<_myUUID_>/universes/<_myUniUUID_>/setup_universe_2dc
 
 Where `myUUID` is your customer UUID, and `myUniUUID` is the UUID of the universe (producer or consumer). The request should include an `X-AUTH-YW-API-TOKEN` header with your Platform API key.
 
