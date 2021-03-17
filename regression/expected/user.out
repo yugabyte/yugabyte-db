@@ -27,18 +27,17 @@ SELECT * FROM t2;
 
 SET ROLE su;
 SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
- userid |                                 query                                 
---------+-----------------------------------------------------------------------
+ userid |              query              
+--------+---------------------------------
  u1     | CREATE TABLE t1 (a int);
  u2     | CREATE TABLE t2 (a int);
  u1     | SELECT * FROM t1;
  u2     | SELECT * FROM t2;
  su     | SELECT pg_stat_monitor_reset();
- su     | SELECT userid, query FROM pg_stat_monitor ORDER BY query COLLATE "C";
  su     | SET ROLE su;
  u1     | SET ROLE u1;
  u2     | SET ROLE u2;
-(9 rows)
+(8 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 

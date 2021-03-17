@@ -127,8 +127,11 @@ typedef enum pgssStoreKind
 	 * reference the underlying values in the arrays in the Counters struct,
 	 * and this order is required in pg_stat_statements_internal().
 	 */
-	PGSS_PLAN = 0,
+	PGSS_PARSE = 0,
+	PGSS_PLAN,
 	PGSS_EXEC,
+	PGSS_ERROR,
+	PGSS_FINISHED,
 
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
@@ -160,36 +163,25 @@ typedef struct CallTime
 
 typedef struct pgssQueryHashKey
 {
-	uint64		queryid;		/* query identifier */
 	uint64		bucket_id;		/* bucket number */
+	uint64		queryid;		/* query identifier */
+	uint64		userid;			/* user OID */
+	uint64		dbid;			/* database OID */
+	uint64		ip;				/* client ip address */
 } pgssQueryHashKey;
 
 typedef struct pgssQueryEntry
 {
 	pgssQueryHashKey	key;		/* hash key of entry - MUST BE FIRST */
 	uint64			    pos;		/* bucket number */
+	uint64			state;		/* query state */
 } pgssQueryEntry;
 
 typedef struct PlanInfo
 {
 	uint64		planid;						/* plan identifier */
-	uint64		plans;						/* how many times plan */
-	CallTime	time;
 	char 		plan_text[PLAN_TEXT_LEN];	/* plan text */
 } PlanInfo;
-
-/* shared nenory storage for the query */
-typedef struct pgssPlanHashKey
-{
-	uint64		query_hash;		/* query reference identifier */
-} pgssPlanHashKey;
-
-typedef struct pgssPlanEntry
-{
-	pgssPlanHashKey	key;			/* hash key of entry - MUST BE FIRST */
-	PlanInfo 		plan_info;		/* planning information */
-	slock_t			mutex;			/* protects the counters only */
-} pgssPlanEntry;
 
 typedef struct pgssHashKey
 {
@@ -198,6 +190,7 @@ typedef struct pgssHashKey
 	uint64		userid;			/* user OID */
 	uint64		dbid;			/* database OID */
 	uint64		ip;				/* client ip address */
+	uint64		planid;			/* plan identifier */
 } pgssHashKey;
 
 typedef struct QueryInfo
@@ -263,14 +256,18 @@ typedef struct Counters
 	uint64		bucket_id;		/* bucket id */
 	Calls		calls;
 	QueryInfo	info;
-	PlanInfo    plan_info;
 	CallTime	time;
+
+	Calls		plancalls;
+	CallTime	plantime;
+	PlanInfo    planinfo;
+
 	Blocks		blocks;
 	SysInfo		sysinfo;
 	ErrorInfo   error;
-	Wal_Usage    walusage;
-	int			plans;
+	Wal_Usage   walusage;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in msec */
+	uint64		state;		/* query state */
 } Counters;
 
 /* Some global structure to get the cpu usage, really don't like the idea of global variable */
@@ -362,18 +359,18 @@ void pgss_shmem_shutdown(int code, Datum arg);
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
 HTAB *pgsm_get_plan_hash(void);
+HTAB *pgsm_get_query_hash(void);
 HTAB *pgsm_get_hash(void);
 HTAB *pgsm_get_plan_hash(void);
 HTAB* pgsm_get_query_hash(void);
 void hash_entry_reset(void);
 void hash_query_entry_dealloc(int bucket);
 void hash_entry_dealloc(int bucket);
-pgssPlanEntry *hash_plan_entry_alloc(pgssSharedState *pgss, pgssPlanHashKey *key);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
-bool hash_find_query_entry(uint64 bucket_id, uint64 queryid);
-bool hash_create_query_entry(uint64 bucket_id, uint64 queryid);
+pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
+pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
 void pgss_startup(void);
 void set_qbuf(int i, unsigned char *);
 

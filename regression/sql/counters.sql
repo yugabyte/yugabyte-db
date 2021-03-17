@@ -1,4 +1,5 @@
 CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
 
 CREATE TABLE t1 (a INTEGER);
 CREATE TABLE t2 (b INTEGER);

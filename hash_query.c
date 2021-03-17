@@ -21,7 +21,6 @@
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
 static HTAB *pgss_query_hash;
-static HTAB *pgss_plan_hash;
 
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 
@@ -71,8 +70,7 @@ pgss_startup(void)
 	}
 
 	pgss_hash = hash_init("pg_stat_monitor: bucket hashtable", sizeof(pgssHashKey), sizeof(pgssEntry), MAX_BUCKET_ENTRIES);
-	pgss_query_hash = hash_init("pg_stat_monitor: query hashtable", sizeof(pgssQueryHashKey), sizeof(pgssQueryEntry),500000);
-	pgss_plan_hash = hash_init("pg_stat_monitor: plan hashtable", sizeof(pgssPlanHashKey), sizeof(pgssPlanEntry), MAX_BUCKET_ENTRIES);
+	pgss_query_hash = hash_init("pg_stat_monitor: query hashtable", sizeof(pgssQueryHashKey), sizeof(pgssQueryEntry),MAX_BUCKET_ENTRIES);
 
 	LWLockRelease(AddinShmemInitLock);
 
@@ -81,12 +79,6 @@ pgss_startup(void)
 	 * exit hook to dump the statistics to disk.
 	 */
 	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
-}
-
-HTAB*
-pgsm_get_plan_hash(void)
-{
-	return pgss_plan_hash;
 }
 
 pgssSharedState*
@@ -99,6 +91,12 @@ HTAB*
 pgsm_get_hash(void)
 {
 	return pgss_hash;
+}
+
+HTAB*
+pgsm_get_query_hash(void)
+{
+	return pgss_query_hash;
 }
 
 /*
@@ -128,31 +126,9 @@ hash_memsize(void)
 	size = MAXALIGN(sizeof(pgssSharedState));
 	size += MAXALIGN(MAX_QUERY_BUF);
 	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssEntry)));
-	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssPlanEntry)));
-	size = add_size(size, hash_estimate_size(500000, sizeof(pgssQueryEntry)));
+	size = add_size(size, hash_estimate_size(MAX_BUCKET_ENTRIES, sizeof(pgssQueryEntry)));
 
 	return size;
-}
-
-pgssPlanEntry *
-hash_plan_entry_alloc(pgssSharedState *pgss, pgssPlanHashKey *key)
-{
-	pgssPlanEntry   *entry = NULL;
-	bool        found = false;
-
-	if (hash_get_num_entries(pgss_plan_hash) >= MAX_BUCKET_ENTRIES)
-		return NULL;
-
-	/* Find or create an entry with desired hash code */
-	entry = (pgssPlanEntry *) hash_search(pgss_plan_hash, key, HASH_ENTER, &found);
-	if (!found)
-	{
-		memset(&entry->plan_info, 0, sizeof(PlanInfo));
-		SpinLockInit(&entry->mutex);
-	}
-	if (entry == NULL)
-		elog(FATAL, "%s", "pg_stat_monitor: out of memory");
-	return entry;
 }
 
 pgssEntry *
@@ -163,7 +139,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 
 	if (hash_get_num_entries(pgss_hash) >= MAX_BUCKET_ENTRIES)
 	{
-		elog(DEBUG2, "%s", "pg_stat_monitor: out of memory");
+		elog(DEBUG1, "%s", "pg_stat_monitor: out of memory");
 		return NULL;
 	}
 	/* Find or create an entry with desired hash code */
@@ -181,7 +157,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 		entry->encoding = encoding;
 	}
 	if (entry == NULL)
-		elog(FATAL, "%s", "pg_stat_monitor: out of memory");
+		elog(DEBUG1, "%s", "pg_stat_monitor: out of memory");
 	return entry;
 }
 
@@ -199,7 +175,7 @@ hash_query_entry_dealloc(int bucket)
 	hash_seq_init(&hash_seq, pgss_query_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		if (entry->key.bucket_id == bucket)
+		if (entry->key.bucket_id == bucket || bucket < 0)
 			entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
 	}
 }
@@ -247,8 +223,8 @@ hash_entry_reset()
 }
 
 /* Caller must accuire lock */
-bool
-hash_create_query_entry(uint64 bucket_id, uint64 queryid)
+pgssQueryEntry*
+hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip)
 {
     pgssQueryHashKey    key;
 	pgssQueryEntry      *entry;
@@ -256,14 +232,17 @@ hash_create_query_entry(uint64 bucket_id, uint64 queryid)
 
     key.queryid = queryid;
 	key.bucket_id = bucket_id;
+	key.dbid = dbid;
+	key.userid = userid;
+	key.ip = ip;
 
 	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_ENTER, &found);
-	return (entry != NULL);
+	return entry;
 }
 
 /* Caller must accuire lock */
-bool
-hash_find_query_entry(uint64 bucket_id, uint64 queryid)
+pgssQueryEntry*
+hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip)
 {
     pgssQueryHashKey    key;
 	pgssQueryEntry      *entry;
@@ -271,10 +250,13 @@ hash_find_query_entry(uint64 bucket_id, uint64 queryid)
 
     key.queryid = queryid;
 	key.bucket_id = bucket_id;
+	key.dbid = dbid;
+	key.userid = userid;
+	key.ip = ip;
 
     /* Lookup the hash table entry with shared lock. */
 	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_FIND, &found);
-    return ((entry != NULL) && found);
+    return entry;
 }
 
 bool

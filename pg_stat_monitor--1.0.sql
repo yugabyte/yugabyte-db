@@ -25,19 +25,20 @@ SELECT string_to_array(get_histogram_timings(), ',');
 $$ LANGUAGE SQL;
 
 CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
-    OUT bucket              int,   -- 0
+    OUT bucket              int8,   -- 0
     OUT userid              oid,
     OUT dbid                oid,
     OUT client_ip           int8,
 
     OUT queryid             text,  -- 4
     OUT planid              text,
-    OUT top_queryid         text,
     OUT query               text,
     OUT query_plan          text,
+    OUT state 				int8,
+    OUT top_queryid         text,
 	OUT application_name	text,
 
-	OUT relations			text, -- 10
+	OUT relations			text, -- 11
 	OUT cmd_type			int,
 	OUT elevel              int,
     OUT sqlcode             TEXT,
@@ -57,8 +58,9 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT plan_min_time       float8,
     OUT plan_max_time       float8,
     OUT plan_mean_time      float8,
+    OUT plan_stddev_time    float8,
 
-	OUT shared_blks_hit     int8, -- 28
+	OUT shared_blks_hit     int8, -- 29
     OUT shared_blks_read    int8,
     OUT shared_blks_dirtied int8,
     OUT shared_blks_written int8,
@@ -70,7 +72,7 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT temp_blks_written   int8,
     OUT blk_read_time       float8,
     OUT blk_write_time      float8,
-    OUT resp_calls          text,
+    OUT resp_calls          text, -- 41
     OUT cpu_user_time       float8,
     OUT cpu_sys_time        float8,
     OUT wal_records 		int8,
@@ -80,6 +82,19 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION get_state(state int8) RETURNS TEXT AS
+$$
+SELECT
+	CASE
+		WHEN state = 0 THEN 'PARSED'
+		WHEN state = 1 THEN 'PLANNING'
+		WHEN state = 2 THEN 'EXECUTION FINISHED'
+		WHEN state = 3 THEN 'ERROR'
+		WHEN state = 4 THEN 'FINISHED'
+	END
+$$
+LANGUAGE SQL PARALLEL SAFE;
 
 CREATE or REPLACE FUNCTION get_cmd_type (cmd_type INTEGER) RETURNS TEXT AS
 $$
@@ -169,7 +184,9 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	round(cpu_sys_time::numeric, 4) as cpu_sys_time,
     wal_records,
     wal_fpi,
-    wal_bytes
+    wal_bytes,
+	state,
+	get_state(state) as state_value
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 
