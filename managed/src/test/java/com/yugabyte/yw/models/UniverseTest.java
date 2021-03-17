@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
@@ -409,16 +410,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONWithEmptyRegionList() {
-    Universe u = createUniverse(defaultCustomer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-
-    UserIntent userIntent = new UserIntent();
-    userIntent.replicationFactor = 3;
-    userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
-
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
@@ -558,18 +550,12 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testUpdateNodesDynamicActions_UnderReplicatedMaster_WithoutReadOnlyCluster() {
-    Universe u = createUniverse(defaultCustomer.getCustomerId());
-    UserIntent userIntent = new UserIntent();
-    userIntent.replicationFactor = 3;
-    userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
-    userIntent.numNodes = 3;
     // All nodes are created with t-server only. So they are all
     // areMastersUnderReplicated.
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, false /* setMasters */);
 
     ObjectNode json = (ObjectNode) Json.toJson(u.getUniverseDetails());
-    u.updateNodesDynamicActions(json, u.getNodes());
+    u.addNodesActions(json, u.getNodes());
 
     JsonNode nodeDetailsSet = json.get("nodeDetailsSet");
     assertNotNull(nodeDetailsSet);
@@ -608,7 +594,7 @@ public class UniverseTest extends FakeDBApplication {
     }
 
     ObjectNode json = (ObjectNode) Json.toJson(u.getUniverseDetails());
-    u.updateNodesDynamicActions(json, u.getUniverseDetails().nodeDetailsSet);
+    u.addNodesActions(json, u.getUniverseDetails().nodeDetailsSet);
 
     JsonNode nodeDetailsSet = json.get("nodeDetailsSet");
     assertNotNull(nodeDetailsSet);
@@ -660,5 +646,72 @@ public class UniverseTest extends FakeDBApplication {
       }
     }
     return false;
+  }
+
+  @Test
+  public void testGetNodeActions() {
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
+    NodeDetails nd = u.getNodes().iterator().next();
+
+    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
+      nd.state = nodeState;
+      Set<NodeActionType> allowedActions = u.getNodeActions(nd, u.getNodes());
+
+      if (nodeState == NodeDetails.NodeState.ToBeAdded) {
+        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.Adding) {
+        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
+        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
+        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
+        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.Live) {
+        assertEquals(ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.Stopped) {
+        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.Removed) {
+        assertEquals(
+            ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
+            allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
+        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
+      } else {
+        assertTrue(allowedActions.isEmpty());
+      }
+    }
+  }
+
+  private Universe createUniverseWithNodes(int rf, int numNodes, boolean setMasters) {
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
+    userIntent.regionList = new ArrayList<>();
+    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    userIntent.numNodes = numNodes;
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, setMasters));
+    return u;
+  }
+
+  @Test
+  public void testGetNodeActions_AllDeletesAllowed() {
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
+    NodeDetails nd = u.getNodes().iterator().next();
+
+    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
+      nd.state = nodeState;
+      Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+      assertEquals(nd.isRemovable(), actions.contains(NodeActionType.DELETE));
+    }
+  }
+
+  @Test
+  public void testGetNodeActions_NoStopAndRemoveForOneNodeUniverse() {
+    Universe u = createUniverseWithNodes(1 /* rf */, 1 /* numNodes */, true /* setMasters */);
+    NodeDetails nd = u.getNodes().iterator().next();
+    Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+    assertFalse(actions.contains(NodeActionType.REMOVE));
+    assertFalse(actions.contains(NodeActionType.STOP));
   }
 }
