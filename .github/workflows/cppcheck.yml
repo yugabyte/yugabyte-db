@@ -4,7 +4,7 @@ on: [push]
 jobs:
   build:
     name: cppcheck-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
 
@@ -12,5 +12,7 @@ jobs:
         run: sudo apt-get install cppcheck
 
       - name: Execute linter check with cppcheck
-        run: sudo cppcheck --enable=all --inline-suppr --template='{file}:{line},{severity},{id},{message}' --error-exitcode=1 --suppress=missingIncludeSystem --suppress=missingInclude --check-config .
+        run: |
+          set -x
+          cppcheck --enable=all --inline-suppr --template='{file}:{line},{severity},{id},{message}' --error-exitcode=1 --suppress=missingIncludeSystem --suppress=missingInclude --suppress=unmatchedSuppression:pg_stat_monitor.c --check-config .
 
