@@ -1,9 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models.helpers;
 
-import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.NodeActionType;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -71,49 +69,6 @@ public class NodeDetailsTest {
       } else {
         assertFalse(nd.isQueryable());
       }
-    }
-  }
-
-  @Test
-  public void testGetAllowedActions() {
-    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
-      nd.state = nodeState;
-      if (nodeState == NodeDetails.NodeState.ToBeAdded) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.Adding) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE),
-            nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.Live) {
-        assertEquals(ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE),
-            nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE),
-            nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.Removed) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
-            nd.getAllowedActions());
-      } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
-        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE),
-            nd.getAllowedActions());
-      } else {
-        assertTrue(nd.getAllowedActions().isEmpty());
-      }
-    }
-  }
-
-  @Test
-  public void testGetAllowedActions_AllDeletesAllowed() {
-    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
-      nd.state = nodeState;
-      Set<NodeActionType> actions = nd.getAllowedActions();
-      assertEquals(nd.isRemovable(), actions.contains(NodeActionType.DELETE));
     }
   }
 }

@@ -5,10 +5,6 @@ package com.yugabyte.yw.models.helpers;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.common.NodeActionType;
-
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -173,38 +169,6 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
-  }
-
-  public Set<NodeActionType> getAllowedActions() {
-    if (state == null) {
-      return new HashSet<>();
-    }
-    switch (state) {
-      // Unexpected/abnormal states.
-      case ToBeAdded:
-        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
-      case Adding:
-        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
-      case ToJoinCluster:
-        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
-      case SoftwareInstalled:
-        return new HashSet<>(Arrays.asList(NodeActionType.START, NodeActionType.DELETE));
-      case ToBeRemoved:
-        return new HashSet<>(Arrays.asList(NodeActionType.REMOVE));
-
-      // Expected/normal states.
-      case Live:
-        return new HashSet<>(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
-      case Stopped:
-        return new HashSet<>(Arrays.asList(NodeActionType.START, NodeActionType.RELEASE));
-      case Removed:
-        return new HashSet<>(
-            Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE));
-      case Decommissioned:
-        return new HashSet<>(Arrays.asList(NodeActionType.ADD, NodeActionType.DELETE));
-      default:
-        return new HashSet<>();
-    }
   }
 
   @JsonIgnore

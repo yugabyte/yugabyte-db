@@ -3,9 +3,11 @@
 package com.yugabyte.yw.models;
 
 import com.google.common.net.HostAndPort;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -162,7 +164,7 @@ public class Universe extends Model {
     }
 
     ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
-    updateNodesDynamicActions(universeDetailsJson, nodes);
+    addNodesActions(universeDetailsJson, nodes);
 
     ArrayNode clustersArrayJson = Json.newArray();
     for (Cluster cluster : params.clusters) {
@@ -178,43 +180,87 @@ public class Universe extends Model {
   }
 
   /**
-   * Modifies lists of allowed for nodes actions depending on the universe state.
-   * Actions are added/removed directly into/from the json representation. Initial
-   * values of allowed actions are set by NodeDetails.getAllowedActions().
+   * Adds arrays of allowed actions for nodes depending on the universe state.
+   * Actions are added directly into the json representation.
    *
    * @param universeDetailsJson
    * @param nodes
    */
-  void updateNodesDynamicActions(ObjectNode universeDetailsJson,
-      Collection<NodeDetails> nodes) {
+  void addNodesActions(ObjectNode universeDetailsJson, Collection<NodeDetails> nodes) {
     JsonNode nodeDetailsSet = universeDetailsJson.get("nodeDetailsSet");
     if (nodeDetailsSet == null || nodeDetailsSet.isNull() || !nodeDetailsSet.isArray()) {
       return;
     }
 
     try {
-      // Preparing a node name -> allowed actions map.
-      Map<String, ArrayNode> nodeActions = new HashMap<>();
+      // Preparing a node name -> json node object.
+      Map<String, JsonNode> jsonNodes = new HashMap<>();
       for (int i = 0; i < nodeDetailsSet.size(); i++) {
         JsonNode jsonNode = nodeDetailsSet.get(i);
-        JsonNode allowedActions = jsonNode.get("allowedActions");
-        if (allowedActions != null && !allowedActions.isNull() && allowedActions.isArray()) {
-          nodeActions.put(jsonNode.get("nodeName").asText(), (ArrayNode) allowedActions);
-        }
+        jsonNodes.put(jsonNode.get("nodeName").asText(), jsonNode);
       }
 
       for (NodeDetails node : nodes) {
-        if (node.state == NodeDetails.NodeState.Live && !node.isMaster
-            && Util.areMastersUnderReplicated(node, this)) {
-          ArrayNode actions = nodeActions.get(node.nodeName);
-          if (actions != null) {
-            actions.add(NodeActionType.START_MASTER.name());
-          }
+        ObjectNode jsonNode = (ObjectNode) jsonNodes.get(node.nodeName);
+        if (jsonNode == null) {
+          continue;
         }
+        ArrayNode actions = (ArrayNode) Json.toJson(getNodeActions(node, nodes));
+        jsonNode.set("allowedActions", actions);
       }
     } catch (Exception e) {
-      LOG.info("Unable to update allowed actions: " + e);
+      LOG.info("Unable to add allowed actions: " + e);
     }
+  }
+
+  @VisibleForTesting
+  Set<NodeActionType> getNodeActions(NodeDetails node, Collection<NodeDetails> nodes) {
+    if (node.state == null) {
+      return new HashSet<>();
+    }
+    Set<NodeActionType> actions = new HashSet<>();
+    switch (node.state) {
+      // Unexpected/abnormal states.
+      case ToBeAdded:
+        actions.add(NodeActionType.DELETE);
+        break;
+      case Adding:
+        actions.add(NodeActionType.DELETE);
+        break;
+      case ToJoinCluster:
+        actions.add(NodeActionType.REMOVE);
+        break;
+      case SoftwareInstalled:
+        actions.addAll(Arrays.asList(NodeActionType.START, NodeActionType.DELETE));
+        break;
+      case ToBeRemoved:
+        actions.add(NodeActionType.REMOVE);
+        break;
+
+      // Expected/normal states.
+      case Live:
+        actions.addAll(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
+        if (!node.isMaster && Util.areMastersUnderReplicated(node, this)) {
+          actions.add(NodeActionType.START_MASTER);
+        }
+        break;
+      case Stopped:
+        actions.addAll(Arrays.asList(NodeActionType.START, NodeActionType.RELEASE));
+        break;
+      case Removed:
+        actions.addAll(
+            Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE));
+        break;
+      case Decommissioned:
+        actions.addAll(Arrays.asList(NodeActionType.ADD, NodeActionType.DELETE));
+        break;
+      default:
+        // Nothing here
+    }
+    if (nodes.size() == 1) {
+      actions.removeAll(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
+    }
+    return actions;
   }
 
   public void resetVersion() {
@@ -776,7 +822,7 @@ public class Universe extends Model {
           && Util.areMastersUnderReplicated(node, this));
     }
 
-    return node.getAllowedActions().contains(action);
+    return getNodeActions(node, getNodes()).contains(action);
   }
 
   /**
