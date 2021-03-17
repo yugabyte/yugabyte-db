@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -529,17 +530,12 @@ public class NodeManager extends DevopsBase {
           }
         }
 
+        if (taskParam.useTimeSync
+            && (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.gcp))) {
+          commandArgs.add("--use_chrony");
+        }
+
         if (cloudType.equals(Common.CloudType.aws)) {
-          if (taskParam.useTimeSync) {
-            commandArgs.add("--use_chrony");
-          }
-
-          if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
-            Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
-            commandArgs.add("--instance_tags");
-            commandArgs.add(Json.stringify(Json.toJson(useTags)));
-          }
-
           if (taskParam.cmkArn != null) {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
@@ -563,6 +559,14 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(vnetName);
           }
         }
+
+        if (Provider.InstanceTagsEnabledProviders.contains(cloudType) &&
+            userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
+          Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
+          commandArgs.add("--instance_tags");
+          commandArgs.add(Json.stringify(Json.toJson(useTags)));
+        }
+
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
@@ -659,7 +663,7 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
         }
         InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        if (userIntent.providerType.equals(Common.CloudType.aws)) {
+        if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
           if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
             throw new RuntimeException("Invalid instance tags");
           }
@@ -669,6 +673,10 @@ public class NodeManager extends DevopsBase {
           if (!taskParam.deleteTags.isEmpty()) {
             commandArgs.add("--remove_tags");
             commandArgs.add(taskParam.deleteTags);
+          }
+          if (userIntent.providerType.equals(Common.CloudType.azu)) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+            commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           }
         }
         break;

@@ -141,7 +141,14 @@ public class BaseMiniClusterTest extends BaseYBTest {
     TestUtils.clearReservedPorts();
     if (miniCluster == null) {
       createMiniCluster();
+    } else if (shouldRestartMiniClusterBetweenTests()) {
+      LOG.info("Restarting the MiniCluster");
+      miniCluster.restart();
     }
+  }
+
+  protected boolean shouldRestartMiniClusterBetweenTests() {
+    return false;
   }
 
   /**

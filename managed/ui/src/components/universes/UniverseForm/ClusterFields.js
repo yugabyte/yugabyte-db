@@ -37,6 +37,8 @@ import {
   isKubernetesUniverse,
   getPlacementCloud
 } from '../../../utils/UniverseUtils';
+import pluralize from 'pluralize';
+import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -74,6 +76,8 @@ const DEFAULT_STORAGE_TYPES = {
   GCP: 'Scratch',
   AZU: 'Premium_LRS'
 };
+
+const FORBIDDEN_GFLAG_KEYS = new Set(['NAME']);
 
 export const EXPOSING_SERVICE_STATE_TYPES = {
   None: 'NONE',
@@ -146,6 +150,7 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.validateUserTags = this.validateUserTags.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -939,7 +944,8 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      this.getCurrentProvider(currentProviderUUID).code === 'aws'
+      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
+        this.getCurrentProvider(currentProviderUUID).code === 'azu')
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1054,6 +1060,13 @@ export default class ClusterFields extends Component {
     }
   }
 
+  validateUserTags(value) {
+    if (value.length) {
+      const forbiddenEntry = value.find(x => FORBIDDEN_GFLAG_KEYS.has(x.name?.trim?.()?.toUpperCase()));
+      return forbiddenEntry ? `User tag "${forbiddenEntry.name}" is not allowed.` : undefined;
+    }
+  }
+
   /**
    * This method is used to disable the ClientToNodeTLS field initially.
    * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
@@ -1066,6 +1079,18 @@ export default class ClusterFields extends Component {
   clientToNodeEncryptField(isFieldReadOnly, enableNodeToNodeEncrypt) {
     return isFieldReadOnly || !enableNodeToNodeEncrypt;
   }
+
+  instanceTypeGroupsToOptions = (groups) => {
+    return Object.entries(groups).map(([group, list]) => (
+      <optgroup label={`${group} type instances`} key={group}>
+        {list.map(item => (
+          <option key={item.instanceTypeCode} value={item.instanceTypeCode}>
+            {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
+          </option>
+        ))}
+      </optgroup>
+    ));
+  };
 
   render() {
     const { clusterType, cloud, softwareVersions, accessKeys, universe, formValues } = this.props;
@@ -1456,8 +1481,10 @@ export default class ClusterFields extends Component {
         />
       );
     }
-    // Only enable Time Sync Service toggle for AWS.
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === 'aws') {
+    // Only enable Time Sync Service toggle for AWS/GCP.
+    if (isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === 'aws' || currentProvider.code === 'gcp')) {
+      const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
       useTimeSync = (
         <Field
           name={`${clusterType}.useTimeSync`}
@@ -1465,8 +1492,8 @@ export default class ClusterFields extends Component {
           isReadOnly={isFieldReadOnly}
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
-          label="Use AWS Time Sync"
-          subLabel="Enable the AWS Time Sync functionality for the DB servers."
+          label={`Use ${providerCode} Time Sync`}
+          subLabel={`Enable the ${providerCode} Time Sync functionality for the DB servers.`}
         />
       );
     }
@@ -1490,9 +1517,7 @@ export default class ClusterFields extends Component {
         isNonEmptyArray(this.props.cloud.instanceTypes.data) &&
         this.props.cloud.instanceTypes.data.reduce(function (groups, it) {
           const prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf('.'));
-          groups[prefix]
-            ? groups[prefix].push(it.instanceTypeCode)
-            : (groups[prefix] = [it.instanceTypeCode]);
+          groups[prefix] ? groups[prefix].push(it) : (groups[prefix] = [it]);
           return groups;
         }, {});
       if (isNonEmptyObject(optGroups)) {
@@ -1502,14 +1527,51 @@ export default class ClusterFields extends Component {
               {optGroups[key]
                 .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
                 .map((item, arrIdx) => (
-                  <option key={idx + arrIdx} value={item}>
-                    {item}
+                  <option key={idx + arrIdx} value={item.instanceTypeCode}>
+                    {item.instanceTypeCode} ({pluralize('core', item.numCores, true)}, {item.memSizeGB}GB RAM)
                   </option>
                 ))}
             </optgroup>
           );
         });
       }
+    } else if (currentProviderCode === 'gcp') {
+      const groups = {};
+      const list = cloud.instanceTypes?.data || [];
+      _.sortBy(list, 'instanceTypeCode');
+
+      list.forEach(item => {
+        const prefix = item.instanceTypeCode.split('-')[0].toUpperCase();
+        groups[prefix] = groups[prefix] || [];
+        groups[prefix].push(item);
+      });
+
+      universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
+    } else if (currentProviderCode === 'azu') {
+      const groups = {};
+      // clone as we'll mutate items by adding "processed" prop
+      const list = _.cloneDeep(cloud.instanceTypes?.data) || [];
+      _.sortBy(list, 'instanceTypeCode');
+
+      for (const [group, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
+        list.forEach(item => {
+          if (regexp.test(item.instanceTypeCode)) {
+            groups[group] = groups[group] || [];
+            groups[group].push(item);
+            item.processed = true;
+          }
+        });
+      }
+
+      // catch uncategorized instance types, if any
+      list.forEach(item => {
+        if (!item.processed) {
+          groups['Other'] = groups['Other'] || [];
+          groups['Other'].push(item);
+        }
+      });
+
+      universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
     } else if (currentProviderCode === 'kubernetes') {
       universeInstanceTypeList =
         cloud.instanceTypes.data &&
@@ -1561,7 +1623,7 @@ export default class ClusterFields extends Component {
         <AZPlacementInfo
           placementInfo={self.props.universe.currentPlacementStatus}
           placementCloud={placementCloud}
-          providerCode={currentProvider.code}
+          providerCode={currentProvider?.code}
         />
       );
     } else if (currentProvider?.code === 'onprem'
@@ -1626,22 +1688,25 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      tagsArray = (
-        <Row>
-          <Col md={12}>
-            <h4>User Tags</h4>
-          </Col>
-          <Col md={6}>
-            <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.instanceTags`}
-              flagType="tag"
-              operationType="Create"
-              isReadOnly={false}
-            />
-          </Col>
-        </Row>
-      );
+      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+        tagsArray = (
+          <Row>
+            <Col md={12}>
+              <h4>User Tags</h4>
+            </Col>
+            <Col md={6}>
+              <FieldArray
+                component={GFlagArrayComponent}
+                name={`${clusterType}.instanceTags`}
+                flagType="tag"
+                operationType="Create"
+                isReadOnly={false}
+                validate={this.validateUserTags}
+              />
+            </Col>
+          </Row>
+        );
+      }
     }
 
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
@@ -2096,7 +2161,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
-        {currentProviderCode === 'aws' && clusterType === 'primary' && (
+        {clusterType === 'primary' && (
           <div className="form-section no-border">{tagsArray}</div>
         )}
       </div>

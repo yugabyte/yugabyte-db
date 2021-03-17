@@ -33,9 +33,13 @@ import org.junit.Rule;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestDelete extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDelete.class);
+
   @Rule
   public ExpectedException exception = ExpectedException.none();
 

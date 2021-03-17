@@ -14,7 +14,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Test;
@@ -26,6 +29,8 @@ import java.util.UUID;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
 public class PlatformInstanceControllerTest extends FakeDBApplication {
@@ -199,5 +204,55 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     assertBadRequest(createResult, "");
     JsonNode node = Json.parse(contentAsString(createResult));
     assertErrorNodeValue(node, "address", "Invalid URL provided");
+  }
+
+  @Test
+  public void testPromoteInstanceBackupFileNonexistent() {
+    when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+      .thenReturn(new ShellResponse());
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
+    assertOk(createResult);
+    JsonNode instanceJson = Json.parse(contentAsString(createResult));
+    PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
+    UUID instanceUUID = instance.getUUID();
+    PlatformInstance remoteLeader = PlatformInstance.create(config, "http://def.com", true, false);
+    remoteLeader.save();
+    String uri = String.format(
+      "/api/settings/ha/config/%s/instance/%s/promote",
+      configUUID.toString(),
+      instanceUUID.toString()
+    );
+    String authToken = user.createAuthToken();
+    JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
+    Result promoteResult =  FakeApiHelper
+      .doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    assertBadRequest(promoteResult, "Could not find backup file");
+  }
+
+  @Test
+  public void testPromoteInstanceNoLeader() {
+    when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+      .thenReturn(new ShellResponse());
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, false);
+    assertOk(createResult);
+    JsonNode instanceJson = Json.parse(contentAsString(createResult));
+    PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
+    UUID instanceUUID = instance.getUUID();
+    String uri = String.format(
+      "/api/settings/ha/config/%s/instance/%s/promote",
+      configUUID.toString(),
+      instanceUUID.toString()
+    );
+    String authToken = user.createAuthToken();
+    JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
+    Result promoteResult =  FakeApiHelper
+      .doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    assertBadRequest(promoteResult, "Could not find leader instance");
   }
 }

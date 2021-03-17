@@ -350,12 +350,19 @@ DEFINE_int32(txn_table_wait_min_ts_count, 1,
              " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
-DEFINE_bool(enable_ysql_tablespaces_for_placement, false,
+DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
             "If set, tablespaces will be used for placement of YSQL tables.");
+TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
 
-DEFINE_int32(ysql_tablespace_info_refresh_secs, -1,
+DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "Frequency at which the table to tablespace information will be updated in master "
-             "from pg catalog tables.");
+             "from pg catalog tables. A value of -1 disables the refresh task.");
+TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
+
+DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
+                 "When set, placement of the tablets of a newly created table will not honor "
+                 "its tablespace placement policy until the loadbalancer runs.");
+TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
 namespace yb {
 namespace master {
@@ -9086,6 +9093,61 @@ void CatalogManager::RebuildYQLSystemPartitions() {
         background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
   }, wait_time);
+}
+
+Status CatalogManager::SysCatalogRespectLeaderAffinity() {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+
+  const auto& affinitized_leaders = config.replication_info().affinitized_leaders();
+  if (affinitized_leaders.empty()) {
+    return Status::OK();
+  }
+
+  ServerRegistrationPB reg;
+  RETURN_NOT_OK(GetRegistration(&reg));
+
+  for (const CloudInfoPB& cloud_info : affinitized_leaders) {
+    // Do nothing if already in an affinitized zone.
+    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, reg.cloud_info())) {
+      return Status::OK();
+    }
+  }
+
+  // Not in affinitized zone, try finding a master to send a step down request to.
+  std::vector<ServerEntryPB> masters;
+  RETURN_NOT_OK(master_->ListMasters(&masters));
+
+  for (const ServerEntryPB& master : masters) {
+    auto master_cloud_info = master.registration().cloud_info();
+
+    for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
+      if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
+        LOG_WITH_PREFIX(INFO) << "Sys catalog tablet is not in an affinitized zone, "
+                              << "sending step down request to master uuid "
+                              << master.instance_id().permanent_uuid()
+                              << " in zone "
+                              << TSDescriptor::generate_placement_id(master_cloud_info);
+        std::shared_ptr<TabletPeer> tablet_peer;
+        RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+
+        consensus::LeaderStepDownRequestPB req;
+        req.set_tablet_id(sys_catalog_->tablet_id());
+        req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
+        req.set_new_leader_uuid(master.instance_id().permanent_uuid());
+
+        consensus::LeaderStepDownResponsePB resp;
+        RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status());
+        }
+        LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+        return Status::OK();
+      }
+    }
+  }
+
+  return STATUS(NotFound, "Couldn't find a master in an affinitized zone");
 }
 
 }  // namespace master

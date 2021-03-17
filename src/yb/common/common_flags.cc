@@ -24,10 +24,13 @@
 // Note that this is used by the client or master only, not by tserver.
 DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
-    "value is -1, the system automatically determines the number of tablets.");
+    "value is -1, the system automatically determines the number of tablets "
+    "based on number of CPU cores.");
 
-DEFINE_int32(ysql_num_shards_per_tserver, 8,
-    "The default number of shards per YSQL table per tablet server when a table is created.");
+DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+    "The default number of shards per YSQL table per tablet server when a table is created. If the "
+    "value is -1, the system automatically determines the number of tablets "
+    "based on number of CPU cores.");
 
 DEFINE_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
@@ -37,16 +40,38 @@ TAG_FLAG(ysql_disable_index_backfill, runtime);
 
 namespace yb {
 
+static int GetYCQLNumShardsPerTServer() {
+  int value = 8;
+  if (IsTsan()) {
+    value = 2;
+  } else if (base::NumCPUs() <= 2) {
+    value = 4;
+  }
+  return value;
+}
+
+static int GetYSQLNumShardsPerTServer() {
+  int value = 8;
+  if (IsTsan()) {
+    value = 2;
+  } else if (base::NumCPUs() <= 2) {
+    value = 2;
+  } else if (base::NumCPUs() <= 4) {
+    value = 4;
+  }
+  return value;
+}
+
 void InitCommonFlags() {
-  if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == -1) {
-    int value = 8;
-    if (IsTsan()) {
-      value = 2;
-    } else if (base::NumCPUs() <= 2) {
-      value = 4;
-    }
+  if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
+    int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
     SetAtomicFlag(value, &FLAGS_yb_num_shards_per_tserver);
+  }
+  if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
+    int value = GetYSQLNumShardsPerTServer();
+    VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
+    SetAtomicFlag(value, &FLAGS_ysql_num_shards_per_tserver);
   }
 }
 

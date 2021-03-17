@@ -2,8 +2,8 @@
 title: YSQL vs PostgreSQL
 headerTitle: YSQL vs PostgreSQL
 linkTitle: YSQL vs PostgreSQL
-description: PostgreSQL features in YSQL.
-headcontent: PostgreSQL features in YSQL.
+description: PostgreSQL features in YSQL
+headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

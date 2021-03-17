@@ -129,9 +129,11 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
 
-    return !getPromiseState(rollingUpgrade).isLoading() &&
-      updateAvailable &&
-      !(showModal && visibleModal === 'softwareUpgradesModal');
+    return (
+      !getPromiseState(rollingUpgrade).isLoading() &&
+      (updateAvailable !== 0) &&
+      !(showModal && visibleModal === 'softwareUpgradesModal')
+    );
   };
 
   stripQueryParams = () => {
@@ -194,6 +196,7 @@ class UniverseDetail extends Component {
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
+    const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -461,6 +464,7 @@ class UniverseDetail extends Component {
                     <>
                       {!universePaused &&
                         <YBMenuItem
+                          disabled={ updateInProgress }
                           onClick={showSoftwareUpgradesModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -497,6 +501,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused &&
                         <YBMenuItem
+                          disabled={ updateInProgress }
                           onClick={showGFlagsModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -509,6 +514,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused &&
                         <YBMenuItem
+                          disabled={ updateInProgress }
                           onClick={() => showSubmenu('security')}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -524,6 +530,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused &&
                         <YBMenuItem
+                          disabled={ updateInProgress }
                           onClick={showRollingRestartModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -539,6 +546,7 @@ class UniverseDetail extends Component {
                       {!isReadOnlyUniverse &&
                         !universePaused && (
                           <YBMenuItem
+                            disabled={ updateInProgress }
                             to={`/universes/${uuid}/edit/async`}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -557,7 +565,8 @@ class UniverseDetail extends Component {
                           modal={modal}
                           closeModal={closeModal}
                           button={
-                            <YBMenuItem onClick={showRunSampleAppsModal}>
+                            <YBMenuItem 
+                              disabled={ updateInProgress } onClick={showRunSampleAppsModal}>
                               <YBLabelWithIcon icon="fa fa-terminal">Run Sample Apps</YBLabelWithIcon>
                             </YBMenuItem>
                           }

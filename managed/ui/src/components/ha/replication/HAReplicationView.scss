@@ -2,10 +2,17 @@
 
 .ha-replication-view {
   &__header-buttons {
-    text-align: right;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
 
-   > button {
+    > .btn {
       margin-right: 8px;
+    }
+
+    .yb-info-tip {
+      margin-right: 12px;
+      font-size: 1.2em; // copy rule from forms.scss
     }
   }
 

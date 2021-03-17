@@ -16,6 +16,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -23,6 +24,8 @@
 #include "yb/master/master.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -46,7 +49,8 @@ class SnapshotCoordinatorContext {
 
   virtual void SendCreateTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
+      const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
@@ -56,6 +60,11 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
+  virtual Result<SysRowEntries> CollectEntries(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      bool add_indexes,
+      bool include_parent_colocated_table) = 0;
+
   virtual const Schema& schema() = 0;
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
@@ -63,6 +72,8 @@ class SnapshotCoordinatorContext {
   virtual rpc::Scheduler& Scheduler() = 0;
 
   virtual bool IsLeader() = 0;
+
+  virtual server::Clock* Clock() = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };
