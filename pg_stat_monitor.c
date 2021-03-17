@@ -59,7 +59,9 @@ void _PG_fini(void);
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
+#if PG_VERSION_NUM >= 130000
 static int plan_nested_level = 0;
+#endif
 
 /* The array to store outer layer query id*/
 uint64 *nested_queryids;
@@ -76,10 +78,12 @@ static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
 static double time_diff(struct timeval end, struct timeval start);
 
-static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
 
 /* Saved hook values in case of unload */
+
+#if PG_VERSION_NUM >= 130000
 static planner_hook_type planner_hook_next = NULL;
+#endif
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorRun_hook_type prev_ExecutorRun = NULL;
@@ -104,11 +108,6 @@ static int pg_get_application_name(char* application_name);
 static PgBackendStatus *pg_get_backend_status(void);
 static Datum intarray_get_datum(int32 arr[], int len);
 
-#if PG_VERSION_NUM < 130000
-static void BufferUsageAccumDiff(BufferUsage* bufusage, BufferUsage* pgBufferUsage, BufferUsage* bufusage_start);
-static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param);
-#endif
-
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query);
 static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count, bool execute_once);
@@ -117,6 +116,7 @@ static void pgss_ExecutorEnd(QueryDesc *queryDesc);
 static bool pgss_ExecutorCheckPerms(List *rt, bool abort);
 
 #if PG_VERSION_NUM >= 130000
+static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
@@ -124,6 +124,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					QueryCompletion *qc
 					);
 #else
+static void BufferUsageAccumDiff(BufferUsage* bufusage, BufferUsage* pgBufferUsage, BufferUsage* bufusage_start);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                 ProcessUtilityContext context, ParamListInfo params,
                                 QueryEnvironment *queryEnv,
@@ -250,8 +251,10 @@ _PG_init(void)
 	ExecutorEnd_hook 				= pgss_ExecutorEnd;
 	prev_ProcessUtility 			= ProcessUtility_hook;
 	ProcessUtility_hook 			= pgss_ProcessUtility;
+#if PG_VERSION_NUM >= 130000
 	planner_hook_next       		= planner_hook;
 	planner_hook                    = pgss_planner_hook;
+#endif
 	emit_log_hook                 = pgsm_emit_log_hook;
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
 	ExecutorCheckPerms_hook		= pgss_ExecutorCheckPerms;
@@ -510,7 +513,11 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 					queryDesc->totaltime->total * 1000.0,	/* totaltime */
 					queryDesc->estate->es_processed,		/* rows */
 					&queryDesc->totaltime->bufusage,		/*  bufusage */
+#if PG_VERSION_NUM >= 130000
 					&queryDesc->totaltime->walusage,		/* walusage */
+#else
+					NULL,
+#endif
 					NULL,
 					PGSS_EXEC); 							/* pgssStoreKind */
 	}
@@ -571,7 +578,8 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
     return true;
 }
 
-static PlannedStmt *
+#if PG_VERSION_NUM >= 130000
+static PlannedStmt*
 pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt			*result;
@@ -641,6 +649,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 	}
 	return result;
 }
+#endif
 
 /*
  * ProcessUtility hook
@@ -683,13 +692,12 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		instr_time	start;
 		instr_time	duration;
 		uint64		rows;
-		BufferUsage bufusage_start;
 		BufferUsage bufusage;
-		WalUsage    walusage_start;
 		WalUsage    walusage;
-
-		bufusage_start = pgBufferUsage;
-		walusage_start = pgWalUsage;
+		BufferUsage bufusage_start = pgBufferUsage;
+#if PG_VERSION_NUM >= 130000
+		WalUsage    walusage_start = pgWalUsage;
+#endif
 		INSTR_TIME_SET_CURRENT(start);
 		PG_TRY();
 		{

@@ -112,6 +112,15 @@ typedef struct GucVariables
 	bool 	guc_restart;
 } GucVariable;
 
+#if PG_VERSION_NUM < 130000
+typedef struct WalUsage
+{
+    long        wal_records;    /* # of WAL records produced */
+    long        wal_fpi;        /* # of WAL full page images produced */
+    uint64      wal_bytes;      /* size of WAL records produced */
+} WalUsage;
+#endif
+
 typedef enum OVERFLOW_TARGET
 {
 	OVERFLOW_TARGET_NONE = 0,
