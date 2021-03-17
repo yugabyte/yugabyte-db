@@ -98,33 +98,23 @@ In the default `yugabyte` database, create the database table `users` on the "Da
 Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
 
 ```sh
-$ ./bin/ycqlsh -h 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 Create a keyspace by running the following statement.
 
 ```sql
-ycqlsh> CREATE KEYSPACE example;
+ycqlsh> CREATE KEYSPACE customers;
 ```
 
 ```sql
-ycqlsh> USE example;
+ycqlsh> USE customers;
 ```
 
 Run the following `CREATE TABLE` statement.
 
 ``` sql
-ycqlsh:example> CREATE TABLE users (
-                    email varchar(35) PRIMARY KEY,
-                    username varchar(20)
-                    );
+CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 
-```
-
-```plpgsql
-CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
-    );
 ```
 
 Now create the identical database table on cluster B.
@@ -132,16 +122,21 @@ Now create the identical database table on cluster B.
 Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
 
 ```sh
-$ ./bin/ycqlsh -h 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
+```
+Create a keyspace by running the following statement.
+
+```sql
+ycqlsh> CREATE KEYSPACE customers;
 ```
 
+```sql
+ycqlsh> USE customers;
+```
 Run the following `CREATE TABLE` statement.
 
 ```plpgsql
-CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
-    );
+CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 ```
 
 You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication.
@@ -184,17 +179,18 @@ Now that you've configured unidirectional replication, you can now add data to t
 To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ycqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
 ```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('steve@example.com', 'steve');
 ```
 
 On the consumer "Data Center - West" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ycqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```plpgsql
@@ -240,17 +236,18 @@ Now that you've configured bidirectional replication, you can now add data to th
 To add data to the "Data Center - West" cluster, open`ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ycqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('mikhail@example.com', 'mikhail');
 ```
 
 On the new "consumer" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ycqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
 ```plpgsql
