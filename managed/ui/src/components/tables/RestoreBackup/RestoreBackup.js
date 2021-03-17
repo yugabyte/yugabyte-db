@@ -10,6 +10,7 @@ import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils
 import { YBModalForm } from '../../common/forms';
 import { Field } from 'formik';
 import * as Yup from 'yup';
+import { BackupStorageOptions } from '../BackupStorageOptions';
 
 export default class RestoreBackup extends Component {
   static propTypes = {
@@ -66,7 +67,7 @@ export default class RestoreBackup extends Component {
    * @param {string} value Input field value.
    */
    backupConfigType = (value) => {
-    this.props.initialValues.storageConfigUUID.value = value;
+    this.props.initialValues.storageConfigUUID = value;
   }
 
   render() {
@@ -126,40 +127,7 @@ export default class RestoreBackup extends Component {
       return { value: config.metadata.configUUID, label: labelName };
     });
     
-    let configTypeList = <option />;
-    const optGroups =
-      storageConfigs
-      && isNonEmptyArray(storageConfigs)
-      && storageConfigs.reduce((val, indx) => {
-        const configType = `${indx.name} Storage`;
-        val[configType]
-          ? val[configType].push({
-            "configName": indx.configName,
-            "configUUID": indx.configUUID
-          })
-          : (val[configType] = [{
-            "configName": indx.configName,
-            "configUUID": indx.configUUID
-          }]);
-        return val;
-    }, {});
-
-    if (isNonEmptyObject(optGroups)) {
-      configTypeList = Object.keys(optGroups).map(function (key, idx) {
-        return (
-          <optgroup label={key.toUpperCase()} key={key + idx}>
-            {optGroups[key]
-              .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
-              .map((item, arrIdx) => (
-                <option key={idx + arrIdx} value={item.configUUID}>
-                  {item.configName}
-                </option>
-              ))}
-          </optgroup>
-        );
-      });
-    }
-
+    const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
     const isUniverseBackup =
       hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
@@ -194,7 +162,7 @@ export default class RestoreBackup extends Component {
             const payload = {
               ...values,
               restoreToUniverseUUID,
-              storageConfigUUID: values.storageConfigUUID.value,
+              storageConfigUUID: values.storageConfigUUID,
               kmsConfigUUID: values.kmsConfigUUID
             };
             if (values.storageLocation) {

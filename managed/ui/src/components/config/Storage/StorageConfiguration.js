@@ -12,7 +12,7 @@ import AwsStorageConfiguration from './AwsStorageConfiguration';
 import { BackupList } from './BackupList';
 import { EditBackupList } from './EditBackupList';
 import { CreateBackup } from './CreateBackup';
-import { StorageConfigTypes } from './ConfigType';
+import { storageConfigTypes } from './ConfigType';
 import { ConfigControls } from './ConfigControls';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
@@ -112,7 +112,7 @@ class StorageConfiguration extends Component {
   addStorageConfig = (values, action, props) => {
     const type =
       (props.activeTab && props.activeTab.toUpperCase())
-      || Object.keys(StorageConfigTypes)[0];
+      || Object.keys(storageConfigTypes)[0];
     Object.keys(values).forEach((key) => {
       if (typeof values[key] === 'string' || values[key] instanceof String)
         values[key] = values[key].trim();
@@ -170,37 +170,45 @@ class StorageConfiguration extends Component {
     }
 
     if (values.type === "edit") {
+      this.setState({
+        editView: {
+          ...this.state.editView,
+          [props.activeTab]: {
+            isEdited: false,
+            data: {}
+          }
+        },
+        listView: {
+          ...this.state.listView,
+          [props.activeTab]: true
+        }
+      });
+
       return (
         this.props
-        .editCustomerConfig({
-          type: 'STORAGE',
-          name: type,
-          configName: configName,
-          data: dataPayload,
-          configUUID: values.configUUID
-        })
-        .then((resp) => {
-          if (getPromiseState(this.props.editConfig).isSuccess()) {
-            this.props.reset();
-            this.props.fetchCustomerConfigs();
-          } else if (getPromiseState(this.props.editConfig).isError()) {
-            throw new SubmissionError(this.props.editConfig.error);
-          }
-        }), this.setState({
-          editView: {
-            ...this.state.editView,
-            [props.activeTab]: {
-              isEdited: false,
-              data: {}
+          .editCustomerConfig({
+            type: 'STORAGE',
+            name: type,
+            configName: configName,
+            data: dataPayload,
+            configUUID: values.configUUID
+          }).then(() => {
+            if (getPromiseState(this.props.editConfig).isSuccess()) {
+              this.props.reset();
+              this.props.fetchCustomerConfigs();
+            } else if (getPromiseState(this.props.editConfig).isError()) {
+              throw new SubmissionError(this.props.editConfig.error);
             }
-          },
-          listView: {
-            ...this.state.listView,
-            [props.activeTab]: true
-          }
-        })
+          })
       )
     } else {
+      this.setState({
+        listView: {
+          ...this.state.listView,
+          [props.activeTab]: true
+        }
+      });
+
       return (
         this.props
           .addCustomerConfig({
@@ -217,11 +225,6 @@ class StorageConfiguration extends Component {
             } else if (getPromiseState(this.props.addConfig).isError()) {
               // show server-side validation errors under form inputs
               throw new SubmissionError(this.props.addConfig.error);
-            }
-          }), this.setState({
-            listView: {
-              ...this.state.listView,
-              [props.activeTab]: true
             }
           })
       );
@@ -338,7 +341,7 @@ class StorageConfiguration extends Component {
     } = this.props;
     const { iamRoleEnabled } = this.state;
     const activeTab = this.props.activeTab
-    || Object.keys(StorageConfigTypes)[0].toLowerCase();
+    || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
@@ -370,10 +373,10 @@ class StorageConfiguration extends Component {
           }
         </Tab>
       ];
-      Object.keys(StorageConfigTypes).forEach((configName) => {
+      Object.keys(storageConfigTypes).forEach((configName) => {
         if (this.state.editView[activeTab]?.isEdited) {
           const configFields = [];
-          const configTemplate = StorageConfigTypes[configName];
+          const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field) => {
             const value = this.state.editView[activeTab].data;
             configFields.push(
@@ -388,7 +391,7 @@ class StorageConfiguration extends Component {
           configs.push(this.wrapFields(configFields, configName));
         } else {
           const configFields = [];
-          const config = StorageConfigTypes[configName];
+          const config = storageConfigTypes[configName];
           config.fields.forEach((field) => {
             configFields.push(
               <CreateBackup
@@ -406,7 +409,7 @@ class StorageConfiguration extends Component {
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
             <YBTabsPanel
-              defaultTab={Object.keys(StorageConfigTypes)[0].toLowerCase()}
+              defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
               activeTab={activeTab}
               id="storage-config-tab-panel"
               className="config-tabs"

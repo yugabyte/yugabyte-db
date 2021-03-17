@@ -7,8 +7,7 @@
 
 import { YBTextInputWithLabel } from "../../common/forms/fields";
 
-const YBTextInputWithLabelComponent = YBTextInputWithLabel;
-const StorageConfigTypes = {
+export const storageConfigTypes = {
   NFS: {
     title: "NFS Storage",
     fields: [
@@ -16,13 +15,13 @@ const StorageConfigTypes = {
         id: "NFS_CONFIGURATION_NAME",
         label: "Configuration Name",
         placeHolder: "Configuration Name",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       },
       {
         id: "NFS_BACKUP_LOCATION",
         label: "NFS Storage Path",
         placeHolder: "NFS Storage Path",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       }
     ]
   },
@@ -33,19 +32,19 @@ const StorageConfigTypes = {
         id: "GCS_CONFIGURATION_NAME",
         label: "Configuration Name",
         placeHolder: "Configuration Name",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       },
       {
         id: "GCS_BACKUP_LOCATION",
         label: "GCS Bucket",
         placeHolder: "GCS Bucket",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       },
       {
         id: "GCS_CREDENTIALS_JSON",
         label: "GCS Credentials",
         placeHolder: "GCS Credentials JSON",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       }
     ]
   },
@@ -56,22 +55,20 @@ const StorageConfigTypes = {
         id: "AZ_CONFIGURATION_NAME",
         label: "Configuration Name",
         placeHolder: "Configuration Name",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       },
       {
         id: "AZ_BACKUP_LOCATION",
         label: "Container URL",
         placeHolder: "Container URL",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       },
       {
         id: "AZURE_STORAGE_SAS_TOKEN",
         label: "SAS Token",
         placeHolder: "SAS Token",
-        component: YBTextInputWithLabelComponent
+        component: YBTextInputWithLabel
       }
     ]
   }
 };
-
-export { StorageConfigTypes }

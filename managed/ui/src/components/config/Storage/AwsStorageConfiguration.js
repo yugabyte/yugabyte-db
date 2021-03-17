@@ -33,19 +33,16 @@ class AwsStorageConfiguration extends Component {
    * @param {boolean} iamRoleEnabled IAM enabled state.
    * @returns true
    */
-  disableInputFields = (data, configName, iamRoleEnabled) => {
-    if (!isEmptyObject(data)) {
-      if (data.inUse) {
-        if (configName !== "S3_CONFIGURATION_NAME") {
-          return true;
-        }
-      }
+  disableInputFields = (data, configName, iamRoleEnabled = false) => {
+    if (!isEmptyObject(data) &&
+      data.inUse &&
+      configName !== "S3_CONFIGURATION_NAME") {
+      return true;
     }
 
-    if (iamRoleEnabled) {
-      if (configName === "AWS_ACCESS_KEY_ID" || "AWS_SECRET_ACCESS_KEY") {
-        return true;
-      }
+    if (iamRoleEnabled &&
+      (configName === "AWS_ACCESS_KEY_ID" || "AWS_SECRET_ACCESS_KEY")) {
+      return true;
     }
   };
 
@@ -57,9 +54,9 @@ class AwsStorageConfiguration extends Component {
     } = this.props;
 
     return (
-      <Row className="config-section-header" key={"s3"}>
+      <Row className="config-section-header">
         <Col lg={9}>
-          <Row className="config-provider-row" key={"configuration-name"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Configuration Name</div>
             </Col>
@@ -79,7 +76,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={"s3-iam-instance-profile"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
             </Col>
@@ -93,7 +90,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={"s3-aws-access-key-id"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Access Key</div>
             </Col>
@@ -107,7 +104,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={"s3-aws-secret-access-key"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
@@ -121,14 +118,14 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={"s3-backup-location"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">S3 Bucket</div>
             </Col>
             <Col lg={9}>
               <Field
                 name="S3_BACKUP_LOCATION"
-                placeHolder="s3://S3 Bucket"
+                placeHolder="s3://bucket_name"
                 component={YBTextInputWithLabel}
                 validate={required}
                 isReadOnly={this.disableInputFields(data, "S3_BACKUP_LOCATION")}
@@ -141,7 +138,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          <Row className="config-provider-row" key={"s3-backup-host-base"}>
+          <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">S3 Bucket Host Base</div>
             </Col>

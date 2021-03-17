@@ -21,9 +21,7 @@ import { YBPanelItem } from "../../panels";
  * @param {object} row Respective row details.
  * @returns Config name
  */
-const getBackupConfigName = (cell, row) => {
-  return row.configName;
-};
+const getBackupConfigName = (cell, row) => row.configName;
 
 /**
  * This method is used to return the current in-use status
@@ -33,9 +31,7 @@ const getBackupConfigName = (cell, row) => {
  * @param {object} row Respective row details.
  * @returns "Used" || "Not Used".
  */
-const getBackupStatus = (cell, row) => {
-  return row.inUse ? "Used" : "Not Used";
-};
+const getBackupStatus = (cell, row) => row.inUse ? "Used" : "Not Used";
 
 /**
  * This method is used to return the backup location of
@@ -45,85 +41,7 @@ const getBackupStatus = (cell, row) => {
  * @param {object} row Respective row details.
  * @returns Backup storage location.
  */
-const getBackupLocation = (cell, row) => {
-  return row.data.BACKUP_LOCATION;
-};
-
-/**
- * This method will handle all the required actions for
- * the particular row.
- * 
- * @param {string} cell Not in-use.
- * @param {object} row Respective row details.
- * @param {object} operations Actions.
- * @returns Actions.
- */
-const foramtConfigActions = (cell, row, operations) => {
-  const {
-    configUUID,
-    inUse,
-    name
-  } = row;
-  const {
-    configData,
-    onEdit,
-    deleteStorageConfig,
-    setConfigData,
-    showDeleteStorageConfig,
-    visibleModal,
-    hideDeleteStorageConfig
-  } = operations;
-
-  return (
-    <DropdownButton
-      className="backup-config-actions btn btn-default"
-      title="Actions"
-      id="bg-nested-dropdown"
-      pullRight
-    >
-      <MenuItem onClick={() => onEdit(row)}>
-        <i className="fa fa-pencil"></i> Edit Configuration
-      </MenuItem>
-      <MenuItem
-        onClick={() => {
-          setConfigData(configUUID);
-          showDeleteStorageConfig(name);
-        }}
-        disabled={inUse}>
-        {!inUse &&
-          <><i className="fa fa-trash"></i> Delete Configuration</>
-        }
-
-        {inUse &&
-          <YBInfoTip content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-            placement="top"
-          >
-            <span className="disable-delete">
-              <i className="fa fa-ban"></i> Delete Configuration
-            </span>
-          </YBInfoTip>
-        }
-      </MenuItem>
-
-      {<YBConfirmModal
-          name="delete-storage-config"
-          title="Confirm Delete"
-          onConfirm={() => deleteStorageConfig(configData)}
-          currentModal={"delete" + name + "StorageConfig"}
-          visibleModal={visibleModal}
-          hideConfirmModal={hideDeleteStorageConfig}
-        >
-          Are you sure you want to delete {name} Storage Configuration?
-        </YBConfirmModal>
-      }
-
-      {/* TODO: Need to implement the show universe which is in review list */}
-      <MenuItem>
-        <i className="fa fa-eye"></i> Show Universes
-      </MenuItem>
-    </DropdownButton>
-  );
-};
+const getBackupLocation = (cell, row) => row.data.BACKUP_LOCATION;
 
 /**
  * This is the header for YB Panel Item.
@@ -147,7 +65,7 @@ const header = (currTab, onCreateBackup) => (
   </>
 );
 
-const BackupList = (props) => {
+export const BackupList = (props) => {
   const [ configData, setConfigData ] = useState({});  
   const {
     activeTab,
@@ -160,74 +78,122 @@ const BackupList = (props) => {
     visibleModal
   } = props;
   const currTab = activeTab.toUpperCase();
-  const onEdit = onEditConfig;
+
+  // This method will handle all the required actions for
+  // the particular row.
+  const formatConfigActions = (cell, row) => {
+    const {
+      configUUID,
+      inUse,
+      name
+    } = row;
+  
+    return (
+      <DropdownButton
+        className="backup-config-actions btn btn-default"
+        title="Actions"
+        id="bg-nested-dropdown"
+        pullRight
+      >
+        <MenuItem onClick={() => onEditConfig(row)}>
+          <i className="fa fa-pencil"></i> Edit Configuration
+        </MenuItem>
+        <MenuItem
+          disabled={inUse}
+          onClick={() => {
+            setConfigData(configUUID);
+            showDeleteStorageConfig(name);
+          }}
+        >
+          {!inUse &&
+            <>
+              <i className="fa fa-trash"></i> Delete Configuration
+            </>
+          }
+  
+          {inUse &&
+            <YBInfoTip
+              content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+              placement="top"
+            >
+              <span className="disable-delete">
+                <i className="fa fa-ban"></i> Delete Configuration
+              </span>
+            </YBInfoTip>
+          }
+        </MenuItem>
+  
+        {
+          <YBConfirmModal
+            name="delete-storage-config"
+            title="Confirm Delete"
+            onConfirm={() => deleteStorageConfig(configData)}
+            currentModal={"delete" + name + "StorageConfig"}
+            visibleModal={visibleModal}
+            hideConfirmModal={hideDeleteStorageConfig}
+          >
+            Are you sure you want to delete {name} Storage Configuration?
+          </YBConfirmModal>
+        }
+  
+        {/* TODO: Need to implement the show universe which is in review list */}
+        <MenuItem>
+          <i className="fa fa-eye"></i> Show Universes
+        </MenuItem>
+      </DropdownButton>
+    );
+  };
 
   return (
-    <div>
-      <YBPanelItem
-        header={header(currTab, onCreateBackup)}
-        body={
-          <>
-            <BootstrapTable
-              className="backup-list-table middle-aligned-table"
-              data={data}
+    <YBPanelItem
+      header={header(currTab, onCreateBackup)}
+      body={
+        <>
+          <BootstrapTable
+            className="backup-list-table middle-aligned-table"
+            data={data}
+          >
+            <TableHeaderColumn
+              dataField="configUUID"
+              isKey={true}
+              hidden={true}
+            />
+            <TableHeaderColumn
+              dataField="configurationName"
+              dataFormat={getBackupConfigName}
+              columnClassName="no-border name-column"
+              className="no-border"
             >
-              <TableHeaderColumn
-                dataField="configUUID"
-                isKey={true}
-                hidden={true}
-              />
-              <TableHeaderColumn
-                dataField="configurationName"
-                dataFormat={getBackupConfigName}
-                columnClassName="no-border name-column"
-                className="no-border"
-              >
-                Configuration Name
-                </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="status"
-                dataFormat={getBackupStatus}
-                columnClassName="no-border name-column"
-                className="no-border"
-              >
-                Status
-                </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="backupLocation"
-                dataFormat={getBackupLocation}
-                columnClassName="no-border name-column"
-                className="no-border"
-              >
-                Backup Location
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="configActions"
-                dataFormat={(cell, row) => foramtConfigActions(
-                  cell,
-                  row,
-                  {
-                    configData,
-                    deleteStorageConfig,
-                    hideDeleteStorageConfig,
-                    onEdit,
-                    setConfigData,
-                    showDeleteStorageConfig,
-                    visibleModal
-                  }
-                )}
-                columnClassName="yb-actions-cell"
-                className="yb-actions-cell"
-              >
-                Actions
-              </TableHeaderColumn>
-            </BootstrapTable>
-          </>
-        }
-        noBackground
-      />
-    </div>
+              Configuration Name
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="status"
+              dataFormat={getBackupStatus}
+              columnClassName="no-border name-column"
+              className="no-border"
+            >
+              Status
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="backupLocation"
+              dataFormat={getBackupLocation}
+              columnClassName="no-border name-column"
+              className="no-border"
+            >
+              Backup Location
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="configActions"
+              dataFormat={(cell, row) => formatConfigActions(cell, row)}
+              columnClassName="yb-actions-cell"
+              className="yb-actions-cell"
+            >
+              Actions
+            </TableHeaderColumn>
+          </BootstrapTable>
+        </>
+      }
+      noBackground
+    />
   )
 }
-
-export { BackupList }

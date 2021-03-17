@@ -17,7 +17,7 @@ import { Col, Row } from "react-bootstrap";
  */
 const required = value => value ? undefined : "This field is required.";
 
-const CreateBackup = (props) => {
+export const CreateBackup = (props) => {
   const {
     configName,
     field
@@ -39,5 +39,3 @@ const CreateBackup = (props) => {
     </Row>
   )
 }
-
-export { CreateBackup }

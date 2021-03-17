@@ -8,7 +8,7 @@
 import React from "react";
 import { YBButton } from "../../common/forms/fields";
 
-const ConfigControls = (props) => {
+export const ConfigControls = (props) => {
   const {
     activeTab,
     editView,
@@ -49,5 +49,3 @@ const ConfigControls = (props) => {
     </div>
   )
 }
-
-export { ConfigControls }

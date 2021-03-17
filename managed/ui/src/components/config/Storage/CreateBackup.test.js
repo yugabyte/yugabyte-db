@@ -4,7 +4,7 @@
 
 import { render, unmountComponentAtNode } from "react-dom";
 import { act } from "react-dom/test-utils";
-import { StorageConfigTypes } from "../ConfigType";
+import { StorageConfigTypes } from "./ConfigType";
 
 let container = null;
 beforeEach(() => {
