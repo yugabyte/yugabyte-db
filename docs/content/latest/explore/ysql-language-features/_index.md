@@ -2,8 +2,8 @@
 title: YSQL vs PostgreSQL
 headerTitle: YSQL vs PostgreSQL
 linkTitle: YSQL vs PostgreSQL
-description: PostgreSQL features in YSQL.
-headcontent: PostgreSQL features in YSQL.
+description: PostgreSQL features in YSQL
+headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -36,7 +36,6 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
 | <span style="font-size:16px">[Triggers](triggers/)</span>    | Triggers (on data modification) and event triggers (on schema changes) |
-| <span style="font-size:16px">[Query Performance](query-1-performance/)</span>    | Query optimization via execution plans |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |

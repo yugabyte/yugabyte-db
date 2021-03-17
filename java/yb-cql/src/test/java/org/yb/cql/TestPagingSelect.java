@@ -28,9 +28,12 @@ import static org.yb.AssertionWrappers.assertFalse;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPagingSelect extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPagingSelect.class);
 
   /**
    * Override test timeout. testContinuousQuery() inserts 20100 rows and selects them back and

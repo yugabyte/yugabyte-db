@@ -47,9 +47,8 @@ export default class GFlagArrayComponent extends Component {
   }
 
   render() {
-    const { fields, flagType, isReadOnly } = this.props;
+    const { fields, flagType, isReadOnly, meta } = this.props;
     const { contentEditable } = this.state;
-
     const self = this;
     let currentLabel = false;
     if (flagType === 'tserver') {
@@ -57,6 +56,7 @@ export default class GFlagArrayComponent extends Component {
     } else if (flagType === 'master') {
       currentLabel = 'Master';
     }
+    const errorMessage = meta.error;
     return (
       <div className="form-field-grid gflag-array">
         {currentLabel && (
@@ -109,13 +109,18 @@ export default class GFlagArrayComponent extends Component {
                 </FlexContainer>
               );
             })}
+            {!isReadOnly && errorMessage && (
+              <div class="array-block standard-error">
+                <span>{errorMessage}</span>
+              </div>
+            )}
             <Row>
               <Col md={12}>
-                {isReadOnly ? <span /> : <YBAddRowButton btnText="Add Row" onClick={self.addRow} />}
+                {isReadOnly ? <span /> : <YBAddRowButton btnText="Add Row" onClick={self.addRow} />}                          
               </Col>
             </Row>
           </Fragment>
-        )}        
+        )}
       </div>
     );
   }

@@ -51,6 +51,8 @@ message SysSnapshotEntryPB {
   optional fixed64 snapshot_hybrid_time = 4;
 
   optional int64 version = 5;
+
+  optional bytes schedule_id = 6;
 }
 
 ////////////////////////////////////////////////////////////
@@ -95,7 +97,8 @@ message ListSnapshotsResponsePB {
 
 message RestoreSnapshotRequestPB {
   optional bytes snapshot_id = 2;
-  optional fixed64 restore_ht = 3;
+  optional fixed64 restore_ht = 3; // Absolute Timing Option: Max HybridTime, in Micros.
+  optional fixed64 restore_interval = 4; // Relative Timing Option: Micros before Now to rewind.
 }
 
 message RestoreSnapshotResponsePB {
@@ -187,6 +190,7 @@ message ListSnapshotSchedulesRequestPB {
 message SnapshotScheduleInfoPB {
   optional bytes id = 1;
   optional SnapshotScheduleOptionsPB options = 2;
+  repeated SnapshotInfoPB snapshots = 3;
 }
 
 message ListSnapshotSchedulesResponsePB {

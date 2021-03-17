@@ -511,7 +511,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     nd.isRedisServer = enabledYEDIS;
     nd.redisServerRpcPort = 1234;
     nd.placementUuid = cluster.uuid;
-    nd.cloudInfo = mock(CloudSpecificInfo.class);
+    nd.cloudInfo = new CloudSpecificInfo();
+    nd.cloudInfo.private_ip = "1.2.3.4";
 
     details.nodeDetailsSet.add(nd);
     setupAlertingData(null, true, false);
@@ -595,11 +596,39 @@ public class HealthCheckerTest extends FakeDBApplication {
     Alert alert3 = Alert.create(defaultCustomer.uuid, u.universeUUID, TargetType.UniverseType,
         "Another Error Code", "Warning", "Test 3");
 
+    doCallRealMethod().when(mockAlertManager).resolveAlerts(defaultCustomer.uuid, u.universeUUID,
+        HealthChecker.ALERT_ERROR_CODE);
     healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL);
 
     assertEquals(State.RESOLVED, Alert.get(alert1.uuid).state);
     assertEquals(State.RESOLVED, Alert.get(alert2.uuid).state);
     // Alert3 is not related to health-check, so it should not be updated.
     assertNotEquals(State.RESOLVED, Alert.get(alert3.uuid).state);
+  }
+
+  @Test
+  public void testSingleUniverseWithUnprovisionedNodeAlertSent() {
+    Universe u = setupUniverse("univ1");
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    Cluster cluster = details.clusters.get(0);
+
+    NodeDetails nd = new NodeDetails();
+    nd.redisServerRpcPort = 1234;
+    nd.placementUuid = cluster.uuid;
+    nd.cloudInfo = new CloudSpecificInfo();
+
+    details.nodeDetailsSet.add(nd);
+    setupAlertingData(null, true, false);
+
+    healthChecker.checkSingleUniverse(u, defaultCustomer, true, false, null);
+    verify(mockHealthManager, never()).runCommand(any(), any(), any());
+
+    List<Alert> alerts = Alert.list(defaultCustomer.uuid, HealthChecker.ALERT_ERROR_CODE,
+        u.universeUUID);
+    assertEquals(1, alerts.size());
+    assertEquals(alerts.get(0).message,
+        String.format(
+            "Can't run health check for the universe due to missing IP address for node %s.",
+            nd.nodeName));
   }
 }

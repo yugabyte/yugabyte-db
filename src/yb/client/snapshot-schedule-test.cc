@@ -11,30 +11,38 @@
 // under the License.
 //
 
-#include "yb/client/txn-test-base.h"
+#include "yb/client/snapshot_test_base.h"
 
 #include "yb/master/master_backup.proxy.h"
 
 using namespace std::literals;
 
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
+
 namespace yb {
 namespace client {
 
 using Schedules = google::protobuf::RepeatedPtrField<master::SnapshotScheduleInfoPB>;
+constexpr auto kSnapshotInterval = 10s * kTimeMultiplier;
 
-class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
+class SnapshotScheduleTest : public SnapshotTestBase {
  public:
-  master::MasterBackupServiceProxy MakeBackupServiceProxy() {
-    return master::MasterBackupServiceProxy(
-        &client_->proxy_cache(), cluster_->leader_mini_master()->bound_rpc_addr());
+  void SetUp() override {
+    FLAGS_snapshot_coordinator_poll_interval_ms = 250;
+    SnapshotTestBase::SetUp();
   }
 
-  Result<SnapshotScheduleId> CreateSchedule() {
+  Result<SnapshotScheduleId> CreateSchedule(
+      MonoDelta interval = kSnapshotInterval, MonoDelta retention = 20h) {
     rpc::RpcController controller;
     controller.set_timeout(60s);
     master::CreateSnapshotScheduleRequestPB req;
-    req.mutable_options()->set_interval_sec(60);
-    req.mutable_options()->set_retention_duration_sec(1200);
+    auto& options = *req.mutable_options();
+    options.set_interval_sec(interval.ToSeconds());
+    options.set_retention_duration_sec(retention.ToSeconds());
+    auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
+    tables.Add()->set_table_id(table_.table()->id());
     master::CreateSnapshotScheduleResponsePB resp;
     RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshotSchedule(req, &resp, &controller));
     return FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id());
@@ -56,6 +64,21 @@ class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
     }
     LOG(INFO) << "Schedules: " << resp.ShortDebugString();
     return std::move(resp.schedules());
+  }
+
+  CHECKED_STATUS WaitScheduleSnapshot(const SnapshotScheduleId& schedule_id) {
+    return WaitFor([this, schedule_id]() -> Result<bool> {
+      auto snapshots = VERIFY_RESULT(ListSnapshots());
+      EXPECT_LE(snapshots.size(), 1);
+      LOG(INFO) << "Snapshots: " << AsString(snapshots);
+      for (const auto& snapshot : snapshots) {
+        EXPECT_EQ(TryFullyDecodeSnapshotScheduleId(snapshot.entry().schedule_id()), schedule_id);
+        if (snapshot.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+          return true;
+        }
+      }
+      return false;
+    }, kSnapshotInterval / 2, "First snapshot");
   }
 };
 
@@ -84,6 +107,54 @@ TEST_F(SnapshotScheduleTest, Create) {
     }
     ASSERT_TRUE(ids_set.empty()) << "Not found ids: " << AsString(ids_set);
   }
+}
+
+TEST_F(SnapshotScheduleTest, Snapshot) {
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+
+  auto schedules = ASSERT_RESULT(ListSchedules());
+  ASSERT_EQ(schedules.size(), 1);
+  ASSERT_EQ(schedules[0].snapshots().size(), 1);
+  ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
+
+  std::this_thread::sleep_for(kSnapshotInterval / 4);
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    return snapshots.size() == 2;
+  }, kSnapshotInterval, "Second snapshot"));
+}
+
+TEST_F(SnapshotScheduleTest, GC) {
+  FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
+  // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
+  ASSERT_RESULT(CreateSchedule(kSnapshotInterval, kSnapshotInterval));
+
+  std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
+  while (all_snapshot_ids.size() < 4) {
+    auto snapshots = ASSERT_RESULT(ListSnapshots(TxnSnapshotId::Nil(), false));
+    for (const auto& snapshot : snapshots) {
+      all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
+    }
+    ASSERT_LE(snapshots.size(), 2);
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
+TEST_F(SnapshotScheduleTest, Restart) {
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto schedules = ASSERT_RESULT(ListSchedules());
+  ASSERT_EQ(schedules.size(), 1);
+  ASSERT_EQ(schedules[0].snapshots().size(), 1);
+  ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
 }
 
 } // namespace client

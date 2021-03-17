@@ -38,7 +38,6 @@ ADD_YB_LIBRARY(cql_service_proto
 #########################################
 
 set(CQLSERVER_SRCS
-  cql_message.cc
   cql_processor.cc
   cql_rpc.cc
   cql_server.cc
@@ -57,9 +56,7 @@ target_link_libraries(yb-cql
   yb_client
   cql_service_proto
   server_common
-  server_process
-  lz4
-  snappy)
+  server_process)
 
 # Tests
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})

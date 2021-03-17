@@ -584,6 +584,7 @@ findDependentObjects(const ObjectAddress *object,
 				switch_fallthrough();
 
 			case DEPENDENCY_INTERNAL:
+				switch_fallthrough();
 			case DEPENDENCY_INTERNAL_AUTO:
 
 				/*

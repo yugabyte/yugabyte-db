@@ -1768,6 +1768,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
     for (const auto& peer : *tablet_peers) {
+      if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);
@@ -1777,7 +1778,16 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
-  AppendValuesFromMap(tablet_map_, tablet_peers);
+  DCHECK(tablet_peers != NULL);
+  // See AppendKeysFromMap for why this is done.
+  if (tablet_peers->empty()) {
+    tablet_peers->reserve(tablet_map_.size());
+  }
+  for (const auto& entry : tablet_map_) {
+    if (entry.second != nullptr) {
+      tablet_peers->push_back(entry.second);
+    }
+  }
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const {
@@ -1968,7 +1978,20 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
     while (i != tablets_blocked_from_lb_.end()) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, *i);
       if (tablet_peer) {
-          const auto& tablet = (*tablet_peer)->tablet();
+          const auto tablet = (*tablet_peer)->shared_tablet();
+          // If tablet is null, one of two things may be true:
+          // 1. TabletPeer::InitTabletPeer was not called yet
+          //
+          // Skip and keep tablet in tablets_blocked_from_lb_ till call InitTabletPeer.
+          //
+          // 2. TabletPeer::CompleteShutdown was called
+          //
+          // Tablet will be removed from tablets_blocked_from_lb_ with next GenerateTabletReport
+          // since tablet_peer will be removed from tablet_map_
+          if (tablet == nullptr) {
+            ++i;
+            continue;
+          }
           const std::string& tablet_id = tablet->tablet_id();
           if (!tablet->ShouldDisableLbMove()) {
             i = tablets_blocked_from_lb_.erase(i);
