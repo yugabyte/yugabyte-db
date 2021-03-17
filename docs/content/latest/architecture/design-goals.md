@@ -42,7 +42,7 @@ YugabyteDB supports multi-row transactions with two isolation levels: `Serializa
 
 See the [table](https://docs.yugabyte.com/latest/explore/transactions/isolation-levels/) about transaction isolation levels in YugabyteDB.
 
-{{< /warning >}}
+{{< /tip >}}
 
 {{< tip title="Read more about consistency" >}}
 
