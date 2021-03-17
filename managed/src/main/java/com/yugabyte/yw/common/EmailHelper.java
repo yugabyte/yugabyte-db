@@ -113,7 +113,9 @@ public class EmailHelper {
 
       // According to official Java documentation all the parameters should be added
       // as String.
-      prop.put("mail.smtp.user", smtpData.smtpUsername);
+      if (smtpData.smtpUsername != null) {
+        prop.put("mail.smtp.user", smtpData.smtpUsername);
+      }
       prop.put("mail.smtp.auth", "true");
       prop.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
       String smtpServer = StringUtils.isEmpty(smtpData.smtpServer)
