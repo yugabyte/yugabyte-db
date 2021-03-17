@@ -38,7 +38,7 @@ YugabyteDB supports multi-row transactions with two isolation levels: `Serializa
 - The [YSQL](../../api/ysql/) API supports both `Serializable` and `Snapshot Isolation` (default) using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READ` respectively. 
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
 
-{{< warning title="Warning" >}}
+{{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
 See the [table](https://docs.yugabyte.com/latest/explore/transactions/isolation-levels/) about transaction isolation levels in YugabyteDB.
 
