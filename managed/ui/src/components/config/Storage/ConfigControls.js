@@ -30,7 +30,7 @@ export const ConfigControls = (props) => {
       )}
 
       {(!listView[activeTab] || editView[activeTab].isEdited) && (
-        <YBButton btnText="Cancel" btnClass="btn btn-orange" onClick={showListView} />
+        <YBButton btnText="Cancel" btnClass="btn" onClick={showListView} />
       )}
     </div>
   );

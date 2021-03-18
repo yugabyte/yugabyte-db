@@ -14,16 +14,6 @@ import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 
 /**
- * This method is used to show the config name on the
- * list view.
- *
- * @param {string} cell Not in-use.
- * @param {object} row Respective row details.
- * @returns Config name
- */
-const getBackupConfigName = (cell, row) => row.configName;
-
-/**
  * This method is used to return the current in-use status
  * of the backup storage config.
  *
@@ -145,8 +135,7 @@ export const BackupList = (props) => {
           <BootstrapTable className="backup-list-table middle-aligned-table" data={data}>
             <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
             <TableHeaderColumn
-              dataField="configurationName"
-              dataFormat={getBackupConfigName}
+              dataField="configName"
               columnClassName="no-border name-column"
               className="no-border"
             >

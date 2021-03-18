@@ -9,6 +9,7 @@ import { isNonEmptyArray, isNonEmptyObject } from '../../utils/ObjectUtils';
 
 export const BackupStorageOptions = (storageConfigs) => {
   let configTypeList = <option />;
+  const regex = /\d+(?!\.)/;
   const optGroups =
     storageConfigs &&
     isNonEmptyArray(storageConfigs) &&
@@ -31,9 +32,9 @@ export const BackupStorageOptions = (storageConfigs) => {
   if (isNonEmptyObject(optGroups)) {
     configTypeList = Object.keys(optGroups).map(function (key, idx) {
       return (
-        <optgroup label={(key + ' ' + 'storage').toUpperCase()} key={key + idx}>
+        <optgroup label={(`${key} storage`).toUpperCase()} key={key + idx}>
           {optGroups[key]
-            .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
+            .sort((a, b) => regex.exec(a) - regex.exec(b))
             .map((item, arrIdx) => (
               <option key={idx + arrIdx} value={item.configUUID}>
                 {item.configName}
