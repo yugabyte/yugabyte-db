@@ -250,27 +250,13 @@ std::string MakeTabletDirName(const TabletId& tablet_id) {
 
 // ============================================================================
 
-Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
-                                 const TableId& table_id,
-                                 const RaftGroupId& raft_group_id,
-                                 const string& namespace_name,
-                                 const string& table_name,
-                                 const TableType table_type,
-                                 const Schema& schema,
-                                 const IndexMap& index_map,
-                                 const PartitionSchema& partition_schema,
-                                 const Partition& partition,
-                                 const boost::optional<IndexInfo>& index_info,
-                                 const uint32_t schema_version,
-                                 const TabletDataState& initial_tablet_data_state,
-                                 RaftGroupMetadataPtr* metadata,
-                                 const string& data_root_dir,
-                                 const string& wal_root_dir,
-                                 const bool colocated) {
-
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
+    const RaftGroupMetadataData& data, const std::string& data_root_dir,
+    const std::string& wal_root_dir) {
+  auto* fs_manager = data.fs_manager;
   // Verify that no existing Raft group exists with the same ID.
-  if (fs_manager->env()->FileExists(fs_manager->GetRaftGroupMetadataPath(raft_group_id))) {
-    return STATUS(AlreadyPresent, "Raft group already exists", raft_group_id);
+  if (fs_manager->env()->FileExists(fs_manager->GetRaftGroupMetadataPath(data.raft_group_id))) {
+    return STATUS(AlreadyPresent, "Raft group already exists", data.raft_group_id);
   }
 
   auto wal_top_dir = wal_root_dir;
@@ -289,70 +275,40 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
     wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
 
-  const string table_dir_name = Substitute("table-$0", table_id);
-  const string tablet_dir_name = MakeTabletDirName(raft_group_id);
+  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
-  RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
-                                                       table_id,
-                                                       raft_group_id,
-                                                       namespace_name,
-                                                       table_name,
-                                                       table_type,
-                                                       rocksdb_dir,
-                                                       wal_dir,
-                                                       schema,
-                                                       index_map,
-                                                       partition_schema,
-                                                       partition,
-                                                       index_info,
-                                                       schema_version,
-                                                       initial_tablet_data_state,
-                                                       colocated));
+  RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
   RETURN_NOT_OK(ret->Flush());
-  metadata->swap(ret);
-  return Status::OK();
+  return ret;
 }
 
-Status RaftGroupMetadata::Load(FsManager* fs_manager,
-                            const RaftGroupId& raft_group_id,
-                            RaftGroupMetadataPtr* metadata) {
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::Load(
+    FsManager* fs_manager, const RaftGroupId& raft_group_id) {
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager, raft_group_id));
   RETURN_NOT_OK(ret->LoadFromDisk());
-  metadata->swap(ret);
-  return Status::OK();
+  return ret;
 }
 
-Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
-                                    const string& table_id,
-                                    const RaftGroupId& raft_group_id,
-                                    const string& namespace_name,
-                                    const string& table_name,
-                                    TableType table_type,
-                                    const Schema& schema,
-                                    const PartitionSchema& partition_schema,
-                                    const Partition& partition,
-                                    const boost::optional<IndexInfo>& index_info,
-                                    const TabletDataState& initial_tablet_data_state,
-                                    RaftGroupMetadataPtr* metadata) {
-  Status s = Load(fs_manager, raft_group_id, metadata);
-  if (s.ok()) {
-    if (!(**metadata).schema()->Equals(schema)) {
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::LoadOrCreate(const RaftGroupMetadataData& data) {
+  auto metadata = Load(data.fs_manager, data.raft_group_id);
+  if (metadata.ok()) {
+    if (!(**metadata).schema()->Equals(data.table_info->schema)) {
       return STATUS(Corruption, Substitute("Schema on disk ($0) does not "
         "match expected schema ($1)", (*metadata)->schema()->ToString(),
-        schema.ToString()));
+        data.table_info->schema.ToString()));
     }
-    return Status::OK();
-  } else if (s.IsNotFound()) {
-    return CreateNew(
-        fs_manager, table_id, raft_group_id, namespace_name, table_name, table_type, schema,
-        IndexMap(), partition_schema, partition, index_info, 0 /* schema_version */,
-        initial_tablet_data_state, metadata);
-  } else {
-    return s;
+    return *metadata;
   }
+
+  if (metadata.status().IsNotFound()) {
+    return CreateNew(data);
+  }
+
+  return metadata.status();
 }
 
 template <class TablesMap>
@@ -497,46 +453,21 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   return Status::OK();
 }
 
-RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
-                               TableId table_id,
-                               RaftGroupId raft_group_id,
-                               string namespace_name,
-                               string table_name,
-                               TableType table_type,
-                               const string rocksdb_dir,
-                               const string wal_dir,
-                               const Schema& schema,
-                               const IndexMap& index_map,
-                               PartitionSchema partition_schema,
-                               Partition partition,
-                               const boost::optional<IndexInfo>& index_info,
-                               const uint32_t schema_version,
-                               const TabletDataState& tablet_data_state,
-                               const bool colocated)
+RaftGroupMetadata::RaftGroupMetadata(
+    const RaftGroupMetadataData& data, const std::string& data_dir, const std::string& wal_dir)
     : state_(kNotWrittenYet),
-      raft_group_id_(std::move(raft_group_id)),
-      partition_(std::make_shared<Partition>(std::move(partition))),
-      primary_table_id_(table_id),
-      kv_store_(KvStoreId(raft_group_id_), rocksdb_dir),
-      fs_manager_(fs_manager),
+      raft_group_id_(data.raft_group_id),
+      partition_(std::make_shared<Partition>(data.partition)),
+      primary_table_id_(data.table_info->table_id),
+      kv_store_(KvStoreId(raft_group_id_), data_dir, data.snapshot_schedules),
+      fs_manager_(data.fs_manager),
       wal_dir_(wal_dir),
-      tablet_data_state_(tablet_data_state),
-      colocated_(colocated),
+      tablet_data_state_(data.tablet_data_state),
+      colocated_(data.colocated),
       cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
-  CHECK(schema.has_column_ids());
-  CHECK_GT(schema.num_key_columns(), 0);
-  kv_store_.tables.emplace(
-      primary_table_id_,
-      std::make_shared<TableInfo>(
-          std::move(table_id),
-          std::move(namespace_name),
-          std::move(table_name),
-          table_type,
-          schema,
-          index_map,
-          index_info,
-          schema_version,
-          std::move(partition_schema)));
+  CHECK(data.table_info->schema.has_column_ids());
+  CHECK_GT(data.table_info->schema.num_key_columns(), 0);
+  kv_store_.tables.emplace(primary_table_id_, data.table_info);
 }
 
 RaftGroupMetadata::~RaftGroupMetadata() {
