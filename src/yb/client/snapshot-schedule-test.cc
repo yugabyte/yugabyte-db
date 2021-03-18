@@ -12,11 +12,13 @@
 //
 
 #include "yb/client/snapshot_test_base.h"
+#include "yb/client/table_alterer.h"
 
 #include "yb/client/session.h"
 
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
@@ -247,6 +249,33 @@ TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_EQ(schedules.size(), 1);
   ASSERT_EQ(schedules[0].snapshots().size(), 1);
   ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
+}
+
+TEST_F(SnapshotScheduleTest, RestoreSchema) {
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto old_schema = table_.schema();
+  auto alterer = client_->NewTableAlterer(table_.name());
+  auto* column = alterer->AddColumn("new_column");
+  column->Type(DataType::INT32);
+  ASSERT_OK(alterer->Alter());
+  ASSERT_OK(table_.Reopen());
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+  ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+
+  auto schedules = ASSERT_RESULT(ListSchedules());
+  ASSERT_EQ(schedules.size(), 1);
+  const auto& snapshots = schedules[0].snapshots();
+  ASSERT_EQ(snapshots.size(), 1);
+  ASSERT_EQ(snapshots[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
+
+  ASSERT_OK(RestoreSnapshot(TryFullyDecodeTxnSnapshotId(snapshots[0].id()), hybrid_time));
+
+  auto new_schema = ASSERT_RESULT(client_->GetYBTableInfo(table_.name())).schema;
+  // TODO ASSERT_EQ(old_schema, new_schema);
+  ASSERT_NO_FATALS(VerifyData());
 }
 
 } // namespace client
