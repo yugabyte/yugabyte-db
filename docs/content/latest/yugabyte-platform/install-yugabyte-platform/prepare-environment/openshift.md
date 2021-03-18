@@ -1,6 +1,6 @@
 ---
-title: Prepare the OpenShift environment
-headerTitle: Prepare the OpenShift environment
+title: Prepare the OpenShift Environment
+headerTitle: Prepare the OpenShift Environment
 linkTitle: Prepare the environment
 description: Prepare the OpenShift environment for Yugabyte Platform
 aliases:
@@ -38,7 +38,7 @@ showAsideToc: true
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
       <i class="icon-aws" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -75,8 +75,12 @@ In addition, ensure that you have the following:
 
 - The latest oc binary in your path. For more information, see [Installing the OpenShift CLI](https://docs.openshift.com/container-platform/4.6/cli_reference/openshift_cli/getting-started-cli.html#installing-openshift-cli).
 - The latest kubectl 1.19.7 binary in your path. See [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) for more information, or create a kubectl symlink pointing to oc.
-- An admin user with the [cluster-admin](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to it. Depending on your configuration, this user might be kube:admin.
-- An authenticated user in the cluster which can create new projects.
+- An admin user[^1] with the [cluster-admin](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to it. Depending on your configuration, this user might be kube:admin.
+- An authenticated user[^2] in the cluster which can create new projects[^3].
 
-For testing purposes, you may configure an HTPasswd provider, as described in [Configuring an HTPasswd identity provider](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html) and, specifically, in [Creating an HTPasswd file using Linux](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-creating-htpasswd-file-linux_configuring-htpasswd-identity-provider) and [Configuring identity providers using the web console](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-configuring-using-the-web-console_configuring-htpasswd-identity-provider).
+For testing purposes, you may configure an HTPasswd provider, as described in [Configuring an HTPasswd identity provider](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html) (specifically, in [Creating an HTPasswd file using Linux](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-creating-htpasswd-file-linux_configuring-htpasswd-identity-provider) and [Configuring identity providers using the web console](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-configuring-using-the-web-console_configuring-htpasswd-identity-provider)).
+
+[^1]: This user is referred to as *admin user* in this document.
+[^2]: This user is referred to as *normal user*, *non admin*, or *user* in this document.
+[^3]: By default, the authenticated users have the [self-provisioning](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to them, which enables them to create new projects.
 

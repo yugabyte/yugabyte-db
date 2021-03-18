@@ -35,6 +35,11 @@ showAsideToc: true
     </a>
   </li>
 
+<li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
+      <i class="fas fa-cloud"></i> OpenShift </a>
+  </li>
+
 </ul>
 
 ## Prerequisites
