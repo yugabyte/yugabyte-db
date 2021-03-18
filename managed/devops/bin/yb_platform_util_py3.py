@@ -433,7 +433,7 @@ def get_universe_list(base_url, customer_uuid, auth_uuid):
                           "/universes"
     response = call_api(universe_url, auth_uuid)
     universe_data = json.loads(response.read())
-    universe = "%-30s %-20s %s\n" % ("Provider Name", " ", "UUID")
+    universe = "%-30s %-20s %s\n" % ("Universe Name", " ", "UUID")
     for each in universe_data:
         universe = universe + "%-30s %-20s %s" % (each["name"], "-->", each["universeUUID"]) + "\n"
     print(universe)
