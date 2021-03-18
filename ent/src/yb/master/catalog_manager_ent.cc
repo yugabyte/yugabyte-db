@@ -383,10 +383,12 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation) {
 Result<SysRowEntries> CatalogManager::CollectEntries(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     bool add_indexes,
-    bool include_parent_colocated_table) {
+    bool include_parent_colocated_table,
+    bool succeed_if_create_in_progress) {
   SysRowEntries entries;
   auto tables = VERIFY_RESULT(CollectTables(
-      table_identifiers, add_indexes, include_parent_colocated_table));
+      table_identifiers, add_indexes, include_parent_colocated_table,
+      succeed_if_create_in_progress));
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
     SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr);
@@ -402,7 +404,7 @@ server::Clock* CatalogManager::Clock() {
 Status CatalogManager::CreateTransactionAwareSnapshot(
     const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(
-      req.tables(), req.add_indexes(), true /* include_parent_colocated_table */));
+      req.tables(), req.add_indexes(), true /* include_parent_colocated_table */, false));
 
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
       entries, req.imported(), rpc->GetClientDeadline()));
@@ -3331,6 +3333,10 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
 
 void CatalogManager::Started() {
   snapshot_coordinator_.Start();
+}
+
+Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
+  return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
 }
 
 } // namespace enterprise

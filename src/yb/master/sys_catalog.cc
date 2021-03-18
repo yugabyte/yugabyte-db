@@ -221,8 +221,7 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
   // Load Metadata Information from disk
-  scoped_refptr<tablet::RaftGroupMetadata> metadata;
-  RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
+  auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId));
 
   // Verify that the schema is the current one
   if (!metadata->schema()->Equals(schema_)) {
@@ -287,7 +286,6 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
-  scoped_refptr<tablet::RaftGroupMetadata> metadata;
   Schema schema = BuildTableSchema();
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
@@ -297,21 +295,16 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
-  RETURN_NOT_OK(tablet::RaftGroupMetadata::CreateNew(
-      fs_manager,
-      kSysCatalogTableId,
-      kSysCatalogTabletId,
-      "",
-      table_name(),
-      TableType::YQL_TABLE_TYPE,
-      schema,
-      IndexMap(),
-      partition_schema,
-      partitions[0],
-      boost::none /* index_info */,
-      0 /* schema_version */,
-      tablet::TABLET_DATA_READY,
-      &metadata));
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE, schema, IndexMap(),
+      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+  auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
+    .fs_manager = fs_manager,
+    .table_info = table_info,
+    .raft_group_id = kSysCatalogTabletId,
+    .partition = partitions[0],
+    .tablet_data_state = tablet::TABLET_DATA_READY,
+  }));
 
   RaftConfigPB config;
   RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),
