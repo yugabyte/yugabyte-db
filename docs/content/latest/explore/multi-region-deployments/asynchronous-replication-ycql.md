@@ -117,7 +117,7 @@ CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 
 ```
 
-Now create the identical database table on cluster B.
+Now create the identical database table on the second cluster.
 
 Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
 
@@ -135,7 +135,7 @@ ycqlsh> USE customers;
 ```
 Run the following `CREATE TABLE` statement.
 
-```plpgsql
+```sql
 CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 ```
 
@@ -182,7 +182,7 @@ To add data to the "Data Center - East" cluster, open `ycqlsh` by running the fo
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-```plpgsql
+```sql
 ycqlsh:customers> INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector');
 ycqlsh:customers> INSERT INTO users(email, username) VALUES ('steve@example.com', 'steve');
 ```
@@ -193,7 +193,7 @@ On the consumer "Data Center - West" cluster, open `ycqlsh` and run the followin
 $ ./bin/ycqlsh 127.0.0.2
 ```
 
-```plpgsql
+```sql
 yugabyte=# SELECT * FROM users;
 ```
 
