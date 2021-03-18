@@ -51,7 +51,7 @@ When an index is created on a populated table, YugabyteDB automatically
 backfills the existing data into the index.  In most cases, this uses an online
 schema migration.
 
-| | online | not online |
+| Condition | Online | Not online |
 | --- | --- | --- |
 | safe to do other DMLs during `CREATE INDEX`? | yes\* | no |
 | keeps other transactions alive during `CREATE INDEX`? | mostly | no |
