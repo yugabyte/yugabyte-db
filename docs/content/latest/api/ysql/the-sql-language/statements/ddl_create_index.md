@@ -52,7 +52,7 @@ backfills the existing data into the index.  In most cases, this uses an online
 schema migration.
 
 | Condition | Online | Not online |
-| --- | --- | --- |
+| :-------- | :----- | :--------- |
 | safe to do other DMLs during `CREATE INDEX`? | yes\* | no |
 | keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | parallelizes index loading? | yes | no |
