@@ -28,10 +28,11 @@ message TabletSnapshotOpRequestPB {
   enum Operation {
     UNKNOWN = 0;
     CREATE_ON_TABLET = 1; // Replicated at tserver, to create snapshot for a particular tablet.
-    RESTORE = 2;
+    RESTORE_ON_TABLET = 2;
     DELETE_ON_TABLET = 3;
     CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
     DELETE_ON_MASTER = 5;
+    RESTORE_SYS_CATALOG = 6;
   }
 
   // UUID of server this request is addressed to.

@@ -66,6 +66,8 @@ class SnapshotCoordinatorContext {
       bool include_parent_colocated_table,
       bool succeed_if_create_in_progress) = 0;
 
+  virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
+
   virtual const Schema& schema() = 0;
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
