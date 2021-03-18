@@ -14,6 +14,10 @@
 #ifndef YB_COMMON_SNAPSHOT_H
 #define YB_COMMON_SNAPSHOT_H
 
+#include <unordered_map>
+
+#include "yb/common/entity_ids.h"
+
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
@@ -21,6 +25,9 @@ namespace yb {
 YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
 YB_STRONGLY_TYPED_UUID(TxnSnapshotRestorationId);
 YB_STRONGLY_TYPED_UUID(SnapshotScheduleId);
+
+using SnapshotSchedulesToTabletsMap =
+    std::unordered_map<SnapshotScheduleId, std::vector<TabletId>, SnapshotScheduleIdHash>;
 
 } // namespace yb
 

@@ -16,6 +16,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"

@@ -3553,7 +3553,8 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
-Result<TableDescription> CatalogManager::DescribeTable(const TableIdentifierPB& table_identifier) {
+Result<TableDescription> CatalogManager::DescribeTable(
+    const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
   TableDescription result;
 
   // Lookup the table and verify it exists.
@@ -3569,7 +3570,7 @@ Result<TableDescription> CatalogManager::DescribeTable(const TableIdentifierPB& 
     TRACE("Locking table");
     auto l = result.table_info->LockForRead();
 
-    if (result.table_info->IsCreateInProgress()) {
+    if (!succeed_if_create_in_progress && result.table_info->IsCreateInProgress()) {
       return STATUS(IllegalState, "Table creation is in progress", result.table_info->ToString(),
                     MasterError(MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS));
     }
@@ -7842,8 +7843,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
-  SendCreateTabletRequests(deferred.needs_create_rpc);
-  return Status::OK();
+  return SendCreateTabletRequests(deferred.needs_create_rpc);
 }
 
 Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_descs,
@@ -7978,18 +7978,27 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
   return Status::OK();
 }
 
-void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
+Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
+  auto schedules_to_tablets_map = VERIFY_RESULT(MakeSnapshotSchedulesToTabletsMap());
   for (TabletInfo *tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
     tablet->set_last_update_time(MonoTime::Now());
+    std::vector<SnapshotScheduleId> schedules;
+    for (const auto& pair : schedules_to_tablets_map) {
+      if (std::binary_search(pair.second.begin(), pair.second.end(), tablet->id())) {
+        schedules.push_back(pair.first);
+      }
+    }
     for (const RaftPeerPB& peer : config.peers()) {
       auto task = std::make_shared<AsyncCreateReplica>(master_, AsyncTaskPool(),
-          peer.permanent_uuid(), tablet);
+          peer.permanent_uuid(), tablet, schedules);
       tablet->table()->AddTask(task);
       WARN_NOT_OK(ScheduleTask(task), "Failed to send new tablet request");
     }
   }
+
+  return Status::OK();
 }
 
 // If responses have been received from sufficient replicas (including hinted leader),
@@ -9003,12 +9012,14 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
 Result<vector<TableDescription>> CatalogManager::CollectTables(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
     bool add_indexes,
-    bool include_parent_colocated_table) {
+    bool include_parent_colocated_table,
+    bool succeed_if_create_in_progress) {
   vector<TableDescription> all_tables;
   unordered_set<NamespaceId> parent_colocated_table_ids;
 
   for (const auto& table_id_pb : tables) {
-    TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
+    auto table_description = VERIFY_RESULT(DescribeTable(
+        table_id_pb, succeed_if_create_in_progress));
     if (include_parent_colocated_table && table_description.table_info->colocated()) {
       // If a table is colocated, add its parent colocated table as well.
       const auto parent_table_id =
@@ -9019,8 +9030,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         TableIdentifierPB parent_table_pb;
         parent_table_pb.set_table_id(parent_table_id);
         parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        TableDescription parent_table_description = VERIFY_RESULT(DescribeTable(parent_table_pb));
-        all_tables.push_back(parent_table_description);
+        all_tables.push_back(VERIFY_RESULT(DescribeTable(
+            parent_table_pb, succeed_if_create_in_progress)));
       }
     }
     all_tables.push_back(table_description);
@@ -9047,7 +9058,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         TableIdentifierPB index_id_pb;
         index_id_pb.set_table_id(index_info.table_id());
         index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(index_id_pb)));
+        all_tables.push_back(VERIFY_RESULT(DescribeTable(
+            index_id_pb, succeed_if_create_in_progress)));
       }
     }
   }

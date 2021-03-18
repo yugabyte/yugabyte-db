@@ -242,7 +242,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table) override;
+      bool include_parent_colocated_table,
+      bool succeed_if_create_in_progress) override;
 
   server::Clock* Clock() override;
 
@@ -268,6 +269,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   rpc::Scheduler& Scheduler() override;
 
   bool IsLeader() override;
+
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);

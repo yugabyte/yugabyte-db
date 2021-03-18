@@ -63,7 +63,8 @@ class SnapshotCoordinatorContext {
   virtual Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table) = 0;
+      bool include_parent_colocated_table,
+      bool succeed_if_create_in_progress) = 0;
 
   virtual const Schema& schema() = 0;
 

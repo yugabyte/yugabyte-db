@@ -747,19 +747,13 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
   return deleter;
 }
 
-Status TSTabletManager::CreateNewTablet(
-    const string& table_id,
+Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
+    const tablet::TableInfoPtr& table_info,
     const string& tablet_id,
     const Partition& partition,
-    const string& namespace_name,
-    const string& table_name,
-    TableType table_type,
-    const Schema& schema,
-    const PartitionSchema& partition_schema,
-    const boost::optional<IndexInfo>& index_info,
     RaftConfigPB config,
-    TabletPeerPtr* tablet_peer,
-    const bool colocated) {
+    const bool colocated,
+    const std::vector<SnapshotScheduleId>& snapshot_schedules) {
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -778,33 +772,26 @@ Status TSTabletManager::CreateNewTablet(
 
   // Create the metadata.
   TRACE("Creating new metadata...");
-  RaftGroupMetadataPtr meta;
   string data_root_dir;
   string wal_root_dir;
-  GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, &data_root_dir, &wal_root_dir);
-  Status create_status = RaftGroupMetadata::CreateNew(fs_manager_,
-                                                   table_id,
-                                                   tablet_id,
-                                                   namespace_name,
-                                                   table_name,
-                                                   table_type,
-                                                   schema,
-                                                   IndexMap(),
-                                                   partition_schema,
-                                                   partition,
-                                                   index_info,
-                                                   0 /* schema_version */,
-                                                   TABLET_DATA_READY,
-                                                   &meta,
-                                                   data_root_dir,
-                                                   wal_root_dir,
-                                                   colocated);
-  if (!create_status.ok()) {
-    UnregisterDataWalDir(table_id, tablet_id, data_root_dir, wal_root_dir);
+  GetAndRegisterDataAndWalDir(
+      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+  auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
+    .fs_manager = fs_manager_,
+    .table_info = table_info,
+    .raft_group_id = tablet_id,
+    .partition = partition,
+    .tablet_data_state = TABLET_DATA_READY,
+    .colocated = colocated,
+    .snapshot_schedules = snapshot_schedules,
+  }, data_root_dir, wal_root_dir);
+  if (!create_result.ok()) {
+    UnregisterDataWalDir(table_info->table_id, tablet_id, data_root_dir, wal_root_dir);
   }
-  RETURN_NOT_OK_PREPEND(create_status, "Couldn't create tablet metadata")
+  RETURN_NOT_OK_PREPEND(create_result, "Couldn't create tablet metadata")
+  RaftGroupMetadataPtr meta = std::move(*create_result);
   LOG(INFO) << TabletLogPrefix(tablet_id)
-            << "Created tablet metadata for table: " << table_id;
+            << "Created tablet metadata for table: " << table_info->table_id;
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -818,10 +805,7 @@ Status TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK(
       open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
 
-  if (tablet_peer) {
-    *tablet_peer = new_peer;
-  }
-  return Status::OK();
+  return new_peer;
 }
 
 struct TabletCreationMetaData {
@@ -891,8 +875,8 @@ Status TSTabletManager::StartSubtabletsSplit(
     }
 
     // Try to load metadata from previous not completed split.
-    if (RaftGroupMetadata::Load(fs_manager_, subtablet_id, &iter->raft_group_metadata).ok() &&
-        CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
+    auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
+    if (load_result.ok() && CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
       // Sub tablet has been already created and ready during previous split attempt at this node or
       // as a result of remote bootstrap from another node, no need to re-create.
       iter = tcmetas->erase(iter);
@@ -1426,12 +1410,11 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
                                        RaftGroupMetadataPtr* metadata) {
   LOG(INFO) << "Loading metadata for tablet " << tablet_id;
   TRACE("Loading metadata...");
-  RaftGroupMetadataPtr meta;
-  RETURN_NOT_OK_PREPEND(RaftGroupMetadata::Load(fs_manager_, tablet_id, &meta),
-                        strings::Substitute("Failed to load tablet metadata for tablet id $0",
-                                            tablet_id));
+  auto load_result = RaftGroupMetadata::Load(fs_manager_, tablet_id);
+  RETURN_NOT_OK_PREPEND(load_result,
+                        Format("Failed to load tablet metadata for tablet id $0", tablet_id));
   TRACE("Metadata loaded");
-  metadata->swap(meta);
+  metadata->swap(*load_result);
   return Status::OK();
 }
 

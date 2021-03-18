@@ -109,20 +109,16 @@ class TabletHarness {
     }
     RETURN_NOT_OK(fs_manager_->Open());
 
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
-        fs_manager_.get(),
-        "YBTableTest",
-        options_.tablet_id,
-        "test",
-        "YBTableTest",
-        options_.table_type,
-        schema_,
-        partition.first,
-        partition.second,
-        boost::none /* index_info */,
-        TABLET_DATA_READY,
-        &metadata));
+    auto table_info = std::make_shared<TableInfo>(
+        "YBTableTest", "test", "YBTableTest", options_.table_type, schema_, IndexMap(), boost::none,
+        0 /* schema_version */, partition.first);
+    auto metadata = VERIFY_RESULT(RaftGroupMetadata::LoadOrCreate(RaftGroupMetadataData {
+      .fs_manager = fs_manager_.get(),
+      .table_info = table_info,
+      .raft_group_id = options_.tablet_id,
+      .partition = partition.second,
+      .tablet_data_state = TABLET_DATA_READY,
+    }));
     if (options_.enable_metrics) {
       metrics_registry_.reset(new MetricRegistry());
     }
@@ -139,8 +135,7 @@ class TabletHarness {
   }
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
+    auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
     TabletOptions tablet_options;
     auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     RETURN_NOT_OK(tablet->Open());

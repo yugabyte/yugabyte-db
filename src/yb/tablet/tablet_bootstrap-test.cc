@@ -161,11 +161,10 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
   bool transactional = false;
 };
 
+static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
+
 class BootstrapTest : public LogTestBase {
  protected:
-
-  static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
-
   void SetUp() override {
     LogTestBase::SetUp();
     test_hooks_ = std::make_shared<BootstrapTestHooksImpl>();
@@ -175,19 +174,16 @@ class BootstrapTest : public LogTestBase {
     Schema schema = SchemaBuilder(schema_).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
-    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
-        fs_manager_.get(),
-        log::kTestTable,
-        log::kTestTablet,
-        log::kTestNamespace,
-        log::kTestTable,
-        kTableType,
-        schema,
-        partition.first,
-        partition.second,
-        boost::none /* index_info */,
-        TABLET_DATA_READY,
-        meta));
+    auto table_info = std::make_shared<TableInfo>(
+        log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema, IndexMap(),
+        boost::none /* index_info */, 0 /* schema_version */, partition.first);
+    *meta = VERIFY_RESULT(RaftGroupMetadata::LoadOrCreate(RaftGroupMetadataData {
+      .fs_manager = fs_manager_.get(),
+      .table_info = table_info,
+      .raft_group_id = log::kTestTablet,
+      .partition = partition.second,
+      .tablet_data_state = TABLET_DATA_READY,
+    }));
     return (*meta)->Flush();
   }
 

@@ -384,6 +384,28 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+    std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (const auto& schedule : schedules_) {
+        schedules.emplace_back(schedule->id(), schedule->options().filter());
+      }
+    }
+    SnapshotSchedulesToTabletsMap result;
+    for (const auto& id_and_filter : schedules) {
+      auto entries = VERIFY_RESULT(CollectEntries(id_and_filter.second));
+      auto& tablets = result[id_and_filter.first];
+      for (const auto& entry : entries.entries()) {
+        if (entry.type() == SysRowEntry::TABLET) {
+          tablets.push_back(entry.id());
+        }
+      }
+      std::sort(tablets.begin(), tablets.end());
+    }
+    return result;
+  }
+
   void Start() {
     poller_.Start(&context_.Scheduler(), FLAGS_snapshot_coordinator_poll_interval_ms * 1ms);
   }
@@ -601,8 +623,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS ExecuteScheduleOperation(const SnapshotScheduleOperation& operation) {
-    auto entries = VERIFY_RESULT(context_.CollectEntries(
-        operation.filter.tables().tables(), true, true));
+    auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.snapshot_id,
         tablet::MakeFunctorOperationCompletionCallback(
@@ -757,6 +778,10 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) {
+    return context_.CollectEntries(filter.tables().tables(), true, true, true);
+  }
+
   SnapshotCoordinatorContext& context_;
   std::mutex mutex_;
   class ScheduleTag;
@@ -878,6 +903,11 @@ Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& 
 
 Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
   return impl_->FillHeartbeatResponse(resp);
+}
+
+Result<SnapshotSchedulesToTabletsMap>
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToTabletsMap() {
+  return impl_->MakeSnapshotSchedulesToTabletsMap();
 }
 
 } // namespace master
