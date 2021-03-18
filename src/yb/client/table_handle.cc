@@ -73,6 +73,10 @@ Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   return Status::OK();
 }
 
+Status TableHandle::Reopen() {
+  return Open(name(), table_->client());
+}
+
 const YBTableName& TableHandle::name() const {
   return table_->name();
 }

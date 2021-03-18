@@ -157,7 +157,7 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
 
   // Send the restore snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::RESTORE);
+  req.set_operation(TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());

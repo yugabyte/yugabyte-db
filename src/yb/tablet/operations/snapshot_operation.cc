@@ -40,7 +40,7 @@ string SnapshotOperationState::ToString() const {
                 hybrid_time(), request());
 }
 
-std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_dir) const {
+Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
   auto& request = *this->request();
   if (!request.snapshot_dir_override().empty()) {
     return request.snapshot_dir_override();
@@ -53,30 +53,47 @@ std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_d
     snapshot_id_str = request.snapshot_id();
   }
 
-  return JoinPathSegments(top_snapshots_dir, snapshot_id_str);
+  return JoinPathSegments(VERIFY_RESULT(TopSnapshotsDir()), snapshot_id_str);
+}
+
+Result<std::string> SnapshotOperationState::TopSnapshotsDir() const {
+  const string top_snapshots_dir = tablet()->metadata()->snapshots_dir();
+  RETURN_NOT_OK_PREPEND(
+      tablet()->metadata()->fs_manager()->CreateDirIfMissingAndSync(top_snapshots_dir),
+      Format("Unable to create snapshots directory $0", top_snapshots_dir));
+  return top_snapshots_dir;
+}
+
+Status SnapshotOperationState::DoCheckOperationRequirements() {
+  if (operation() != TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    return Status::OK();
+  }
+
+  const string snapshot_dir = VERIFY_RESULT(GetSnapshotDir());
+  Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
+
+  if (!s.ok()) {
+    return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SNAPSHOT)).
+             CloneAndPrepend(Format("Snapshot dir: $0", snapshot_dir));
+  }
+
+  return Status::OK();
 }
 
 bool SnapshotOperationState::CheckOperationRequirements() {
-  if (operation() == TabletSnapshotOpRequestPB::RESTORE) {
-    const string top_snapshots_dir = tablet()->metadata()->snapshots_dir();
-    const string snapshot_dir = GetSnapshotDir(top_snapshots_dir);
-    Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
-
-    if (!s.ok()) {
-      s = s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SNAPSHOT));
-      // LogPrefix() calls ToString() which needs correct hybrid_time.
-      TrySetHybridTimeFromClock();
-      LOG_WITH_PREFIX(WARNING)
-          << Format("Snapshot directory does not exist: $0 $1", s, snapshot_dir);
-      TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
-      // Run the callback, finish RPC and return the error to the sender.
-      CompleteWithStatus(s);
-      Finish();
-      return false;
-    }
+  auto status = DoCheckOperationRequirements();
+  if (status.ok()) {
+    return true;
   }
 
-  return true;
+  // LogPrefix() calls ToString() which needs correct hybrid_time.
+  TrySetHybridTimeFromClock();
+  LOG_WITH_PREFIX(WARNING) << status;
+  TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
+  // Run the callback, finish RPC and return the error to the sender.
+  CompleteWithStatus(status);
+  Finish();
+  return false;
 }
 
 Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperationState* state) {
@@ -96,9 +113,12 @@ Status SnapshotOperationState::Apply(int64_t leader_term) {
       return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().CreateReplicated(leader_term, *this);
     case TabletSnapshotOpRequestPB::DELETE_ON_MASTER:
       return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().DeleteReplicated(leader_term, *this);
+    case TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG:
+      return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().RestoreSysCatalogReplicated(
+          leader_term, *this);
     case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
       return tablet()->snapshots().Create(this);
-    case TabletSnapshotOpRequestPB::RESTORE:
+    case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET:
       return tablet()->snapshots().Restore(this);
     case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
       return tablet()->snapshots().Delete(this);

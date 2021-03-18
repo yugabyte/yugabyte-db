@@ -30,6 +30,9 @@ class SnapshotCoordinator {
   virtual CHECKED_STATUS DeleteReplicated(
       int64_t leader_term, const SnapshotOperationState& state) = 0;
 
+  virtual CHECKED_STATUS RestoreSysCatalogReplicated(
+      int64_t leader_term, const SnapshotOperationState& state) = 0;
+
   virtual CHECKED_STATUS Load(Tablet* tablet) = 0;
 
   virtual CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) = 0;

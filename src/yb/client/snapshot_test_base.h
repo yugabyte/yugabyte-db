@@ -39,6 +39,13 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
       MonoDelta duration = kWaitTimeout);
   CHECKED_STATUS WaitSnapshotDone(
       const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout);
+
+  Result<TxnSnapshotRestorationId> StartRestoration(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
+      int64_t interval = 0);
+  Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreSnapshot(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(), int64_t interval = 0);
 };
 
 } // namespace client

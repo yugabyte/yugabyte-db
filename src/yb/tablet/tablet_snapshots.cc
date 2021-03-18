@@ -57,6 +57,16 @@ Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
+  return Create(CreateSnapshotData {
+    .snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time()),
+    .hybrid_time = tx_state->hybrid_time(),
+    .op_id = OpId::FromPB(tx_state->op_id()),
+    .snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir()),
+    .schedule_id = TryFullyDecodeSnapshotScheduleId(tx_state->request()->schedule_id()),
+  });
+}
+
+Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -66,37 +76,22 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
     return s.CloneAndPrepend("Unable to flush RocksDB");
   }
 
-  const string top_snapshots_dir = metadata().snapshots_dir();
-  RETURN_NOT_OK_PREPEND(
-      metadata().fs_manager()->CreateDirIfMissingAndSync(top_snapshots_dir),
-      Format("Unable to create snapshots directory $0", top_snapshots_dir));
+  const std::string& snapshot_dir = data.snapshot_dir;
 
   Env* const env = metadata().fs_manager()->env();
-  auto snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
+  auto snapshot_hybrid_time = data.snapshot_hybrid_time;
   auto is_transactional_snapshot = snapshot_hybrid_time.is_valid();
 
-  const string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
   // Delete previous snapshot in the same directory if it exists.
-  if (env->FileExists(snapshot_dir)) {
-    LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << snapshot_dir;
-    RETURN_NOT_OK_PREPEND(env->DeleteRecursively(snapshot_dir),
-                          "Cannot recursively delete old snapshot dir " + snapshot_dir);
-    RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
-                          "Cannot sync top snapshots dir " + top_snapshots_dir);
-  }
+  RETURN_NOT_OK(CleanupSnapshotDir(snapshot_dir));
 
   LOG_WITH_PREFIX(INFO) << "Started tablet snapshot creation in folder: " << snapshot_dir;
 
-  const string tmp_snapshot_dir = snapshot_dir + kTempSnapshotDirSuffix;
+  const auto top_snapshots_dir = DirName(snapshot_dir);
+  const auto tmp_snapshot_dir = snapshot_dir + kTempSnapshotDirSuffix;
 
   // Delete temp directory if it exists.
-  if (env->FileExists(tmp_snapshot_dir)) {
-    LOG_WITH_PREFIX(INFO) << "Deleting old temp snapshot dir " << tmp_snapshot_dir;
-    RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tmp_snapshot_dir),
-                          "Cannot recursively delete old temp snapshot dir " + tmp_snapshot_dir);
-    RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
-                          "Cannot sync top snapshots dir " + top_snapshots_dir);
-  }
+  RETURN_NOT_OK(CleanupSnapshotDir(tmp_snapshot_dir));
 
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
@@ -156,11 +151,8 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
       env->SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
-  auto schedule_id = TryFullyDecodeSnapshotScheduleId(tx_state->request()->schedule_id());
-  if (schedule_id) {
-    if (tablet().metadata()->AddSnapshotSchedule(schedule_id)) {
-      RETURN_NOT_OK(tablet().metadata()->Flush());
-    }
+  if (data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id)) {
+    RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
   // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
@@ -168,8 +160,8 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
   // latest operation we've ever executed in this Raft group. This way we keep the current value
   // of history cutoff.
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
+  frontier.set_op_id(data.op_id);
+  frontier.set_hybrid_time(data.hybrid_time);
   RETURN_NOT_OK(tablet().ModifyFlushedFrontier(
       frontier, rocksdb::FrontierModificationMode::kUpdate));
 
@@ -180,9 +172,28 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
   return Status::OK();
 }
 
+Env& TabletSnapshots::env() {
+  return *metadata().fs_manager()->env();
+}
+
+Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
+  auto& env = this->env();
+  if (!env.FileExists(dir)) {
+    return Status::OK();
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << dir;
+  RETURN_NOT_OK_PREPEND(env.DeleteRecursively(dir),
+                        "Cannot recursively delete old snapshot dir " + dir);
+  auto top_snapshots_dir = DirName(dir);
+  RETURN_NOT_OK_PREPEND(env.SyncDir(top_snapshots_dir),
+                        "Cannot sync top snapshots dir " + top_snapshots_dir);
+
+  return Status::OK();
+}
+
 Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
-  const std::string top_snapshots_dir = metadata().snapshots_dir();
-  const std::string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
+  const std::string snapshot_dir = VERIFY_RESULT(tx_state->GetSnapshotDir());
   auto restore_at = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
 
   RETURN_NOT_OK_PREPEND(

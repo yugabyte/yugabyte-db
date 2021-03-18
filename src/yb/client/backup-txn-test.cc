@@ -78,53 +78,6 @@ class BackupTxnTest : public SnapshotTestBase {
     return FullyDecodeTxnSnapshotId(resp.snapshot_id());
   }
 
-  Result<TxnSnapshotRestorationId> StartRestoration(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
-      int64_t interval = 0) {
-    master::RestoreSnapshotRequestPB req;
-    master::RestoreSnapshotResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-    if (interval != 0) {
-      req.set_restore_interval(interval);
-    } else if (restore_at) {
-      req.set_restore_ht(restore_at.ToUint64());
-    }
-    RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
-    return FullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
-  }
-
-  Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id) {
-    master::ListSnapshotRestorationsRequestPB req;
-    master::ListSnapshotRestorationsResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    req.set_restoration_id(restoration_id.data(), restoration_id.size());
-    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
-    LOG(INFO) << "Restoration: " << resp.ShortDebugString();
-    if (resp.has_status()) {
-      return StatusFromPB(resp.status());
-    }
-    if (resp.restorations().size() != 1) {
-      return STATUS_FORMAT(RuntimeError, "Wrong number of restorations, one expected but $0 found",
-                           resp.restorations().size());
-    }
-    return resp.restorations(0).entry().state() == SysSnapshotEntryPB::RESTORED;
-  }
-
-  CHECKED_STATUS RestoreSnapshot(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
-      int64_t interval = 0) {
-    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at, interval));
-
-    return WaitFor([this, &restoration_id] {
-      return IsRestorationDone(restoration_id);
-    }, kWaitTimeout * kTimeMultiplier, "Restoration done");
-  }
-
   Result<TxnSnapshotId> CreateSnapshot() {
     TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot());
     RETURN_NOT_OK(WaitSnapshotDone(snapshot_id));

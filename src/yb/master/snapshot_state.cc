@@ -20,6 +20,8 @@
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
+#include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
@@ -160,6 +162,22 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
   // If we have several updates for single snapshot, they are loaded in chronological order.
   // So latest update should be picked.
   return version() < other_version;
+}
+
+Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
+    const tablet::SnapshotOperationState& state) const {
+  if (!schedule_id_) {
+    static Status result(STATUS(Uninitialized, ""));
+    return result;
+  }
+
+  return tablet::CreateSnapshotData {
+    .snapshot_hybrid_time = snapshot_hybrid_time_,
+    .hybrid_time = state.hybrid_time(),
+    .op_id = OpId::FromPB(state.op_id()),
+    .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
+    .schedule_id = schedule_id_,
+  };
 }
 
 } // namespace master

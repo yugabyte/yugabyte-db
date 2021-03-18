@@ -21,6 +21,8 @@
 
 #include "yb/master/state_with_tablets.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
@@ -67,6 +69,9 @@ class SnapshotState : public StateWithTablets {
   int version() const {
     return version_;
   }
+
+  Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
+      const tablet::SnapshotOperationState& state) const;
 
   std::string ToString() const;
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);

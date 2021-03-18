@@ -36,12 +36,22 @@ namespace tablet {
 
 YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
 
+struct CreateSnapshotData {
+  HybridTime snapshot_hybrid_time;
+  HybridTime hybrid_time;
+  OpId op_id;
+  std::string snapshot_dir;
+  SnapshotScheduleId schedule_id;
+};
+
 class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
 
   // Create snapshot for this tablet.
   CHECKED_STATUS Create(SnapshotOperationState* tx_state);
+
+  CHECKED_STATUS Create(const CreateSnapshotData& data);
 
   // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
   // syscatalog RocksDB creation without the initdb overhead.
@@ -80,6 +90,9 @@ class TabletSnapshots : public TabletComponent {
 
   // Applies specified snapshot operation.
   CHECKED_STATUS Apply(SnapshotOperationState* tx_state);
+
+  CHECKED_STATUS CleanupSnapshotDir(const std::string& dir);
+  Env& env();
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };
