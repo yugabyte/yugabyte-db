@@ -250,8 +250,8 @@ On the new "consumer" cluster, open `ycqlsh` and run the following to quickly se
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-```plpgsql
-yugabyte=# SELECT * FROM users;
+```sql
+ycqlsh:customers> SELECT * FROM users;
 ```
 
 You should see the following in the results.
