@@ -8,3 +8,9 @@
 
 - name: Test ansible remote command - ls
   shell: ls
+
+- name: Create sudo password file
+  copy:
+    dest: "{{ yb_sudo_pass_file | default('/tmp/.yb_sudo_pass.sh') }}"
+    content: "export YB_SUDO_PASS={{ ansible_become_pass }}"
+  when: ansible_become_pass is defined

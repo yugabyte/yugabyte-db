@@ -14,9 +14,9 @@
           - server_type is defined
           - server_type in ["cluster-server"]
 
-- name: Test ansible connection
+- name: Send sudo password
   hosts: "{{ instance_search_pattern }}"
   roles:
-    - "test-ansible-connection"
+    - "send-sudo-pass"
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
