@@ -47,6 +47,7 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/backup.proxy.h"
@@ -1363,7 +1364,7 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::RESTORE);
+      tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   if (restore_at) {
     call->SetSnapshotHybridTime(restore_at);
   }
@@ -1381,6 +1382,10 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(ScheduleTask(call), "Failed to send delete snapshot request");
+}
+
+Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
+  return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
