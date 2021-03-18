@@ -418,6 +418,14 @@ class YBSchema {
   bool is_compatible_with_previous_version_ = false;
 };
 
+inline bool operator==(const YBSchema& lhs, const YBSchema& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
+  return out << schema.ToString();
+}
+
 } // namespace client
 } // namespace yb
 

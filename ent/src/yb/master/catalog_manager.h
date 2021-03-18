@@ -266,6 +266,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        const std::string& snapshot_id,
                                        TabletSnapshotOperationCallback callback) override;
 
+  CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
+
   rpc::Scheduler& Scheduler() override;
 
   bool IsLeader() override;
