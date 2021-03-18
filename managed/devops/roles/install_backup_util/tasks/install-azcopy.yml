@@ -7,10 +7,12 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - block:
-    - name: Download and install azcopy
+    - name: azcopy | Download and install azcopy from {{ package_path }}
       unarchive:
-        src: "{{ local_package_path }}/{{ azcopy_package }}"
+        src: "{{ package_path }}/{{ azcopy_package }}"
         dest: "{{ bin_path }}"
+        creates: "{{ bin_path }}/azcopy"
+        remote_src: "{{ is_remote }}"
         mode: 0755
         exclude:
           - ThirdPartyNotice.txt
