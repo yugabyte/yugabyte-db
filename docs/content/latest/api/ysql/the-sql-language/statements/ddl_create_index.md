@@ -57,6 +57,11 @@ schema migration.
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | parallelizes index loading? | yes | no |
 
+\* - There is a slight chance that correctness is violated.  To reduce that
+chance, set tserver flag `ysql_index_state_flags_update_delay_ms` high.  For an
+estimate of how high, with heartbeat interval `t` and maximum master to tserver
+latency `l`, use `3t + l`.
+
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag
 `ysql_disable_index_backfill=true` on **all** nodes and **both** master and
 tserver.  To disable online schema migration for one `CREATE INDEX`, use
@@ -88,11 +93,6 @@ up the following flags:
 
 - master `index_backfill_wait_for_old_txns_ms`
 - tserver `ysql_index_state_flags_update_delay_ms`
-
-\* - There is a slight chance that correctness is violated.  To reduce that
-chance, set tserver flag `ysql_index_state_flags_update_delay_ms` high.  For an
-estimate of how high, with heartbeat interval `t` and maximum master to tserver
-latency `l`, use `3t + l`.
 
 {{< note title="Note" >}}
 
