@@ -94,6 +94,9 @@ up the following flags:
 - master `index_backfill_wait_for_old_txns_ms`
 - tserver `ysql_index_state_flags_update_delay_ms`
 
+To speed up index creation by a few seconds when you know there will be no
+online writes, set tserver flag `ysql_index_state_flags_update_delay_ms=0`.
+
 {{< note title="Note" >}}
 
 For details on how online index backfill works, see [Online Index
