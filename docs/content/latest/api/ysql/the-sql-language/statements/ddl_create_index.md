@@ -81,7 +81,7 @@ still doesn't work,
 - did you get "duplicate key value" error?  Then, you have a unique constraint
   violation.
 
-Please file a GitHub issue if you still have issues.
+Please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure) if you still have issues.
 
 To prioritize keeping other transactions alive during the index backfill, bump
 up flags
