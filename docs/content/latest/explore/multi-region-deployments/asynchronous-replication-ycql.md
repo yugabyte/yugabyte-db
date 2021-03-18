@@ -114,7 +114,6 @@ Run the following `CREATE TABLE` statement.
 
 ``` sql
 CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
-
 ```
 
 Now create the identical database table on the second cluster.
