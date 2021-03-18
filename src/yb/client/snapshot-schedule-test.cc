@@ -13,10 +13,15 @@
 
 #include "yb/client/snapshot_test_base.h"
 
+#include "yb/client/session.h"
+
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -181,6 +186,55 @@ TEST_F(SnapshotScheduleTest, GC) {
     ASSERT_LE(snapshots.size(), 2);
     std::this_thread::sleep_for(100ms);
   }
+}
+
+TEST_F(SnapshotScheduleTest, Index) {
+  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+
+  CreateIndex(Transactional::kTrue, 1, false);
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  constexpr int kTransaction = 0;
+  constexpr auto op_type = WriteOpType::INSERT;
+
+  auto session = CreateSession();
+  for (size_t r = 0; r != kNumRows; ++r) {
+    ASSERT_OK(kv_table_test::WriteRow(
+        &index_, session, KeyForTransactionAndIndex(kTransaction, r),
+        ValueForTransactionAndIndex(kTransaction, r, op_type), op_type));
+  }
+
+  LOG(INFO) << "Index columns: " << AsString(index_.AllColumnNames());
+  for (size_t r = 0; r != kNumRows; ++r) {
+    const auto key = KeyForTransactionAndIndex(kTransaction, r);
+    const auto fetched = ASSERT_RESULT(kv_table_test::SelectRow(
+        &index_, session, key, kValueColumn));
+    ASSERT_EQ(key, fetched);
+  }
+
+  auto peers = ListTabletPeers(cluster_.get(), [index_id = index_->id()](const auto& peer) {
+    return peer->tablet_metadata()->table_id() == index_id;
+  });
+
+  ASSERT_OK(WaitFor([this, peers, hybrid_time]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    if (snapshots.size() == 2) {
+      return true;
+    }
+
+    for (const auto& peer : peers) {
+      SCOPED_TRACE(Format(
+          "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
+          peer->tablet_metadata()->table_name()));
+      auto tablet = peer->tablet();
+      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      SCHECK_LE(history_cutoff, hybrid_time, IllegalState, "Too big history cutoff");
+    }
+
+    return false;
+  }, kSnapshotInterval, "Second snapshot"));
 }
 
 TEST_F(SnapshotScheduleTest, Restart) {

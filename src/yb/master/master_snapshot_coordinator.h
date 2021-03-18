@@ -76,6 +76,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
+  // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap();
+
   void Start();
 
   void Shutdown();

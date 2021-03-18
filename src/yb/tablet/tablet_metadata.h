@@ -127,9 +127,11 @@ struct TableInfo {
 struct KvStoreInfo {
   explicit KvStoreInfo(const KvStoreId& kv_store_id_) : kv_store_id(kv_store_id_) {}
 
-  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_)
+  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_,
+              const std::vector<SnapshotScheduleId>& snapshot_schedules_)
       : kv_store_id(kv_store_id_),
-        rocksdb_dir(rocksdb_dir_) {}
+        rocksdb_dir(rocksdb_dir_),
+        snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
   CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id);
 
@@ -161,6 +163,16 @@ struct KvStoreInfo {
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
 };
 
+struct RaftGroupMetadataData {
+  FsManager* fs_manager;
+  TableInfoPtr table_info;
+  RaftGroupId raft_group_id;
+  Partition partition;
+  TabletDataState tablet_data_state;
+  bool colocated = false;
+  std::vector<SnapshotScheduleId> snapshot_schedules;
+};
+
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -172,46 +184,19 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // data_root_dir and wal_root_dir dictates which disk this Raft group will
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
-  static CHECKED_STATUS CreateNew(FsManager* fs_manager,
-                                  const std::string& table_id,
-                                  const RaftGroupId& raft_group_id,
-                                  const std::string& namespace_name,
-                                  const std::string& table_name,
-                                  const TableType table_type,
-                                  const Schema& schema,
-                                  const IndexMap& index_map,
-                                  const PartitionSchema& partition_schema,
-                                  const Partition& partition,
-                                  const boost::optional<IndexInfo>& index_info,
-                                  const uint32_t schema_version,
-                                  const TabletDataState& initial_tablet_data_state,
-                                  RaftGroupMetadataPtr* metadata,
-                                  const std::string& data_root_dir = std::string(),
-                                  const std::string& wal_root_dir = std::string(),
-                                  const bool colocated = false);
+  static Result<RaftGroupMetadataPtr> CreateNew(
+      const RaftGroupMetadataData& data, const std::string& data_root_dir = std::string(),
+      const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
-                             const RaftGroupId& raft_group_id,
-                             RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> Load(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   // Try to load an existing Raft group. If it does not exist, create it.
   // If it already existed, verifies that the schema of the Raft group matches the
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate Raft groups directly.
-  static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
-                                     const std::string& table_id,
-                                     const RaftGroupId& raft_group_id,
-                                     const std::string& namespace_name,
-                                     const std::string& table_name,
-                                     const TableType table_type,
-                                     const Schema& schema,
-                                     const PartitionSchema& partition_schema,
-                                     const Partition& partition,
-                                     const boost::optional<IndexInfo>& index_info,
-                                     const TabletDataState& initial_tablet_data_state,
-                                     RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> LoadOrCreate(const RaftGroupMetadataData& data);
 
   Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
@@ -499,25 +484,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   ~RaftGroupMetadata();
 
   // Constructor for creating a new Raft group.
-  //
-  // TODO: get rid of this many-arg constructor in favor of just passing in a
-  // SuperBlock, which already contains all of these fields.
-  RaftGroupMetadata(FsManager* fs_manager,
-                    TableId table_id,
-                    RaftGroupId raft_group_id,
-                    std::string namespace_name,
-                    std::string table_name,
-                    TableType table_type,
-                    const std::string rocksdb_dir,
-                    const std::string wal_dir,
-                    const Schema& schema,
-                    const IndexMap& index_map,
-                    PartitionSchema partition_schema,
-                    Partition partition,
-                    const boost::optional<IndexInfo>& index_info,
-                    const uint32_t schema_version,
-                    const TabletDataState& tablet_data_state,
-                    const bool colocated = false);
+  explicit RaftGroupMetadata(
+      const RaftGroupMetadataData& data, const std::string& data_dir,
+      const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
