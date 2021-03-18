@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_DOC_PGSQL_SCANSPEC_H
 #define YB_DOCDB_DOC_PGSQL_SCANSPEC_H
 
+#include <functional>
+
 #include "yb/common/ql_scanspec.h"
 #include "yb/rocksdb/options.h"
 #include "yb/docdb/doc_key.h"
@@ -34,10 +36,15 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
                    bool is_forward_scan = true);
 
   // Scan for the given hash key, a condition, and optional doc_key.
+  //
+  // Note: std::reference_wrapper is used instead of raw lvalue reference to prevent
+  // temporary objects usage. The following code wont compile:
+  //
+  // DocPgsqlScanSpec spec(...{} /* hashed_components */, {} /* range_components */...);
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
-                   const std::vector<PrimitiveValue>& hashed_components,
-                   const std::vector<PrimitiveValue>& range_components,
+                   std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
+                   std::reference_wrapper<const std::vector<PrimitiveValue>> range_components,
                    const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
