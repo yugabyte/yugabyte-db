@@ -165,9 +165,10 @@ Status EnumerateSysCatalog(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
+  const std::vector<docdb::PrimitiveValue> empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   QLTableRow value_map;
