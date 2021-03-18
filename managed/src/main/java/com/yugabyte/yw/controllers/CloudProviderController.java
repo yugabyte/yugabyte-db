@@ -7,7 +7,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -105,9 +104,6 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   private play.Environment environment;
-
-  @Inject
-  CloudAPI.Factory cloudAPIFactory;
 
   /**
    * GET endpoint for listing providers
