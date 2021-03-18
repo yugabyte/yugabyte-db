@@ -194,7 +194,7 @@ $ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```sql
-yugabyte=# SELECT * FROM users;
+ycqlsh:customers>SELECT * FROM users;
 ```
 
 You should see the following in the results.
