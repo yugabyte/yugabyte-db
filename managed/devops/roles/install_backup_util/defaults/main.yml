@@ -7,7 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # common variables
-bin_path: "/usr/bin"
+bin_path: "/usr/local/bin"
 
 # azcopy variables
 azcopy_package: "azcopy_linux_amd64_10.4.0.tar.gz"
