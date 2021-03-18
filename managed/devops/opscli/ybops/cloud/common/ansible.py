@@ -62,6 +62,7 @@ class AnsibleProcess(object):
         ssh_host = extra_vars.pop("ssh_host", None)
         vault_password_file = extra_vars.pop("vault_password_file", None)
         ask_sudo_pass = extra_vars.pop("ask_sudo_pass", None)
+        sudo_pass_file = extra_vars.pop("sudo_pass_file", None)
         ssh_key_file = extra_vars.pop("private_key_file", None)
 
         playbook_args.update(extra_vars)
@@ -82,6 +83,8 @@ class AnsibleProcess(object):
             process_args.extend(["--vault-password-file", vault_password_file])
         if ask_sudo_pass is not None:
             process_args.extend(["--ask-sudo-pass"])
+        if sudo_pass_file is not None:
+            playbook_args["yb_sudo_pass_file"] = sudo_pass_file
 
         if skip_tags is not None:
             process_args.extend(["--skip-tags", skip_tags])
@@ -118,12 +121,13 @@ class AnsibleProcess(object):
 
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
-        env = {'PROFILE_TASKS_TASK_OUTPUT_LIMIT': '30'}
+        env = os.environ.copy()
+        env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
         logging.info("[app] Running ansible playbook {} against target {}".format(
                         filename, inventory_target))
         logging.info("Running ansible command {}".format(json.dumps(process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
         if print_output:
             print(stdout)

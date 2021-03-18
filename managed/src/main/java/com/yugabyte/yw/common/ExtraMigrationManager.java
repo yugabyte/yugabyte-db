@@ -29,7 +29,7 @@ public class ExtraMigrationManager extends DevopsBase {
     return "";
   }
 
-  public void V52__Update_Access_Key_Create_Extra_Migration() {
+  private void recreateProvisionScripts() {
     for (AccessKey accessKey: AccessKey.getAll()) {
       Provider p = Provider.get(accessKey.getProviderUUID());
       if (p != null && p.code.equals(onprem.name())) {
@@ -39,5 +39,13 @@ public class ExtraMigrationManager extends DevopsBase {
           keyInfo.installNodeExporter, keyInfo.nodeExporterPort, keyInfo.nodeExporterUser);
       }
     }
+  }
+
+  public void V52__Update_Access_Key_Create_Extra_Migration() {
+    recreateProvisionScripts();
+  }
+
+  public void V65__Recreate_Provision_Script_Extra_Migrations() {
+    recreateProvisionScripts();
   }
 }
