@@ -84,7 +84,7 @@ still doesn't work,
 Please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure) if you still have issues.
 
 To prioritize keeping other transactions alive during the index backfill, bump
-up flags
+up the following flags:
 
 - master `index_backfill_wait_for_old_txns_ms`
 - tserver `ysql_index_state_flags_update_delay_ms`
