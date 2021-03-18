@@ -57,6 +57,8 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+# Sudo password for remote host.
+YB_SUDO_PASS = os.environ.get("YB_SUDO_PASS")
 
 
 class ReleasePackage(object):
