@@ -54,7 +54,7 @@ schema migration.
 | Condition | Online | Not online |
 | :-------- | :----- | :--------- |
 | Safe to do other DMLs during `CREATE INDEX`? | yes\* | no |
-| keeps other transactions alive during `CREATE INDEX`? | mostly | no |
+| Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | parallelizes index loading? | yes | no |
 
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag
