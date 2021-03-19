@@ -588,6 +588,29 @@ TEST_F_EX(PgIndexBackfillTest,
   }
 }
 
+// Override the index backfill test to have HBA config with local trust:
+// 1. if any user tries to connect over ip, trust
+// 2. if any user tries to connect over unix-domain socket, trust
+class PgIndexBackfillLocalTrust : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_hba_conf="
+        "host $0 all all trust,"
+        "local $0 all trust",
+        kDatabaseName));
+  }
+};
+
+// Make sure backfill works when there exists user-defined HBA configuration with "local".
+// This is for issue (#7705).
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(LocalTrustSimple),
+          PgIndexBackfillLocalTrust) {
+  TestSimpleBackfill();
+}
+
 // Override the index backfill test to disable transparent retries on cache version mismatch.
 class PgIndexBackfillNoRetry : public PgIndexBackfillTest {
  public:

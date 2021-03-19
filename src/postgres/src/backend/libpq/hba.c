@@ -103,8 +103,8 @@ static MemoryContext parsed_hba_context = NULL;
 
 /*
  * The following character array contains the additional hardcoded HBA config
- * lines that are set internally.  User defined config lines take priority over
- * these.
+ * lines that are set internally.  These lines take priority over user defined
+ * config lines.
  */
 static const char *const HardcodedHbaLines[] =
 {
@@ -151,8 +151,7 @@ static const char *const UserAuthName[] =
 
 static MemoryContext tokenize_file(const char *filename, FILE *file,
 			  List **tok_lines, int elevel);
-static void tokenize_hardcoded(MemoryContext linecxt, List **tok_lines,
-							   int elevel);
+static void tokenize_hardcoded(List **tok_lines_all, int elevel);
 static TokenizedLine *tokenize_line(const char *filename, int elevel,
 									int line_number, char *rawline,
 									char *err_msg);
@@ -548,10 +547,7 @@ tokenize_file(const char *filename, FILE *file, List **tok_lines, int elevel)
  *
  * The output is a list of TokenizedLine structs; see struct definition above.
  *
- * linecxt: memory context to save tokenized lines to (expect the same memcxt
- *		as the one where file tokenized lines are)
- * tok_lines: receives output list (expect file tokenized lines to already be
- *		in this list)
+ * tok_lines: receives output list
  * elevel: message logging level
  *
  * Errors are reported by logging messages at ereport level elevel and by
@@ -559,12 +555,12 @@ tokenize_file(const char *filename, FILE *file, List **tok_lines, int elevel)
  * output list.
  */
 static void
-tokenize_hardcoded(MemoryContext linecxt, List **tok_lines, int elevel)
+tokenize_hardcoded(List **tok_lines, int elevel)
 {
 	int			line_number = -1;
-	MemoryContext oldcxt;
 
-	oldcxt = MemoryContextSwitchTo(linecxt);
+	*tok_lines = NIL;
+
 	for (int i = 0; i < sizeof(HardcodedHbaLines) / sizeof(char *); ++i)
 	{
 		char	   *err_msg = NULL;
@@ -580,8 +576,6 @@ tokenize_hardcoded(MemoryContext linecxt, List **tok_lines, int elevel)
 
 		line_number--;
 	}
-
-	MemoryContextSwitchTo(oldcxt);
 }
 
 /*
@@ -2254,9 +2248,16 @@ load_hba(void)
 	linecxt = tokenize_file(HbaFileName, file, &hba_lines, LOG);
 	FreeFile(file);
 
-	/* Add hardcoded hba config lines after user-defined ones. */
+	/* Add hardcoded hba config lines in front of user-defined ones. */
 	if (!YBCGetDisableIndexBackfill())
-		tokenize_hardcoded(linecxt, &hba_lines, LOG);
+	{
+		List	   *hba_lines_hardcoded = NIL;
+
+		oldcxt = MemoryContextSwitchTo(linecxt);
+		tokenize_hardcoded(&hba_lines_hardcoded, LOG);
+		hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
+		MemoryContextSwitchTo(oldcxt);
+	}
 
 	/* Now parse all the lines */
 	Assert(PostmasterContext);
