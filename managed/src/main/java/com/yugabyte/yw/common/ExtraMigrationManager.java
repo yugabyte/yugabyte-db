@@ -45,7 +45,7 @@ public class ExtraMigrationManager extends DevopsBase {
     recreateProvisionScripts();
   }
 
-  public void V65__Recreate_Provision_Script_Extra_Migrations() {
+  public void R__Recreate_Provision_Script_Extra_Migrations() {
     recreateProvisionScripts();
   }
 }
