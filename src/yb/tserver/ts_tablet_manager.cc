@@ -1440,7 +1440,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   yb::OpId split_op_id;
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
-    if (CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
+    // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
+    if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
+        CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
                           true /* expected */, false /* val */)) {
       LOG(ERROR) << "Setting the state of a tablet to FAILED";
       tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
