@@ -329,6 +329,13 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /* Enables tables/indexes to be created WITH (table_oid = x). */
 extern bool yb_enable_create_with_table_oid;
 
+/*
+ * During CREATE INDEX, the delay between stages, from
+ * - indislive=true to indisready=true
+ * - indisready=true to launching backfill
+ */
+extern int yb_index_state_flags_update_delay;
+
 //------------------------------------------------------------------------------
 // YB Debug utils.
 

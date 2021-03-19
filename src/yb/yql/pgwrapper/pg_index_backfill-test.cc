@@ -653,7 +653,8 @@ class PgIndexBackfillSnapshotTooOld : public PgIndexBackfillTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=10000");
-    options->extra_tserver_flags.push_back("--TEST_ysql_index_state_flags_update_delay_ms=0");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_index_state_flags_update_delay=0");
     options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3");
   }
 };
@@ -729,7 +730,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         "--TEST_slowdown_backfill_alter_table_rpcs_ms=$0",
         kBackfillAlterTableDelay.ToMilliseconds()));
     options->extra_tserver_flags.push_back(Format(
-        "--TEST_ysql_index_state_flags_update_delay_ms=$0",
+        "--ysql_pg_conf_csv=yb_index_state_flags_update_delay=$0",
         kIndexStateFlagsUpdateDelay.ToMilliseconds()));
     options->extra_tserver_flags.push_back(Format(
         "--TEST_slowdown_backfill_by_ms=$0",

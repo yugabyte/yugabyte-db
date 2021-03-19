@@ -44,6 +44,5 @@ DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
-DECLARE_int32(TEST_ysql_index_state_flags_update_delay_ms);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H
