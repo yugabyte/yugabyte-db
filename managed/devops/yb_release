@@ -10,11 +10,15 @@
 
 set -e
 
+# Create python2 packages.
+export YB_MANAGED_DEVOPS_USE_PYTHON3=0
 bin/install_python_requirements.sh --create_package --use_dynamic_paths
-bin/install_ansible_requirements.sh --force
 
+# Use python3 to create the actual release.
 export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 . "${BASH_SOURCE%/*}"/bin/common.sh
+bin/install_python_requirements.sh
 activate_virtualenv
+bin/install_ansible_requirements.sh --force
 "$yb_devops_home"/yb_release.py "$@"
 rm -rf "$YB_PYTHON_MODULES_PACKAGE"
