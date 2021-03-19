@@ -79,7 +79,7 @@ still doesn't work,
   (latest), online `CREATE INDEX` does not work with authentication enabled.
   - For version 2.5.1, you can use `CREATE INDEX
     NONCONCURRENTLY` as a workaround.
-  - If the version is >=2.3 (latest), then you can set
+  - If the version is at least 2.3, then you can set
     `ysql_disable_index_backfill=false` as a workaround.
   - In any case, you can disable authentication (e.g. using `ysql_enable_auth`,
     `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
