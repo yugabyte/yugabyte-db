@@ -8,9 +8,9 @@ import play.api.libs.json._
 
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 
-class V65__Recreate_Provision_Script_Extra_Migrations extends JdbcMigration {
+class R__Recreate_Provision_Script_Extra_Migrations extends JdbcMigration {
   override def migrate(connection: Connection): Unit = {
     connection.createStatement().execute(s"INSERT INTO extra_migration VALUES " +
-      s"('V65__Recreate_Provision_Script_Extra_Migrations')")
+      s"('R__Recreate_Provision_Script_Extra_Migrations')")
   }
 }
