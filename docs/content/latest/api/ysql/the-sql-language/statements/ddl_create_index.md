@@ -75,7 +75,7 @@ still doesn't work,
   - master `ysql_index_backfill_rpc_timeout_ms`
   - tserver `ysql_wait_until_index_permissions_timeout_ms`
 - did you get "backfill failed to connect to DB"?  Then, you may be hitting an
-  issue with authentication.  If the version is <2.4 (stable) or <2.5.2
+  issue with authentication. If you're on a stable version prior to 2.4, or a latest (2.3.x or 2.5.x) version prior to 2.5.2,
   (latest), online `CREATE INDEX` does not work with authentication enabled.
   - For version 2.5.1, you can use `CREATE INDEX
     NONCONCURRENTLY` as a workaround.
