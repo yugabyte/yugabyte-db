@@ -95,10 +95,10 @@ Waiting for cluster to be ready.
 
 In the default `yugabyte` database, create the database table `users` on the "Data Center - East" cluster.
 
-Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
+Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.1
+$ ./bin/ysqlsh -h 127.0.0.1
 ```
 
 Run the following `CREATE TABLE` statement.
@@ -112,10 +112,10 @@ CREATE TABLE users (
 
 Now create the identical database table on cluster B.
 
-Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
+Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.2
+$ ./bin/ysqlsh -h 127.0.0.2
 ```
 
 Run the following `CREATE TABLE` statement.
@@ -167,17 +167,17 @@ Now that you've configured unidirectional replication, you can now add data to t
 To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.1
+$ ./bin/ysqlsh -h 127.0.0.1
 ```
 
 ```plpgsql
 yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
 ```
 
-On the consumer "Data Center - West" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the consumer "Data Center - West" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.2
+$ ./bin/ysqlsh -h 127.0.0.2
 ```
 
 ```plpgsql
@@ -223,17 +223,17 @@ Now that you've configured bidirectional replication, you can now add data to th
 To add data to the "Data Center - West" cluster, open`ysqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.2
+$ ./bin/ysqlsh -h 127.0.0.2
 ```
 
 ```plpgsql
 yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
 ```
 
-On the new "consumer" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the new "consumer" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ycqlsh 127.0.0.1
+$ ./bin/ysqlsh -h 127.0.0.1
 ```
 
 ```plpgsql
