@@ -77,7 +77,7 @@ still doesn't work,
 - did you get "backfill failed to connect to DB"?  Then, you may be hitting an
   issue with authentication.  If the version is <2.4 (stable) or <2.5.2
   (latest), online `CREATE INDEX` does not work with authentication enabled.
-  - If the version is 2.5.1 (latest), then you can use `CREATE INDEX
+  - For version 2.5.1, you can use `CREATE INDEX
     NONCONCURRENTLY` as a workaround.
   - If the version is >=2.3 (latest), then you can set
     `ysql_disable_index_backfill=false` as a workaround.
