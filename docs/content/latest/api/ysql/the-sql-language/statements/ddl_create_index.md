@@ -49,6 +49,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
+The following table explains some of the differences between creating an index online and not online.
 
 | Condition | Online | Not online |
 | :-------- | :----- | :--------- |
