@@ -122,7 +122,8 @@ class AnsibleProcess(object):
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
         env = os.environ.copy()
-        env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
+        if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
+            env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
         logging.info("[app] Running ansible playbook {} against target {}".format(
                         filename, inventory_target))
         logging.info("Running ansible command {}".format(json.dumps(process_args,
