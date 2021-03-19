@@ -251,6 +251,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Nice name for the universe.
     public String universeName;
 
+    // TODO: https://github.com/yugabyte/yugabyte-db/issues/8190
     // The cloud provider UUID.
     public String provider;
 

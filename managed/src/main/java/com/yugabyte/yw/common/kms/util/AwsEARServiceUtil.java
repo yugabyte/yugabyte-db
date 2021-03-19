@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
@@ -48,6 +51,8 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Application;
@@ -72,78 +77,59 @@ public class AwsEARServiceUtil {
         CLOUD_PROVIDER;
     }
 
-    private static CredentialType getCredentialType(UUID customerUUID, UUID configUUID) {
-        CredentialType type = null;
-        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
-        Provider provider = Provider.get(customerUUID, CloudType.aws);
-        Map<String, String> providerConfig = provider == null ? null : provider.getConfig();
-        if (authConfig == null &&
-                provider != null &&
-                providerConfig.get("AWS_ACCESS_KEY_ID") != null &&
-                providerConfig.get("AWS_SECRET_ACCESS_KEY") != null &&
-                ((Region) provider.regions.toArray()[0]).code != null) {
-            type = CredentialType.CLOUD_PROVIDER;
-        } else if (authConfig != null) {
-            type = CredentialType.KMS_CONFIG;
-        } else {
-            throw new RuntimeException("Could not find AWS credentials for AWS KMS integration");
-        }
-        return type;
-    }
+    private static AWSCredentials getCredentials(ObjectNode authConfig) {
 
-    // Rely on the AWS credential provider chain
-    // We set system properties as the first-choice option
-    // To debug, a user can set AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_REGION env vars
-    // which will override any existing KMS configuration credentials
-    // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
-    private static void setUserCredentials(UUID configUUID) {
-        UUID customerUUID = KmsConfig.get(configUUID).customerUUID;
-        Properties p = new Properties(System.getProperties());
-        CredentialType credentialType = getCredentialType(customerUUID, configUUID);
-        switch (credentialType) {
-            case KMS_CONFIG:
-                ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(
-                        configUUID,
-                        KeyProvider.AWS
-                );
-                if (authConfig.get("AWS_ACCESS_KEY_ID") != null &&
-                        authConfig.get("AWS_SECRET_ACCESS_KEY") != null &&
-                        authConfig.get("AWS_REGION") != null) {
-                    p.setProperty("aws.accessKeyId", authConfig.get("AWS_ACCESS_KEY_ID").asText());
-                    p.setProperty(
-                            "aws.secretKey",
-                            authConfig.get("AWS_SECRET_ACCESS_KEY").asText()
-                    );
-                    p.setProperty("aws.region", authConfig.get("AWS_REGION").asText());
-                }
-                break;
-            case CLOUD_PROVIDER:
-                Provider provider = Provider.get(customerUUID, CloudType.aws);
-                Map<String, String> config = provider.getConfig();
-                String accessKeyId = config.get("AWS_ACCESS_KEY_ID");
-                String secretAccessKey = config.get("AWS_SECRET_ACCESS_KEY");
-                String region = ((Region) provider.regions.toArray()[0]).code;
-                p.setProperty("aws.accessKeyId", accessKeyId);
-                p.setProperty("aws.secretKey", secretAccessKey);
-                p.setProperty("aws.region", region);
-                break;
+        if (!StringUtils.isBlank(authConfig.path("AWS_ACCESS_KEY_ID").asText()) &&
+            !StringUtils.isBlank(authConfig.path("AWS_SECRET_ACCESS_KEY").asText())) {
+
+            return new BasicAWSCredentials(authConfig.get("AWS_ACCESS_KEY_ID").asText(),
+                authConfig.get("AWS_SECRET_ACCESS_KEY").asText());
         }
-        System.setProperties(p);
+        return null;
     }
 
     public static AWSKMS getKMSClient(UUID configUUID) {
-        setUserCredentials(configUUID);
-        return AWSKMSClientBuilder.defaultClient();
+        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+
+        AWSCredentials awsCredentials = getCredentials(authConfig);
+
+        if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+
+            return AWSKMSClientBuilder.defaultClient();
+        }
+        return AWSKMSClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+                .withRegion(authConfig.get("AWS_REGION").asText())
+                .build();
     }
 
     public static AmazonIdentityManagement getIAMClient(UUID configUUID) {
-        setUserCredentials(configUUID);
-        return AmazonIdentityManagementClientBuilder.defaultClient();
+        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+
+        AWSCredentials awsCredentials = getCredentials(authConfig);
+
+        if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+
+            return AmazonIdentityManagementClientBuilder.defaultClient();
+        }
+        return AmazonIdentityManagementClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+                .withRegion(authConfig.get("AWS_REGION").asText())
+                .build();
     }
 
     public static AWSSecurityTokenService getSTSClient(UUID configUUID) {
-        setUserCredentials(configUUID);
-        return AWSSecurityTokenServiceClientBuilder.defaultClient();
+        ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+
+        AWSCredentials awsCredentials = getCredentials(authConfig);
+        if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+
+            return AWSSecurityTokenServiceClientBuilder.defaultClient();
+        }
+        return AWSSecurityTokenServiceClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+                .withRegion(authConfig.get("AWS_REGION").asText())
+                .build();
     }
 
     public static ObjectNode getPolicyBase() {

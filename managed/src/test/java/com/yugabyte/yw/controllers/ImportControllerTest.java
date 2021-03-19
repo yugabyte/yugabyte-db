@@ -192,7 +192,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(3, numNodes);
 
     // Provider should have the instance type.
-    UUID provUUID = Provider.get(customer.uuid, CloudType.local).uuid;
+    UUID provUUID = Provider.get(customer.uuid, CloudType.local).get(0).uuid;
     url = "/api/customers/" + customer.uuid + "/providers/" + provUUID + "/instance_types/" +
           ImportUniverseFormData.DEFAULT_INSTANCE;
     result = doRequestWithAuthToken("GET", url, authToken);
