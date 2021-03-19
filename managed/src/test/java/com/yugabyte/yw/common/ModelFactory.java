@@ -20,9 +20,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+
 import play.libs.Json;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -124,10 +126,9 @@ public class ModelFactory {
                                         UUID rootCA) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
-    Provider p = Provider.get(c.uuid, cloudType);
-    if (p == null) {
-      p = newProvider(c, cloudType);
-    }
+    List<Provider> providerList = Provider.get(c.uuid, cloudType);
+    Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
+
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = p.uuid.toString();
