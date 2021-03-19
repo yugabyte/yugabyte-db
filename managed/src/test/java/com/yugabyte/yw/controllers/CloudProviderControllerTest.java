@@ -181,14 +181,16 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateDuplicateProvider() {
+  public void testCreateMultiInstanceProvider() {
     ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
     Result result = createProvider(bodyJson);
-    assertBadRequest(result, "Duplicate provider code: aws");
-    assertAuditEntry(0, customer.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "name", "Amazon");
+    assertOk(result);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test

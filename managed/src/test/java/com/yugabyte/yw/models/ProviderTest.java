@@ -118,7 +118,7 @@ public class ProviderTest extends FakeDBApplication {
   @Test
   public void testGetByNameSuccess() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
-    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
+    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0);
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);

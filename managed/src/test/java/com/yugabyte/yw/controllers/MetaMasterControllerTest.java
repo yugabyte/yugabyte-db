@@ -79,7 +79,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater("host", aws));
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).uuid.toString();
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     // Read the value back.

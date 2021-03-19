@@ -259,7 +259,19 @@ public class ImportController extends AuthenticatedController {
             universeName),
           universeName, userMasterIpPorts);
       }
-      Provider provider = Provider.get(customer.uuid, importForm.providerType);
+
+      List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+      Provider provider = null;
+      if (!providerList.isEmpty()) {
+        provider = providerList.get(0);
+      } else {
+        // Understand about this better.
+        results.with("checks").put("is_provider_present", "FAILURE");
+        results.put("error", String.format("Providers for the customer: %s and type: %s"
+         + " are not present", customer.uuid, importForm.providerType));
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
+      }
+
       Region region = Region.getByCode(provider, importForm.regionCode);
       AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
       taskParams = universe.getUniverseDetails();
@@ -359,7 +371,18 @@ public class ImportController extends AuthenticatedController {
     // Update the universe object in the DB with new information : complete set of nodes.
     //---------------------------------------------------------------------------------------------
     // Find the provider, region and zone. These should have been created during master info update.
-    Provider provider = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    Provider provider = null;
+    if (!providerList.isEmpty()) {
+      provider = providerList.get(0);
+    } else {
+      // Understand about this better.
+      results.with("checks").put("is_provider_present", "FAILURE");
+      results.put("error", String.format("Providers for the customer: %s and type: %s"
+        + " are not present", customer.uuid, importForm.providerType));
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
+    }
+
     Region region = Region.getByCode(provider, importForm.regionCode);
     AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
     // Update the universe object and refresh it.
@@ -658,7 +681,11 @@ public class ImportController extends AuthenticatedController {
                                               String nodePrefix, String universeName,
                                               Map<String, Integer> userMasterIpPorts) {
     // Find the provider by the code given, or create a new provider if one does not exist.
-    Provider provider = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    Provider provider = null;
+    if (!providerList.isEmpty()) {
+      provider = providerList.get(0);
+    }
     if (provider == null) {
       provider = Provider.create(customer.uuid, importForm.providerType, importForm.cloudName);
     }
