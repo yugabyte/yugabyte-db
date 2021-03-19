@@ -74,6 +74,13 @@ Follow these steps if this is the first time you are setting up to work on the d
 >
 > Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
 
+Note:
+In some cases, an additional step may be necessary to make sure `xcode-select` is pointing to the correct Xcode or Command-Line Tools installation. For example:
+
+```sh
+sudo xcode-select --switch /Applications/Xcode.app
+```
+
 Then:
 
 Fork the yugabyte-db GitHub repository and create a local clone of your fork with a command like this:
