@@ -279,11 +279,11 @@ storage:
   master:
     count: 2
     size: 10Gi
-    storageClass: fast
+    storageClass: standard
   tserver:
     count: 2
     size: 10Gi
-    storageClass: fast
+    storageClass: standard
 
 resource:
   master:
