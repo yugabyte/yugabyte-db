@@ -1819,6 +1819,7 @@ run_python_doctest() {
     fi
     if [[ $basename == .ycm_extra_conf.py ||
           $basename == split_long_command_line.py ||
+          $basename == check-diff-name.py ||
           $python_file =~ managed/.* ]]; then
       continue
     fi
