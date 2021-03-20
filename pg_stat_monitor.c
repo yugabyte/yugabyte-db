@@ -220,7 +220,7 @@ _PG_init(void)
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 	{
 		char file_name[1024];
-		sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, i);
+		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, i);
 		unlink(file_name);
 	}
 
@@ -1336,7 +1336,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	HASH_SEQ_STATUS      hash_seq;
 	pgssEntry		     *entry;
 	pgssQueryEntry		 *query_entry;
-	char			     parentid_txt[64];
+	char			     parentid_txt[32];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
 	char 				*query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
@@ -1386,8 +1386,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		int		      i = 0;
 		Counters      tmp;
 		double        stddev;
-		char          queryid_text[16] = {0};
-		char          planid_text[16] = {0};
+		char          queryid_text[32] = {0};
+		char          planid_text[32] = {0};
 		uint64        queryid = entry->key.queryid;
 		uint64		  bucketid = entry->key.bucket_id;
 		uint64		  dbid = entry->key.dbid;
@@ -1410,7 +1410,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			int len;
 			len = read_query_buffer(bucketid, queryid, query_txt);
 			if (len != MAX_QUERY_BUFFER_BUCKET)
-				sprintf(query_txt, "%s", "<insufficient disk/shared space>");
+				snprintf(query_txt, 32, "%s", "<insufficient disk/shared space>");
 		}
 
 		/* copy counters to a local variable to keep locking time short */
@@ -1440,13 +1440,13 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 
 		/* queryid at column number 4 */
-		sprintf(queryid_text, "%08lX", queryid);
+		snprintf(queryid_text, 32, "%08lX", queryid);
 		values[i++] = CStringGetTextDatum(queryid_text);
 
 		/* planid at column number 5 */
 		if (planid)
 		{
-			sprintf(planid_text, "%08lX", planid);
+			snprintf(planid_text, 32, "%08lX", planid);
 			values[i++] = CStringGetTextDatum(planid_text);
 		}
 		else
@@ -1492,7 +1492,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		/* parentid at column number 9 */
         if (tmp.info.parentid != UINT64CONST(0))
 		{
-            sprintf(parentid_txt,"%08lX",tmp.info.parentid);
+            snprintf(parentid_txt, 32, "%08lX",tmp.info.parentid);
             values[i++] = CStringGetTextDatum(parentid_txt);
         }
         else
@@ -1690,7 +1690,7 @@ get_next_wbucket(pgssSharedState *pgss)
 		buf = pgss_qbuf[bucket_id];
 		hash_entry_dealloc(bucket_id);
 		hash_query_entry_dealloc(bucket_id);
-		sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
+		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
 		unlink(file_name);
 
 		/* reset the query buffer */
@@ -2877,7 +2877,7 @@ dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len)
     int  fd = 0;
 	char file_name[1024];
 
-	sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, bucket_id);
+	snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
 	fd = OpenTransientFile(file_name, O_RDWR | O_CREAT | O_APPEND | PG_BINARY);
     if (fd < 0)
 		ereport(LOG,
@@ -2903,7 +2903,7 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt)
 	unsigned char *buf = NULL;
 	int           off = 0;
 
-	sprintf(file_name, "%s.%d", PGSM_TEXT_FILE, bucket_id);
+	snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
     fd = OpenTransientFile(file_name, O_RDONLY | PG_BINARY);
 	if (fd < 0)
 		goto exit;
@@ -3026,13 +3026,13 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 		int64 b_end = exp(bucket_size * index);
 		if (first)
 		{
-			sprintf(text_str, "(%ld - %ld)}", b_start, b_end);
+			snprintf(text_str, MAX_STRING_LEN, "(%ld - %ld)}", b_start, b_end);
 			first = false;
 		}
 		else
 		{
-			sprintf(tmp_str, "%s, (%ld - %ld)}", text_str, b_start, b_end);
-			sprintf(text_str, "%s", tmp_str);
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - %ld)}", text_str, b_start, b_end);
+			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 	}
 	pfree(tmp_str);
