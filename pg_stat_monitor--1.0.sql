@@ -34,7 +34,7 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT planid              text,
     OUT query               text,
     OUT query_plan          text,
-    OUT state 				int8,
+    OUT state_code 			int8,
     OUT top_queryid         text,
 	OUT application_name	text,
 
@@ -51,7 +51,7 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT max_time            float8,
     OUT mean_time           float8,
     OUT stddev_time         float8,
-    OUT rows       			int8,
+    OUT rows_retrieved       int8,
 
 	OUT plans_calls    	 	int8,  -- 23
     OUT plan_total_time     float8,
@@ -83,15 +83,15 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION get_state(state int8) RETURNS TEXT AS
+CREATE OR REPLACE FUNCTION get_state(state_code int8) RETURNS TEXT AS
 $$
 SELECT
 	CASE
-		WHEN state = 0 THEN 'PARSED'
-		WHEN state = 1 THEN 'PLANNING'
-		WHEN state = 2 THEN 'EXECUTION FINISHED'
-		WHEN state = 3 THEN 'ERROR'
-		WHEN state = 4 THEN 'FINISHED'
+		WHEN state_code = 0 THEN 'PARSING'
+		WHEN state_code = 1 THEN 'PLANNING'
+		WHEN state_code = 2 THEN 'ACTIVE'
+		WHEN state_code = 3 THEN 'FINISHED'
+		WHEN state_code = 4 THEN 'FINISHED WITH ERROR'
 	END
 $$
 LANGUAGE SQL PARALLEL SAFE;
@@ -160,7 +160,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	round( CAST(max_time as numeric), 4)::float8 as max_time,
 	round( CAST(mean_time as numeric), 4)::float8 as mean_time,
 	round( CAST(stddev_time as numeric), 4)::float8 as stddev_time,
-	rows,
+	rows_retrieved,
 	plans_calls,
 	round( CAST(plan_total_time as numeric), 4)::float8 as plan_total_time,
 	round( CAST(plan_min_time as numeric), 4)::float8 as plan_min_time,
@@ -185,8 +185,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
-	state,
-	get_state(state) as state_value
+	state_code,
+	get_state(state_code) as state
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 

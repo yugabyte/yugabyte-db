@@ -139,8 +139,8 @@ typedef enum pgssStoreKind
 	PGSS_PARSE = 0,
 	PGSS_PLAN,
 	PGSS_EXEC,
-	PGSS_ERROR,
 	PGSS_FINISHED,
+	PGSS_ERROR,
 
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
@@ -181,9 +181,8 @@ typedef struct pgssQueryHashKey
 
 typedef struct pgssQueryEntry
 {
-	pgssQueryHashKey	key;		/* hash key of entry - MUST BE FIRST */
-	uint64			    pos;		/* bucket number */
-	uint64			state;		/* query state */
+	pgssQueryHashKey    key;		/* hash key of entry - MUST BE FIRST */
+	uint64              pos;		/* bucket number */
 } pgssQueryEntry;
 
 typedef struct PlanInfo

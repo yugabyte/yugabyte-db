@@ -366,6 +366,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 static void
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	uint64             queryId       = queryDesc->plannedstmt->queryId;
+
 	if(getrusage(RUSAGE_SELF, &rusage_start) != 0)
 		elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
 
@@ -394,6 +396,22 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL);
 			MemoryContextSwitchTo(oldcxt);
 		}
+		pgss_store(queryId,                                 /* query id */
+					queryDesc->sourceText,					/* query text */
+					NULL,                                   /* PlanInfo */
+					queryDesc->operation,                   /* CmdType */
+					NULL,                                   /* SysInfo */
+					NULL,									/* ErrorInfo */
+					0,                                      /* totaltime */
+					0,                                      /* rows */
+					NULL,                                   /*  bufusage */
+#if PG_VERSION_NUM >= 130000
+					NULL,                                   /* walusage */
+#else
+					NULL,
+#endif
+					NULL,
+					PGSS_EXEC);							   /* pgssStoreKind */
 	}
 }
 
@@ -519,7 +537,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 					NULL,
 #endif
 					NULL,
-					PGSS_EXEC); 							/* pgssStoreKind */
+					PGSS_FINISHED); 							/* pgssStoreKind */
 	}
 	if (prev_ExecutorEnd)
 		prev_ExecutorEnd(queryDesc);
@@ -906,6 +924,7 @@ pgss_update_entry(pgssEntry *entry,
 		if (reset)
 			memset(&entry->counters, 0, sizeof(Counters));
 
+		e->counters.state = kind;
 		if (kind == PGSS_PLAN)
 		{
 			if (e->counters.plancalls.calls == 0)
@@ -929,9 +948,8 @@ pgss_update_entry(pgssEntry *entry,
 			if (e->counters.plantime.min_time > total_time) e->counters.plantime.min_time = total_time;
 			if (e->counters.plantime.max_time < total_time) e->counters.plantime.max_time = total_time;
 		}
-		else
+		else if (kind == PGSS_FINISHED)
 		{
-			e->counters.state = kind;
 			if (e->counters.calls.calls == 0)
 				e->counters.calls.usage = USAGE_INIT;
 			e->counters.calls.calls += 1;
@@ -1130,7 +1148,7 @@ pgss_store_error(uint64 queryid,
 				NULL,					/* bufusage */
 				NULL,					/* walusage */
 				NULL,					/* pgssJumbleState */
-				PGSS_EXEC);				/* pgssStoreKind */
+				PGSS_ERROR);			/* pgssStoreKind */
 }
 
 static void
@@ -1153,7 +1171,7 @@ pgss_store_utility(const char *query,
 				bufusage,				/* bufusage */
 				walusage,				/* walusage */
 				NULL,					/* pgssJumbleState */
-				PGSS_EXEC);			/* pgssStoreKind */
+				PGSS_FINISHED);			/* pgssStoreKind */
 }
 
 /*
@@ -1219,7 +1237,9 @@ pgss_store(uint64 queryid,
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
 			break;
 		}
+		case PGSS_ERROR:
 		case PGSS_EXEC:
+		case PGSS_FINISHED:
 		{
 			pgssQueryEntry *query_entry;
 			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, query, strlen(query), kind);
@@ -1252,12 +1272,8 @@ pgss_store(uint64 queryid,
 							kind);				/* kind */
 		}
 		break;
-		case PGSS_FINISHED:
 		case PGSS_NUMKIND:
 		case PGSS_INVALID:
-			break;
-
-		case PGSS_ERROR:
 			break;
 	}
 	LWLockRelease(pgss->lock);
@@ -1319,6 +1335,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	MemoryContext	     oldcontext;
 	HASH_SEQ_STATUS      hash_seq;
 	pgssEntry		     *entry;
+	pgssQueryEntry		 *query_entry;
 	char			     parentid_txt[64];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
@@ -1377,7 +1394,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64		  userid = entry->key.userid;
 		uint64        ip = entry->key.ip;
 		uint64        planid = entry->key.planid;
-
 		unsigned char *buf = pgss_qbuf[bucketid];
 		char 		  *query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
@@ -1385,7 +1401,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		if (!IsBucketValid(bucketid))
 			continue;
 
-		if (!hash_find_query_entry(bucketid, queryid, dbid, userid, ip))
+		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip);
+		if (query_entry == NULL)
 			continue;
 
 		if (read_query(buf, bucketid, queryid, query_txt) == 0)
@@ -2706,7 +2723,6 @@ pgss_store_query_info(uint64 bucketid,
 	if (!entry)
 		return NULL;
 
-	entry->state = kind;
 	memcpy(&buf_len, buf, sizeof (uint64));
 	if (buf_len == 0)
 		buf_len += sizeof (uint64);
@@ -2830,7 +2846,7 @@ set_qbuf(int i, unsigned char *buf)
 void
 pgsm_emit_log_hook(ErrorData *edata)
 {
-	if (!IsSystemInitialized())
+	if (!IsSystemInitialized() || edata == NULL)
 		goto exit;
 
 	if ((edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1))
