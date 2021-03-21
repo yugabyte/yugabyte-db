@@ -1,5 +1,6 @@
 export const mockYcqlQueries = [
   {
+    id: 'fake-id-ycql-001',
     nodeName: 'test-node-driver-1',
     privateIp: '192.180.10.1',
     keyspace: 'potatomachine',
@@ -10,6 +11,7 @@ export const mockYcqlQueries = [
     clientPort: 9042
   },
   {
+    id: 'fake-id-ycql-002',
     nodeName: 'test-node-republic-2',
     privateIp: '192.180.10.2',
     keyspace: 'potatomachine',
@@ -20,6 +22,7 @@ export const mockYcqlQueries = [
     clientPort: 9042
   },
   {
+    id: 'fake-id-ycql-003',
     nodeName: 'test-node-driver-2',
     privateIp: '192.180.10.3',
     keyspace: 'potatomachine',
@@ -33,6 +36,7 @@ export const mockYcqlQueries = [
 
 export const mockLiveYsqlQueries = [
   {
+    id: 'fake-id-ysql-001',
     nodeName: 'test-node-driver-1',
     privateIp: '192.180.10.1',
     dbName: 'postgres',
