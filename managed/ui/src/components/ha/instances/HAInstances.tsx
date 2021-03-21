@@ -1,13 +1,13 @@
 import _ from 'lodash';
 import React, { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
-import { BootstrapTable, Options, TableHeaderColumn } from 'react-bootstrap-table';
+import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { YBLoading } from '../../common/indicators';
-import { HAReplicationError } from '../replication/HAReplicationError';
+import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
@@ -78,12 +78,12 @@ export const HAInstances: FC = () => {
   }
 
   if (error) {
-    return <HAReplicationError error={error} />;
+    return <HAErrorPlaceholder error={error} />;
   }
 
   if (isNoHAConfigExists) {
     return (
-      <div className="ha-instances__no-config">
+      <div className="ha-instances__no-config" data-testid="ha-instances-no-config">
         <i className="fa fa-file-o" />
         <div>You must create a replication configuration first</div>
       </div>
