@@ -103,26 +103,25 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
 
-          if (isLoading) {
-            return <YBLoading />;
-          } else {
-            return (
-              <div className="ha-promote-instance-modal">
-                <Alert bsStyle="warning">
-                  Note: promotion will replace all existing data on this platform instance with the data from the selected backup.
-                  After promotion succeeds you will need to re-sign in with the credentials of the previously active platform instance.
-                </Alert>
-                <Field
-                  name="backupFile"
-                  component={YBFormSelect}
-                  options={backupsList}
-                  label="Select the backup to restore from"
-                  isSearchable
-                />
-
-              </div>
-            );
-          }
+          return (
+            <div data-testid="ha-make-active-modal">
+              {isLoading ? <YBLoading /> : (
+                <div className="ha-promote-instance-modal">
+                  <Alert bsStyle="warning">
+                    Note: promotion will replace all existing data on this platform instance with the data from the selected backup.
+                    After promotion succeeds you will need to re-sign in with the credentials of the previously active platform instance.
+                  </Alert>
+                  <Field
+                    name="backupFile"
+                    component={YBFormSelect}
+                    options={backupsList}
+                    label="Select the backup to restore from"
+                    isSearchable
+                  />
+                </div>
+              )}
+            </div>
+          );
         }}
       />
     );

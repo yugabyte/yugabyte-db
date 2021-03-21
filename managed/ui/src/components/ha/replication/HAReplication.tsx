@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
 import { YBLoading } from '../../common/indicators';
-import { HAReplicationError } from './HAReplicationError';
+import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { HAReplicationForm } from './HAReplicationForm';
 import { HAReplicationView } from './HAReplicationView';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
@@ -20,7 +20,7 @@ export const HAReplication: FC = () => {
   }
 
   if (error) {
-    return <HAReplicationError error={error} />;
+    return <HAErrorPlaceholder error={error} />;
   }
 
   if (isNoHAConfigExists) {

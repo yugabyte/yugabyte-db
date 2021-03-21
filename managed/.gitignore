@@ -37,6 +37,7 @@ src/main/public/*
 docker/yugaware/*.yml
 
 ui/public/map/
+ui/coverage/
 
 .session.vim*
 

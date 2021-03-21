@@ -11,7 +11,7 @@ import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos'
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './HAReplicationForm.scss';
 
-enum HAInstanceTypes {
+export enum HAInstanceTypes {
   Active = 'Active',
   Standby = 'Standby'
 }
@@ -131,7 +131,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   };
 
   return (
-    <div className="ha-replication-form">
+    <div className="ha-replication-form" data-testid="ha-replication-config-form">
       <Formik<FormValues>
         initialValues={initialValues}
         validationSchema={validationSchema}
@@ -142,7 +142,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           formik.current = formikProps;
 
           return (
-            <Form>
+            <Form role="form">
               <Grid fluid>
                 {formikProps.values.instanceType === HAInstanceTypes.Standby && !isEditMode && (
                   <Row className="ha-replication-form__alert">
@@ -224,7 +224,10 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                     />
                   </Col>
                 </Row>
-                <div hidden={formikProps.values.instanceType === HAInstanceTypes.Standby}>
+                <div
+                  hidden={formikProps.values.instanceType === HAInstanceTypes.Standby}
+                  data-testid="ha-replication-config-form-schedule-section"
+                >
                   <Row className="ha-replication-form__row">
                     <Col xs={2} className="ha-replication-form__label">
                       Replication Frequency

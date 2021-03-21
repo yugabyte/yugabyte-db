@@ -62,13 +62,13 @@ export const DeleteModal: FC<DeleteModalProps> = ({
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
           return (
-            <>
+            <div data-testid="ha-delete-confirmation-modal">
               <p />
               Are you sure you want to <strong>delete</strong> this {instanceId ? ' platform instance' : ' replication configuration'}?
               <br />
               {isStandby && "You'd need to remove this standby instance from the active instance configuration as well."}
               <p />
-            </>
+            </div>
           );
         }}
       />

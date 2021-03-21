@@ -13,7 +13,8 @@
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",
-    "test": "react-scripts test --env=jest-environment-jsdom-sixteen"
+    "test": "react-scripts test --env=jest-environment-jsdom-sixteen",
+    "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen"
   },
   "engines": {
     "node": ">=12.1x.x",
