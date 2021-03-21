@@ -636,12 +636,11 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
-      LOG(WARNING) << "Waited for "
-                   << waited_so_far << " for synchronous write to complete. "
-                   << "Continuing to wait.";
+      LOG(WARNING) << "Waited for " << AsString(waited_so_far) << " for synchronous write to "
+                   << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
+        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
                    << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }

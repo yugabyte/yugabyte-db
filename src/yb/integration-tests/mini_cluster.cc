@@ -367,7 +367,7 @@ int MiniCluster::LeaderMasterIdx() {
       if (master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
       }
-      CatalogManager::ScopedLeaderSharedLock l(master->master()->catalog_manager());
+      SCOPED_LEADER_SHARED_LOCK(l, master->master()->catalog_manager());
       if (l.catalog_status().ok() && l.leader_status().ok()) {
         return i;
       }
