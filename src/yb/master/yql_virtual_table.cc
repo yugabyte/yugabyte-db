@@ -60,7 +60,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   RETURN_NOT_OK(l.first_failed_status());
 
   MonoTime start_time = MonoTime::Now();

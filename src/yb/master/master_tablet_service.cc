@@ -14,6 +14,7 @@
 
 #include "yb/master/catalog_manager-internal.h"
 
+#include "yb/master/master_service_base.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
@@ -42,7 +43,7 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(
     tablet::TabletPeerPtr looked_up_tablet_peer) {
   // Ignore looked_up_tablet_peer.
 
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
     return false;
   }
@@ -63,7 +64,7 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
                                     rpc::RpcContext context) {
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
     return;
   }
@@ -93,7 +94,7 @@ void MasterTabletServiceImpl::IsTabletServerReady(
     const tserver::IsTabletServerReadyRequestPB* req,
     tserver::IsTabletServerReadyResponsePB* resp,
     rpc::RpcContext context) {
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   int total_tablets = NUM_TABLETS_SYS_CATALOG;
   resp->set_total_tablets(total_tablets);
   resp->set_num_tablets_not_running(total_tablets);

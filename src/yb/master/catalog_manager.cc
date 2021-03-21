@@ -5889,7 +5889,7 @@ void CatalogManager::ProcessPendingNamespace(
 
   // Ensure that we are currently the Leader before handling DDL operations.
   {
-    ScopedLeaderSharedLock l(this);
+    SCOPED_LEADER_SHARED_LOCK(l, this);
     if (!l.catalog_status().ok() || !l.leader_status().ok()) {
       LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
       // Don't try again, we have to reset in-memory state after losing leader election.
@@ -8348,8 +8348,9 @@ Status CatalogManager::GetTabletLocations(
   return BuildLocationsForTablet(tablet_info, locs_pb);
 }
 
-Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
-                                         GetTableLocationsResponsePB* resp) {
+Status CatalogManager::GetTableLocations(
+    const GetTableLocationsRequestPB* req,
+    GetTableLocationsResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
   VLOG(4) << "GetTableLocations: " << req->ShortDebugString();
 
@@ -9082,7 +9083,7 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 
 void CatalogManager::RebuildYQLSystemPartitions() {
   if (FLAGS_partitions_vtable_cache_refresh_secs > 0) {
-    ScopedLeaderSharedLock l(this);
+    SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
         auto s = down_cast<const YQLPartitionsVTable&>(

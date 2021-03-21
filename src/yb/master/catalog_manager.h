@@ -173,9 +173,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   };
 
  public:
-  // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
-  using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
-
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
