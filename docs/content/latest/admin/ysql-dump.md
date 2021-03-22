@@ -93,6 +93,9 @@ Do not dump any schemas matching the schema pattern. The pattern is interpreted 
 
 When both [`-n|--schema`](#n-schema-schema-schema)` and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema)` option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema)`, then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
 
+#### -m *addresses*, --exclude-schema=*addresses*
+Comma-separated list of YB-Master hosts and ports.
+
 #### -o, --oids
 
 Dump object identifiers (OIDs) as part of the data for every table. Use this option if your application references the OID columns in some way (for example, in a foreign key constraint). Otherwise, this option should not be used.

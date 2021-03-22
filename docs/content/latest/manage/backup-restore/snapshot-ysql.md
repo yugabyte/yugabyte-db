@@ -81,7 +81,7 @@ If the snapshot creation is not complete, reuse this command until the state sho
 4. Create the backup of the YSQL metadata by running the following `ysql_dump --create` command:
 
 ```sh
-ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
+ysql_dump -h <ip> --masters <ip1:7100,ip2:7100,ip3:7100> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
 ```
 
 A backup is created of the YSQL metadata, including the schema.
