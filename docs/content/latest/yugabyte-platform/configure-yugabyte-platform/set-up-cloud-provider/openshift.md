@@ -69,11 +69,9 @@ This document describes how to configure OpenShift for YugabyteDB universes usin
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
-## Creating a YugabyteDB Universe via Yugabyte Platform
-
 To create a YugabyteDB universe using the deployed platform, you start by creating the required Role-based access control (RBAC) and adding the provider in the platform.
 
-### How to Create RBAC and kubeconfig
+## Creating RBAC and kubeconfig
 
 kubeconfig is used by Yugabyte Platform to create universes in the OCP cluster.
 
@@ -82,7 +80,7 @@ To create a ServiceAccount in the yb-platform project, execute the following com
 ```shell
 oc apply \
   -n yb-platform \
-  -f https://raw.githubusercontent.com/yugabyte/charts/ec87d98722efa9ddb202d05902974e1acf1f06e9/rbac/yugabyte-platform-universe-management-sa.yaml
+  -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml
 # output
 serviceaccount/yugabyte-platform-universe-management created
 ```
@@ -90,7 +88,7 @@ serviceaccount/yugabyte-platform-universe-management created
 The next step is to grant access to this ServiceAccount using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. To create the required RBAC objects, execute the following command:
 
 ```shell
-curl -s https://raw.githubusercontent.com/yugabyte/charts/ec87d98722efa9ddb202d05902974e1acf1f06e9/rbac/platform-namespaced.yaml \
+curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
  | sed "s/namespace: <SA_NAMESPACE>/namespace: yb-platform/g" \
  | oc apply -n yb-platform -f -
 # output
@@ -110,25 +108,22 @@ python generate_kubeconfig.py \
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
-### **How to Create a Provider in Yugabyte Platform**
+## Creating a Provider in Yugabyte Platform
 
 Since Yugabyte Platform manages YugabyteDB universes, Yugabyte Platform needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
 You can create a provider as follows:
 
 - Open the Yugabyte Platform web UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
-- Select **Managed Kubernetes Service**[^4] and complete the fields, as follows:
-  - In the **Type** filed, select **Custom Kubernetes Service**.
+- Select **Red Hat OpenShift** and complete the fields, as follows:
+  - In the **Type** filed, select **OpenShift**.
   - In the **Name** field, enter ocp-test.
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
-  - In the **Image Registry** field, use one of the following:
-    - `registry.connect.redhat.com/yugabytedb/yugabyte`
-    - `docker.io/yugabytedb/yugabyte`
-    - `quay.io/yugabyte/yugabyte-itest` (requires a pull secret)
-- Use the **Pull Secret File** field to upload the pull secret you received from Yugabyte (note that it is not required if you are using Docker Hub or Red Hat registry). 
+  - In the **Image Registry** field, use `registry.connect.redhat.com/yugabytedb/yugabyte`.
+- Use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support (note that it is not required if you are using the Red Hat registry). 
 
-![img](https://lh4.googleusercontent.com/7hQ0tpFwkHq3rDpX65bQs_I_jqVZW0xE6nmTotEdx8xzKbsNwRjbUQ2qA9-iCua1ViNdyY0dbvuLs6uq5XimE0Ia4eS9MX5C7R-LpmbE_E6qNfSTIPrQjZKWW3bgrZ4gr2oKHXD6)
+![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
@@ -139,13 +134,9 @@ You can create a provider as follows:
 - Click **Add Region**.
 - Click **Save**. 
 
-[^4]: This will change and move to the Red Hat OpenShift tab.
+You should see the newly-added provider under **Red Hat OpenShift configs**.
 
-You should see the newly-added provider under **Managed Kubernetes Service configs**, as shown in the following illustration:
-
-![img](https://lh3.googleusercontent.com/rpl8q7dBCZ2uwdyCTEFdaH0AbBTIwtxHFcvl20LzpEfi1qKDjgKyinep1VAzpn2b7JfsI9PsyWbSPc93KhQFofSOKz6U0rkYG7CxtqKNrmlWwqqlXG-G3L_T6CLzYmZt3zP9p_bN)
-
-### How to Create a Universe Using the Provider
+## Creating a Universe Using the Provider
 
 You can create a universe using the provider as follows:
 
@@ -174,7 +165,7 @@ Upon successful creation of the universe, the **Overview** tab of universe-1 sho
 
 ![img](https://lh5.googleusercontent.com/TpdExY6idrjH64UXfXKsY9RRwPaLU5OWfNHD_VZxrzRDWAXmG_dftROfNyxRX7TNWr7BgWxrsuZXOa4N_4KP9RHt4c9AgleCGSmziKudtIbqzrJAqOu7YL0oa9MpfdCmBvNE7rPL)
 
-### How to Troubleshoot the Universe Creation
+## Troubleshooting the Universe Creation
 
 If the universe creation remains in Pending state for more than 2-3 minutes, open the OCP web console, navigate to **Workloads > Pods** and check if any of the pods are in pending state, as shown in the following illustration:
 

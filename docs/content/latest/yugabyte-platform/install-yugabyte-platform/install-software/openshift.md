@@ -69,7 +69,7 @@ Once the installation is complete, a message shown in the following illustration
 
 ### How to Use the Command Line
 
-Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP cluster](https://docs.google.com/document/d/1r8V1PkZGNOcnJMsx-vz0jQvRPpVTx8AulMn7Pa1LpoM/edit?ts=602fce22#heading=h.itkxhpp0uhvz).
+Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP Cluster](#configuring-oc-with-the-ocp-cluster).
 
 To install the Yugabyte Platform Operator, execute the following command:
 
@@ -101,11 +101,11 @@ NAME                                                         READY  STATUS  REST
 yugabyte-platform-operator-controller-manager-7485db7486-6nzxr 2/2  Running  0      5m38s
 ```
 
-For additional information, see [Adding Operators to a cluster](https://docs.openshift.com/container-platform/4.6/operators/admin/olm-adding-operators-to-cluster.html).
+For additional information, see [Adding Operators to a Cluster](https://docs.openshift.com/container-platform/4.6/operators/admin/olm-adding-operators-to-cluster.html).
 
 ## Finding the Availability Zone Labels
 
-You need to find the region name and availability zone codes where the cluster is running. This information is required by Yugabyte Platform (see [Creating a provider in Yugabyte Platform](https://docs.google.com/document/d/1r8V1PkZGNOcnJMsx-vz0jQvRPpVTx8AulMn7Pa1LpoM/edit?ts=602fce22#heading=h.hqqo8w43w706)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
+You need to find the region name and availability zone codes where the cluster is running. This information is required by Yugabyte Platform (see [Creating a Provider in Yugabyte Platform](../../../configure-yugabyte-platform/set-up-cloud-provider/openshift#creating-a-provider-in-yugabyte-platform)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
 
 You can use the OpenShift web console or the command line to search for the availability zone codes.
 
@@ -125,7 +125,7 @@ You start by logging in the OCP's web console as admin user, and then performing
 
 Alternatively, you can find the availability zone codes via the command line.
 
-You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP cluster](https://docs.google.com/document/d/1r8V1PkZGNOcnJMsx-vz0jQvRPpVTx8AulMn7Pa1LpoM/edit?ts=602fce22#heading=h.itkxhpp0uhvz).
+You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP Cluster](#configuring-oc-with-the-ocp-cluster).
 
 To find the region and zone labels, execute the following command:
 
@@ -250,17 +250,6 @@ oc get services \
 # output
 12.34.56.78
 ```
-
-### How to Register Via the Admin Console
-
-The IP address allows you to navigate to the **Admin Console Registration** page of Yugabyte Platform shown in the following illustration:
-
-![img](https://lh5.googleusercontent.com/60sn2tVOTdsXtrm5O2bZerf8VP3f4s5jWnpTfVKBZ1zNn7VeKZ2yuMrU3XZkbvZ5R2NNqwmxDSJaYI0dEd3fMXM2N80VOD8Vah0zMDqdNnOZ1zab2Pi0pQzYiKH9X7ojeX3Q8ItW)
-
-- Complete the fields of the Admin Console Registration page and click **Register**.
-- Login with the email and the password you provided during registration and observe the welcome screen shown in the following illustration:
-
-![img](https://lh3.googleusercontent.com/ud4p4tcntfJc0YAflIjn5wmSoH31oQCPQg-Vpc0Z8Fin5GLERdqH8yDCD6-E7OxR4t0YvrRwW1ZAEHdzAUwMlVUFA3ZM8XPTTHMU7NVZaJsfc_OFzbqg-fPPu29fQURZLNCiINnN)
 
 ## Upgrading a Yugabyte Platform Instance
 

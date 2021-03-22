@@ -66,7 +66,7 @@ The recommended OpenShift Container Platform (OCP) version is 4.6, with backward
 
 You should have 18 vCPU and 32 GB of memory available for testing Yugabyte Platform. This can be three or more nodes equivalent to Google Platform's n1-standard-8 (8 vCPU, 30 GB memory).
 
-For more information on provisioning clusters, see the following: 
+For more information and examples on provisioning OpenShift clusters on GCP, see the following: 
 
 - [Configuring a GCP project](https://docs.openshift.com/container-platform/4.6/installing/installing_gcp/installing-gcp-account.html) 
 - [Installing a cluster quickly on GCP](https://docs.openshift.com/container-platform/4.6/installing/installing_gcp/installing-gcp-default.html#prerequisites)
@@ -80,7 +80,7 @@ In addition, ensure that you have the following:
 
 For testing purposes, you may configure an HTPasswd provider, as described in [Configuring an HTPasswd identity provider](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html) (specifically, in [Creating an HTPasswd file using Linux](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-creating-htpasswd-file-linux_configuring-htpasswd-identity-provider) and [Configuring identity providers using the web console](https://docs.openshift.com/container-platform/4.6/authentication/identity_providers/configuring-htpasswd-identity-provider.html#identity-provider-configuring-using-the-web-console_configuring-htpasswd-identity-provider)).
 
-[^1]: This user is referred to as *admin user* in this document.
-[^2]: This user is referred to as *normal user*, *non admin*, or *user* in this document.
+[^1]: This user is referred to as *admin user* in this documentation.
+[^2]: This user is referred to as *normal user*, *non admin*, or *user* in this documentation.
 [^3]: By default, the authenticated users have the [self-provisioning](https://docs.openshift.com/container-platform/4.6/authentication/using-rbac.html#default-roles_using-rbac) ClusterRole bound to them, which enables them to create new projects.
 
