@@ -296,7 +296,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   AsyncCreateReplica(Master *master,
                      ThreadPool *callback_pool,
                      const std::string& permanent_uuid,
-                     const scoped_refptr<TabletInfo>& tablet);
+                     const scoped_refptr<TabletInfo>& tablet,
+                     const std::vector<SnapshotScheduleId>& snapshot_schedules);
 
   Type type() const override { return ASYNC_CREATE_REPLICA; }
 
