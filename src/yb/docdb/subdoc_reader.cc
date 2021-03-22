@@ -57,6 +57,88 @@ namespace docdb {
 
 namespace {
 
+Expiration GetNewExpiration(
+    const Expiration& parent_exp, const MonoDelta& ttl,
+    const DocHybridTime& new_write_time) {
+  Expiration new_exp = parent_exp;
+  // We may need to update the TTL in individual columns.
+  if (new_write_time.hybrid_time() >= new_exp.write_ht) {
+    // We want to keep the default TTL otherwise.
+    if (ttl != Value::kMaxTtl) {
+      new_exp.write_ht = new_write_time.hybrid_time();
+      new_exp.ttl = ttl;
+    } else if (new_exp.ttl.IsNegative()) {
+      new_exp.ttl = -new_exp.ttl;
+    }
+  }
+
+  // If the hybrid time is kMin, then we must be using default TTL.
+  if (new_exp.write_ht == HybridTime::kMin) {
+    new_exp.write_ht = new_write_time.hybrid_time();
+  }
+
+  return new_exp;
+}
+
+} // namespace
+
+ObsolescenceTracker::ObsolescenceTracker(DocHybridTime write_time_watermark):
+    write_time_watermark_(write_time_watermark) {}
+
+ObsolescenceTracker::ObsolescenceTracker(
+    const ReadHybridTime& read_time, DocHybridTime write_time_watermark, Expiration expiration):
+    write_time_watermark_(write_time_watermark), read_time_(read_time), expiration_(expiration) {}
+
+const DocHybridTime& ObsolescenceTracker::GetHighWriteTime() { return write_time_watermark_; }
+
+bool ObsolescenceTracker::IsObsolete(const DocHybridTime& write_time) const {
+  if (expiration_.has_value()) {
+    DCHECK(read_time_.has_value());
+    if (HasExpiredTTL(expiration_.value().write_ht, expiration_.value().ttl,
+                      read_time_.value().read)) {
+      return true;
+    }
+  }
+  return write_time < write_time_watermark_;
+}
+
+ObsolescenceTracker ObsolescenceTracker::Child(
+    const DocHybridTime& write_time, const MonoDelta& ttl) const {
+  auto new_write_time_watermark = std::max(write_time, write_time_watermark_);
+  if (expiration_.has_value()) {
+    DCHECK(read_time_.has_value());
+    return ObsolescenceTracker(
+        read_time_.value(), new_write_time_watermark,
+        GetNewExpiration(expiration_.value(), ttl, write_time));
+  }
+  return ObsolescenceTracker(new_write_time_watermark);
+}
+
+boost::optional<uint64_t> ObsolescenceTracker::GetTtlRemainingSeconds(
+    const HybridTime& ttl_write_time) const {
+  if (!expiration_.has_value()) {
+    return boost::none;
+  }
+
+  DCHECK(read_time_.has_value());
+
+  auto ttl_value = expiration_.value().ttl;
+  auto doc_read_time = read_time_.value();
+
+  if (ttl_value == Value::kMaxTtl) {
+    return -1;
+  }
+  int64_t time_since_ttl_write_seconds = (
+      server::HybridClock::GetPhysicalValueMicros(doc_read_time.read) -
+      server::HybridClock::GetPhysicalValueMicros(ttl_write_time)) /
+      MonoTime::kMicrosecondsPerSecond;
+  int64_t ttl_value_seconds = ttl_value.ToMilliseconds() / MonoTime::kMillisecondsPerSecond;
+  int64_t ttl_remaining_seconds = ttl_value_seconds - time_since_ttl_write_seconds;
+  return std::max(static_cast<int64_t>(0), ttl_remaining_seconds);
+}
+
+namespace {
+
 // This class wraps access to a SubDocument instance specified in one of two ways:
 // (1) -- From a pointer to an already existing instance of a SubDocument
 // (2) -- From a pointer to an existing instance of LazySubDocumentHolder which represents the
@@ -187,116 +269,6 @@ Result<std::unique_ptr<DocDbRowData>> DocDbRowData::CurrentRow(IntentAwareIterat
   }
 
   return std::make_unique<DocDbRowData>(key_data.key, key_data.write_time, std::move(value));
-}
-
-// This class is responsible for housing state used to determine whether a row is still valid based
-// on it's write time. It can be constructed in one of two ways:
-// (1) Using just a write_time_watermark -- this is useful if some parent row was written at a given
-//     time and all children written before that time should be considered overwritten.
-// (2) Using additionally a read_time and expiration -- this is useful if the data we're reading has
-//     TTL enabled, e.g. CQL data.
-class ObsolescenceTracker {
- public:
-  explicit ObsolescenceTracker(DocHybridTime write_time_watermark);
-  ObsolescenceTracker(
-      const ReadHybridTime& read_time, DocHybridTime write_time_watermark, Expiration expiration);
-
-  Result<bool> IsObsolete(const DocHybridTime& write_time) const;
-
-  // Create an instance of ObsolescenceTracker derived from this instance. This "child" instance
-  // will incorporate the parents data with the new data, but notably the child's TTL will be
-  // ignored if the parent did not have a TTL. The assumption here is that an ObsolescenceTracker
-  // constructed without an expiration is constructed in the context of a database in which TTL's
-  // are not a valid concept (e.g. in SQL), so the same will be true of any subsequent children.
-  ObsolescenceTracker Child(const DocHybridTime& write_time, const MonoDelta& ttl) const;
-
-  // Performs the computation required to set the TTL on a row before constructing a SubDocument
-  // from it. In the case the instance has no TTL information, this is a no-op.
-  void SetTtl(DocDbRowData* row) const;
-
- protected:
-  DocHybridTime write_time_watermark_;
-  boost::optional<ReadHybridTime> read_time_;
-  boost::optional<Expiration> expiration_;
-};
-
-ObsolescenceTracker::ObsolescenceTracker(DocHybridTime write_time_watermark):
-    write_time_watermark_(write_time_watermark) {}
-
-ObsolescenceTracker::ObsolescenceTracker(
-    const ReadHybridTime& read_time, DocHybridTime write_time_watermark, Expiration expiration):
-    write_time_watermark_(write_time_watermark), read_time_(read_time), expiration_(expiration) {}
-
-Result<bool> ObsolescenceTracker::IsObsolete(const DocHybridTime& write_time) const {
-  if (expiration_.has_value()) {
-    if (!read_time_.has_value()) {
-      return STATUS(IllegalState, "Cannot have expiration_ without read_time_.");
-    }
-    if (HasExpiredTTL(expiration_.value().write_ht, expiration_.value().ttl,
-                      read_time_.value().read)) {
-      return true;
-    }
-  }
-  return write_time < write_time_watermark_;
-}
-
-Expiration GetNewExpiration(
-    const Expiration& parent_exp, const MonoDelta& ttl,
-    const DocHybridTime& new_write_time) {
-  Expiration new_exp = parent_exp;
-  // We may need to update the TTL in individual columns.
-  if (new_write_time.hybrid_time() >= new_exp.write_ht) {
-    // We want to keep the default TTL otherwise.
-    if (ttl != Value::kMaxTtl) {
-      new_exp.write_ht = new_write_time.hybrid_time();
-      new_exp.ttl = ttl;
-    } else if (new_exp.ttl.IsNegative()) {
-      new_exp.ttl = -new_exp.ttl;
-    }
-  }
-
-  // If the hybrid time is kMin, then we must be using default TTL.
-  if (new_exp.write_ht == HybridTime::kMin) {
-    new_exp.write_ht = new_write_time.hybrid_time();
-  }
-
-  return new_exp;
-}
-
-ObsolescenceTracker ObsolescenceTracker::Child(
-    const DocHybridTime& write_time, const MonoDelta& ttl) const {
-  auto new_write_time_watermark = std::max(write_time, write_time_watermark_);
-  if (expiration_.has_value()) {
-    DCHECK(read_time_.has_value());
-    return ObsolescenceTracker(
-        read_time_.value(), new_write_time_watermark,
-        GetNewExpiration(expiration_.value(), ttl, write_time));
-  }
-  return ObsolescenceTracker(new_write_time_watermark);
-}
-
-inline int64_t GetTtlRemainingSeconds(
-    const MonoDelta& ttl_value, const HybridTime& ttl_write_time,
-    const ReadHybridTime& doc_read_time) {
-  if (ttl_value == Value::kMaxTtl) {
-    return -1;
-  }
-
-  int64_t time_since_ttl_write_seconds = (
-      server::HybridClock::GetPhysicalValueMicros(doc_read_time.read) -
-      server::HybridClock::GetPhysicalValueMicros(ttl_write_time)) /
-      MonoTime::kMicrosecondsPerSecond;
-  int64_t ttl_value_seconds = ttl_value.ToMilliseconds() / MonoTime::kMillisecondsPerSecond;
-  int64_t ttl_remaining_seconds = ttl_value_seconds - time_since_ttl_write_seconds;
-  return std::max(static_cast<int64_t>(0), ttl_remaining_seconds);
-}
-
-void ObsolescenceTracker::SetTtl(DocDbRowData* row) const {
-  if (expiration_.has_value()) {
-    DCHECK(read_time_.has_value());
-    row->mutable_primitive_value()->SetTtl(GetTtlRemainingSeconds(
-          expiration_.value().ttl, row->write_time().hybrid_time(), read_time_.value()));
-  }
 }
 
 // This class provides a convenience handle for modifying a SubDocument specified by a provided
@@ -623,7 +595,7 @@ Status ProcessSubDocument(ScopedDocDbRowContextWithData* scope) {
   auto assembler = scope->mutable_assembler();
   auto obsolescence_tracker = scope->obsolescence_tracker();
 
-  if (data->IsTombstone() || VERIFY_RESULT(obsolescence_tracker->IsObsolete(data->write_time()))) {
+  if (data->IsTombstone() || obsolescence_tracker->IsObsolete(data->write_time())) {
     if (data->IsPrimitiveValue()) {
       VLOG(4) << "Discarding overwritten or expired primitive value";
       return assembler->SetTombstone();
@@ -639,7 +611,10 @@ Status ProcessSubDocument(ScopedDocDbRowContextWithData* scope) {
   }
 
   if (data->IsPrimitiveValue()) {
-    obsolescence_tracker->SetTtl(data);
+    auto ttl_opt = obsolescence_tracker->GetTtlRemainingSeconds(data->write_time().hybrid_time());
+    if (ttl_opt) {
+      data->mutable_primitive_value()->SetTtl(*ttl_opt);
+    }
     return assembler->SetPrimitiveValue(data);
   }
 
@@ -655,11 +630,9 @@ SubDocumentReader::SubDocumentReader(
     const KeyBytes& target_subdocument_key,
     IntentAwareIterator* iter,
     DeadlineInfo* deadline_info,
-    DocHybridTime highest_ancestor_write_time,
-    Expiration inherited_expiration):
+    const ObsolescenceTracker& ancestor_obsolescence_tracker):
     target_subdocument_key_(target_subdocument_key), iter_(iter), deadline_info_(deadline_info),
-    highest_ancestor_write_time_(highest_ancestor_write_time),
-    inherited_expiration_(inherited_expiration) {}
+    ancestor_obsolescence_tracker_(ancestor_obsolescence_tracker) {}
 
 Status SubDocumentReader::Get(SubDocument* result) {
   IntentAwareIteratorPrefixScope target_scope(target_subdocument_key_, iter_);
@@ -667,14 +640,12 @@ Status SubDocumentReader::Get(SubDocument* result) {
     *result = SubDocument(ValueType::kInvalid);
     return Status::OK();
   }
-  const ObsolescenceTracker ancestor_obsolescence_tracker(
-      iter_->read_time(), highest_ancestor_write_time_, inherited_expiration_);
   auto first_row = VERIFY_RESULT(DocDbRowData::CurrentRow(iter_));
   auto current_key = first_row->key();
 
   if (current_key == target_subdocument_key_) {
     ScopedDocDbRowContextWithData context(
-        std::move(first_row), iter_, deadline_info_, result, ancestor_obsolescence_tracker);
+        std::move(first_row), iter_, deadline_info_, result, ancestor_obsolescence_tracker_);
     return ProcessSubDocument(&context);
   }
   // If the currently-pointed-to key is not equal to our target, but we are still in a valid state,
@@ -682,7 +653,7 @@ Status SubDocumentReader::Get(SubDocument* result) {
   // target. We should therefore process the rows as if we're already in a collection, rooted at the
   // target key.
   ScopedDocDbRowContext context(
-      iter_, deadline_info_, target_subdocument_key_, result, ancestor_obsolescence_tracker);
+      iter_, deadline_info_, target_subdocument_key_, result, ancestor_obsolescence_tracker_);
   ScopedDocDbCollectionContext collection(&context);
   RETURN_NOT_OK(collection.SetFirstChild(std::move(first_row)));
   auto num_children = VERIFY_RESULT(ProcessChildren(&collection));
@@ -699,15 +670,13 @@ SubDocumentReaderBuilder::SubDocumentReaderBuilder(
 Result<std::unique_ptr<SubDocumentReader>> SubDocumentReaderBuilder::Build(
     const KeyBytes& sub_doc_key) {
   return std::make_unique<SubDocumentReader>(
-      sub_doc_key, iter_, deadline_info_, highest_ancestor_write_time_,
-      inherited_expiration_);
+      sub_doc_key, iter_, deadline_info_, parent_obsolescence_tracker_);
 }
 
 Status SubDocumentReaderBuilder::InitObsolescenceInfo(
-    DocHybridTime table_tombstone_time, Expiration table_expiration,
+    const ObsolescenceTracker& table_obsolescence_tracker,
     const Slice& root_doc_key, const Slice& target_subdocument_key) {
-  highest_ancestor_write_time_ = table_tombstone_time;
-  inherited_expiration_ = table_expiration;
+  parent_obsolescence_tracker_ = table_obsolescence_tracker;
 
   // Look at ancestors to collect ttl/write-time metadata.
   IntentAwareIteratorPrefixScope prefix_scope(root_doc_key, iter_);
@@ -732,7 +701,7 @@ Status SubDocumentReaderBuilder::InitObsolescenceInfo(
 Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
     const Slice& parent_key_without_ht) {
   Slice value;
-  DocHybridTime doc_ht = highest_ancestor_write_time_;
+  DocHybridTime doc_ht = parent_obsolescence_tracker_.GetHighWriteTime();
   RETURN_NOT_OK(iter_->FindLatestRecord(parent_key_without_ht, &doc_ht, &value));
   uint64_t merge_flags = 0;
   MonoDelta value_ttl;
@@ -744,8 +713,7 @@ Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
     return Status::OK();
   }
 
-  inherited_expiration_ = GetNewExpiration(inherited_expiration_, value_ttl, doc_ht);
-  highest_ancestor_write_time_ = std::max(doc_ht, highest_ancestor_write_time_);
+  parent_obsolescence_tracker_ = parent_obsolescence_tracker_.Child(doc_ht, value_ttl);
   return Status::OK();
 }
 

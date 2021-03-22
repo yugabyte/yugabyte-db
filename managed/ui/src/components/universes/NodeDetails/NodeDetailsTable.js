@@ -10,7 +10,7 @@ import {
   getProxyNodeAddress,
   getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
-import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
+import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -18,13 +18,17 @@ import pluralize from 'pluralize';
 
 export default class NodeDetailsTable extends Component {
   render() {
-    const { nodeDetails, providerUUID, clusterType, customer, currentUniverse } = this.props;
+    const {
+      nodeDetails, providerUUID, clusterType, customer, currentUniverse,
+      providers
+    } = this.props;
     const loadingIcon = <YBLoadingCircleIcon size="inline" />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
+    const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)?.config;
 
     const formatIpPort = function (cell, row, type) {
       if (cell === '-') {
@@ -70,23 +74,36 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeNameLink = (cell, row) => {
-      const ip = <div className={'text-lightgray'}>{row['privateIP']}</div>;
+      const showIp = isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
+      const ip = showIp ? <div className={'text-lightgray'}>{row['privateIP']}</div>: null;
       let nodeName = cell;
       let onPremNodeName = '';
-      if (row.cloudInfo.cloud === 'aws') {
-        const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        nodeName = (
-          <a href={awsURI} target="_blank" rel="noopener noreferrer">
-            {cell}
-          </a>
-        );
-      } else if (row.cloudInfo.cloud === 'gcp') {
-        const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        nodeName = (
-          <a href={gcpURI} target="_blank" rel="noopener noreferrer">
-            {cell}
-          </a>
-        );
+      if (showIp) {
+        if (row.cloudInfo.cloud === 'aws') {
+          const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
+          nodeName = (
+            <a href={awsURI} target="_blank" rel="noopener noreferrer">
+              {cell}
+            </a>
+          );
+        } else if (row.cloudInfo.cloud === 'gcp') {
+          const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
+          nodeName = (
+            <a href={gcpURI} target="_blank" rel="noopener noreferrer">
+              {cell}
+            </a>
+          );
+        } else if (row.cloudInfo.cloud === 'azu' && isDefinedNotNull(providerConfig)) {
+          const tenantId = providerConfig["AZURE_TENANT_ID"];
+          const subscriptionId = providerConfig["AZURE_SUBSCRIPTION_ID"];
+          const resourceGroup = providerConfig["AZURE_RG"];
+          const azuURI = `https://portal.azure.com/#@${tenantId}/resource/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Compute/virtualMachines/${cell}`;
+          nodeName = (
+            <a href={azuURI} target="_blank" rel="noopener noreferrer">
+              {cell}
+            </a>
+          );
+        }
       }
 
       if (row.cloudInfo.cloud === 'onprem') {
@@ -149,7 +166,7 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeAction = function (cell, row) {
-      const hideIP = !isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
+      const hideIP = isHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
       const actions_disabled = isDisabled(
         customer.currentCustomer.data.features,
         'universes.actions'
@@ -212,6 +229,9 @@ export default class NodeDetailsTable extends Component {
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster' : 'Read Replicas';
+    const displayNodeActions = !this.props.isReadOnlyUniverse && !universePaused
+      && isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
+
     return (
       <YBPanelItem
         className={`${clusterType}-node-details`}
@@ -262,7 +282,7 @@ export default class NodeDetailsTable extends Component {
             >
               Processes
             </TableHeaderColumn>
-            {!this.props.isReadOnlyUniverse && !universePaused && (
+            {displayNodeActions && (           
               <TableHeaderColumn
                 dataField="nodeAction"
                 className={'yb-actions-cell'}

@@ -34,6 +34,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
 using std::vector;
@@ -65,10 +66,10 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
       txn_op_context, deadline, read_time);
-  DeadlineInfo deadline_info(deadline);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
-  DocDBTableReader doc_reader(iter.get(), &deadline_info, SeekFwdSuffices::kFalse);
+  iter->SeekToLastDocKey();
+  DocDBTableReader doc_reader(iter.get(), deadline);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   SubDocument result;
@@ -78,17 +79,15 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
   return boost::none;
 }
 
-DocDBTableReader::DocDBTableReader(
-    IntentAwareIterator* iter,
-    DeadlineInfo* deadline_info,
-    SeekFwdSuffices seek_fwd_suffices)
+DocDBTableReader::DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline)
     : iter_(iter),
-      deadline_info_(deadline_info),
-      seek_fwd_suffices_(seek_fwd_suffices),
-      subdoc_reader_builder_(iter_, deadline_info_) {}
+      deadline_info_(deadline),
+      subdoc_reader_builder_(iter_, &deadline_info_) {}
 
-void DocDBTableReader::SetTableTtl(Expiration table_ttl) {
-  table_expiration_ = table_ttl;
+void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
+  Expiration table_ttl(TableTTL(table_schema));
+  table_obsolescence_tracker_ = ObsolescenceTracker(
+      iter_->read_time(), table_obsolescence_tracker_.GetHighWriteTime(), table_ttl);
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
@@ -99,27 +98,22 @@ Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
     // time read at a previous invocation of this same code. If instead the DocRowwiseIterator owned
     // an instance of SubDocumentReaderBuilder, and this method call was hoisted up to that level,
     // passing around this table_tombstone_time would no longer be necessary.
-    if (!table_tombstone_time_.is_valid()) {
-      DocKey table_id;
-      RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
-      iter_->Seek(table_id);
+    DocKey table_id;
+    RETURN_NOT_OK(table_id.DecodeFrom(root_doc_key, DocKeyPart::kUpToId));
+    iter_->Seek(table_id);
 
-      Slice value;
-      auto table_id_encoded = table_id.Encode();
-      DocHybridTime doc_ht = DocHybridTime::kMin;
+    Slice value;
+    auto table_id_encoded = table_id.Encode();
+    DocHybridTime doc_ht = DocHybridTime::kMin;
 
-      RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
-      ValueType value_type;
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
-      if (value_type == ValueType::kTombstone) {
-        SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
-                  "Invalid hybrid time for table tombstone");
-        table_tombstone_time_ = doc_ht;
-      }
+    RETURN_NOT_OK(iter_->FindLatestRecord(table_id_encoded, &doc_ht, &value));
+    ValueType value_type;
+    RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
+    if (value_type == ValueType::kTombstone) {
+      SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
+                "Invalid hybrid time for table tombstone");
+      table_obsolescence_tracker_ = table_obsolescence_tracker_.Child(doc_ht, MonoDelta::kMax);
     }
-  }
-  if (!table_tombstone_time_.is_valid()) {
-    table_tombstone_time_ = DocHybridTime::kMin;
   }
   return Status::OK();;
 }
@@ -128,18 +122,10 @@ CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
   auto dockey_size =
       VERIFY_RESULT(DocKey::EncodedSize(sub_doc_key, DocKeyPart::kWholeDocKey));
   const Slice root_doc_key(sub_doc_key.data(), dockey_size);
-  SeekTo(root_doc_key);
+  iter_->SeekForward(root_doc_key);
   RETURN_NOT_OK(subdoc_reader_builder_.InitObsolescenceInfo(
-      table_tombstone_time_, table_expiration_, root_doc_key, sub_doc_key));
+      table_obsolescence_tracker_, root_doc_key, sub_doc_key));
   return Status::OK();
-}
-
-void DocDBTableReader::SeekTo(const Slice& subdoc_key) {
-  if (seek_fwd_suffices_) {
-    iter_->SeekForward(subdoc_key);
-  } else {
-    iter_->Seek(subdoc_key);
-  }
 }
 
 Result<bool> DocDBTableReader::Get(

@@ -54,6 +54,8 @@ class TransactionParticipantContext;
 class UpdateTxnOperationState;
 class WriteOperationState;
 
+struct CreateSnapshotData;
+
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);

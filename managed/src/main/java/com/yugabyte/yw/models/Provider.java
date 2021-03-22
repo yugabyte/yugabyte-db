@@ -55,6 +55,8 @@ public class Provider extends Model {
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
+  public static final Set<Common.CloudType> InstanceTagsEnabledProviders = ImmutableSet.of(
+    Common.CloudType.aws, Common.CloudType.azu);
 
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
@@ -194,6 +196,15 @@ public class Provider extends Model {
 
   public String getAwsHostedZoneName() {
     return getConfig().get("AWS_HOSTED_ZONE_NAME");
+  }
+
+  /**
+   * Get all Providers by code without customer uuid.
+   * @param code
+   * @return
+   */
+  public static List<Provider> getByCode(String code) {
+    return find.query().where().eq("code", code).findList();
   }
 
   // Update host zone.

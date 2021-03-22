@@ -8,12 +8,12 @@
 
 - block:
     - set_fact:
-        gcloud_package_path: "/usr/{{ gcloud_package_name }}"
+        gcloud_package_path: "/usr/local/{{ gcloud_package_name }}"
 
     - name: gsutil | Copy and unarchive {{ gcloud_package }} from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/{{ gcloud_package }}"
-        dest: "/usr"
+        dest: "/usr/local"
         creates: "{{ gcloud_package_path }}"
         remote_src: "{{ is_remote }}"
 

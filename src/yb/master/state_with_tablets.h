@@ -51,9 +51,10 @@ class StateWithTablets {
   // If any of tablets failed returns this failure.
   // Otherwise if any of tablets is in initial state returns initial state.
   // Otherwise all tablets should be in the same state, which is returned.
-  Result<SysSnapshotEntryPB::State> AggregatedState();
+  Result<SysSnapshotEntryPB::State> AggregatedState() const;
 
-  Result<bool> Complete();
+  CHECKED_STATUS AnyFailure() const;
+  Result<bool> Complete() const;
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);

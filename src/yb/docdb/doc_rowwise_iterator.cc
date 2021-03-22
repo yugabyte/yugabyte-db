@@ -13,6 +13,7 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_expr.h"
@@ -465,8 +466,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       doc_db_(doc_db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
-      deadline_info_(deadline_) {
+      done_(false) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
   projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
@@ -478,7 +478,7 @@ DocRowwiseIterator::DocRowwiseIterator(
 DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
-Status DocRowwiseIterator::Init() {
+Status DocRowwiseIterator::Init(TableType table_type) {
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -494,6 +494,9 @@ Status DocRowwiseIterator::Init() {
   db_iter_->Seek(row_key_);
   row_ready_ = false;
   has_bound_key_ = false;
+  if (table_type == TableType::PGSQL_TABLE_TYPE) {
+    ignore_ttl_ = true;
+  }
 
   return Status::OK();
 }
@@ -590,6 +593,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
 }
 
 Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
+  ignore_ttl_ = true;
   return DoInit(dynamic_cast<const DocPgsqlScanSpec&>(spec));
 }
 
@@ -692,10 +696,11 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // SubDocument.
     }
     if (doc_reader_ == nullptr) {
-      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), &deadline_info_);
+      doc_reader_ = std::make_unique<DocDBTableReader>(db_iter_.get(), deadline_);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key));
-      Expiration table_ttl(TableTTL(schema_));
-      doc_reader_->SetTableTtl(table_ttl);
+      if (!ignore_ttl_) {
+        doc_reader_->SetTableTtl(schema_);
+      }
     }
 
     row_ = SubDocument();

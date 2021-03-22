@@ -24,6 +24,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
@@ -32,6 +33,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -66,21 +68,22 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
-// constructed with SeekFwdSuffices::kTrue assume, for the lifetime of the instance, that the
-// provided IntentAwareIterator is either pointed to a requested row, or before it, or that row does
-// not exist. Care should be taken to ensure this assumption is not broken for callers independently
+// of DocDBTableReader assume, for the lifetime of the instance, that the provided
+// IntentAwareIterator is either pointed to a requested row, or before it, or that row does not
+// exist. Care should be taken to ensure this assumption is not broken for callers independently
 // modifying the provided IntentAwareIterator.
 class DocDBTableReader {
  public:
-  DocDBTableReader(
-      IntentAwareIterator* iter, DeadlineInfo* deadline_info,
-      SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
+  DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline);
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
   // colocated table as indicated by the provided root_doc_key, this method is a no-op.
   CHECKED_STATUS UpdateTableTombstoneTime(const Slice& root_doc_key);
 
-  void SetTableTtl(Expiration table_ttl);
+  // Determine based on the provided schema if there is a table-level TTL and use the computed value
+  // in any subsequently read SubDocuments. This call also turns on row-level TTL tracking for
+  // subsequently read SubDocuments.
+  void SetTableTtl(const Schema& table_schema);
 
   // For each value in projection, read into the provided SubDocument* a child Subdocument
   // corresponding to the data at the key formed by appending the projection value to the end of the
@@ -103,11 +106,10 @@ class DocDBTableReader {
 
   // Owned by caller.
   IntentAwareIterator* iter_;
-  // Owned by caller.
-  DeadlineInfo* deadline_info_;
-  const SeekFwdSuffices seek_fwd_suffices_;
+  DeadlineInfo deadline_info_;
   DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
   Expiration table_expiration_;
+  ObsolescenceTracker table_obsolescence_tracker_;
   SubDocumentReaderBuilder subdoc_reader_builder_;
 };
 

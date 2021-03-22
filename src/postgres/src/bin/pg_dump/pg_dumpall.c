@@ -52,6 +52,7 @@ static PGconn *connectDatabase(const char *dbname, const char *connstr, const ch
 static char *constructConnStr(const char **keywords, const char **values);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
+static void ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions);
 
 static char pg_dump_bin[MAXPGPATH];
 static const char *progname;
@@ -86,6 +87,8 @@ static char role_catalog[10];
 static FILE *OPF;
 static char *filename = NULL;
 
+static char *masterHosts = NULL;
+
 #define exit_nicely(code) exit(code)
 
 int
@@ -113,6 +116,7 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
+		{"masters", required_argument, NULL, 'm'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -203,7 +207,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:oOp:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:m:oOp:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -242,6 +246,10 @@ main(int argc, char *argv[])
 
 			case 'l':
 				pgdb = pg_strdup(optarg);
+				break;
+
+			case 'm':           /* YB master hosts */
+				masterHosts = pg_strdup(optarg);
 				break;
 
 			case 'o':
@@ -625,6 +633,7 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+	printf(_("  -m, --masters=IPS            YugaByte Master hosts IP addresses\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -1147,7 +1156,7 @@ dumpTablespaces(PGconn *conn)
 						   "(SELECT pg_catalog.array_agg(acl) FROM (SELECT pg_catalog.unnest(pg_catalog.acldefault('t',spcowner)) AS acl "
 						   "EXCEPT SELECT pg_catalog.unnest(coalesce(spcacl,pg_catalog.acldefault('t',spcowner)))) as foo)"
 						   "AS rspcacl,"
-						   "array_to_string(spcoptions, ', '),"
+						   "spcoptions,"
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
@@ -1212,11 +1221,13 @@ dumpTablespaces(PGconn *conn)
 
 		appendPQExpBufferStr(buf, " LOCATION ");
 		appendStringLiteralConn(buf, spclocation, conn);
-		appendPQExpBufferStr(buf, ";\n");
-
 		if (spcoptions && spcoptions[0] != '\0')
-			appendPQExpBuffer(buf, "ALTER TABLESPACE %s SET (%s);\n",
-							  fspcname, spcoptions);
+		{
+			appendPQExpBuffer(buf, " WITH (");
+			ybProcessTablespaceSpcOptions(conn, &buf, spcoptions);
+			appendPQExpBufferStr(buf, ")");
+		}
+		appendPQExpBufferStr(buf, ";\n");
 
 		if (!skip_acls &&
 			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
@@ -1251,6 +1262,23 @@ dumpTablespaces(PGconn *conn)
 	fprintf(OPF, "\n\n");
 }
 
+/*
+ * Vanilla PG does not have strings in spcoptions column in pg_tablespace.
+ * Since YB tablespaces have JSON strings in its options, process using
+ * appendRelOptionsArray and append to 'buf'.
+ */
+static void
+ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions)
+{
+	int encoding = PQclientEncoding(conn);
+	bool std_strings = PQparameterStatus(conn, "standard_conforming_strings");
+	bool res = appendReloptionsArray(*buf, spcoptions, "", encoding, std_strings);
+	if (!res)
+	{
+		fprintf(stderr, "WARNING: could not parse reloptions array\n");
+		exit_nicely(1);
+	}
+}
 
 /*
  * Dump commands to drop each database.
@@ -1448,6 +1476,15 @@ runPgDump(const char *dbname, const char *create_opts)
 
 	appendPQExpBuffer(cmd, "\"%s\" %s %s", pg_dump_bin,
 					  pgdumpopts->data, create_opts);
+
+	/*
+	 * YB: If there is a custom YB-Master host to use, append that.
+	 */
+	if (masterHosts != NULL)
+	{
+		appendPQExpBufferStr(cmd, " -m ");
+		appendPQExpBufferStr(cmd, masterHosts);
+	}
 
 	/*
 	 * If we have a filename, use the undocumented plain-append pg_dump

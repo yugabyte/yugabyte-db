@@ -40,8 +40,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
-      CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
 
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 
@@ -50,6 +49,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       int64_t leader_term, const tablet::SnapshotOperationState& state) override;
 
   CHECKED_STATUS DeleteReplicated(
+      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+
+  CHECKED_STATUS RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) override;
 
   CHECKED_STATUS ListSnapshots(
@@ -74,6 +76,11 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // bootstrap. And upsert snapshot from it in this case.
   // key and value are entry from the write batch.
   CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) override;
+
+  CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
+
+  // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap();
 
   void Start();
 

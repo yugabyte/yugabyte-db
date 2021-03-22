@@ -747,19 +747,13 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
   return deleter;
 }
 
-Status TSTabletManager::CreateNewTablet(
-    const string& table_id,
+Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
+    const tablet::TableInfoPtr& table_info,
     const string& tablet_id,
     const Partition& partition,
-    const string& namespace_name,
-    const string& table_name,
-    TableType table_type,
-    const Schema& schema,
-    const PartitionSchema& partition_schema,
-    const boost::optional<IndexInfo>& index_info,
     RaftConfigPB config,
-    TabletPeerPtr* tablet_peer,
-    const bool colocated) {
+    const bool colocated,
+    const std::vector<SnapshotScheduleId>& snapshot_schedules) {
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -778,33 +772,26 @@ Status TSTabletManager::CreateNewTablet(
 
   // Create the metadata.
   TRACE("Creating new metadata...");
-  RaftGroupMetadataPtr meta;
   string data_root_dir;
   string wal_root_dir;
-  GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, &data_root_dir, &wal_root_dir);
-  Status create_status = RaftGroupMetadata::CreateNew(fs_manager_,
-                                                   table_id,
-                                                   tablet_id,
-                                                   namespace_name,
-                                                   table_name,
-                                                   table_type,
-                                                   schema,
-                                                   IndexMap(),
-                                                   partition_schema,
-                                                   partition,
-                                                   index_info,
-                                                   0 /* schema_version */,
-                                                   TABLET_DATA_READY,
-                                                   &meta,
-                                                   data_root_dir,
-                                                   wal_root_dir,
-                                                   colocated);
-  if (!create_status.ok()) {
-    UnregisterDataWalDir(table_id, tablet_id, data_root_dir, wal_root_dir);
+  GetAndRegisterDataAndWalDir(
+      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+  auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
+    .fs_manager = fs_manager_,
+    .table_info = table_info,
+    .raft_group_id = tablet_id,
+    .partition = partition,
+    .tablet_data_state = TABLET_DATA_READY,
+    .colocated = colocated,
+    .snapshot_schedules = snapshot_schedules,
+  }, data_root_dir, wal_root_dir);
+  if (!create_result.ok()) {
+    UnregisterDataWalDir(table_info->table_id, tablet_id, data_root_dir, wal_root_dir);
   }
-  RETURN_NOT_OK_PREPEND(create_status, "Couldn't create tablet metadata")
+  RETURN_NOT_OK_PREPEND(create_result, "Couldn't create tablet metadata")
+  RaftGroupMetadataPtr meta = std::move(*create_result);
   LOG(INFO) << TabletLogPrefix(tablet_id)
-            << "Created tablet metadata for table: " << table_id;
+            << "Created tablet metadata for table: " << table_info->table_id;
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -818,10 +805,7 @@ Status TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK(
       open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
 
-  if (tablet_peer) {
-    *tablet_peer = new_peer;
-  }
-  return Status::OK();
+  return new_peer;
 }
 
 struct TabletCreationMetaData {
@@ -891,8 +875,8 @@ Status TSTabletManager::StartSubtabletsSplit(
     }
 
     // Try to load metadata from previous not completed split.
-    if (RaftGroupMetadata::Load(fs_manager_, subtablet_id, &iter->raft_group_metadata).ok() &&
-        CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
+    auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
+    if (load_result.ok() && CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
       // Sub tablet has been already created and ready during previous split attempt at this node or
       // as a result of remote bootstrap from another node, no need to re-create.
       iter = tcmetas->erase(iter);
@@ -1426,12 +1410,11 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
                                        RaftGroupMetadataPtr* metadata) {
   LOG(INFO) << "Loading metadata for tablet " << tablet_id;
   TRACE("Loading metadata...");
-  RaftGroupMetadataPtr meta;
-  RETURN_NOT_OK_PREPEND(RaftGroupMetadata::Load(fs_manager_, tablet_id, &meta),
-                        strings::Substitute("Failed to load tablet metadata for tablet id $0",
-                                            tablet_id));
+  auto load_result = RaftGroupMetadata::Load(fs_manager_, tablet_id);
+  RETURN_NOT_OK_PREPEND(load_result,
+                        Format("Failed to load tablet metadata for tablet id $0", tablet_id));
   TRACE("Metadata loaded");
-  metadata->swap(meta);
+  metadata->swap(*load_result);
   return Status::OK();
 }
 
@@ -1492,6 +1475,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse,
       .snapshot_coordinator = nullptr,
       .tablet_splitter = this,
+      .allowed_history_cutoff_provider = std::bind(
+          &TSTabletManager::AllowedHistoryCutoff, this, _1),
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1768,6 +1753,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
   GetTabletPeersUnlocked(tablet_peers);
   if (tablet_ptrs) {
     for (const auto& peer : *tablet_peers) {
+      if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
         tablet_ptrs->push_back(tablet_ptr);
@@ -1777,7 +1763,16 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
-  AppendValuesFromMap(tablet_map_, tablet_peers);
+  DCHECK(tablet_peers != NULL);
+  // See AppendKeysFromMap for why this is done.
+  if (tablet_peers->empty()) {
+    tablet_peers->reserve(tablet_map_.size());
+  }
+  for (const auto& entry : tablet_map_) {
+    if (entry.second != nullptr) {
+      tablet_peers->push_back(entry.second);
+    }
+  }
 }
 
 void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const {
@@ -2454,6 +2449,38 @@ void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes
 
   LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
             << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
+}
+
+Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
+  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+  snapshot_schedule_allowed_history_cutoff_.clear();
+  for (const auto& schedule : info.schedules()) {
+    snapshot_schedule_allowed_history_cutoff_.emplace(
+        VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())),
+        HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+  }
+  return Status::OK();
+}
+
+HybridTime TSTabletManager::AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata) {
+  auto schedules = metadata.SnapshotSchedules();
+  if (schedules.empty()) {
+    return HybridTime::kMax;
+  }
+  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+  HybridTime result = HybridTime::kMax;
+  for (const auto& schedule_id : schedules) {
+    auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
+    // it == snapshot_schedule_allowed_history_cutoff_.end() - we don't know this schedule.
+    // !it->second - schedules does not have snapshots yet.
+    if (it == snapshot_schedule_allowed_history_cutoff_.end() || !it->second) {
+      // TODO handle schedule deletion
+      return HybridTime::kMin;
+    } else {
+      result = std::min(result, it->second);
+    }
+  }
+  return result;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
