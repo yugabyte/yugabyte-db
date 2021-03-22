@@ -417,11 +417,11 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
     provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/regions"
     response = call_api(provider_url, auth_uuid)
     region_data = json.loads(response.read())
-    region = "%-30s %-20s %-20s %s\n" % ("Region Name", "Provider", "", "UUID")
+    region = "%-30s %-20s %-20s %s\n\n" % ("Region Name", "Provider", "", "UUID")
     for each in region_data:
-        zones = ""
+        zones = "\n\tZones:-\t\t name\t\t UUID"
         for each_zone in each["zones"]:
-            zones = zones + "\n\t\t%-30s   %s" % (each_zone["name"], each_zone["uuid"]) + "\n"
+            zones = zones + "\n\t\t\t %s\t\t %s" % (each_zone["name"], each_zone["uuid"]) + "\n"
         region = region + "%-30s %-20s  %-20s %s"\
                  % (each["name"], each["provider"]["code"], each["uuid"], zones) + "\n"
     print(region)

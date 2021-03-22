@@ -34,10 +34,10 @@ def exception_handling(func):
 
 
 def convert_unicode_json(data):
-  """
-  Function to convert unicode json to dictionary
-  {u"name": u"universe"} => {"name": "universe"}
-  """
+    """
+    Function to convert unicode json to dictionary
+    {u"name": u"universe"} => {"name": "universe"}
+    """
     if isinstance(data, basestring):
         return str(data)
     elif isinstance(data, collections.Mapping):
@@ -414,6 +414,44 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     task_id = universe_json['taskUUID']
     response = {"data": task_id, "status": "success", "error": ""}
     print(response)
+
+
+@exception_handling
+def get_provider_data(base_url, customer_uuid, auth_uuid):
+    provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/providers"
+    response = call_api(provider_url, auth_uuid)
+    provider_data = json.loads(response.read())
+    provider = "%-30s %-20s %s\n" % ("Provider Name", " ", "UUID")
+    for each in provider_data:
+        provider = provider + "%-30s %-20s %s" % (each["name"], "-->", each["uuid"]) + "\n"
+    print(provider)
+
+
+@exception_handling
+def get_regions_data(base_url, customer_uuid, auth_uuid):
+    provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/regions"
+    response = call_api(provider_url, auth_uuid)
+    region_data = json.loads(response.read())
+    region = "%-30s %-20s %-20s %s\n\n" % ("Region Name", "Provider", "", "UUID")
+    for each in region_data:
+        zones = "\n\tZones:-\t\t name\t\t UUID"
+        for each_zone in each["zones"]:
+            zones = zones + "\n\t\t\t %s\t\t %s" % (each_zone["name"], each_zone["uuid"]) + "\n"
+        region = region + "%-30s %-20s  %-20s %s"\
+                 % (each["name"], each["provider"]["code"], each["uuid"], zones) + "\n"
+    print(region)
+
+
+@exception_handling
+def get_universe_list(base_url, customer_uuid, auth_uuid):
+    universe_url = base_url + "/api/v1/customers/" + customer_uuid + \
+                          "/universes"
+    response = call_api(universe_url, auth_uuid)
+    universe_data = json.loads(response.read())
+    universe = "%-30s %-20s %s\n" % ("Universe Name", " ", "UUID")
+    for each in universe_data:
+        universe = universe + "%-30s %-20s %s" % (each["name"], "-->", each["universeUUID"]) + "\n"
+    print(universe)
 
 
 def get_key_value(data, key):

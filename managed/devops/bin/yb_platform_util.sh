@@ -88,12 +88,15 @@ function TaskStatus {
 }
 function HelpMessage {
     printf "\n${bold}Script to perform universe actions.$normal\n"
-    printf "\t1. Get existing Universe details by universe name in json format.\n"
-    printf "\t2. Get existing Universe details by universe UUID in json format\n"
-    printf "\t3. Delete existing Universe by universe name.\n"
-    printf "\t4. Delete existing Universe by universe UUID.\n"
-    printf "\t5. Create a new Universe from a json config file.\n"
-    printf "\t6. Get task progress. \n"
+    printf "\t1. Get existing Universe list. \n"
+    printf "\t2. Get existing Universe details by universe name in json format.\n"
+    printf "\t3. Get existing Universe details by universe UUID in json format\n"
+    printf "\t4. Delete existing Universe by universe name.\n"
+    printf "\t5. Delete existing Universe by universe UUID.\n"
+    printf "\t6. Create a new Universe from a json config file.\n"
+    printf "\t7. Get task progress. \n"
+    printf "\t8. Get list of available region with availability zones. \n"
+    printf "\t9. Get list of available providers. \n"
     printf "\n${bold}Required to export varible:$normal\n"
     printf "YB_PLATFORM_URL \n\t API URL for yugabyte\n"
     printf "\t Example: \n\t\t export YB_PLATFORM_URL=http://localhost:9000\n"
@@ -103,7 +106,8 @@ function HelpMessage {
     printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n"
     printf "\n${bold}Actions:$normal\n"
     printf "get_universe \n\t Get the details of an existing universe as a json file\n"
-    printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n\n"
+    printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe\n\n"
+    printf "\t Universe json with universe name: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n\n"
     printf "add_universe |  create_universe\n\t Create Universe from json file\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe -f test-universe.json"
     printf " -n test-universe-by-name"
@@ -112,6 +116,10 @@ function HelpMessage {
     printf "task_status \n\t To get task status\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh task_status"
     printf " -t f33e3c9b-75ab-4c30-80ad-cba85646ea39"
+    printf "\n\nget_provider \n\t To get list of available providers\n"
+    printf "\t Example: \n\t\tbash yb_platform_util.sh get_provider"
+    printf "\n\nget_region | get_az \n\t list of available region with availability zones.\n"
+    printf "\t Example: \n\t\tbash yb_platform_util.sh get_region"
     printf "\n\n${bold}Params:$normal\n"
     printf "\n-c | --customer_uuid \n\t Customer UUID;"
     printf " mandatory if multiple customer uuids present.\n"
@@ -371,10 +379,18 @@ case $operation in
                 echo $result
             fi
         else
-            printf "Required universe name | uuid to get detail of universe.\n"
-            printf "Use \`-n|--universe_name <universe_name>\` to pass universe name.\n"
-            printf "Use \`-u|--universe_uuid <universe_uuid>\` to pass universe uuid.\n"
-            exit 255
+          if [[ $python_3 == "True" ]]
+          then
+            result=$(python3 -c "import yb_platform_util_py3; \
+              yb_platform_util_py3.get_universe_list('$base_url', '$customer_uuid', \
+              '$auth_uuid')")
+            
+          else
+            result=$(python -c "import yb_platform_util_py2; \
+              yb_platform_util_py2.get_universe_list('$base_url', '$customer_uuid', \
+              '$auth_uuid')")
+          fi
+          printf "$result"
         fi
         ;;
     DELETE_UNIVERSE|DEL_UNIVERSE)
@@ -469,6 +485,36 @@ case $operation in
         fi
         TaskStatus ${task_id} ${customer_uuid} "Task completed successfully."
         ;;
+    GET_PROVIDER)
+      if [[ $python_3 == "True" ]]
+      then
+        result=$(python3 -c "import yb_platform_util_py3; \
+          yb_platform_util_py3.get_provider_data('$base_url', '$customer_uuid', \
+          '$auth_uuid')")
+        
+      else
+        result=$(python -c "import yb_platform_util_py2; \
+          yb_platform_util_py2.get_provider_data('$base_url', '$customer_uuid', \
+          '$auth_uuid')")
+      fi
+      printf "$result"
+      echo
+      ;;
+    GET_REGION | GET_AZ)
+      if [[ $python_3 == "True" ]]
+        then
+          result=$(python3 -c "import yb_platform_util_py3; \
+            yb_platform_util_py3.get_regions_data('$base_url', '$customer_uuid', \
+            '$auth_uuid')")
+          
+        else
+          result=$(python -c "import yb_platform_util_py2; \
+            yb_platform_util_py2.get_regions_data('$base_url', '$customer_uuid', \
+            '$auth_uuid')")
+        fi
+        printf "$result"
+        echo
+      ;;
     *)
         echo "Invalid opertaion"
         HelpMessage
