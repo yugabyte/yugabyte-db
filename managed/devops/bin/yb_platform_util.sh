@@ -391,6 +391,7 @@ case $operation in
               '$auth_uuid')")
           fi
           printf "$result"
+          echo ""
         fi
         ;;
     DELETE_UNIVERSE|DEL_UNIVERSE)

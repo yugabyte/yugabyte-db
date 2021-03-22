@@ -421,10 +421,13 @@ def get_provider_data(base_url, customer_uuid, auth_uuid):
     provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/providers"
     response = call_api(provider_url, auth_uuid)
     provider_data = json.loads(response.read())
-    provider = "%-30s %-20s %s\n" % ("Provider Name", " ", "UUID")
+    providers = []
     for each in provider_data:
-        provider = provider + "%-30s %-20s %s" % (each["name"], "-->", each["uuid"]) + "\n"
-    print(provider)
+        provider = {}
+        provider['name'] = each["name"]
+        provider['uuid'] = each["uuid"]
+        providers.append(provider)
+    print(providers)
 
 
 @exception_handling
@@ -432,14 +435,21 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
     provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/regions"
     response = call_api(provider_url, auth_uuid)
     region_data = json.loads(response.read())
-    region = "%-30s %-20s %-20s %s\n\n" % ("Region Name", "Provider", "", "UUID")
+    regions = []
     for each in region_data:
-        zones = "\n\tZones:-\t\t name\t\t UUID"
+        zones = []
         for each_zone in each["zones"]:
-            zones = zones + "\n\t\t\t %s\t\t %s" % (each_zone["name"], each_zone["uuid"]) + "\n"
-        region = region + "%-30s %-20s  %-20s %s"\
-                 % (each["name"], each["provider"]["code"], each["uuid"], zones) + "\n"
-    print(region)
+            zone = {}
+            zone['name'] = each_zone["name"]
+            zone['uuid'] = each_zone["uuid"]
+            zones.append(zone)
+        region = {}
+        region['zones'] = zones
+        region['name'] = each["name"]
+        region['uuid'] = each["uuid"]
+        region['provider'] = each["provider"]["code"]
+        regions.append(region)
+    print(regions)
 
 
 @exception_handling
@@ -448,10 +458,13 @@ def get_universe_list(base_url, customer_uuid, auth_uuid):
                           "/universes"
     response = call_api(universe_url, auth_uuid)
     universe_data = json.loads(response.read())
-    universe = "%-30s %-20s %s\n" % ("Universe Name", " ", "UUID")
+    universes = []
     for each in universe_data:
-        universe = universe + "%-30s %-20s %s" % (each["name"], "-->", each["universeUUID"]) + "\n"
-    print(universe)
+        universe = {}
+        universe['name'] = each["name"]
+        universe['universeUUID'] = each["universeUUID"]
+        universes.append(universe)
+    print(universes)
 
 
 def get_key_value(data, key):
