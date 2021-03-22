@@ -59,10 +59,10 @@ See also:
 
 Since YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.
 
-| YSQL Feature | Description |
-| :----------- | :---------- |
+| YSQL Feature                                                 | Description                                                  |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
 | <span style="font-size:16px">Data distribution with `HASH`</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| <span style="font-size:16px">`TABLESPACES` for geographic placement</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">[`TABLESPACES`](tablespaces) for geographic placement</span> | Enables pinning of data in tables and table partitions to different geographic locations |
 | <span style="font-size:16px">`TABLEGROUPS` for colocating tables</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
 
 <!--
