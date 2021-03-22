@@ -268,15 +268,18 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--assign_public_ip");
           }
         }
-        if (cloud.equals(Common.CloudType.aws)) {
-          if (setupParams.useTimeSync) {
-            expectedCommand.add("--use_chrony");
+
+        if ((cloud.equals(Common.CloudType.aws) || cloud.equals(Common.CloudType.gcp))
+            && setupParams.useTimeSync) {
+          expectedCommand.add("--use_chrony");
         }
-        if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null &&
-              !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
+
+        if (cloud.equals(Common.CloudType.aws)) {
+          if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null
+              && !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
             expectedCommand.add("--instance_tags");
-            expectedCommand.add(Json.stringify(
-                Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
+            expectedCommand.add(
+                Json.stringify(Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
           }
         }
 
@@ -583,7 +586,8 @@ public class NodeManagerTest extends FakeDBApplication {
         assertNotNull(cmdArgs);
         assertTrue(
             cmdArgs.contains("--use_chrony") ==
-            (t.cloudType.equals(Common.CloudType.aws) && useTimeSync));
+            ((t.cloudType.equals(Common.CloudType.aws) ||
+              t.cloudType.equals(Common.CloudType.gcp)) && useTimeSync));
       }
     }
   }

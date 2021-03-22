@@ -82,7 +82,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
-  void HandleDeleteTabletSnapshotResponse(SnapshotId snapshot_id, TabletInfo *tablet, bool error);
+  void HandleDeleteTabletSnapshotResponse(
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
@@ -241,7 +242,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table) override;
+      bool include_parent_colocated_table,
+      bool succeed_if_create_in_progress) override;
 
   server::Clock* Clock() override;
 
@@ -251,6 +253,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
+                                       const SnapshotScheduleId& schedule_id,
                                        HybridTime snapshot_hybrid_time,
                                        TabletSnapshotOperationCallback callback) override;
 
@@ -263,9 +266,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        const std::string& snapshot_id,
                                        TabletSnapshotOperationCallback callback) override;
 
+  CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
+
   rpc::Scheduler& Scheduler() override;
 
   bool IsLeader() override;
+
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);

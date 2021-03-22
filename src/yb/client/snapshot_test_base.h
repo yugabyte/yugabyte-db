@@ -30,7 +30,8 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
 
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
-  Result<Snapshots> ListSnapshots(const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil());
+  Result<Snapshots> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool list_deleted = true);
   CHECKED_STATUS VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state);
   CHECKED_STATUS WaitSnapshotInState(
@@ -38,6 +39,13 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
       MonoDelta duration = kWaitTimeout);
   CHECKED_STATUS WaitSnapshotDone(
       const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout);
+
+  Result<TxnSnapshotRestorationId> StartRestoration(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(),
+      int64_t interval = 0);
+  Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id);
+  CHECKED_STATUS RestoreSnapshot(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime(), int64_t interval = 0);
 };
 
 } // namespace client

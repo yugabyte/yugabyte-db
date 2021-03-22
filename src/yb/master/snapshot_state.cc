@@ -20,6 +20,8 @@
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
+#include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
@@ -103,23 +105,29 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   return Status::OK();
 }
 
-Status SnapshotState::CheckCanDelete() {
+Status SnapshotState::TryStartDelete() {
   if (AllInState(SysSnapshotEntryPB::DELETED)) {
     return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
                   MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
-  if (HasInState(SysSnapshotEntryPB::DELETING)) {
+  if (delete_started_ || HasInState(SysSnapshotEntryPB::DELETING)) {
     return STATUS(NotFound, "The snapshot is being deleted", id_.ToString(),
                   MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
+  delete_started_ = true;
 
   return Status::OK();
+}
+
+void SnapshotState::DeleteAborted(const Status& status) {
+  delete_started_ = false;
 }
 
 void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
   DoPrepareOperations([this, out](const TabletData& tablet) {
     out->push_back(TabletSnapshotOperation {
       .tablet_id = tablet.id,
+      .schedule_id = schedule_id_,
       .snapshot_id = id_,
       .state = initial_state(),
       .snapshot_hybrid_time = snapshot_hybrid_time_,
@@ -154,6 +162,22 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
   // If we have several updates for single snapshot, they are loaded in chronological order.
   // So latest update should be picked.
   return version() < other_version;
+}
+
+Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
+    const tablet::SnapshotOperationState& state) const {
+  if (!schedule_id_) {
+    static Status result(STATUS(Uninitialized, ""));
+    return result;
+  }
+
+  return tablet::CreateSnapshotData {
+    .snapshot_hybrid_time = snapshot_hybrid_time_,
+    .hybrid_time = state.hybrid_time(),
+    .op_id = OpId::FromPB(state.op_id()),
+    .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
+    .schedule_id = schedule_id_,
+  };
 }
 
 } // namespace master

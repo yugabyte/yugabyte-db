@@ -184,6 +184,8 @@ message CreateTabletRequestPB {
 
   // True if the tablet is colocated.
   optional bool colocated = 13 [ default = false ];
+
+  repeated bytes snapshot_schedules = 16;
 }
 
 message CreateTabletResponsePB {

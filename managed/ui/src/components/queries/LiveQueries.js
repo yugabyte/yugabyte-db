@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 // Can't use `useLocation` hook because this component is the child
 // of a component that calls withRouter: https://github.com/ReactTraining/react-router/issues/7015
 import { withRouter } from 'react-router';
@@ -12,6 +12,7 @@ import { YBButtonLink } from '../common/forms/fields';
 import { useLiveQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { getProxyNodeAddress } from '../../utils/UniverseUtils';
+import { QuerySearchInput } from './QuerySearchInput';
 import './LiveQueries.scss';
 
 const dropdownColKeys = {
@@ -61,15 +62,10 @@ const dropdownColKeys = {
   }
 };
 
-const TAB_KEY_CODE = 9;
-const ENTER_KEY_CODE = 13;
-
 const LiveQueriesComponent = ({ location }) => {
   const [type, setType] = useState('');
-  const [showAutoComplete, setShowAutoComplete] = useState(false);
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
-  const searchInput = useRef(null);
   const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
@@ -77,16 +73,11 @@ const LiveQueriesComponent = ({ location }) => {
   const { ycqlQueries, ysqlQueries, loading, errors, getLiveQueries } = useLiveQueriesApi({
     universeUUID
   });
-  const [searchText, setSearchText] = useState('');
-  const [searchDropdownLeftPx, setSearchDropdownLeft] = useState(0);
   const isYSQL = type === 'YSQL';
 
   useEffect(() => {
     if (location.search) {
-      if (
-        'nodeName' in location.query &&
-        location.query.nodeName.toLowerCase() !== 'all'
-      ) {
+      if ('nodeName' in location.query && location.query.nodeName.toLowerCase() !== 'all') {
         setSearchTokens([
           {
             label: 'Node Name',
@@ -106,23 +97,9 @@ const LiveQueriesComponent = ({ location }) => {
   }, [loading]);
 
   useEffect(() => {
-    const searchDropdownHandler = (ev) => {
-      const searchBarEl = document.getElementById('live-query-search-bar');
-      if (searchBarEl && !searchBarEl.contains(ev.target)) {
-        setShowAutoComplete(false);
-      }
-    };
-    document.addEventListener('click', searchDropdownHandler);
-
-    return () => {
-      document.removeEventListener('click', searchDropdownHandler);
-    };
-  }, [currentUniverse]);
-
-  useEffect(() => {
     // Default to showing YSQL if YSQL tables are present
     if (!type) {
-      if (ysqlQueries.length) {        
+      if (ysqlQueries.length) {
         setType('YSQL');
       } else if (ycqlQueries.length) {
         setType('YCQL');
@@ -130,29 +107,12 @@ const LiveQueriesComponent = ({ location }) => {
     }
   }, [type, ycqlQueries, ysqlQueries]);
 
-  // Gets the location of searchInput element and sets left pixels
-  useLayoutEffect(() => {
-    if (searchInput && document.getElementById('live-query-search-bar') && searchInput.current.getBoundingClientRect().left > 0) {
-      setSearchDropdownLeft(
-        searchInput.current.getBoundingClientRect().left -
-          document.getElementById('live-query-search-bar').getBoundingClientRect().left -
-          15
-      );
-    } else {
-      setSearchDropdownLeft(0);
-    }
-  }, [searchInput, searchTokens]);
-
   const getTserverLink = (cell, row) => {
     const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
     const href = getProxyNodeAddress(universeUUID, customer, row.privateIp, tserverPort);
 
     return (
-      <a href={href}
-        title={cell}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
+      <a href={href} title={cell} target="_blank" rel="noopener noreferrer">
         {cell}
       </a>
     );
@@ -164,101 +124,17 @@ const LiveQueriesComponent = ({ location }) => {
     return <div className="toolbar-container">{components.searchPanel}</div>;
   };
 
-  // When user clicks autosuggested column name in dropdown
-  const handleTokenClick = (e) => {
-    setSearchText(`${e.target.innerText}:`);
-    searchInput.current.focus();
-  };
-
-  const handleKeyPress = (ev, search) => {
-    if ((ev.keyCode === TAB_KEY_CODE || ev.keyCode === ENTER_KEY_CODE) && searchText) {
-      const separatorIndex = searchText.indexOf(':');
-      if (separatorIndex > -1 && searchText.substring(0, separatorIndex) in dropdownColKeys) {
-        setSearchTokens([
-          ...searchTokens,
-          {
-            key: dropdownColKeys[searchText.substring(0, separatorIndex)].value,
-            label: searchText.substring(0, separatorIndex),
-            value: searchText.substring(separatorIndex + 1)
-          }
-        ]);
-        setSearchText('');
-      } else {
-        setSearchTokens([...searchTokens, { value: searchText }]);
-        search(searchText);
-        setSearchText('');
-      }
-      ev.preventDefault();
-    }
-  };
-
   const renderCustomSearchPanel = ({ placeholder, search, clearBtnClick }) => {
     return (
-      <div id="live-query-search-bar" className="search-bar-container">
-        <div className="search-bar">
-          {searchTokens.map((token, idx) => (
-            <span className="chip" key={`token-${token.key}-${idx}`}>
-              {token.label && <span className="key">{token.label}: </span>}
-              <span className="value">{token.value}</span>
-              <i
-                className="fa fa-times-circle remove-chip"
-                onClick={() => {
-                  const newTokens = [...searchTokens];
-                  newTokens.splice(idx, 1);
-                  setSearchTokens(newTokens);
-                  clearBtnClick();
-                }}
-              />
-            </span>
-          ))}
-          <input
-            placeholder={placeholder}
-            value={searchText}
-            ref={searchInput}
-            onChange={(ev) => {
-              setSearchText(ev.target.value);
-            }}
-            onKeyDown={(ev) => handleKeyPress(ev, search)}
-            onFocus={() => setShowAutoComplete(true)}
-          />
-          {searchText && (
-            <i
-              className="fa fa-times"
-              onClick={() => {
-                setSearchText('');
-                clearBtnClick();
-              }}
-            />
-          )}
-        </div>
-        {showAutoComplete && !searchText.trim() && (
-          <div
-            className="autocomplete-wrapper"
-            onClick={handleTokenClick}
-            style={{
-              left: `${searchDropdownLeftPx}px`
-            }}
-          >
-            <ul>
-              <li data-col-key="nodeName">Node Name</li>
-              <li data-col-key="privateIp">Private IP</li>
-              <li data-col-key={type === 'YCQL' ? 'keyspace' : 'dbName'}>
-                {type === 'YCQL' ? 'Keyspace' : 'DB Name'}
-              </li>
-              {isYSQL && <li data-col-key="sessionStatus">Session Status</li>}
-              <li data-col-key="query">Query</li>
-              <li data-col-key="elapsedMillis">Elapsed Time</li>
-              {isYSQL ? (
-                <li data-col-key="appName">Client Name</li>
-              ) : (
-                <li data-col-key="type">Type</li>
-              )}
-              <li data-col-key="clientHost">Client Host</li>
-              <li data-col-key="clientPort">Client Port</li>
-            </ul>
-          </div>
-        )}
-      </div>
+      <QuerySearchInput
+        id="live-query-search-bar"
+        columns={dropdownColKeys}
+        placeholder={placeholder}
+        searchTerms={searchTokens}
+        onSearch={search}
+        onClear={clearBtnClick}
+        onSubmitSearchTerms={setSearchTokens}
+      />
     );
   };
 
@@ -270,7 +146,7 @@ const LiveQueriesComponent = ({ location }) => {
    * statement contained over 10kB of text, causing highlight.js to create roughly
    * 4000 additional DOM nodes, so having three or more entries caused the page to
    * completely freeze up due to re-renders and layout calculations.
-   * 
+   *
    * @param {String} cell A YSQL or YCQL query statement
    */
   const getQueryStatement = (cell) => {
@@ -291,9 +167,9 @@ const LiveQueriesComponent = ({ location }) => {
     return true;
   };
 
-  const displayedQueries = isYSQL ?
-    filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys) :
-    filterBySearchTokens(ycqlQueries, searchTokens, dropdownColKeys);
+  const displayedQueries = isYSQL
+    ? filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys)
+    : filterBySearchTokens(ycqlQueries, searchTokens, dropdownColKeys);
 
   const hasQueryData = !!(ysqlQueries.length || ycqlQueries.length);
   let failedQueries = null;
@@ -394,7 +270,7 @@ const LiveQueriesComponent = ({ location }) => {
               </TableHeaderColumn>
               <TableHeaderColumn dataField={isYSQL ? 'dbName' : 'keyspace'} width="120px" dataSort>
                 {isYSQL ? 'DB Name' : 'Keyspace'}
-              </TableHeaderColumn>              
+              </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="query"
                 width="350px"
@@ -413,14 +289,14 @@ const LiveQueriesComponent = ({ location }) => {
               </TableHeaderColumn>
               <TableHeaderColumn dataField={isYSQL ? 'appName' : 'type'} width="200px" dataSort>
                 {isYSQL ? 'Client Name' : 'Type'}
-              </TableHeaderColumn>              
+              </TableHeaderColumn>
               <TableHeaderColumn dataField="clientHost" width="150px" dataSort>
                 Client Host
               </TableHeaderColumn>
               <TableHeaderColumn dataField="clientPort" width="100px" dataSort>
                 Client Port
               </TableHeaderColumn>
-            </BootstrapTable>            
+            </BootstrapTable>
           </div>
         }
       />

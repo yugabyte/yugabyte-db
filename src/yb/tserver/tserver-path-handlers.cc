@@ -126,7 +126,7 @@ struct less<TableIdentifier> {
   }
 };
 
-} //  namespace std
+}  //  namespace std
 
 namespace yb {
 namespace tserver {
@@ -339,7 +339,7 @@ void RegisterTabletPathHandler(
   web_server->RegisterPathHandler(path, "", handler, true /* styled */, false /* is_on_nav_bar */);
 }
 
-} // namespace
+}  // namespace
 
 TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
@@ -629,20 +629,21 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     (*output) << Substitute(
-        // Table name, UUID of namespace, table, tablet id, partition
+        // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        // State, num_sst_files, on-disk size, consensus configuration, last status
-        "<td>$8</td><td>$5</td><td>$6</td><td>$7</td><td>$8</td></tr>\n",
+        // State, num SST files, on-disk size, consensus configuration, last status
+        "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td></tr>\n",
         EscapeForHtmlToString(namespace_name),  // $0
         EscapeForHtmlToString(table_name),  // $1
         EscapeForHtmlToString(table_id),  // $2
         tablet_id_or_link,  // $3
         EscapeForHtmlToString(partition),  // $4
-        EscapeForHtmlToString(peer->HumanReadableState()), tablets_disk_size_html,  // $5, $6
+        EscapeForHtmlToString(peer->HumanReadableState()),  // $5
+        num_sst_files,  // $6
+        tablets_disk_size_html,  // $7
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",  // $7
-        EscapeForHtmlToString(status.last_status()),  // $8
-        num_sst_files); // $9
+                  : "",  // $8
+        EscapeForHtmlToString(status.last_status()));  // $9
   }
   *output << "</table>\n";
 }

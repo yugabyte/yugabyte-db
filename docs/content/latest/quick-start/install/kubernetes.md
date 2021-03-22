@@ -129,7 +129,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```
 NAME                 CHART VERSION   APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.5.2           2.5.2.0-b104  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  2.5.3           2.5.3.1-b10  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.

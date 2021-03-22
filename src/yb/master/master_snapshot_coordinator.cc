@@ -34,6 +34,7 @@
 #include "yb/rpc/poller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
@@ -53,6 +54,8 @@ namespace yb {
 namespace master {
 
 namespace {
+
+YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
 
 void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, SnapshotCoordinatorContext* context,
@@ -142,6 +145,7 @@ class MasterSnapshotCoordinator::Impl {
     TabletSnapshotOperations operations;
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(snapshot->StoreToWriteBatch(&write_batch));
+    boost::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto emplace_result = snapshots_.emplace(std::move(snapshot));
@@ -152,9 +156,18 @@ class MasterSnapshotCoordinator::Impl {
       if (leader_term >= 0) {
         (**emplace_result.first).PrepareOperations(&operations);
       }
+      auto temp = (**emplace_result.first).SysCatalogSnapshotData(state);
+      if (temp.ok()) {
+        sys_catalog_snapshot_data = *temp;
+      } else if (!temp.status().IsUninitialized()) {
+        return temp.status();
+      }
     }
 
     RETURN_NOT_OK(state.tablet()->ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+    if (sys_catalog_snapshot_data) {
+      RETURN_NOT_OK(context_.CreateSysCatalogSnapshot(*sys_catalog_snapshot_data));
+    }
 
     ExecuteOperations(operations);
 
@@ -163,9 +176,13 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Load(tablet::Tablet* tablet) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
+    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
+    }));
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT_SCHEDULE,
+        [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+      return LoadEntry<SnapshotScheduleOptionsPB>(id, data, &schedules_);
     });
   }
 
@@ -258,23 +275,12 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
-      RETURN_NOT_OK(snapshot.CheckCanDelete());
+      RETURN_NOT_OK(snapshot.TryStartDelete());
     }
 
     auto synchronizer = std::make_shared<Synchronizer>();
-    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
-    auto request = operation_state->AllocateRequest();
-
-    request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-
-    operation_state->set_completion_callback(std::make_unique<
-        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
-    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
-
-    context_.Submit(std::move(operation));
-    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
-    return Status::OK();
+    SubmitDelete(snapshot_id, synchronizer);
+    return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
   CHECKED_STATUS DeleteReplicated(
@@ -299,6 +305,19 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  CHECKED_STATUS RestoreSysCatalogReplicated(
+      int64_t leader_term, const tablet::SnapshotOperationState& state) {
+    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+    auto restore_at = HybridTime::FromPB(state.request()->snapshot_hybrid_time());
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
+      LOG(INFO) << "Restore sys catalog from " << snapshot.ToString() << " at " << restore_at;
+      // TODO implement restore
+    }
+    return Status::OK();
+  }
+
   CHECKED_STATUS ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp) {
@@ -320,6 +339,7 @@ class MasterSnapshotCoordinator::Impl {
       const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
     auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
     TabletInfos tablet_infos;
+    bool restore_sys_catalog;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -327,6 +347,7 @@ class MasterSnapshotCoordinator::Impl {
         return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id.ToString(),
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
       }
+      restore_sys_catalog = !snapshot.schedule_id().IsNil();
 
       auto restoration = std::make_unique<RestorationState>(&context_, restoration_id, &snapshot);
       tablet_infos = restoration->PrepareOperations();
@@ -338,6 +359,9 @@ class MasterSnapshotCoordinator::Impl {
       context_.SendRestoreTabletSnapshotRequest(
           tablet, snapshot_id_str, restore_at,
           MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id()));
+    }
+    if (restore_sys_catalog) {
+      SubmitRestore(snapshot_id, restore_at, nullptr);
     }
 
     return restoration_id;
@@ -369,6 +393,46 @@ class MasterSnapshotCoordinator::Impl {
 
     SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(snapshot_schedule_id));
     return FillSchedule(schedule, resp->add_schedules());
+  }
+
+  CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (schedules_.empty()) {
+      return Status::OK();
+    }
+    auto* out = resp->mutable_snapshot_schedules();
+    for (const auto& schedule : schedules_) {
+      const auto& id = schedule->id();
+      auto* out_schedule = out->add_schedules();
+      out_schedule->set_id(id.data(), id.size());
+      auto time = LastSnapshotTime(id);
+      if (time) {
+        out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
+      }
+    }
+    return Status::OK();
+  }
+
+  Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+    std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (const auto& schedule : schedules_) {
+        schedules.emplace_back(schedule->id(), schedule->options().filter());
+      }
+    }
+    SnapshotSchedulesToTabletsMap result;
+    for (const auto& id_and_filter : schedules) {
+      auto entries = VERIFY_RESULT(CollectEntries(id_and_filter.second));
+      auto& tablets = result[id_and_filter.first];
+      for (const auto& entry : entries.entries()) {
+        if (entry.type() == SysRowEntry::TABLET) {
+          tablets.push_back(entry.id());
+        }
+      }
+      std::sort(tablets.begin(), tablets.end());
+    }
+    return result;
   }
 
   void Start() {
@@ -476,11 +540,17 @@ class MasterSnapshotCoordinator::Impl {
           tablet_info, snapshot_id_str, callback);
     } else if (operation.state == SysSnapshotEntryPB::CREATING) {
       context_.SendCreateTabletSnapshotRequest(
-          tablet_info, snapshot_id_str, operation.snapshot_hybrid_time, callback);
+          tablet_info, snapshot_id_str, operation.schedule_id, operation.snapshot_hybrid_time,
+          callback);
     } else {
       LOG(DFATAL) << "Unsupported snapshot operation: " << operation.ToString();
     }
   }
+
+  struct PollSchedulesData {
+    std::vector<TxnSnapshotId> delete_snapshots;
+    SnapshotScheduleOperations schedule_operations;
+  };
 
   void Poll() {
     if (!context_.IsLeader()) {
@@ -489,7 +559,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;
-    SnapshotScheduleOperations schedule_operations;
+    PollSchedulesData schedules_data;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& p : snapshots_) {
@@ -499,30 +569,70 @@ class MasterSnapshotCoordinator::Impl {
           p->PrepareOperations(&operations);
         }
       }
-      auto now = context_.Clock()->Now();
-      for (const auto& p : schedules_) {
-        p->PrepareOperations(LastSnapshotTime(p->id()), now, &schedule_operations);
-      }
+      PollSchedulesPrepare(&schedules_data);
     }
     for (const auto& id : cleanup_snapshots) {
       DeleteSnapshot(id);
     }
     ExecuteOperations(operations);
-    for (const auto& operation : schedule_operations) {
+    PollSchedulesComplete(schedules_data);
+  }
+
+  void PollSchedulesPrepare(PollSchedulesData* data) REQUIRES(mutex_) {
+    auto now = context_.Clock()->Now();
+    for (const auto& p : schedules_) {
+      auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
+      auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
+      if (first_snapshot && first_snapshot != last_snapshot) {
+        auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+        if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
+          auto delete_status = first_snapshot->TryStartDelete();
+          if (delete_status.ok()) {
+            data->delete_snapshots.push_back(first_snapshot->id());
+          } else {
+            VLOG(1) << "Unable to delete snapshot " << first_snapshot->id() << ": "
+                    << delete_status;
+          }
+        }
+      }
+      auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
+                                              : HybridTime::kInvalid;
+      p->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
+    }
+  }
+
+  void PollSchedulesComplete(const PollSchedulesData& data) EXCLUDES(mutex_) {
+    for (const auto& id : data.delete_snapshots) {
+      SubmitDelete(id, nullptr);
+    }
+    for (const auto& operation : data.schedule_operations) {
       WARN_NOT_OK(ExecuteScheduleOperation(operation),
                   Format("Failed to execute operation on $0", operation.schedule_id));
     }
   }
 
-  HybridTime LastSnapshotTime(const SnapshotScheduleId& schedule_id) REQUIRES(mutex_) {
+  SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)
+      REQUIRES(mutex_) {
     auto& index = snapshots_.get<ScheduleTag>();
-    auto it = index.upper_bound(schedule_id);
-    if (it == index.begin()) {
-      return HybridTime::kInvalid;
+    decltype(index.begin()) it;
+    if (bound == Bound::kFirst) {
+      it = index.lower_bound(schedule_id);
+      if (it == index.end()) {
+        return nullptr;
+      }
+    } else {
+      it = index.upper_bound(schedule_id);
+      if (it == index.begin()) {
+        return nullptr;
+      }
+      --it;
     }
-    --it;
-    return (**it).schedule_id() == schedule_id ? (**it).snapshot_hybrid_time()
-                                               : HybridTime::kInvalid;
+    return (**it).schedule_id() == schedule_id ? it->get() : nullptr;
+  }
+
+  HybridTime LastSnapshotTime(const SnapshotScheduleId& schedule_id) REQUIRES(mutex_) {
+    auto snapshot = BoundingSnapshot(schedule_id, Bound::kLast);
+    return snapshot ? snapshot->snapshot_hybrid_time() : HybridTime::kInvalid;
   }
 
   void DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -542,8 +652,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS ExecuteScheduleOperation(const SnapshotScheduleOperation& operation) {
-    auto entries = VERIFY_RESULT(context_.CollectEntries(
-        operation.filter.tables().tables(), true, true));
+    auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.snapshot_id,
         tablet::MakeFunctorOperationCompletionCallback(
@@ -576,6 +685,8 @@ class MasterSnapshotCoordinator::Impl {
     auto operation_state = std::make_unique<tablet::SnapshotOperationState>(/* tablet= */ nullptr);
     auto request = operation_state->AllocateRequest();
 
+    VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
+            << ", " << snapshot_id << ")";
     for (const auto& entry : entries.entries()) {
       if (entry.type() == SysRowEntry::TABLET) {
         request->add_tablet_id(entry.id());
@@ -601,6 +712,57 @@ class MasterSnapshotCoordinator::Impl {
     context_.Submit(std::move(operation));
 
     return snapshot_id;
+  }
+
+  void SubmitDelete(const TxnSnapshotId& snapshot_id,
+                    const std::shared_ptr<Synchronizer>& synchronizer) {
+    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
+    auto request = operation_state->AllocateRequest();
+
+    request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
+    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+
+    operation_state->set_completion_callback(tablet::MakeFunctorOperationCompletionCallback(
+        [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
+        (const Status& status) {
+          auto synchronizer = wsynchronizer.lock();
+          if (synchronizer) {
+            synchronizer->StatusCB(status);
+          }
+          if (!status.ok()) {
+            DeleteSnapshotAborted(status, snapshot_id);
+          }
+        }));
+    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
+
+    context_.Submit(std::move(operation));
+  }
+
+  void SubmitRestore(const TxnSnapshotId& snapshot_id, HybridTime restore_at,
+                     const std::shared_ptr<Synchronizer>& synchronizer) {
+    auto operation_state = std::make_unique<tablet::SnapshotOperationState>(nullptr);
+    auto request = operation_state->AllocateRequest();
+
+    request->set_operation(tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG);
+    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->set_snapshot_hybrid_time(restore_at.ToUint64());
+
+    operation_state->set_completion_callback(std::make_unique<
+        tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer));
+    auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
+
+    context_.Submit(std::move(operation));
+  }
+
+  void DeleteSnapshotAborted(
+      const Status& status, const TxnSnapshotId& snapshot_id) {
+    LOG(INFO) << __func__ << ", snapshot: " << snapshot_id << ", status: " << status;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = snapshots_.find(snapshot_id);
+    if (it == snapshots_.end()) {
+      return;
+    }
+    (**it).DeleteAborted(status);
   }
 
   void UpdateSnapshot(SnapshotState* snapshot, std::unique_lock<std::mutex>* lock)
@@ -661,6 +823,10 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK((**i).ToPB(out->add_snapshots()));
     }
     return Status::OK();
+  }
+
+  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) {
+    return context_.CollectEntries(filter.tables().tables(), true, true, true);
   }
 
   SnapshotCoordinatorContext& context_;
@@ -735,6 +901,11 @@ Status MasterSnapshotCoordinator::DeleteReplicated(
   return impl_->DeleteReplicated(leader_term, state);
 }
 
+Status MasterSnapshotCoordinator::RestoreSysCatalogReplicated(
+    int64_t leader_term, const tablet::SnapshotOperationState& state) {
+  return impl_->RestoreSysCatalogReplicated(leader_term, state);
+}
+
 Status MasterSnapshotCoordinator::ListSnapshots(
     const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp) {
   return impl_->ListSnapshots(snapshot_id, list_deleted, resp);
@@ -780,6 +951,15 @@ void MasterSnapshotCoordinator::Shutdown() {
 
 Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& value) {
   return impl_->ApplyWritePair(key, value);
+}
+
+Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
+  return impl_->FillHeartbeatResponse(resp);
+}
+
+Result<SnapshotSchedulesToTabletsMap>
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToTabletsMap() {
+  return impl_->MakeSnapshotSchedulesToTabletsMap();
 }
 
 } // namespace master

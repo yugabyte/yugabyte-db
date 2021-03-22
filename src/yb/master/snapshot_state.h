@@ -21,6 +21,8 @@
 
 #include "yb/master/state_with_tablets.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
@@ -30,6 +32,7 @@ YB_STRONGLY_TYPED_BOOL(ForClient);
 
 struct TabletSnapshotOperation {
   TabletId tablet_id;
+  SnapshotScheduleId schedule_id;
   TxnSnapshotId snapshot_id;
   SysSnapshotEntryPB::State state;
   HybridTime snapshot_hybrid_time;
@@ -67,15 +70,19 @@ class SnapshotState : public StateWithTablets {
     return version_;
   }
 
+  Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
+      const tablet::SnapshotOperationState& state) const;
+
   std::string ToString() const;
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);
   CHECKED_STATUS ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
-  CHECKED_STATUS CheckCanDelete();
+  CHECKED_STATUS TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
   bool ShouldUpdate(const SnapshotState& other) const;
+  void DeleteAborted(const Status& status);
 
  private:
   bool IsTerminalFailure(const Status& status) override;
@@ -87,6 +94,7 @@ class SnapshotState : public StateWithTablets {
   // schedule id. Otherwise it will be nil.
   SnapshotScheduleId schedule_id_;
   int version_;
+  bool delete_started_ = false;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

@@ -137,7 +137,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String clusterKey = createClusterKey();
     Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, clusterKey);
     assertEquals(BAD_REQUEST, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate provided cluster key");
+    assertEquals(contentAsString(getResult), "Unable to authenticate request");
   }
 
   @Test
@@ -147,7 +147,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String incorrectClusterKey = createClusterKey();
     Result getResult = FakeApiHelper.doRequestWithHAToken("GET", uri, incorrectClusterKey);
     assertEquals(BAD_REQUEST, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate provided cluster key");
+    assertEquals(contentAsString(getResult), "Unable to authenticate request");
   }
 
   @Test
@@ -396,5 +396,63 @@ public class InternalHAControllerTest extends FakeDBApplication {
     Result syncResult =
       FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertBadRequest(syncResult, "Cannot import instances from stale leader");
+  }
+
+  @Test
+  public void testDemoteLocalInstanceSuccess() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    createPlatformInstance(configUUID, true, true);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertTrue(config.isLocalLeader());
+    String uri = "/api/settings/ha/internal/config/demote/" + new Date().getTime();
+    JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
+    Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    assertOk(demoteResult);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertFalse(config.isLocalLeader());
+  }
+
+  @Test
+  public void testDemoteLocalInstanceStaleFailover() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    Date staleFailover = new Date();
+    createPlatformInstance(configUUID, true, true);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertTrue(config.isLocalLeader());
+    String uri = "/api/settings/ha/internal/config/demote/" + staleFailover.getTime();
+    JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
+    Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    assertBadRequest(demoteResult, "Rejecting demote request from stale leader");
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertTrue(config.isLocalLeader());
+  }
+
+  @Test
+  public void testDemoteLocalInstanceSuccessAlreadyFollower() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    createPlatformInstance(configUUID, true, false);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertFalse(config.isLocalLeader());
+    String uri = "/api/settings/ha/internal/config/demote/" + new Date().getTime();
+    JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
+    Result demoteResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
+    assertOk(demoteResult);
+    haConfigJson = getHAConfig();
+    config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    assertFalse(config.isLocalLeader());
   }
 }

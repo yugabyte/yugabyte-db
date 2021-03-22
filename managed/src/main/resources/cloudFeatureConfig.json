@@ -12,6 +12,7 @@
   },
   "menu": {
     "config": "disabled",
+    "administration": "disabled",
     "sidebar": "hidden"
   },
   "universes": {
