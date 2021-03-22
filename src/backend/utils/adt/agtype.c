@@ -2212,7 +2212,7 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
     PG_FREE_IF_COPY(agtype_in, 0);
 
     if (agtv.type == AGTV_INTEGER)
-        result = agtv.val.int_value;        
+        result = agtv.val.int_value;
     else if (agtv.type == AGTV_FLOAT)
         result = DatumGetInt64(DirectFunctionCall1(dtoi8,
                                 Float8GetDatum(agtv.val.float_value)));
@@ -2361,6 +2361,58 @@ Datum agtype_to_float8(PG_FUNCTION_ARGS)
     PG_RETURN_FLOAT8(result);
 }
 
+PG_FUNCTION_INFO_V1(agtype_to_text);
+
+/*
+ * Cast agtype to text.
+ */
+Datum agtype_to_text(PG_FUNCTION_ARGS)
+{
+    agtype *arg_agt;
+    agtype_value *arg_value;
+    text *text_value;
+    char *string;
+
+    /* get the agtype equivalence of any convertable input type */
+    arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
+
+    /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
+    if (arg_agt == NULL)
+        PG_RETURN_NULL();
+
+    /* check that we have a scalar value */
+    if (!AGT_ROOT_IS_SCALAR(arg_agt))
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("agtype argument must resolve to a scalar value")));
+
+    /* get the arg parameter */
+    arg_value = get_ith_agtype_value_from_container(&arg_agt->root, 0);
+
+    if (arg_value->type == AGTV_INTEGER)
+        string = DatumGetCString(DirectFunctionCall1(int8out,
+                Int64GetDatum(arg_value->val.int_value)));
+    else if (arg_value->type == AGTV_FLOAT)
+        string = DatumGetCString(DirectFunctionCall1(float8out,
+                Float8GetDatum(arg_value->val.float_value)));
+    else if (arg_value->type == AGTV_STRING)
+        string = pnstrdup(arg_value->val.string.val,
+                          arg_value->val.string.len);
+    else if (arg_value->type == AGTV_NUMERIC)
+        string = DatumGetCString(DirectFunctionCall1(numeric_out,
+                PointerGetDatum(arg_value->val.numeric)));
+    else if (arg_value->type == AGTV_BOOL)
+        string = (arg_value->val.boolean) ? "true" : "false";
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("agtype_to_text: unsupported argument agtype %d",
+                               arg_value->type)));
+
+    text_value = cstring_to_text_with_len(string, strlen(string));
+
+    PG_RETURN_TEXT_P(text_value);
+}
+
 PG_FUNCTION_INFO_V1(bool_to_agtype);
 
 /*
@@ -2423,6 +2475,7 @@ static agtype *execute_map_access_operator(agtype *map, agtype *key)
                         errmsg("AGTV_BOOL is not a valid key type")));
 
     case AGTV_STRING:
+
         new_key_value.val.string = key_value->val.string;
         new_key_value.val.string.len = key_value->val.string.len;
         break;
@@ -2920,9 +2973,6 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
 
     /* get the arg parameter */
     arg_value = get_ith_agtype_value_from_container(&arg_agt->root, 0);
-    /* check for agtype null */
-    if (arg_value->type == AGTV_NULL)
-        PG_RETURN_NULL();
 
     /* the input type drives the casting */
     switch(arg_value->type)

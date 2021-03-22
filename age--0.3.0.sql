@@ -717,6 +717,17 @@ AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';
 --
 -- agtype - type coercions
 --
+-- agtype -> text (explicit)
+CREATE FUNCTION ag_catalog.agtype_to_text(agtype)
+RETURNS text
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS text)
+WITH FUNCTION ag_catalog.agtype_to_text(agtype);
 
 -- agtype -> boolean (implicit)
 CREATE FUNCTION ag_catalog.agtype_to_bool(agtype)
