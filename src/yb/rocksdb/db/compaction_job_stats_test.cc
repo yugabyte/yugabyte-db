@@ -56,7 +56,6 @@
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -74,7 +73,6 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 

@@ -15,11 +15,11 @@ isTocNested: true
 showAsideToc: true  
 ---
 
-Included here are the release notes for all releases in the v2.4 stable release series.
+{{< note title="Notable features and changes" >}}
 
-## Notable features and changes (cumulative for the v2.4 stable release series)
+Included here are the release notes for all releases in the v2.4 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series.
 
-**Note**: Content will be added as new notable features and changes are available in the patch releases of the v2.4 stable release series.
+{{< /note >}}
 
 ## v2.4.1 - Feb 10, 2021
 

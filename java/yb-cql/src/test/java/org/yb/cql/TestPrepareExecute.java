@@ -36,9 +36,12 @@ import static org.yb.AssertionWrappers.fail;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPrepareExecute extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPrepareExecute.class);
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {

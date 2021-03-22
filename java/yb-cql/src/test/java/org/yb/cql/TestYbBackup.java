@@ -18,6 +18,9 @@ import java.util.*;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
@@ -28,6 +31,8 @@ import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
+
   @Before
   public void initYBBackupUtil() {
     YBBackupUtil.setMasterAddresses(masterAddresses);

@@ -708,7 +708,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     if (!pairs.empty()) {
       IntentProcessor read_processor(
           &container,
-          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
+          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kRead, row_mark));
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
           [&read_processor](auto strength, FullDocKey full_doc_key, auto, auto intent_key, auto) {

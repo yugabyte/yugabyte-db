@@ -157,8 +157,7 @@ Status FsTool::ListAllLogSegments() {
 Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
   DCHECK(initialized_);
 
-  RaftGroupMetadataPtr meta;
-  RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
+  auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   const string& tablet_wal_dir = meta->wal_dir();
   if (!fs_manager_->Exists(tablet_wal_dir)) {
@@ -238,8 +237,7 @@ Status FsTool::PrintLogSegmentHeader(const string& path,
 }
 
 Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
-  RaftGroupMetadataPtr meta;
-  RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
+  auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   const SchemaPtr schema = meta->schema();
 
@@ -261,8 +259,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
 Status FsTool::DumpTabletData(const std::string& tablet_id) {
   DCHECK(initialized_);
 
-  RaftGroupMetadataPtr meta;
-  RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
+  auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
   tablet::TabletOptions tablet_options;

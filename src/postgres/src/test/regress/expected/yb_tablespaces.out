@@ -261,7 +261,6 @@ SET default_tablespace TO regress_tblspace;
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_unique UNIQUE (id);
 SET default_tablespace TO '';
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_pkey PRIMARY KEY (id);
-ERROR:  adding primary key to a table with a tablespace is not yet implemented
 \d testschema.test_tab_unique
   Index "testschema.test_tab_unique"
  Column |  Type   | Key? | Definition
@@ -270,9 +269,23 @@ ERROR:  adding primary key to a table with a tablespace is not yet implemented
 unique, lsm, for table "testschema.test_tab"
 Tablespace: "regress_tblspace"
 
-/*
 \d testschema.test_tab_pkey
-*/
+   Index "testschema.test_tab_pkey"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
+primary key, lsm, for table "testschema.test_tab"
+
+\d testschema.test_tab;
+            Table "testschema.test_tab"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null |
+Indexes:
+    "test_tab_pkey" PRIMARY KEY, lsm (id HASH)
+    "test_tab_unique" UNIQUE CONSTRAINT, lsm (id HASH), tablespace "regress_tblspace"
+Tablespace: "regress_tblspace"
+
 SELECT * FROM testschema.test_tab;
  id
 ----
