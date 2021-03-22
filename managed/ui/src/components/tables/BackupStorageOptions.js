@@ -15,22 +15,17 @@ export const BackupStorageOptions = (storageConfigs) => {
     isNonEmptyArray(storageConfigs) &&
     storageConfigs.reduce((val, indx) => {
       const configType = indx.name;
-      val[configType]
-        ? val[configType].push({
-            configName: indx.configName,
-            configUUID: indx.configUUID
-          })
-        : (val[configType] = [
-            {
-              configName: indx.configName,
-              configUUID: indx.configUUID
-            }
-          ]);
+      const currentConfig = {
+        configName: indx.configName,
+        configUUID: indx.configUUID
+      };
+
+      val[configType] = [...val[configType] ?? [], currentConfig];
       return val;
     }, {});
 
   if (isNonEmptyObject(optGroups)) {
-    configTypeList = Object.keys(optGroups).map(function (key, idx) {
+    configTypeList = Object.keys(optGroups).map((key, idx) => {
       return (
         <optgroup label={(`${key} storage`).toUpperCase()} key={key + idx}>
           {optGroups[key]

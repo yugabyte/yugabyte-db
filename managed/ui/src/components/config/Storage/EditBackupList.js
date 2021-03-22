@@ -19,7 +19,8 @@ import { Col, Row } from 'react-bootstrap';
  * @returns inUse ? true : false;
  */
 const disableFields = (data, fieldId, configName) => {
-  if (data.inUse && fieldId !== `${configName}_CONFIGURATION_NAME`) {
+  const fieldName = `${configName}_CONFIGURATION_NAME`;
+  if (data.inUse && fieldId !== fieldName) {
     return true;
   }
 };
