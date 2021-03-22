@@ -73,6 +73,9 @@ Status SetStackTraceSignal(int signum);
 // may be active at a time.
 std::string DumpThreadStack(ThreadIdForStack tid);
 
+// Initializes libbacktrace if it is enabled and not yet initialized.
+void InitLibBackTrace();
+
 // Return the current stack trace, stringified.
 std::string GetStackTrace(
     StackTraceLineFormat source_file_path_format = StackTraceLineFormat::DEFAULT,
