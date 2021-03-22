@@ -2012,8 +2012,8 @@ export default class ClusterFields extends Component {
                       this.state.enableExposingService === EXPOSING_SERVICE_STATE_TYPES['Exposed']
                     }
                     onToggle={this.toggleEnableExposingService}
-                    label="Enable Exposing Service"
-                    subLabel="Assign an exposing service (loadbalancer, nodeport) for connecting to the DB endpoints over the internet."
+                    label="Enable Public Network Access"
+                    subLabel="Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
                   />
                 </div>
               </Col>
