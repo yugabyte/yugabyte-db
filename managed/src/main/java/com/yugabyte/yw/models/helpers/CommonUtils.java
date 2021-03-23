@@ -8,30 +8,96 @@ import com.yugabyte.yw.common.YWServiceException;
 import play.libs.Json;
 
 import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
+
+import org.apache.commons.lang3.StringUtils;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class CommonUtils {
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
+
   private static final String maskRegex = "(?<!^.?).(?!.?$)";
 
+  private static final String MASKED_FIELD_VALUE = "********";
+
+  /**
+   * Checks whether the field name represents a field with a sensitive data or
+   * not.
+   *
+   * @param fieldname
+   * @return true if yes, false otherwise
+   */
+  public static boolean isSensitiveField(String fieldname) {
+    String ucFieldname = fieldname.toUpperCase();
+    return isStrictlySensitiveField(ucFieldname) || ucFieldname.contains("KEY")
+        || ucFieldname.contains("SECRET") || ucFieldname.contains("CREDENTIALS")
+        || ucFieldname.contains("API") || ucFieldname.contains("POLICY");
+  }
+
+  /**
+   * Checks whether the field name represents a field with a very sensitive data
+   * or not. Such fields require strict masking.
+   *
+   * @param fieldname
+   * @return true if yes, false otherwise
+   */
+  public static boolean isStrictlySensitiveField(String fieldname) {
+    String ucFieldname = fieldname.toUpperCase();
+    return ucFieldname.contains("PASSWORD");
+  }
+
+  /**
+   * Masks sensitive fields in the config. Sensitive fields could be of two types
+   * - sensitive and strictly sensitive. First ones are masked partly (two first
+   * and two last characters are left), strictly sensitive fields are masked with
+   * fixed 8 asterisk characters (recommended for passwords).
+   *
+   * @param config Config which could hold some data to mask.
+   * @return Masked config
+   */
   public static JsonNode maskConfig(JsonNode config) {
-    if (config == null || config.size() == 0) {
+    return processData(config, CommonUtils::isSensitiveField,
+        (key, value) -> getMaskedValue(key, value));
+  }
+
+  private static String getMaskedValue(String key, String value) {
+    return isStrictlySensitiveField(key) || (value == null) ? MASKED_FIELD_VALUE
+        : value.replaceAll(maskRegex, "*");
+  }
+
+  /**
+   * Removes masks from the config. If some fields are sensitive but were updated,
+   * these fields are remain the same (with the new values).
+   *
+   * @param originalData Previous config data. All masked data recovered from it.
+   * @param data         The new config data.
+   * @return Updated config (all masked fields are recovered).
+   */
+  public static JsonNode unmaskConfig(JsonNode originalData, JsonNode data) {
+    return originalData == null ? data
+        : processData(data, CommonUtils::isSensitiveField,
+            (key, value) -> StringUtils.equals(value, getMaskedValue(key, value))
+                ? originalData.get(key).textValue()
+                : value);
+  }
+
+  private static JsonNode processData(JsonNode data, Predicate<String> selector,
+      BiFunction<String, String, String> getter) {
+    if (data == null) {
       return Json.newObject();
     }
-    JsonNode maskedData = config.deepCopy();
-    for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
-      String key = it.next();
-      String keyLowerCase = key.toLowerCase();
-      // TODO: make this a constant
-      if (keyLowerCase.contains("key")
-        || keyLowerCase.contains("secret")
-        || keyLowerCase.contains("api")
-        || keyLowerCase.contains("policy")) {
-        ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll(maskRegex, "*"));
+    JsonNode result = data.deepCopy();
+    for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext();) {
+      Entry<String, JsonNode> entry = it.next();
+      if (selector.test(entry.getKey())) {
+        ((ObjectNode) result).put(entry.getKey(),
+            getter.apply(entry.getKey(), entry.getValue().textValue()));
       }
     }
-    return maskedData;
+    return result;
   }
 
   /**
