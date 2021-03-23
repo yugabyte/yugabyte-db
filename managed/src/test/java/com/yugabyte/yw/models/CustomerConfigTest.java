@@ -3,9 +3,14 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.AlertingFormData.SmtpData;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -16,7 +21,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-
 
 public class CustomerConfigTest extends FakeDBApplication {
 
