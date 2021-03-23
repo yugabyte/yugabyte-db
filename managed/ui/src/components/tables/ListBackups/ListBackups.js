@@ -34,6 +34,7 @@ const getTableType = (text) => {
       return null;
   }
 };
+
 export default class ListBackups extends Component {
   state = {
     selectedRowList: null,
@@ -41,7 +42,8 @@ export default class ListBackups extends Component {
     showAlert: false,
     taskUUID: null,
     alertType: null,
-    showDeletedBackups: false
+    showDeletedBackups: false,
+    selected: []
   };
 
   static defaultProps = {
@@ -283,6 +285,42 @@ export default class ListBackups extends Component {
     });
   };
 
+  /**
+   * This method will help us to get the particular backupUUID
+   * for the selected row.
+   *
+   * @param {string} {backupUUID} Backup UUID.
+   * @param {boolean} isSelected Selected row.
+   * @returns Boolean
+   */
+  onRowSelect = ({ backupUUID }, isSelected) => {
+    isSelected ?
+      this.setState({ selected: [...this.state.selected, backupUUID].sort() }) :
+      this.setState({ selected: this.state.selected.filter((id) => id !== backupUUID) });
+
+    return false;
+  };
+
+  /**
+   * This method will help us to select all the backups for
+   * the current page.
+   *
+   * @param {boolean} isSelected Selected rows.
+   * @param {Array} rows Number of rows.
+   * @returns Boolean
+   */
+  onSelectAll = (isSelected, rows) => {
+    let selected = [...this.state.selected];
+    if (isSelected) {
+      rows.forEach((row) => selected.push(row.backupUUID));
+      this.setState({ selected: selected });
+    } else {
+      this.setState({ selected: [] });
+    }
+
+    return true;
+  }
+
   render() {
     const {
       currentCustomer,
@@ -297,8 +335,19 @@ export default class ListBackups extends Component {
       showAlert,
       alertType,
       selectedRowList,
-      showDeletedBackups
+      showDeletedBackups,
+      selected
     } = this.state;
+
+    // Variable to set the checkbox for backup list table.
+    const selectRowProp = {
+      mode: 'checkbox',
+      clickToExpand: true,
+      onSelect: this.onRowSelect,
+      onSelectAll: this.onSelectAll,
+      selected: this.state.selected
+    };
+
     if (
       getPromiseState(universeBackupList).isLoading() ||
       getPromiseState(universeBackupList).isInit()
@@ -445,6 +494,19 @@ export default class ListBackups extends Component {
                           onSubmit={(data) => this.handleModalSubmit('Restore', data)}
                           onError={() => this.handleModalSubmit('Restore')}
                         />
+                        <TableAction
+                          disabled={this.state.selected.length < 1 || currentUniverse.universeDetails.backupInProgress}
+                          currentRow={{
+                            type: "bulkDelete",
+                            data: this.state.selected
+                          }}
+                          className="table-action"
+                          btnClass="btn-default"
+                          isMenuItem={false}
+                          actionType="delete-backup"
+                          onSubmit={(data) => this.handleModalSubmit('Delete', data)}
+                          onError={() => this.handleModalSubmit('Delete')}
+                        />
                         <div className="chk-show-deleted-backups">
                           <label>Show deleted backups</label>
                           <Toggle
@@ -477,6 +539,7 @@ export default class ListBackups extends Component {
               options={{
                 expandBy: 'column'
               }}
+              selectRow={selectRowProp}
             >
               <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
               <TableHeaderColumn

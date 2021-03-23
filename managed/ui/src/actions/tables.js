@@ -166,6 +166,15 @@ export function deleteBackup(backupUUID) {
   };
 }
 
+export function bulkDeleteBackup(payload) {
+  const baseUrl = getCustomerEndpoint();
+  const request = axios.delete(`${baseUrl}/backups/`, payload);
+  return {
+    type: DELETE_BACKUP,
+    payload: request
+  };
+}
+
 export function deleteBackupResponse(response) {
   return {
     type: DELETE_BACKUP_RESPONSE,
