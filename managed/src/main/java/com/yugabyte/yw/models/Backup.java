@@ -259,7 +259,6 @@ public class Backup extends Model {
         continue;
       }
     }
-    System.out.println(universes.toString());
     return universes;
   }
 }
