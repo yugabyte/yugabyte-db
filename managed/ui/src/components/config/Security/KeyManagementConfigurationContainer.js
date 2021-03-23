@@ -12,7 +12,6 @@ import {
   deleteKMSProviderConfigResponse
 } from '../../../actions/cloud';
 import { toast } from 'react-toastify';
-import { closeDialog, openDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
