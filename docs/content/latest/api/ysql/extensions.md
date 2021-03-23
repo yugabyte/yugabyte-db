@@ -308,6 +308,12 @@ Only some extensions are currently supported. If you encounter any issues when i
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
+{{< note title="GiST index support" >}}
+
+YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
+
+{{< /note >}}
+
 #### macOS
 
 There are two ways to install PostGIS on macOS:
@@ -461,12 +467,6 @@ This might take a couple of minutes.
     University of Alberta | Windsor Park
     (7 rows)
     ```
-
-{{< note title="GiST index support" >}}
-
-YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
-
-{{< /note >}}
 
 ### postgresql-hll (PostgreSQL extension for HyperLogLog)
 

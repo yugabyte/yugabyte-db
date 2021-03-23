@@ -31,11 +31,12 @@ The following extensions are bundled with YugabyteDB. Click an extension's name 
 
 * [**pgcrypto**](/latest/api/ysql/extensions/#pgcrypto) provides cryptographic functions, including hashing and encryption/decryption functions.
 
-* [**SPI**, the server programming interface](/latest/api/ysql/extensions/#server-programming-interface-spi-module) module, provides
+* [**SPI**, the server programming interface](/latest/api/ysql/extensions/#server-programming-interface-spi-module) module, allows you to create functions and stored procedures in C.
 
 ## Other verified extensions
 
 The following extensions are verified to work with YugabyteDB, but aren't pre-bundled. Click an extension's name for detailed installation and usage documentation.
 
-* [**PostGIS**](/latest/api/ysql/extensions/#postgis) . (Note that YugabyteDB does not currently support GiST indexes.)
-* [**uuid-ossp**](/latest/api/ysql/extensions/#uuid-ossp)
+* [**PostGIS**](/latest/api/ysql/extensions/#postgis) is a spatial database extender for PostgreSQL-compatible object-relational databases. (Note that YugabyteDB does not currently support GiST indexes.)
+* [**postgresql-hll**](/latest/api/ysql/extensions/#postgresql-hll-postgresql-extension-for-hyperloglog) provides support for HyperLogLog, a fixed-size, set-like structure used for distinct value counting with tunable precision.
+* [**uuid-ossp**](/latest/api/ysql/extensions/#uuid-ossp) provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants.
