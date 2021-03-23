@@ -24,6 +24,10 @@
 
 #include "yb/tools/yb-admin_util.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
@@ -156,6 +160,24 @@ Result<string> GetCompletedSnapshot(MasterBackupServiceProxy* proxy,
   return SnapshotIdToString(resp.snapshots(idx).id());
 }
 
+Result<ListSnapshotsResponsePB> WaitForRestoreSnapshot(MasterBackupServiceProxy* proxy) {
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  RETURN_NOT_OK(
+      WaitFor([proxy, &req, &resp]() -> Result<bool> {
+            RpcController rpc;
+            RETURN_NOT_OK(proxy->ListSnapshots(req, &resp, &rpc));
+            for (auto const& snapshot : resp.snapshots()) {
+              if (snapshot.entry().state() == SysSnapshotEntryPB::RESTORING) {
+                return false;
+              }
+            }
+            return true;
+          },
+          30s, "Waiting for snapshot restore to complete"));
+  return resp;
+}
+
 Result<size_t> AdminCliTest::NumTables(const string& table_name) const {
   auto tables = VERIFY_RESULT(
       client_->ListTables(/* filter */ table_name, /* exclude_ysql */ true));
@@ -251,6 +273,124 @@ TEST_F(AdminCliTest, TestExportImportSnapshot) {
   ASSERT_EQ(1, ASSERT_RESULT(NumTables(table_name)));
 
   LOG(INFO) << "Test TestExportImportSnapshot finished.";
+}
+
+TEST_F(AdminCliTest, TestRestoreSnapshotBasic) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+
+  // Create snapshot of default table that gets created.
+  LOG(INFO) << "Creating snapshot";
+  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  ASSERT_OK(DeleteRow(CreateSession(), 1));
+  ASSERT_NOK(SelectRow(CreateSession(), 1));
+
+  // Restore snapshot into the existing table.
+  LOG(INFO) << "Restoring snapshot";
+  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id}));
+  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+  LOG(INFO) << "Restored snapshot";
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return SelectRow(CreateSession(), 1).ok();
+  }, 20s, "Waiting for row from restored snapshot."));
+}
+
+TEST_F(AdminCliTest, TestRestoreSnapshotHybridTime) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  ASSERT_OK(WriteRow(CreateSession(), 2, 2));
+
+  // Create snapshot of default table that gets created.
+  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  // Restore snapshot into the existing table.
+  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id,
+      std::to_string(hybrid_time.GetPhysicalValueMicros())}));
+  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+
+  // Row before HybridTime present, row after should be missing now.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return SelectRow(CreateSession(), 1).ok() &&
+           !SelectRow(CreateSession(), 2).ok();
+  }, 20s, "Waiting for row from restored snapshot."));
+}
+
+TEST_F(AdminCliTest, TestRestoreSnapshotTimestamp) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+  auto timestamp = DateTime::TimestampToString(DateTime::TimestampNow());
+  LOG(INFO) << "Timestamp: " << timestamp;
+  auto write_wait = 2s;
+  std::this_thread::sleep_for(write_wait);
+  ASSERT_OK(WriteRow(CreateSession(), 2, 2));
+
+  // Create snapshot of default table that gets created.
+  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  // Restore snapshot into the existing table.
+  ASSERT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id, timestamp }));
+  ASSERT_RESULT(WaitForRestoreSnapshot(&BackupServiceProxy()));
+
+  // Row before Timestamp present, row after should be missing now.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return SelectRow(CreateSession(), 1).ok() &&
+           !SelectRow(CreateSession(), 2).ok();
+  }, 20s, "Waiting for row from restored snapshot."));
+}
+
+TEST_F(AdminCliTest, TestRestoreSnapshotInterval) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+  auto pre_sleep_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  auto write_wait = 5s;
+  std::this_thread::sleep_for(write_wait);
+  ASSERT_OK(WriteRow(CreateSession(), 2, 2));
+
+  // Create snapshot of default table that gets created.
+  ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(&BackupServiceProxy()));
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  // Restore snapshot into the existing table.
+  constexpr auto kWaitTimeout = 15s;
+  ASSERT_OK(WaitFor([this, &pre_sleep_ht, &snapshot_id, &write_wait]() -> Result<bool> {
+    auto restore_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+    auto interval = restore_ht.GetPhysicalValueMicros() - pre_sleep_ht.GetPhysicalValueMicros();
+    auto i_str = std::to_string(interval/1000000) + "s";
+    RETURN_NOT_OK(RunAdminToolCommand({"restore_snapshot", snapshot_id, "minus", i_str}));
+    RETURN_NOT_OK(WaitForRestoreSnapshot(&BackupServiceProxy()));
+
+    // Ensure the snapshot was restored before Now() - interval passed our sleep_for window.
+    auto finish_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+    return finish_ht.PhysicalDiff(restore_ht) < std::chrono::microseconds(write_wait).count();
+  }, kWaitTimeout * kTimeMultiplier, "Snapshot restored in time."));
+
+  // Row before Timestamp present, row after should be missing now.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return SelectRow(CreateSession(), 1).ok() &&
+           !SelectRow(CreateSession(), 2).ok();
+  }, 20s, "Waiting for row from restored snapshot."));
 }
 
 void AdminCliTest::CheckImportedTableWithIndex(const string& keyspace,

@@ -225,7 +225,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
 
   if (viewType == TServersViewType::kTServersClocksView) {
     *output << "      <th>Physical Time (UTC)</th>\n"
-            << "      <th>Hybrid Time (UTC)</th>\n";
+            << "      <th>Hybrid Time (UTC)</th>\n"
+            << "      <th>Heartbeat RTT</th>\n";
   } else {
     DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
@@ -369,6 +370,9 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
           *output << " / Logical: " << ht.GetLogicalValue();
         }
         *output << "</td>";
+        // Render the roundtrip time of previous heartbeat.
+        double rtt_ms = desc->heartbeat_rtt().ToMicroseconds()/1000.0;
+        *output << "    <td>" <<  StringPrintf("%.2fms", rtt_ms) << "</td>";
       } else {
         DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
         *output << "    <td>" << (no_tablets ? 0
@@ -1011,8 +1015,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
 namespace {
 
-bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
-  return a.role < b.role;
+bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
+    return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
 }
 
 } // anonymous namespace
@@ -1119,7 +1123,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
-    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByRole);
+    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
 
     auto l = tablet->LockForRead();
 

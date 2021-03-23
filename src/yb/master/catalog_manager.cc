@@ -280,12 +280,6 @@ DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_int32(yql_is_create_index_done_delay_ms, 0,
-    "Time to wait after IsCreateTableDone for an index using online schema migration finds the"
-    " index in the master index map.");
-TAG_FLAG(yql_is_create_index_done_delay_ms, hidden);
-TAG_FLAG(yql_is_create_index_done_delay_ms, runtime);
-
 DEFINE_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, runtime);
@@ -356,12 +350,19 @@ DEFINE_int32(txn_table_wait_min_ts_count, 1,
              " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
-DEFINE_bool(enable_ysql_tablespaces_for_placement, false,
+DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
             "If set, tablespaces will be used for placement of YSQL tables.");
+TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
 
-DEFINE_int32(ysql_tablespace_info_refresh_secs, -1,
+DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "Frequency at which the table to tablespace information will be updated in master "
-             "from pg catalog tables.");
+             "from pg catalog tables. A value of -1 disables the refresh task.");
+TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
+
+DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
+                 "When set, placement of the tablets of a newly created table will not honor "
+                 "its tablespace placement policy until the loadbalancer runs.");
+TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
 namespace yb {
 namespace master {
@@ -2830,10 +2831,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   TRACE("Wrote table to system table");
 
-  // For index table, insert index info in the indexed table.  However, for backwards compatibility,
-  // don't insert index info for YSQL tables when index backfill is disabled.
-  if ((req.has_index_info() || req.has_indexed_table_id()) &&
-      (index_backfill_enabled || !is_pg_table)) {
+  // For index table, insert index info in the indexed table.
+  if ((req.has_index_info() || req.has_indexed_table_id())) {
     if (index_backfill_enabled && !req.skip_index_backfill()) {
       if (is_pg_table) {
         // YSQL: start at some permission before backfill.  The real enforcement happens with
@@ -3218,18 +3217,31 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // MasterErrorPB::UNKNOWN_ERROR.
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
-  // 4. For index table:
-  // YCQL only needs to wait for the index to be added to the table's index map, since the
-  // expectation is that the backfill will be completed asynchronously. i.e. create-index does not
-  // wait for it. However, for YSQL index tables:
-  //   a. If backfill is enabled, wait until the index is present in indexed table's index map.
-  //   b. Otherwise wait until the alter schema is done on the indexed table as well.
+  // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
+  // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
   if (resp->done() && PROTO_IS_INDEX(pb)) {
     auto& indexed_table_id = PROTO_GET_INDEXED_TABLE_ID(pb);
+    // For user indexes (which add index info to indexed table's schema),
+    // - if this index is created without backfill,
+    //   - waiting for the index to be in the indexed table's schema is sufficient, and, by that
+    //     point, things are fully created.
+    // - if this index is created with backfill
+    //   - and it's YCQL,
+    //     - waiting for the index to be in the indexed table's schema means waiting for the
+    //       DELETE_ONLY index permission, and it's fine to return to the client before the index
+    //       gets the rest of the permissions because the expectation is that backfill will be
+    //       completed asynchronously.
+    //   - and it's YSQL,
+    //     - waiting for the index to be in the indexed table's schema means just that (DocDB index
+    //       permissions don't really matter for YSQL besides being used for backfill purposes), and
+    //       it's a signal for postgres to continue the index backfill process, activating index
+    //       state flags then later triggering backfill and so on.
+    // For YSQL system indexes (which don't add index info to indexed table's schema),
+    // - there's nothing additional to wait on.
+    // Therefore, the only thing needed here is to check whether the index info is in the indexed
+    // table's schema for user indexes.
     if (pb.table_type() == YQL_TABLE_TYPE ||
-        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table) &&
-         IsIndexBackfillEnabled(
-             pb.table_type(), pb.schema().table_properties().is_transactional()))) {
+        (pb.table_type() == PGSQL_TABLE_TYPE && IsUserCreatedTable(*table))) {
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
@@ -3246,24 +3258,9 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           resp->set_done(true);
-          // This wait was to give tservers time to apply schema changes and hopefully avoid
-          // consistency issues.  It should now be fixed, but it still exists for now because the
-          // gflag was part of the 2.5 release.  Later, it shouldn't be a big deal to remove this
-          // and the gflag.
-          SleepFor(MonoDelta::FromMilliseconds(FLAGS_yql_is_create_index_done_delay_ms));
           break;
         }
       }
-    } else {
-      IsAlterTableDoneRequestPB alter_table_req;
-      IsAlterTableDoneResponsePB alter_table_resp;
-      alter_table_req.mutable_table()->set_table_id(indexed_table_id);
-      const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
-      if (!s.ok()) {
-        resp->mutable_error()->Swap(alter_table_resp.mutable_error());
-        return s;
-      }
-      resp->set_done(alter_table_resp.done());
     }
   }
 
@@ -3556,7 +3553,8 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
-Result<TableDescription> CatalogManager::DescribeTable(const TableIdentifierPB& table_identifier) {
+Result<TableDescription> CatalogManager::DescribeTable(
+    const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
   TableDescription result;
 
   // Lookup the table and verify it exists.
@@ -3572,7 +3570,7 @@ Result<TableDescription> CatalogManager::DescribeTable(const TableIdentifierPB& 
     TRACE("Locking table");
     auto l = result.table_info->LockForRead();
 
-    if (result.table_info->IsCreateInProgress()) {
+    if (!succeed_if_create_in_progress && result.table_info->IsCreateInProgress()) {
       return STATUS(IllegalState, "Table creation is in progress", result.table_info->ToString(),
                     MasterError(MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS));
     }
@@ -7845,8 +7843,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
-  SendCreateTabletRequests(deferred.needs_create_rpc);
-  return Status::OK();
+  return SendCreateTabletRequests(deferred.needs_create_rpc);
 }
 
 Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_descs,
@@ -7981,18 +7978,27 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
   return Status::OK();
 }
 
-void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
+Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
+  auto schedules_to_tablets_map = VERIFY_RESULT(MakeSnapshotSchedulesToTabletsMap());
   for (TabletInfo *tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
     tablet->set_last_update_time(MonoTime::Now());
+    std::vector<SnapshotScheduleId> schedules;
+    for (const auto& pair : schedules_to_tablets_map) {
+      if (std::binary_search(pair.second.begin(), pair.second.end(), tablet->id())) {
+        schedules.push_back(pair.first);
+      }
+    }
     for (const RaftPeerPB& peer : config.peers()) {
       auto task = std::make_shared<AsyncCreateReplica>(master_, AsyncTaskPool(),
-          peer.permanent_uuid(), tablet);
+          peer.permanent_uuid(), tablet, schedules);
       tablet->table()->AddTask(task);
       WARN_NOT_OK(ScheduleTask(task), "Failed to send new tablet request");
     }
   }
+
+  return Status::OK();
 }
 
 // If responses have been received from sufficient replicas (including hinted leader),
@@ -9006,12 +9012,14 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
 Result<vector<TableDescription>> CatalogManager::CollectTables(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
     bool add_indexes,
-    bool include_parent_colocated_table) {
+    bool include_parent_colocated_table,
+    bool succeed_if_create_in_progress) {
   vector<TableDescription> all_tables;
   unordered_set<NamespaceId> parent_colocated_table_ids;
 
   for (const auto& table_id_pb : tables) {
-    TableDescription table_description = VERIFY_RESULT(DescribeTable(table_id_pb));
+    auto table_description = VERIFY_RESULT(DescribeTable(
+        table_id_pb, succeed_if_create_in_progress));
     if (include_parent_colocated_table && table_description.table_info->colocated()) {
       // If a table is colocated, add its parent colocated table as well.
       const auto parent_table_id =
@@ -9022,8 +9030,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         TableIdentifierPB parent_table_pb;
         parent_table_pb.set_table_id(parent_table_id);
         parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        TableDescription parent_table_description = VERIFY_RESULT(DescribeTable(parent_table_pb));
-        all_tables.push_back(parent_table_description);
+        all_tables.push_back(VERIFY_RESULT(DescribeTable(
+            parent_table_pb, succeed_if_create_in_progress)));
       }
     }
     all_tables.push_back(table_description);
@@ -9050,7 +9058,8 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
         TableIdentifierPB index_id_pb;
         index_id_pb.set_table_id(index_info.table_id());
         index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(index_id_pb)));
+        all_tables.push_back(VERIFY_RESULT(DescribeTable(
+            index_id_pb, succeed_if_create_in_progress)));
       }
     }
   }
@@ -9096,6 +9105,61 @@ void CatalogManager::RebuildYQLSystemPartitions() {
         background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
   }, wait_time);
+}
+
+Status CatalogManager::SysCatalogRespectLeaderAffinity() {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+
+  const auto& affinitized_leaders = config.replication_info().affinitized_leaders();
+  if (affinitized_leaders.empty()) {
+    return Status::OK();
+  }
+
+  ServerRegistrationPB reg;
+  RETURN_NOT_OK(GetRegistration(&reg));
+
+  for (const CloudInfoPB& cloud_info : affinitized_leaders) {
+    // Do nothing if already in an affinitized zone.
+    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, reg.cloud_info())) {
+      return Status::OK();
+    }
+  }
+
+  // Not in affinitized zone, try finding a master to send a step down request to.
+  std::vector<ServerEntryPB> masters;
+  RETURN_NOT_OK(master_->ListMasters(&masters));
+
+  for (const ServerEntryPB& master : masters) {
+    auto master_cloud_info = master.registration().cloud_info();
+
+    for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
+      if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
+        LOG_WITH_PREFIX(INFO) << "Sys catalog tablet is not in an affinitized zone, "
+                              << "sending step down request to master uuid "
+                              << master.instance_id().permanent_uuid()
+                              << " in zone "
+                              << TSDescriptor::generate_placement_id(master_cloud_info);
+        std::shared_ptr<TabletPeer> tablet_peer;
+        RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+
+        consensus::LeaderStepDownRequestPB req;
+        req.set_tablet_id(sys_catalog_->tablet_id());
+        req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
+        req.set_new_leader_uuid(master.instance_id().permanent_uuid());
+
+        consensus::LeaderStepDownResponsePB resp;
+        RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status());
+        }
+        LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+        return Status::OK();
+      }
+    }
+  }
+
+  return STATUS(NotFound, "Couldn't find a master in an affinitized zone");
 }
 
 }  // namespace master

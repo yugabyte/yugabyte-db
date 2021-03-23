@@ -286,9 +286,12 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   Schema schema_with_ids = SchemaBuilder(schema).Build();
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
-  return server_->tablet_manager()->CreateNewTablet(
-      table_id, tablet_id, partition.second, ns_id, table_id, table_type, schema_with_ids,
-      partition.first, boost::none /* index_info */, config, nullptr);
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      boost::none /* index_info */, 0 /* schema_version */, partition.first);
+
+  return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
+      table_info, tablet_id, partition.second, config));
 }
 
 void MiniTabletServer::FailHeartbeats(bool fail_heartbeats_for_tests) {

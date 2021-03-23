@@ -51,6 +51,8 @@ message SysSnapshotEntryPB {
   optional fixed64 snapshot_hybrid_time = 4;
 
   optional int64 version = 5;
+
+  optional bytes schedule_id = 6;
 }
 
 ////////////////////////////////////////////////////////////
@@ -188,6 +190,7 @@ message ListSnapshotSchedulesRequestPB {
 message SnapshotScheduleInfoPB {
   optional bytes id = 1;
   optional SnapshotScheduleOptionsPB options = 2;
+  repeated SnapshotInfoPB snapshots = 3;
 }
 
 message ListSnapshotSchedulesResponsePB {

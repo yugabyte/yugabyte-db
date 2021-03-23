@@ -16,6 +16,7 @@ import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
+import { YBConfirmModal } from '../../../modals';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -120,6 +121,11 @@ class Certificates extends Component {
       .finally(() => this.setState({ showSubmitting: false }));
   };
 
+  showDeleteCertificateModal = (certificateModal) => {
+    this.setState({ certificateModal });
+    this.props.showConfirmDeleteModal();
+  }
+
   /**
    * Delete the root certificate if certificate is safe to remove,
    * i.e - Certificate is not attached to any universe for current user.
@@ -179,8 +185,8 @@ class Certificates extends Component {
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
         <MenuItem
-          onClick={() => {
-            this.deleteCertificate(payload?.uuid);
+          onClick={() => { 
+            this.showDeleteCertificateModal(payload)
           }}
           disabled={deleteDisabled}
           title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
@@ -218,7 +224,8 @@ class Certificates extends Component {
     const { showSubmitting, associatedUniverses, isVisibleModal } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-      ? userCertificates.data.map((cert) => {
+    ? userCertificates.data
+        .map((cert) => {
           return {
             type: cert.certType,
             uuid: cert.uuid,
@@ -232,6 +239,7 @@ class Certificates extends Component {
             universeDetails: cert.universeDetails
           };
         })
+        .sort((a, b) => (new Date(b.creationTime) - new Date(a.creationTime)))
       : [];
 
     return (
@@ -260,6 +268,7 @@ class Certificates extends Component {
             <Fragment>
               <BootstrapTable
                 data={certificateArray}
+                pagination
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
               >
@@ -333,6 +342,19 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
+        <YBConfirmModal
+          name="deleteCertificateModal"
+          title="Delete Certificate"
+          hideConfirmModal={ this.props.closeModal }
+          currentModal="deleteCertificateModal"
+          visibleModal={ visibleModal }
+          onConfirm={ () => this.deleteCertificate(this.state.certificateModal?.uuid) }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        >
+          Are you sure you want to delete certificate{' '}
+          <strong>{ this.state.certificateModal?.name }</strong> ?
+        </YBConfirmModal>
       </div>
     );
   }

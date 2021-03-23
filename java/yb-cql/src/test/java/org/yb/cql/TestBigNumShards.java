@@ -14,11 +14,14 @@ package org.yb.cql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.yb.util.YBTestRunnerNonTsanAsan;
 
 @RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestBigNumShards extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestBigNumShards.class);
 
   @Override
   protected int overridableNumShardsPerTServer() {

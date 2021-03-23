@@ -87,6 +87,7 @@ readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 
 set +u
 readonly MANAGED_PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
+readonly MANAGED_PATH_ORIGINAL="${PATH:-}"
 set -u
 
 # Basename (i.e. name excluding the directory path) of our virtualenv.
@@ -207,8 +208,9 @@ deactivate_virtualenv() {
     return
   fi
 
-  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH=$MANAGED_PYTHONPATH_ORIGINAL
+    export PATH=$MANAGED_PATH_ORIGINAL
     return
   fi
 
@@ -245,8 +247,9 @@ activate_virtualenv() {
     return
   fi
 
-  if [[ -f "$YB_INSTALLED_MODULES_DIR" ]]; then
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
+    export PATH="${YB_INSTALLED_MODULES_DIR}/bin:${MANAGED_PATH_ORIGINAL}"
     return
   fi
 
@@ -291,8 +294,24 @@ activate_virtualenv() {
 create_pymodules_package() {
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
-  run_pip install -r "$FROZEN_REQUIREMENTS_FILE" --target="$YB_PYTHON_MODULES_DIR"
-  run_pip install "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" --target="$YB_PYTHON_MODULES_DIR"
+  # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
+  # system-specific libraries.
+  log "Downloading package scripts"
+  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --prefix="$YB_PYTHON_MODULES_DIR" \
+    --ignore-installed
+  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --prefix="$YB_PYTHON_MODULES_DIR"
+  rm -rf "$YB_PYTHON_MODULES_DIR"/lib*
+  # Download remaining libraries.
+  log "Downloading package libraries"
+  run_pip install "setuptools<45" -r "$FROZEN_REQUIREMENTS_FILE" --target="$YB_PYTHON_MODULES_DIR" \
+    --ignore-installed
+  run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --target="$YB_PYTHON_MODULES_DIR"
+  # Change shebangs to be path-independent.
+  current_py_exec=$(which python)
+  LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
+    -e "1s|${current_py_exec}|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
   tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
     $(basename "$YB_PYTHON_MODULES_DIR")
   rm -rf "$YB_PYTHON_MODULES_DIR"
@@ -302,6 +321,12 @@ install_pymodules_package() {
   rm -rf "$YB_INSTALLED_MODULES_DIR"
   mkdir -p "$YB_INSTALLED_MODULES_DIR"
   tar -C "$YB_INSTALLED_MODULES_DIR" -xvf "$YB_PYTHON_MODULES_PACKAGE" --strip-components=1
+  # Create startup script that python will execute beforehand. This is to properly add all python
+  # modules to path (e.g. google-api-core).
+  cat > "$YB_INSTALLED_MODULES_DIR"/sitecustomize.py << EOF
+import site
+site.addsitedir("$YB_INSTALLED_MODULES_DIR")
+EOF
 }
 
 # Somehow permissions got corrupted for some files in the virtualenv, possibly due to sudo

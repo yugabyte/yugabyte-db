@@ -506,7 +506,9 @@ prepare_for_running_cxx_test() {
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
-  create_test_tmpdir
+  # Ensure we have a TEST_TMPDIR defined and it exists.
+  # If it doesn't exit, we need to make a new one
+  [[ -d "${TEST_TMPDIR:-}" ]] || create_test_tmpdir
   test_log_path="$test_log_path_prefix.log"
 
   # gtest won't overwrite old junit test files, resulting in a build failure
@@ -1063,7 +1065,7 @@ set_sanitizer_runtime_options() {
         "$YB_THIRDPARTY_DIR/installed/bin"
         "$YB_THIRDPARTY_DIR/clang-toolchain/bin"
       )
-      # When building with clang10 or clang11, normally $YB_RESOLVED_CC_COMPILER would contain the
+      # When building with clang10 or clang11, normally $YB_RESOLVED_C_COMPILER would contain the
       # path of clang within LLVM's bin directory.
       if [[ -z ${cc_executable:-} ]]; then
         find_compiler_by_type
@@ -1817,6 +1819,7 @@ run_python_doctest() {
     fi
     if [[ $basename == .ycm_extra_conf.py ||
           $basename == split_long_command_line.py ||
+          $basename == check-diff-name.py ||
           $python_file =~ managed/.* ]]; then
       continue
     fi

@@ -16,10 +16,11 @@ yb_home_dir="/home/yugabyte"
 # This should be a comma separated key-value list. Associative arrays were add in bash 4.0 so
 # they might not exist in the provided instance depending on how old it is.
 result_kvs=""
+YB_SUDO_PASS=""
 
 preflight_provision_check() {
   # Check python is installed.
-  sudo /bin/sh -c "/usr/bin/env python --version"
+  echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python --version"
   update_result_json_with_rc "Sudo Access to Python" "$?"
 
   # Check for internet access.
@@ -99,11 +100,11 @@ check_filepath() {
     # To reduce sudo footprint, use a format similar to what ansible would execute
     # (e.g. /bin/sh -c */usr/bin/env python *)
     if $check_parent; then
-      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
         filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
         exit(1) if not os.access(filepath, os.W_OK) else exit();\""
     else
-      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
         exit(1) if not os.access('$path', os.W_OK) else exit();\""
     fi
   else
@@ -147,9 +148,15 @@ Options:
     Commas separated list of mount paths to check permissions of.
   --yb_home_dir HOME_DIR
     Home directory of yugabyte user.
+  --sudo_pass_file
+    Bash file containing the sudo password variable.
   -h, --help
     Show usage.
 EOT
+}
+
+err_msg() {
+  echo $@ >&2
 }
 
 if [[ ! $# -gt 0 ]]; then
@@ -162,8 +169,8 @@ while [[ $# -gt 0 ]]; do
     -t|--type)
       options="provision configure"
       if [[ ! $options =~ (^|[[:space:]])"$2"($|[[:space:]]) ]]; then
-        echo "Invalid option: $2. Must be one of ['configure', 'provision'].\n"
-        show_usage
+        err_msg "Invalid option: $2. Must be one of ['configure', 'provision'].\n"
+        show_usage >&2
         exit 1
       fi
       check_type="$2"
@@ -183,13 +190,22 @@ while [[ $# -gt 0 ]]; do
       yb_home_dir="$2"
       shift
     ;;
+    --sudo_pass_file)
+      if [ -f $2 ]; then
+        . $2
+        rm -rf "$2"
+      else
+        err_msg "Falied to find sudo_pass_file: $2" >&2
+      fi
+      shift
+    ;;
     -h|--help)
       show_usage >&2
       exit 1
     ;;
     *)
-      echo "Invalid option: $1\n"
-      show_usage
+      err_msg "Invalid option: $1\n"
+      show_usage >&2
       exit 1
   esac
   shift
