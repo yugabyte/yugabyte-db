@@ -815,6 +815,8 @@ static void ybcBindScanKeys(Relation relation,
 						                  ARR_ELEMTYPE(arrayval),
 						                  elmlen, elmbyval, elmalign,
 						                  &elem_values, &elem_nulls, &num_elems);
+						if(num_elems == 0)
+						    ybScan->quit_scan = true;
 
 						/*
 						 * Compress out any null elements.  We can ignore them since we assume
@@ -1004,6 +1006,7 @@ ybcBeginScan(Relation relation, Relation index, bool xs_want_itup, int nkeys, Sc
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
 	ybScan->tableOid = RelationGetRelid(relation);
+	ybScan->quit_scan = false;
 
 	/* Setup the scan plan */
 	YbScanPlanData	scan_plan;
@@ -1157,6 +1160,8 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	HeapTuple   tup      = NULL;
 
+	if (ybScan->quit_scan)
+		return NULL;
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
