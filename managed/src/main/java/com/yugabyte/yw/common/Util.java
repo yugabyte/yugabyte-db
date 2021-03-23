@@ -329,8 +329,8 @@ public class Util {
 
   public static ArrayNode getUniverseDetails(Set<Universe> universes) {
     ArrayNode details = Json.newArray();
-    ObjectNode universePayload = Json.newObject();
     for (Universe universe : universes) {
+      ObjectNode universePayload = Json.newObject();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       universePayload.put("name", universe.name);
       universePayload.put("updateInProgress", universeDetails.updateInProgress);
