@@ -17,7 +17,7 @@ This section describes how to manipulate data in YugabyteDB using the YSQL `INSE
 
 ## Inserting Rows
 
-Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing comple or partial data by inserting one row at a time. 
+Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time. 
 
 For example, you work with a database that includes the following table:
 
@@ -38,10 +38,17 @@ INSERT INTO employees VALUES (1, 'John Smith', 'Marketing');
 If you do not know the order of columns, you have an option of listing them within the `INSERT`  statement when adding a new row, as follows: 
 
 ```sql
-INSERT INTO employees (employee_no, name, department) VALUES (1, 'John Smith', 'Marketing');  
+INSERT INTO employees (employee_no, name, department) 
+VALUES (1, 'John Smith', 'Marketing');  
 ```
 
-You can always view your changes by executing the following command:
+You can view your changes by executing the following command:
+
+```sql
+SELECT * FROM employees;  
+```
+
+You can always view the table schema by executing the following command:
 
 ```shell
 yugabyte=# \d employees
@@ -49,7 +56,7 @@ yugabyte=# \d employees
 
 ### Default Values
 
-In some cases you might not know values for all the columns when you insert a row. You have an option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstartrated in the following example:
+In some cases you might not know values for all the columns when you insert a row. You have an option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstrated in the following example:
 
 ```sql
 INSERT INTO employees (employee_no, name) VALUES (1, 'John Smith');  
@@ -58,7 +65,8 @@ INSERT INTO employees (employee_no, name) VALUES (1, 'John Smith');
 Another option is to explicitly specify the missing values as  `DEFAULT`  in the `INSERT`  statement, as shown in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) VALUES (1, 'John Smith', DEFAULT);  
+INSERT INTO employees (employee_no, name, department) 
+VALUES (1, 'John Smith', DEFAULT);  
 ```
 
 ### Multiple Rows
@@ -82,11 +90,11 @@ YSQL provides the `INSERT ON CONFLICT` statement that you can use to perform ups
 ```sql
 INSERT INTO employees (employee_no, name, department) 
 VALUES (1, 'John Smith', 'Sales')
-ON CONFLICT (department) 
+ON CONFLICT
 DO NOTHING;
 ```
 
-In the preceding example, since no actions are required during merge of John Smith's department, upsert does not cause any changes to the `department` column. 
+In the preceding example, since no actions are required during merge of the employee, upsert does not cause any changes. 
 
 ## Loading Data from a File
 
@@ -150,7 +158,7 @@ ALTER COLUMN department SET NOT NULL;
 
 ## Deferring Constraint Check
 
-YSQL allows you to set constraints using the `SET CONSTRAINTS` statement and defer the contsraints check until the transaction commit time by declaring the contstraint `DEFERRED`, as shown in the following example:
+YSQL allows you to set constraints using the `SET CONSTRAINTS` statement and defer foreign key constraints check until the transaction commit time by declaring the constraint `DEFERRED`, as follows:
 
 ```sql
 BEGIN;
@@ -159,27 +167,17 @@ SET CONSTRAINTS name DEFERRED;
 COMMIT;
 ```
 
+Note that the `NOT NULL` constraint cannot be used with the `SET CONSTRAINTS` statement.
 
 When creating a foreign key constraint that might need to be deferred (for example, if a transaction could have inconsistent data for a while, such as initially mismatched foreign keys), you have an option to define this transaction as `DEFERRABLE` and `INITIALLY DEFERRED`, as follows:
 
 ```sql
 CREATE TABLE employees (
     employee_no integer,
-    name text,
-    department text
-  		DEFERRABLE INITIALLY DEFERRED
+    name text UNIQUE
+  	DEFERRABLE INITIALLY DEFERRED
 );
 ```
-
-You can change this behavior by altering a constraint for a table or column, as shown in the following example:
-
-```sql
-ALTER TABLE employees 
-ALTER CONSTRAINT employee_no
-  DEFERRABLE INITIALLY DEFERRED;
-```
-
-Note that the `NOT NULL` constraint cannot be used with the `SET CONSTRAINTS` statement.
 
 ## Configuring Automatic Timestamps
 
@@ -216,7 +214,7 @@ CREATE TABLE employees (
     name text,
     department text,
   	updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-)
+);
 ```
 
 ```sql
@@ -230,7 +228,7 @@ EXECUTE PROCEDURE trigger_timestamp();
 
 The `RETURNING` clause allows you to obtain data in real time from the rows that you modified using the `INSERT`, `UPDATE`, and `DELETE` statements.
 
-The `RETURNING` clause can contain either column names of its parent statement's target table or value expressions using these columns. To select all columns, in order, of the target table, use `RETURNING *`.
+The `RETURNING` clause can contain either column names of its parent statement's target table or value expressions using these columns. To select all columns of the target table, in order, use `RETURNING *`.
 
 When you use the `RETURNING` clause within the  `INSERT` statement, you are obtaining data of the row as it was inserted. This is useful when dealing with computed default values or with `INSERT ... SELECT` .
 
@@ -252,6 +250,8 @@ DELETE FROM employees WHERE department = 'Sales' RETURNING *;
 
 Using a special kind of database object called sequence, you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
 
+CREATE TABLE employees2 (employee_no serial, name text, department text);
+
 Typically, you add sequences using the `serial` pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. 
 
 When a sequence generates values, it adds a `NOT NULL` constraint to the column. 
@@ -264,7 +264,7 @@ You can create both a new table and a new sequence generator at the same time, a
 CREATE TABLE employees (
     employee_no serial,
     name text,
-    department text,
+    department text
 );
 ```
 
@@ -291,9 +291,9 @@ CACHE 1000;
 
 ```sql
 CREATE TABLE employees (
-    employee_no integer DEFAULT nextval(sec_employees_employee_no) NOT NULL,
+    employee_no integer DEFAULT nextval('sec_employees_employee_no') NOT NULL,
     name text,
-    department text,
+    department text
 );
 ```
 
@@ -306,20 +306,20 @@ YSQL allows you to update a single row in table, all rows, or a set of rows. You
 If you know (1) the name of the table and column that require updating, (2) the rows that need to be modified, and (3) the new value for the column, you can use the `UPDATE`  statement in conjunction with the `SET`  clause to modify data, as shown in the following example:
 
 ```sql
-UPDATE employees SET department = 'Sales';  
+UPDATE employees SET department = 'Sales';
 ```
 
 Since YSQL does not provide a unique identifier for rows, you might not be able to pinpoint the row directly. To work around this limitation, you can specify one or more conditions a row needs to meet to be updated. 
 
-The following example attempts to find an employee whose employee number is 3 and change this number to 15:
+The following example attempts to find an employee whose employee number is 3 and change this number to 7:
 
 ```sql
-UPDATE employees SET employee_no = 3 WHERE employee_no = 15;  
+UPDATE employees SET employee_no = 7 WHERE employee_no = 3;  
 ```
 
 If there is no employee number 3 in the table, nothing is updated. If the `WHERE` clause is not included, all  rows in the table are updated; if the `WHERE` clause is included, then only the rows that match the `WHERE` condition are modified.
 
-The new column value does not have to be a constant; it can be any scalar expression. The following example changes employee numbers of all employees by increasing these numbers by 1:
+The new column value does not have to be a constant, as it can be any scalar expression. The following example changes employee numbers of all employees by increasing these numbers by 1:
 
 ```sql
 UPDATE employees SET employee_no = employee_no + 1;  
