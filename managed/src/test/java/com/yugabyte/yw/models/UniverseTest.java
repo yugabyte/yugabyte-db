@@ -537,7 +537,7 @@ public class UniverseTest extends FakeDBApplication {
     public void testGetUniverses() {
       UUID certUUID = CertificateHelper.createRootCA("test", defaultCustomer.uuid , "/tmp/certs");
       ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
-      List<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
+      Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
       assertEquals(universes.size(), 1);
     }
 
