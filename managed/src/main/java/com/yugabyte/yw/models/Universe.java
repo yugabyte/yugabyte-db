@@ -829,11 +829,11 @@ public class Universe extends Model {
     Universe.saveDetails(universeUUID, updater);
   }
 
-  public static List<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
+  public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
     return Customer.get(customerUUID).getUniverses().stream()
         .filter(s -> s.getUniverseDetails().rootCA != null
         && s.getUniverseDetails().rootCA.equals(certUUID))
-        .collect(Collectors.toList());
+        .collect(Collectors.toSet());
   }
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
