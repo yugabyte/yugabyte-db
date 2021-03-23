@@ -22,9 +22,6 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.DatabaseCleaner;
-import org.yb.pgsql.cleaners.RoleCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.io.File;
@@ -45,14 +42,6 @@ import java.util.TreeMap;
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgConfiguration extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgConfiguration.class);
-
-  @Override
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = super.getCleaners();
-    cleaners.add(0, new DatabaseCleaner());
-    cleaners.add(1, new RoleCleaner());
-    return cleaners;
-  }
 
   @Test
   public void testPostgresConfigDefault() throws Exception {

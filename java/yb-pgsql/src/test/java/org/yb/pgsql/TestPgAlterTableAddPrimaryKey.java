@@ -28,12 +28,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTableAddPrimaryKey.class);
 
   @Test
   public void simplest() throws Exception {
