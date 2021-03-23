@@ -81,9 +81,9 @@ set_python_executable() {
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
 readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
 PYTHON_EXECUTABLE=""
-DEFAULT_USE_PY3_VALUE="1"
-if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-  DEFAULT_USE_PY3_VALUE="0"
+DEFAULT_USE_PY3_VALUE="0"
+if python -c 'import sys; sys.exit(0) if sys.version_info[0] != 2 else sys.exit(1)'; then
+  DEFAULT_USE_PY3_VALUE="1"
 fi
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
