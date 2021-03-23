@@ -412,7 +412,7 @@ def get_provider_data(base_url, customer_uuid, auth_uuid):
         provider['name'] = each["name"]
         provider['uuid'] = each["uuid"]
         providers.append(provider)
-    print(providers)
+    print(json.dumps(providers))
 
 
 @exception_handling
@@ -434,7 +434,7 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
         region['uuid'] = each["uuid"]
         region['provider'] = each["provider"]["code"]
         regions.append(region)
-    print(regions)
+    print(json.dumps(regions))
 
 
 @exception_handling
@@ -449,7 +449,7 @@ def get_universe_list(base_url, customer_uuid, auth_uuid):
         universe['name'] = each["name"]
         universe['universeUUID'] = each["universeUUID"]
         universes.append(universe)
-    print(universes)
+    print(json.dumps(universes))
 
 
 def get_key_value(data, key):

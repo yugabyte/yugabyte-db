@@ -390,7 +390,7 @@ case $operation in
               yb_platform_util_py2.get_universe_list('$base_url', '$customer_uuid', \
               '$auth_uuid')")
           fi
-          printf "$result"
+          echo $result
           echo ""
         fi
         ;;
@@ -498,7 +498,7 @@ case $operation in
           yb_platform_util_py2.get_provider_data('$base_url', '$customer_uuid', \
           '$auth_uuid')")
       fi
-      printf "$result"
+      echo $result
       echo
       ;;
     GET_REGION | GET_AZ)
@@ -513,7 +513,7 @@ case $operation in
             yb_platform_util_py2.get_regions_data('$base_url', '$customer_uuid', \
             '$auth_uuid')")
         fi
-        printf "$result"
+        echo $result
         echo
       ;;
     *)
