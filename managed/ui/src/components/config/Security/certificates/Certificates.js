@@ -144,7 +144,7 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadDisabled = row.type !== 'SelfSigned';
+    const downloadDisabled = true || row.type !== 'SelfSigned';
     const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
@@ -169,8 +169,10 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.setState({ selectedCert: payload });
-            this.props.showDownloadCertificateModal();
+            if (!downloadDisabled) {
+              this.setState({ selectedCert: payload });
+              this.props.showDownloadCertificateModal();
+            }
           }}
           disabled={downloadDisabled}
         >
@@ -178,15 +180,15 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.downloadRootCertificate(row);
+            !downloadDisabled && this.downloadRootCertificate(row);
           }}
           disabled={downloadDisabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
         <MenuItem
-          onClick={() => { 
-            this.showDeleteCertificateModal(payload)
+          onClick={() => {
+            !deleteDisabled && this.showDeleteCertificateModal(payload);
           }}
           disabled={deleteDisabled}
           title={deleteDisabled ? 'In use certificates cannot be deleted' : null}

@@ -20,7 +20,9 @@ export class ListKeyManagementConfigurations extends Component {
         <MenuItem
           title={'Delete provider'}
           disabled={in_use}
-          onClick={() => this.props.onDelete(configUUID)}
+          onClick={() => {
+            !in_use && this.props.onDelete(configUUID);
+          }}
         >
           <i className="fa fa-trash"></i> Delete Configuration
         </MenuItem>
