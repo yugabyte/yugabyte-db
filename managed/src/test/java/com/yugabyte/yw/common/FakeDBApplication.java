@@ -46,6 +46,7 @@ public class FakeDBApplication extends WithApplication {
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
   public QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
   public Executors mockExecutors = mock(Executors.class);
+  public ShellProcessHandler mockShellProcessHandler = mock(ShellProcessHandler.class);
 
   @Override
   protected Application provideApplication() {
@@ -80,6 +81,7 @@ public class FakeDBApplication extends WithApplication {
       .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
       .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
       .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
+      .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
       .build();
   }
 

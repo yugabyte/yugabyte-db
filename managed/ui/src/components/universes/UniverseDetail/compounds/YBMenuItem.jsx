@@ -5,9 +5,9 @@ import { isEnabled, isHidden } from '../../../../utils/LayoutUtils';
 
 export class YBMenuItem extends Component {
   render() {
-    const { availability, to, id, className, onClick } = this.props;
+    const { availability, to, id, className, onClick, disabled } = this.props;
     if (isHidden(availability) && availability !== undefined) return null;
-    if (isEnabled(availability)) {
+    if (isEnabled(availability) && !disabled) {
       if (to) {
         return (
           <LinkContainer to={to} id={id}>
@@ -25,7 +25,7 @@ export class YBMenuItem extends Component {
       }
     }
     return (
-      <li className={availability}>
+      <li className={availability, 'disabled'}>
         <div className={className}>{this.props.children}</div>
       </li>
     );

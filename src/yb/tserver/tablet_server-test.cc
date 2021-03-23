@@ -804,9 +804,11 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   Partition partition;
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE, schema, IndexMap(),
+      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
-      "TestWriteOutOfBoundsTable", tabletId, partition, "test_ns", tabletId, YQL_TABLE_TYPE, schema,
-      partition_schema, boost::none /* index_info */, mini_server_->CreateLocalConfig(), nullptr));
+      table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));
 

@@ -46,7 +46,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -626,24 +625,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
     assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));
     assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testCreateAwsProviderWithInValidAWSCredentials() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("code", "aws");
-    bodyJson.put("name", "aws-Provider");
-    bodyJson.put("region", "ap-south-1");
-    ObjectNode configJson = Json.newObject();
-    configJson.put("AWS_ACCESS_KEY_ID", "test");
-    configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
-    bodyJson.set("config", configJson);
-    CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    Result result = createProvider(bodyJson);
-    assertBadRequest(result, "Invalid AWS Credentials.");
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test

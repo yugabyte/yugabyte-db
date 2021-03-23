@@ -147,7 +147,7 @@ class Report:
 def check_output(cmd, env):
     try:
         timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE, env=env)
+        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         while command.poll() is None and timeout > 0:
             time.sleep(1)
             timeout -= 1
@@ -157,7 +157,10 @@ def check_output(cmd, env):
             return 'Error executing command {}: timeout occurred'.format(cmd)
 
         output, stderr = command.communicate()
-        return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
+        if not stderr:
+            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
+        else:
+            return 'Error executing command {}: {}'.format(cmd, stderr)
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
@@ -191,7 +194,7 @@ class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 ssl_protocol):
+                 ssl_protocol, enable_ysql_auth):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
@@ -211,6 +214,7 @@ class NodeChecker():
         self.ysql_port = ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_ysql_auth = enable_ysql_auth
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name)
@@ -430,19 +434,31 @@ class NodeChecker():
         e = self._new_entry("Connectivity with ysqlsh")
 
         ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
-        if not self.enable_tls_client:
-            user = "postgres"
-            remote_cmd = "{} -h {} -p {} -U {} -c \"\conninfo\"".format(
-                ysqlsh, self.node, self.ysql_port, user)
-        else:
-            user = "yugabyte"
-            remote_cmd = "{} -h {} -p {} -U {} {} -c \"\conninfo\"".format(
-                ysqlsh, self.node, self.ysql_port, user, '"sslmode=require"')
-
+        port_args = "-p {}".format(self.ysql_port)
+        host = self.node
         errors = []
+        # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
+        # that we can circumvent md5 authentication (assumption made:
+        # "local all yugabyte trust" is in the hba file)
+        if self.enable_ysql_auth:
+            socket_fds_output = self._remote_check_output("ls /tmp/.yb.*/.s.PGSQL.*").strip()
+            socket_fds = socket_fds_output.split()
+            if ("Error" not in socket_fds_output) and len(socket_fds):
+                host = os.path.dirname(socket_fds[0])
+                port_args = ""
+            else:
+                errors = ["Could not find local socket"]
+                return e.fill_and_return_entry(errors, True)
+
+        if not self.enable_tls_client:
+            remote_cmd = "{} -h {} {} -U yugabyte -c \"\conninfo\"".format(
+                ysqlsh, host, port_args)
+        else:
+            remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
+                ysqlsh, host, port_args, '"sslmode=require"')
+
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database') or
-                "Password for user" in output):
+        if not (output.startswith('You are connected to database')):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -592,6 +608,7 @@ class Cluster():
         self.ycql_port = data["ycqlPort"]
         self.enable_yedis = data["enableYEDIS"]
         self.redis_port = data["redisPort"]
+        self.enable_ysql_auth = data["enableYSQLAuth"]
 
 
 class UniverseDefinition():
@@ -632,7 +649,8 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol)
+                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol,
+                        c.enable_ysql_auth)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(

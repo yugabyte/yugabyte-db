@@ -16,6 +16,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -48,7 +49,8 @@ class SnapshotCoordinatorContext {
 
   virtual void SendCreateTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
+      const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
@@ -61,7 +63,10 @@ class SnapshotCoordinatorContext {
   virtual Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table) = 0;
+      bool include_parent_colocated_table,
+      bool succeed_if_create_in_progress) = 0;
+
+  virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
 
   virtual const Schema& schema() = 0;
 

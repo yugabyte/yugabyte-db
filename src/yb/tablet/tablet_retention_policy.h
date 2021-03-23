@@ -22,11 +22,15 @@
 namespace yb {
 namespace tablet {
 
+using AllowedHistoryCutoffProvider = std::function<HybridTime(const RaftGroupMetadata&)>;
+
 // History retention policy used by a tablet. It is based on pending reads and a fixed retention
 // interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
-  explicit TabletRetentionPolicy(server::ClockPtr clock, const RaftGroupMetadata* metadata);
+  explicit TabletRetentionPolicy(
+      server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
+      const RaftGroupMetadata* metadata);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
@@ -61,6 +65,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   }
 
   const server::ClockPtr clock_;
+  const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   const RaftGroupMetadata& metadata_;
   const std::string log_prefix_;
 

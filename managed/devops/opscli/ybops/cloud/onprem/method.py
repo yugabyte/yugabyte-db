@@ -232,13 +232,17 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
         results["SSH Connection"] = scp_result == 0
 
-        ansible_status = self.cloud.setup_ansible(args).run("test_connection.yml",
+        sudo_pass_file = '/tmp/.yb_sudo_pass.sh'
+        self.extra_vars['sudo_pass_file'] = sudo_pass_file
+        ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
                                                             self.extra_vars, host_info,
                                                             print_output=False)
         results["Try Ansible Command"] = ansible_status == 0
 
-        cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {}".format(
-            args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args))
+        cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
+              "--sudo_pass_file {}".format(
+                args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
+                sudo_pass_file)
         if args.install_node_exporter:
             cmd += " --install_node_exporter"
         if args.air_gap:
