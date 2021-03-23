@@ -233,10 +233,7 @@ public class Backup extends Model {
   public static Set<Universe> getUniverses(UUID customerConfigUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = find.query().where()
-        .or()
-          .eq("state", BackupState.Completed)
-          .eq("state", BackupState.InProgress)
-        .endOr()
+        .in("state", new Object[] {BackupState.Completed, BackupState.InProgress})
         .findList();
     backupList = backupList.stream()
         .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) &&
@@ -244,10 +241,7 @@ public class Backup extends Model {
         .collect(Collectors.toList());
         
     List<Schedule> scheduleList = Schedule.find.query().where()
-        .or()
-          .eq("task_type", TaskType.BackupUniverse)
-          .eq("task_type", TaskType.MultiTableBackup)
-        .endOr()
+        .in("task_type", new Object[] { TaskType.BackupUniverse, TaskType.MultiTableBackup})
         .eq("status", "Active")
         .findList();
     scheduleList = scheduleList.stream()
@@ -265,6 +259,7 @@ public class Backup extends Model {
         continue;
       }
     }
+    System.out.println(universes.toString());
     return universes;
   }
 }

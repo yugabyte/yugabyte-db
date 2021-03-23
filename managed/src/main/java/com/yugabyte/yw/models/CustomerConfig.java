@@ -113,9 +113,9 @@ public class CustomerConfig extends Model {
   public ArrayNode getUniverseDetails() {
     ArrayNode details = Json.newArray();
     if (this.type==ConfigType.STORAGE){
-      ObjectNode universePayload = Json.newObject();
       // TODO this would go to the util.java after KMS PR get merged. 
       for (Universe universe : Backup.getUniverses(this.configUUID)) {
+        ObjectNode universePayload = Json.newObject();
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universePayload.put("name", universe.name);
         universePayload.put("updateInProgress", universeDetails.updateInProgress);
