@@ -23,6 +23,7 @@ import _ from 'lodash';
 import * as cron from 'cron-validator';
 
 import '../common.scss';
+import { BackupStorageOptions } from '../BackupStorageOptions';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
@@ -227,40 +228,7 @@ export default class CreateBackup extends Component {
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const { backupType } = this.state;
-    let configTypeList = <option />;
-    const optGroups =
-      storageConfigs
-      && isNonEmptyArray(storageConfigs)
-      && storageConfigs.reduce((val, indx) => {
-        const configType = indx.name;
-        val[configType]
-          ? val[configType].push({
-            "configName": indx.configName,
-            "configUUID": indx.configUUID
-          })
-          : (val[configType] = [{
-            "configName": indx.configName,
-            "configUUID": indx.configUUID
-          }]);
-        return val;
-      }, {});
-
-    if (isNonEmptyObject(optGroups)) {
-      configTypeList = Object.keys(optGroups).map(function (key, idx) {
-        return (
-          <optgroup label={(key + " " + "storage").toUpperCase()} key={key + idx}>
-            {optGroups[key]
-              .sort((a, b) => /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b))
-              .map((item, arrIdx) => (
-                <option key={idx + arrIdx} value={item.configUUID}>
-                  {item.configName}
-                </option>
-              ))}
-          </optgroup>
-        );
-      });
-    }
-
+    const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
     let tableOptions = [];
     let keyspaceOptions = [];
