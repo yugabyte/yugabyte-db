@@ -77,11 +77,6 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
     CustomerConfig config = CustomerConfig.get(configUUID);
-    if (customerConfig.getInUse()) {
-      config.configName = formData.get("configName").toString();
-      config.update();
-      return ApiResponse.success(config);
-    }
     JsonNode data = Json.toJson(formData.get("data"));
     for (Iterator<String> it = data.fieldNames(); it.hasNext(); ) {
       String key = it.next();

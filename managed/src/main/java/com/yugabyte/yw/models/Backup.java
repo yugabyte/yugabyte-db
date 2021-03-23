@@ -231,6 +231,7 @@ public class Backup extends Model {
   }
 
   public static Set<Universe> getUniverses(UUID customerConfigUUID) {
+    Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = find.query().where()
         .or()
           .eq("state", BackupState.Completed)
@@ -238,12 +239,9 @@ public class Backup extends Model {
         .endOr()
         .findList();
     backupList = backupList.stream()
-        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) &&
+        universeUUIDs.add( b.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
-    Set<UUID> universeUUIDs = new HashSet<>();
-    backupList.stream()
-        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) && 
-        universeUUIDs.add( b.getBackupInfo().universeUUID));   
         
     List<Schedule> scheduleList = Schedule.find.query().where()
         .or()
@@ -260,13 +258,12 @@ public class Backup extends Model {
     Set<Universe> universes = new HashSet<Universe>();
     for (UUID universeUUID : universeUUIDs) {
       try {
-        Universe.get(universeUUID);
+        universes.add(Universe.get(universeUUID));
       }
       // backup exist but universe does not.We are ignoring such backups.
       catch(Exception e){ 
         continue;
       }
-      universes.add(Universe.get(universeUUID));
     }
     return universes;
   }
