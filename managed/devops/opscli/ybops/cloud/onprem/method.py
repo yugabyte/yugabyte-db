@@ -16,7 +16,8 @@ from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
 from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
-                        get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp
+                        get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
+                        SSH_RETRY_LIMIT_PRECHECK
 
 
 import json
@@ -182,11 +183,13 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars.update(
-                get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                get_ssh_host_port(host_info, args.custom_ssh_port))
+            # Expect onprem nodes to already exist.
             if wait_for_ssh(self.extra_vars["ssh_host"],
                             self.extra_vars["ssh_port"],
                             self.extra_vars["ssh_user"],
-                            args.private_key_file):
+                            args.private_key_file,
+                            num_retries=SSH_RETRY_LIMIT_PRECHECK):
                 return host_info
         else:
             raise YBOpsRuntimeError("Unable to find host info.")
@@ -240,7 +243,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         results["Try Ansible Command"] = ansible_status == 0
 
         cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-              "--sudo_pass_file {}".format(
+              "--sudo_pass_file {} --cleanup".format(
                 args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
                 sudo_pass_file)
         if args.install_node_exporter:
