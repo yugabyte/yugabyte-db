@@ -16,3 +16,4 @@ People who contributed to hypopg:
   * Extortioner01
   * nagaraju11
   * ibrahim edib kokdemir
+  * github user nikhil-postgres

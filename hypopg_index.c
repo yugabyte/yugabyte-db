@@ -57,6 +57,9 @@
 #endif
 #include "parser/parse_utilcmd.h"
 #include "parser/parser.h"
+#if PG_VERSION_NUM >= 120000
+#include "port/pg_bitutils.h"
+#endif
 #include "storage/bufmgr.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -1907,6 +1910,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 		uint32 num_buckets;
 		uint32 num_overflow;
 		uint32 num_bitmap;
+		uint32 lshift;
 
 	/*
 	 * Determine the target fill factor (in tuples per bucket) for this index.
@@ -1947,12 +1951,22 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 	num_overflow = Max(0, ((entry->tuples - (num_buckets * ffactor)) /
 					   ffactor) + 1);
 
+	/* find largest bitmap array size that will fit in page size */
+#if PG_VERSION_NUM >= 120000
+	lshift = pg_leftmost_one_pos32(HypoHashGetMaxBitmapSize());
+#else
+	for (lshift = _hash_log2(HypoHashGetMaxBitmapSize()); lshift > 0; --lshift)
+	{
+		if ((1 << lshift) <= HypoHashGetMaxBitmapSize())
+			break;
+	}
+#endif
+
 	/*
-	 * Naive estimate of bitmap pages, using the previously computed  number of
+	 * Naive estimate of bitmap pages, using the previously computed number of
 	 * overflow pages.
 	 */
-	num_bitmap = Max(1, num_overflow /
-					 pg_leftmost_one_pos32(HypoHashGetMaxBitmapSize()));
+	num_bitmap = Max(1, num_overflow / (1 <<lshift));
 
 	/* Simply add all computed pages, plus one extra block for the meta page */
 	entry->pages = num_buckets + num_overflow + num_bitmap + 1;
