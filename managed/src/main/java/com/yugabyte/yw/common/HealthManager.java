@@ -66,7 +66,7 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
-    if (!provider.code.equals("onprem")) {
+    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
       commandArgs.add("--check_clock");
     }
 
