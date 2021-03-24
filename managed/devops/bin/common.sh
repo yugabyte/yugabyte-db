@@ -48,6 +48,7 @@ regex_from_list() {
 }
 
 set_python_executable() {
+  PYTHON_EXECUTABLE=""
   executables=( "${PYTHON3_EXECUTABLES[@]}" )
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     executables=( "${PYTHON2_EXECUTABLES[@]}" )
@@ -293,7 +294,7 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-
+    set_python_executable
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
     fi
