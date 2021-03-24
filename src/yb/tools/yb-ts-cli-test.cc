@@ -145,5 +145,62 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   }, MonoDelta::FromSeconds(10), "Wait for tablet bootstrap to finish"));
 }
 
+TEST_F(YBTsCliTest, TestRefreshFlags) {
+  std::string gflag = "client_read_write_timeout_ms";
+  std::string old_value = "120000";
+  std::string new_value = "150000";
+
+  // Write a flagfile.
+  std::string flag_filename = JoinPathSegments(GetTestDataDirectory(), "flagfile.test");
+  std::unique_ptr<WritableFile> flag_file;
+  ASSERT_OK(Env::Default()->NewWritableFile(flag_filename, &flag_file));
+  ASSERT_OK(flag_file->Append("--" + gflag + "=" + old_value));
+  ASSERT_OK(flag_file->Close());
+
+  // Start the cluster;
+  vector<string> extra_flags = {"--flagfile=" + flag_filename};
+
+  ASSERT_NO_FATALS(StartCluster(extra_flags, extra_flags));
+
+  // Verify that the cluster is started with the custom GFlag value in the config.
+  ASSERT_EQ(ASSERT_RESULT(cluster_->master(0)->GetFlag(gflag)), old_value);
+  ASSERT_EQ(ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)), old_value);
+
+  // Change the flagfile to have a different value for the GFlag.
+  ASSERT_OK(Env::Default()->NewWritableFile(flag_filename, &flag_file));
+  ASSERT_OK(flag_file->Append("--" + gflag + "=" + new_value));
+  ASSERT_OK(flag_file->Close());
+
+  // Send RefreshFlags RPC to the Master process
+  string exe_path = GetTsCliToolPath();
+  vector<string> argv;
+  argv.push_back(exe_path);
+  argv.push_back("--server_address");
+  argv.push_back(yb::ToString(cluster_->master(0)->bound_rpc_addr()));
+  argv.push_back("refresh_flags");
+  ASSERT_OK(Subprocess::Call(argv));
+
+  // Wait for the master process to have the updated GFlag value.
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(cluster_->master(0)->GetFlag(gflag)) == new_value;
+  }, MonoDelta::FromSeconds(60), "Verify updated GFlag");
+
+  // The TServer should still have the old value because we didn't send it the RPC.
+  ASSERT_EQ(ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)), old_value);
+
+  // Now, send a RefreshFlags RPC to the TServer process
+  argv.clear();
+  argv.push_back(exe_path);
+  argv.push_back("--server_address");
+  argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
+  argv.push_back("refresh_flags");
+  ASSERT_OK(Subprocess::Call(argv));
+
+  // Wait for the TS process to have the updated GFlag value.
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)) == new_value;
+  }, MonoDelta::FromSeconds(60), "Verify updated GFlag");
+}
+
 } // namespace tools
 } // namespace yb
