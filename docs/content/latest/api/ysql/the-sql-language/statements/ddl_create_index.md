@@ -64,36 +64,9 @@ For an estimate of how high, with heartbeat interval `t` and maximum master to t
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
-If online `CREATE INDEX` fails, it likely failed in the backfill step.
-In that case, the index exists but is not usable.
-Drop the index and try again.
-If it still doesn't work,
-
-- did it time out?
-  Then, try increasing timeout flags:
-  - master `ysql_index_backfill_rpc_timeout_ms`
-  - tserver `ysql_wait_until_index_permissions_timeout_ms`
-- did you get "backfill failed to connect to DB"?
-  Then, you may be hitting an issue with authentication.
-  If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
-  - For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
-  - If the version is at least 2.3, then you can set `ysql_disable_index_backfill=false` as a workaround.
-  - In any case, you can disable authentication (e.g. using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
-- did you get "duplicate key value" error?
-  Then, you have a unique constraint violation.
-
-Please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure) if you still have issues.
-
-To prioritize keeping other transactions alive during the index backfill, bump up the following flags:
-
-- master `index_backfill_wait_for_old_txns_ms`
-- tserver `ysql_index_state_flags_update_delay_ms`
-
-To speed up index creation by a few seconds when you know there will be no online writes, set tserver flag `ysql_index_state_flags_update_delay_ms=0`.
-
 {{< note title="Note" >}}
 
-For details on how online index backfill works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+For details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
 
 {{< /note >}}
 
@@ -216,3 +189,29 @@ Consider an application maintaining shipments information. It has a `shipments` 
 yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
 yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
+
+## Troubleshooting
+
+If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack](https://www.yugabyte.com/slack) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
+
+**If online `CREATE INDEX` fails**, it likely failed in the backfill step.
+In that case, the index exists but is not usable.
+Drop the index and try again.
+If it still doesn't work, here are some troubleshooting steps:
+
+- **Did it time out?** Try increasing timeout flags:
+  - master `ysql_index_backfill_rpc_timeout_ms`
+  - tserver `ysql_wait_until_index_permissions_timeout_ms`
+- **Did you get a "backfill failed to connect to DB" error?** You may be hitting an issue with authentication. If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
+  - For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
+  - If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
+  - In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
+- **Did you get a "duplicate key value" error?**
+  Then, you have a unique constraint violation.
+
+**To prioritize keeping other transactions alive** during the index backfill, bump up the following flags:
+
+- master `index_backfill_wait_for_old_txns_ms`
+- tserver `ysql_index_state_flags_update_delay_ms`
+
+**To speed up index creation** by a few seconds when you know there will be no online writes, set tserver flag `ysql_index_state_flags_update_delay_ms=0`.
