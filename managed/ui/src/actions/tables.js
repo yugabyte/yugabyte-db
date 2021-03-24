@@ -157,16 +157,7 @@ export function restoreTableBackupResponse(response) {
   };
 }
 
-export function deleteBackup(backupUUID) {
-  const baseUrl = getCustomerEndpoint();
-  const request = axios.delete(`${baseUrl}/backups/${backupUUID}`);
-  return {
-    type: DELETE_BACKUP,
-    payload: request
-  };
-}
-
-export function bulkDeleteBackup(payload) {
+export function deleteBackup(payload) {
   const baseUrl = getCustomerEndpoint();
   const request = axios.delete(`${baseUrl}/backups`, { data: payload });
   return {

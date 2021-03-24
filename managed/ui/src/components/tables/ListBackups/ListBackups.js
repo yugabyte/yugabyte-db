@@ -495,7 +495,7 @@ export default class ListBackups extends Component {
                           onError={() => this.handleModalSubmit('Restore')}
                         />
                         <TableAction
-                          disabled={this.state.selected.length < 1 || currentUniverse.universeDetails.backupInProgress}
+                          disabled={currentUniverse.universeDetails.backupInProgress || this.state.selected.length < 1}
                           currentRow={{
                             type: "bulkDelete",
                             data: selected
