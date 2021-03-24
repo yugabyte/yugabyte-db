@@ -188,12 +188,12 @@ public class BackupsController extends AuthenticatedController {
     }
     ObjectNode resultNode = Json.newObject();
     String fa;
+    fa="sasa";
     for (UUID uuid : validBackups) {
       Backup backup = Backup.get(customerUUID, uuid);
       
       if (backup.state != Backup.BackupState.Completed) {
         inprogressBackups.add(uuid);
-        fa="sas";
       } else {
         DeleteBackup.Params taskParams = new DeleteBackup.Params();
         taskParams.customerUUID = customerUUID;
