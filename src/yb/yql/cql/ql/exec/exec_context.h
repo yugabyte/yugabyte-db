@@ -353,6 +353,9 @@ class TnodeContext {
   TnodeContext* child_context() {
     return child_context_.get();
   }
+  const TnodeContext* child_context() const {
+    return child_context_.get();
+  }
 
   // Allocate and prepare parent node for reading keys from nested query.
   void SetUncoveredSelectOp(const client::YBqlReadOpPtr& select_op);
