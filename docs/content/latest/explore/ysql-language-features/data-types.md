@@ -395,7 +395,9 @@ The following example shows how to provide a range of time for an employee's vac
 
 ```sql
 CREATE TABLE employees (employee_no int, vacation tsrange);
+```
 
+```sql
 INSERT INTO employees 
   VALUES (1227, '[2020-01-01 8:30, 2020-02-02 5:30)');
 ```
@@ -429,7 +431,9 @@ In addition to using built-in range types, you can define your own custom ones. 
 ```sql
 CREATE TYPE textrange 
   AS RANGE (subtype = text);
+```
 
+```sql
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 

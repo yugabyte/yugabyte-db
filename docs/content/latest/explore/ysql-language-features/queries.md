@@ -49,9 +49,10 @@ CREATE TABLE employees (
   name text,
   department text
 );
+```
 
-INSERT INTO employees (employee_no, name, department) 
-  VALUES 	
+```sql
+INSERT INTO employees VALUES 
   (1221, 'John Smith', 'Marketing'),
   (1222, 'Bette Davis', 'Sales'),
   (1223, 'Lucille Ball', 'Operations'),
@@ -61,7 +62,7 @@ INSERT INTO employees (employee_no, name, department)
 You can use the `SELECT` statement to find names of all employees in the `employees` table. In this case, you apply `SELECT` to one column only, as follows:
 
 ```sql
-SELECT name FROM employees;  
+SELECT name FROM employees;
 ```
 
 To retrieve data that includes the employee name and department, you need to query multiple columns, as shown in the following example:
@@ -247,10 +248,10 @@ SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
 The following series of examples inserts new rows into the table from [SELECT Examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
 
 ```sql
-INSERT INTO employees (name, department) VALUES
-	('Jean Harlow', 'Sales'),
-	('Jean Harlow', 'Sales'),
-	('Random Dude', 'Marketing');
+INSERT INTO employees (employee_no, name, department) 
+VALUES
+(9, 'Jean Harlow', 'Sales'),
+(8, 'Jean Harlow', 'Sales');
 ```
 
 ```sql
@@ -262,7 +263,6 @@ The following is the output produced by the preceding examples:
 ```
 name
 --------------------
-Random Dude
 Lucille Ball
 John Smith
 John Zimmerman
@@ -272,7 +272,7 @@ Bette Davis
 
 ### Case Sensitivity
 
-YSQL converts identifiers to lowercase unless they are enclosed in quatation marks. That is, YSQL is not case-sensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as an `employees` table and the following query would be executed on the `employees` table without any problems:
+YSQL converts identifiers to lowercase unless they are enclosed in quotation marks. That is, YSQL is case-insensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as the `employees` table and the following query would be executed on the `employees` table without any problems:
 
 ```sql
 SELECT name FROM Employees;
@@ -510,10 +510,10 @@ SELECT employee_no FROM employees GROUP BY employee_no;
 
 If there were duplicate rows in the result set from the preceding example, these rows would have been removed because the `GROUP BY` clause functions like the `DISTINCT` clause in this case.
 
-The following example shows how to select the total amount that each employee has been paid. The `GROUP BY` clause divides the rows in the `employees` table into groups by employee number. For each group, the total amounts are calculated using the `SUM()` function:
+If the `employees` table had an `amount` column with the employee pay data, the following example would have demonstrated how to select the total amount that each employee was paid. The `GROUP BY` clause would have divided the rows in the `employees` table into groups by employee number. For each group, the total amounts would have been calculated using the `SUM()` function:
 
 ```sql
-SELECT employee_no SUM(amount) FROM employees GROUP BY employee_no;
+SELECT employee_no, SUM (amount) FROM employees GROUP BY employee_no;
 ```
 
 ### The HAVING Clause
@@ -545,9 +545,9 @@ SELECT department, COUNT (employee_no)
 The following is the output produced by the preceding examples:
 
 ```
-department
-------------------
-Sales
+department  | count
+------------+----------
+Sales       | 2
 ```
 
 ## Joining Columns
@@ -564,25 +564,29 @@ CREATE TABLE fulltime_employees (
   ft_name text,
   ft_department text
 );
+```
 
-INSERT INTO fulltime_employees (ft_employee_no, ft_name, ft_department) 
-  VALUES 	
-  (1221, 'John Smith', 'Marketing'),
-  (1222, 'Bette Davis', 'Sales'),
-  (1223, 'Lucille Ball', 'Operations'),
-  (1224, 'John Zimmerman', 'Sales');
+```sql
+INSERT INTO fulltime_employees VALUES 
+(1221, 'John Smith', 'Marketing'),
+(1222, 'Bette Davis', 'Sales'),
+(1223, 'Lucille Ball', 'Operations'),
+(1224, 'John Zimmerman', 'Sales');
+```
 
+```sql
 CREATE TABLE permanent_employees (
   perm_employee_no integer  PRIMARY KEY,
   perm_name text,
   perm_department text
 );
+```
 
-INSERT INTO permanent_employees (perm_employee_no, perm_name, perm_department) 
-  VALUES 	
-  (1221, 'Lucille Ball', 'Operations'),
-  (1222, 'Cary Grant', 'Operations'),
-  (1223, 'John Smith', 'Marketing');
+```sql
+INSERT INTO permanent_employees VALUES 
+(1221, 'Lucille Ball', 'Operations'),
+(1222, 'Cary Grant', 'Operations'),
+(1223, 'John Smith', 'Marketing');
 ```
 
 The following is the `fulltime_employees` table:
@@ -792,9 +796,11 @@ CREATE TABLE employees (
   department text,
   years_service numeric
 );
+```
 
+```sql
 INSERT INTO employees (employee_no, name, department, years_service) 
-  VALUES 
+VALUES 
   (1221, 'John Smith', 'Marketing', 5),
   (1222, 'Bette Davis', 'Sales', 3),
   (1223, 'Lucille Ball', 'Operations', 1),
@@ -807,7 +813,7 @@ If you need to find the employees who have been working for the company longer t
 SELECT AVG (years_service) FROM employees;
 ```
 
-The preceding query returns 3.5.
+The preceding query returns 3.5000000000000000.
 
 ```sql
 SELECT employee_no, name, years_service FROM employees 
@@ -840,7 +846,7 @@ The `EXISTS` operator has the following syntax:
 EXISTS (SELECT 1 FROM some_table WHERE condition);
 ```
 
-The following example applies the `EXISTS` operator to two tables:  `employees` and  `salary`. The example shows how to use the `EXISTS` operator on the `employee_no` column in a manner similar to an inner join. This query can return no more than one row for each row in the `employees` table, even though there are corresponding rows in the `salary` table.
+The following example applies the `EXISTS` operator to two tables (the  `employees` table and a hypothetical  `salary` table) and shows how to use `EXISTS` on the `employee_no` column in a manner similar to an inner join:
 
 ```sql
 SELECT name FROM employees
@@ -848,9 +854,11 @@ SELECT name FROM employees
                   WHERE salary.employee_no = employees.employee_no);
 ```
 
+If the `salary` table existed, the preceding query would have returned no more than one row for each row in the `employees` table, even though there would have been corresponding rows in the `salary` table.
+
 ## Recursive Queries and CTEs
 
-Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other type of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
+Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other types of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
 
 You can use the following syntax to create a simple CTE:
 
@@ -874,16 +882,19 @@ WITH cte_fulltime_employees AS (
   FROM
     fulltime_employees
 )
-SELECT
-  ft_employee_no,
-  ft_name,
-  ft_department
-FROM 
-  cte_fulltime_employees
-WHERE
-  ft_department = 'Operations'
-ORDER BY 
-  ft_employee_no; 
+SELECT ft_name, ft_department
+FROM cte_fulltime_employees
+WHERE ft_department = 'Operations'
+ORDER BY ft_name; 
+```
+
+The following is the output produced by the preceding example:
+
+```
+ ft_name             | ft_department
+---------------------+-------------------
+ Bette Davis         | Operations
+ Lucille Ball        | Operations
 ```
 
 Recursive queries, often used for querying hierarchical data, refer to recursive CTEs.
@@ -910,9 +921,10 @@ CREATE TABLE employees (
   manager_no integer,
   department text
 );
+```
 
-INSERT INTO employees (employee_no, name, manager_no, department) 
-  VALUES 	
+```sql
+INSERT INTO employees VALUES 
   (1221, 'John Smith', NULL, NULL),
   (1222, 'Bette Davis', 1221, 'Sales'),
   (1223, 'Lucille Ball', 1221, 'Operations'),
@@ -920,50 +932,23 @@ INSERT INTO employees (employee_no, name, manager_no, department)
   (1225, 'Walter Marx', 1222, 'Sales');
 ```
 
-The following example demonstrates how to retrieve all employees who report to the manager with their`manager_no` 1222.
+The following example demonstrates how to retrieve all employees who report to the manager with `manager_no` 1222:
 
 ```sql
 WITH RECURSIVE reports AS (
-  SELECT
-		employee_no,
-		name,
-  	manager_no,
-		department
-	FROM
-		employees
-	WHERE
-		employee_no = 1222
-	UNION
-		SELECT
-			emp.employee_no,
-			emp.name,
-  		emp.manager_no,
-			emp.department
-		FROM
-			employees emp
-		INNER JOIN reports rep ON rep.employee_no = emp.manager_no
+  SELECT employee_no, name, manager_no, department 
+  FROM employees 
+  WHERE employee_no = 1222 
+  UNION 
+    SELECT 
+      emp.employee_no, emp.name, emp.manager_no, emp.department 
+    FROM employees emp 
+    INNER JOIN reports rep ON rep.employee_no = emp.manager_no
 ) 
 SELECT * FROM reports;
 ```
 
-In the preceding example, the recursive CTE `reports` defines a non-recursive and a recursive term, with non-recursive term returning the base result set that includes the employee whose `employee_no` is 1222, as the following output shows:
-
-```
-employee_no | name            | manager_id  | department
-------------+-----------------+-------------+---------------
-1222        | Bette Davis     | 1221        |	Sales
-```
-
-Then the recursive term retrieves the direct reports of the employee whose `employee_no`  is 1222. This is the result of joining the `employees` table and the `reports` CTE. The first iteration of the recursive term produces the following output:
-
-```
-employee_no | name            | manager_id  | department
-------------+-----------------+-------------+------------
-1224        | John Zimmerman  | 1222        | Sales
-1225        | Walter Marx     | 1222        | Sales
-```
-
-The recursive term is executed multiple times. The second iteration uses the preceding result set as the input value but does not return any rows because nobody reports to employees whose `employee_no` is 1224 and 1225.
+In the preceding example, the recursive CTE `reports` defines a non-recursive and a recursive term, with non-recursive term returning the base result set that includes the employee whose `employee_no` is 1222. Then the recursive term retrieves the direct reports of the employee whose `employee_no` is 1222. This is the result of joining the `employees` table and the `reports` CTE. The first iteration of the recursive term returns two employees with  `employee_no` 1224 and 1225. The recursive term is executed multiple times. The second iteration uses the preceding result set as the input value but does not return any rows because nobody reports to employees with `employee_no` 1224 and 1225.
 
 When the final result set is returned, it represents the combination of all result sets in iterations generated by the non-recursive  and recursive terms, as demonstrated by the following output:
 
@@ -971,7 +956,6 @@ When the final result set is returned, it represents the combination of all resu
 employee_no | name            | manager_id  | department
 ------------+-----------------+-------------+--------------
 1222        | Bette Davis     | 1221        | Sales
-1223        | Lucille Ball    | 1221        | Operations
 1224        | John Zimmerman  | 1222        | Sales
 1225        | Walter Marx     | 1222        | Sales
 ```
