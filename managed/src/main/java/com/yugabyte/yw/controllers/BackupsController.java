@@ -166,8 +166,6 @@ public class BackupsController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID) {
-    List<UUID> invalidBackups = new ArrayList<UUID>();
-    List<UUID> inprogressBackups = new ArrayList<UUID>();
     List<UUID> validBackups = new ArrayList<UUID>();
     List<String> taskUUIDLIst = new ArrayList<String>();
     ArrayNode formData = (ArrayNode) request().body().asJson();
@@ -180,58 +178,36 @@ public class BackupsController extends AuthenticatedController {
     for (JsonNode backupUUID : formData ) {
       Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.asText()));
       if (backup == null) {
-        invalidBackups.add( UUID.fromString(backupUUID.asText()));
+          LOG.info("Can not delete {} backup as it is not present in the database.",
+              backupUUID.asText());
       }
       else {
         validBackups.add( UUID.fromString(backupUUID.asText()));
       }
     }
     ObjectNode resultNode = Json.newObject();
-    String fa;
-    fa="sasa";
+    String data;
+    // Change it .
+    data="Success";
     for (UUID uuid : validBackups) {
       Backup backup = Backup.get(customerUUID, uuid);
       
       if (backup.state != Backup.BackupState.Completed) {
-        inprogressBackups.add(uuid);
+        LOG.info("Can not delete {} backup as it is already in progress", uuid);
       } else {
         DeleteBackup.Params taskParams = new DeleteBackup.Params();
         taskParams.customerUUID = customerUUID;
         taskParams.backupUUID = uuid;
         UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
         LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
-        CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup, CustomerTask.TaskType.Delete,
-            "Backup");
+        CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
+            CustomerTask.TaskType.Delete, "Backup");
         taskUUIDLIst.add(taskUUID.toString());
         Audit.createAuditEntry(ctx(), request(), taskUUID);
-        fa = taskUUID.toString();
+        data = taskUUID.toString();
       }
     }
-    resultNode.put("taskUUID", fa);
-    // if (backup.state != Backup.BackupState.Completed) {
-    //   String errMsg = String.format("Cannot delete backup %s since it hasn't been completed",
-    //                                 backupUUID.toString());
-    //   return ApiResponse.error(BAD_REQUEST, errMsg);
-    // }
-    // DeleteBackup.Params taskParams = new DeleteBackup.Params();
-    // taskParams.customerUUID = customerUUID;
-    // taskParams.backupUUID = backupUUID;
-    // UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    // LOG.info("Saved task uuid {} in customer tasks for backup {}.",
-    //          taskUUID, backupUUID);
-    // CustomerTask.create(customer,
-    //     backupUUID,
-    //     taskUUID,
-    //     CustomerTask.TargetType.Backup,
-    //     CustomerTask.TaskType.Delete,
-    //     "Backup");
-    // ObjectNode resultNode = Json.newObject();
-    // resultNode.put("taskUUID", taskUUID.toString());
-    // Audit.createAuditEntry(ctx(), request(), taskUUID);
-
-
-    // String errMsg = "Invalid Backup UUID: " + customerUUID;
-    // return ApiResponse.error(BAD_REQUEST, errMsg);
+    resultNode.put("taskUUID", data);
     return ApiResponse.success(resultNode);
   }
 }
