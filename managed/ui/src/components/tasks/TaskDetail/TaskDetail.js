@@ -32,17 +32,8 @@ class TaskDetail extends Component {
   };
 
   retryTaskClicked = (currentTaskUUID) => {
-    this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const taskResponse = response?.payload?.response;
-      if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
-        browserHistory.push('/tasks');
-      }
-      else {
-        const toastMessage = taskResponse?.data?.error
-          ? taskResponse?.data?.error
-          : taskResponse?.statusText;
-        toast.error(toastMessage);
-      }
+    this.props.retryCurrentTask(currentTaskUUID).then(() => {
+      browserHistory.push('/tasks');
     });
   }
 
