@@ -112,7 +112,7 @@ For more information, refer to [`spi module`](https://www.postgresql.org/docs/cu
 
 #### spi example
 
-1. Set up a table with triggers for tracking modification time and user (role). Connect with `ysqlsh` and run the following commands.
+1. Set up a table with triggers for tracking modification time and user (role). Connect with `ysqlsh` and run the following commands:
 
     ```sql
     CREATE EXTENSION insert_username;
@@ -297,22 +297,14 @@ $ ls "$(pg_config --sharedir)"/extension/ | grep <name>
 
 Copy the files to the YugabyteDB installation, and restart the cluster (or the respective node in a multi-node install). Finally, connect to the cluster with `ysqlsh` and run the `CREATE EXTENSION` statement to create the extension.
 
-{{< note title="Supported extensions" >}}
-
-Only some extensions are currently supported. If you encounter any issues when installing or using a particular extension, file a GitHub issue in the [yugabyte/yugabyte-db](https://github.com/yugabyte/yugabyte-db/issues/new/choose) repository.
-
-{{< /note >}}
+**Only some extensions are currently supported**. If you encounter any issues when installing or using a particular extension, file a GitHub issue in the [yugabyte/yugabyte-db](https://github.com/yugabyte/yugabyte-db/issues/new/choose) repository.
 
 ### PostGIS
 
 [PostGIS](https://postgis.net/) is a spatial database extender for PostgreSQL-compatible object-relational databases.
 The simplest way to set it up locally is to install it together with regular PostgreSQL.
 
-{{< note title="GiST index support" >}}
-
-YSQL does not yet support GiST indexes. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
-
-{{< /note >}}
+**YSQL does not yet support GiST indexes**. This is tracked in [GitHub issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337).
 
 #### macOS
 
@@ -364,7 +356,7 @@ On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
 #### Post-install
 
-Now, follow the instructions described above to copy the needed files into your YugabyteDB installation, and then create the extension.
+Now, follow the preceding instructions to copy the needed files into your YugabyteDB installation, and then create the extension.
 
 ```sh
 $ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
