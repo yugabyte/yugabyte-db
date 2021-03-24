@@ -187,10 +187,13 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     ObjectNode resultNode = Json.newObject();
+    String fa;
     for (UUID uuid : validBackups) {
       Backup backup = Backup.get(customerUUID, uuid);
+      
       if (backup.state != Backup.BackupState.Completed) {
         inprogressBackups.add(uuid);
+        fa="sas";
       } else {
         DeleteBackup.Params taskParams = new DeleteBackup.Params();
         taskParams.customerUUID = customerUUID;
@@ -201,9 +204,10 @@ public class BackupsController extends AuthenticatedController {
             "Backup");
         taskUUIDLIst.add(taskUUID.toString());
         Audit.createAuditEntry(ctx(), request(), taskUUID);
+        fa = taskUUID.toString();
       }
     }
-    resultNode.put("taskUUID", taskUUID.toString());
+    resultNode.put("taskUUID", fa);
     // if (backup.state != Backup.BackupState.Completed) {
     //   String errMsg = String.format("Cannot delete backup %s since it hasn't been completed",
     //                                 backupUUID.toString());
