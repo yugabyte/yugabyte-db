@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes how to use tablespaces in YSQL.
+This document describes how to use tablespaces in YSQL and shows how to create a multi-zone table with an index using tablespace  multizone and create another table with index using tablespace  singlezone to demonstrate how tablespaces can be used to specify data  placement in the cloud.
 
 ## Overview
 
@@ -29,7 +29,7 @@ You can define a tablespace using the following syntax:
 
 ```sql
 CREATE TABLESPACE tablespace_name 
-  OWNER username
+  [OWNER username]
   WITH (replica_placement = placement_policy_json);
 ```
 
