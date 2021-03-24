@@ -68,13 +68,13 @@ This page details how to configure Kubernetes for YugabyteDB universes using the
 
 ### Kubernetes
 
-If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide in the Yugabyte Platform console is your cloud provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+To provision a YugabyteDB universe on Kubernetes, all you need to provide is the `kubeconfig` file generated during the Platform installation step. The Yugabyte platform uses the provided kubeconfig credentials to automatically provision and de-provision K8s pods that run YugabyteDB Universe.
 
 ## Configure Kubernetes credentials
 
 ## Pick appropriate k8s tab
 
-For Kubernetes, you have two options, one is to using Pivotal Container Service or Managed Kubernetes Service, depending on what you are using click on the appropriate tab.
+For Kubernetes, you have two options: using Pivotal Container Service, or Managed Kubernetes Service. Click the tab for the service you're using.
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
 Once you go to the appropriate tab, you should see a configuration form like this:
