@@ -27,9 +27,9 @@ The following extensions are bundled with YugabyteDB. Click an extension's name 
 
 * [**pg_stat_statements**](/latest/api/ysql/extensions/#pg-stat-statements) lets you track execution statistics for all SQL statements executed by a server.
 
-* [**pgAudit**](/latest/secure/audit-logging/audit-logging-ysql/) allows you to collect detailed session and/or object audit logging via YugabyteDB TServer logging. Audit logs are often required as part of government, financial, or other certifications, such as ISO.
+* [**pgAudit**](/latest/secure/audit-logging/audit-logging-ysql/) allows you to collect detailed session and object audit logging via YugabyteDB TServer logging. Audit logs are often required as part of government, financial, or other certifications, such as ISO.
 
-* [**pgcrypto**](/latest/api/ysql/extensions/#pgcrypto) provides cryptographic functions, including hashing and encryption/decryption functions.
+* [**pgcrypto**](/latest/api/ysql/extensions/#pgcrypto) provides cryptographic functions, including hashing, encryption, and decryption functions.
 
 * [**SPI**, the server programming interface](/latest/api/ysql/extensions/#server-programming-interface-spi-module) module, allows you to create functions and stored procedures in C.
 
