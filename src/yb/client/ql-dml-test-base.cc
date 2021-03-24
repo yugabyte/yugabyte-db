@@ -24,6 +24,7 @@
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/bfql/gen_opcodes.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -48,13 +49,30 @@ template <>
 QLDmlTestBase<MiniCluster>::QLDmlTestBase() : mini_cluster_opt_(1, 3) {}
 
 template <>
+QLDmlTestBase<ExternalMiniCluster>::QLDmlTestBase() {
+  mini_cluster_opt_.num_masters = 1;
+  mini_cluster_opt_.num_tablet_servers = 3;
+}
+
+template<>
 void QLDmlTestBase<MiniCluster>::SetFlags() {
   SetAtomicFlag(false, &FLAGS_enable_ysql);
+}
+
+template<>
+void QLDmlTestBase<ExternalMiniCluster>::SetFlags() {
+  // TODO -- set FLAGS_enable_ysql to false.
 }
 
 template <>
 void QLDmlTestBase<MiniCluster>::StartCluster() {
   cluster_.reset(new MiniCluster(env_.get(), mini_cluster_opt_));
+  ASSERT_OK(cluster_->Start());
+}
+
+template <>
+void QLDmlTestBase<ExternalMiniCluster>::StartCluster() {
+  cluster_.reset(new ExternalMiniCluster(mini_cluster_opt_));
   ASSERT_OK(cluster_->Start());
 }
 
@@ -90,6 +108,7 @@ void QLDmlTestBase<MiniClusterType>::DoTearDown() {
 }
 
 template class QLDmlTestBase<MiniCluster>;
+template class QLDmlTestBase<ExternalMiniCluster>;
 
 namespace kv_table_test {
 
@@ -391,6 +410,7 @@ YBSessionPtr KeyValueTableTest<MiniClusterType>::CreateSession(
 }
 
 template class KeyValueTableTest<MiniCluster>;
+template class KeyValueTableTest<ExternalMiniCluster>;
 
 Status CheckOp(YBqlOp* op) {
   if (!op->succeeded()) {

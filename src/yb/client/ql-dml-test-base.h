@@ -26,6 +26,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -162,6 +163,7 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
 };
 
 extern template class KeyValueTableTest<MiniCluster>;
+extern template class KeyValueTableTest<ExternalMiniCluster>;
 
 CHECKED_STATUS CheckOp(YBqlOp* op);
 
