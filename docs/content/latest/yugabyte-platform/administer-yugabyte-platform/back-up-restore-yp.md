@@ -14,6 +14,24 @@ isTocNested: true
 showAsideToc: true
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link active">
+      <i class="fas fa-cloud"></i>
+      Default
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+</ul>
+
 Yugabyte Platform installations include configuration settings, certificates and keys, and other components required for orchestrating and managing YugabyteDB universes.
 
 You can use the Yugabyte Platform backup script to back up an existing Yugabyte Platform server and restore it, when needed, for disaster recovery or migrating to a new server.
