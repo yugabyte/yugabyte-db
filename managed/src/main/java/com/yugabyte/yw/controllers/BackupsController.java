@@ -171,7 +171,6 @@ public class BackupsController extends AuthenticatedController {
     List<UUID> validBackups = new ArrayList<UUID>();
     List<String> taskUUIDLIst = new ArrayList<String>();
     ArrayNode formData = (ArrayNode) request().body().asJson();
-    System.out.println(formData);
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
@@ -179,12 +178,12 @@ public class BackupsController extends AuthenticatedController {
     }
 
     for (JsonNode backupUUID : formData ) {
-      Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.toString()));
+      Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.asText()));
       if (backup == null) {
-        invalidBackups.add( UUID.fromString(backupUUID.toString()));
+        invalidBackups.add( UUID.fromString(backupUUID.asText()));
       }
       else {
-        validBackups.add( UUID.fromString(backupUUID.toString()));
+        validBackups.add( UUID.fromString(backupUUID.asText()));
       }
     }
     ObjectNode resultNode = Json.newObject();
