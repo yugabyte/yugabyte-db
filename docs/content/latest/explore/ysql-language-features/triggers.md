@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to use triggers when performing data manipulation and definition. 
+This document describes how to use triggers when performing data manipulation and definition.
 
 ## Overview
 
@@ -62,13 +62,14 @@ CREATE TABLE employees (
   name text,
   department text
 );
+```
 
-INSERT INTO employees (employee_no, name, department) 
-  VALUES 	
-  (1221, 'John Smith', 'Marketing'),
-  (1222, 'Bette Davis', 'Sales'),
-  (1223, 'Lucille Ball', 'Operations'),
-  (1224, 'John Zimmerman', 'Sales'); 
+```sql
+INSERT INTO employees VALUES 
+(1221, 'John Smith', 'Marketing'),
+(1222, 'Bette Davis', 'Sales'),
+(1223, 'Lucille Ball', 'Operations'),
+(1224, 'John Zimmerman', 'Sales'); 
 ```
 
 If an employee is transferred to a different department, the change is recorded in a table called `employee_dept_changes`, as shown in the following example:
@@ -86,18 +87,17 @@ To start recording changes, you create a function called `record_dept_changes`, 
 
 ```sql
 CREATE OR REPLACE FUNCTION record_dept_changes() 
-RETURNS TRIGGER LANGUAGE PLPGSQL
-AS
+RETURNS TRIGGER AS
 $$
-BEGIN
-  IF NEW.department <> OLD.department THEN
-    INSERT INTO employee_dept_changes(employee_no, name, department, changed_on)
-    VALUES(OLD.employee_no, OLD.name, OLD.department, now());
-  END IF;
-
-  RETURN NEW;
+BEGIN 
+IF NEW.department <> OLD.department 
+THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on) 
+VALUES(OLD.employee_no, OLD.name, OLD.department, now()); 
+END IF; 
+RETURN NEW; 
 END;
 $$
+LANGUAGE 'plpgsql';
 ```
 
 The preceding function inserts the old department along with the rest of the employee data into the `employee_dept_changes` table and adds the time of change if the employee's department changes.
@@ -105,11 +105,10 @@ The preceding function inserts the old department along with the rest of the emp
 The following example demonstrates how to bind the trigger function to the `employees` table: 
 
 ```sql
-CREATE TRIGGER dept_changes
-  BEFORE UPDATE
-  ON employees
-  FOR EACH ROW
-  EXECUTE PROCEDURE record_dept_changes();
+CREATE TRIGGER dept_changes 
+BEFORE UPDATE ON employees 
+FOR EACH ROW 
+EXECUTE PROCEDURE record_dept_changes();
 ```
 
 The trigger name in the preceding example is `dept_changes`. The trigger function is automatically invoked before the value of the `department` column is updated. 
@@ -144,7 +143,7 @@ The following is the output produced by the preceding example:
 ```
 employee_no | name            | department   | changed_on
 ------------+-----------------+--------------+----------------------------
-1222        | Bette Davis     | Marketing    | 2021-02-11 16:12:09.248823
+1222        | Bette Davis     | Sales        | 2021-02-11 16:12:09.248823
 ```
 
 The `employee_dept_changes` table is populated with a row containing the employee whose department has changed, as well as the date and time of the change.
@@ -230,7 +229,21 @@ CREATE EVENT TRIGGER tr_name ON event
 
 *tr_name*, which is unique in the database, represents the new trigger. *event* represents the event that triggers a call to the function  *function_name* whose return type is `event_trigger` (optional). You can define more than one trigger for the same event, in which case the triggers fire in alphabetical order based on the name of the trigger. If a `WHEN` condition is included in the `CREATE EVENT TRIGGER` statement, then the trigger is fired for specific commands. *filter_variable* needs to be set to`TAG`, as this is the only supported variable, and *filter_value* represents a list of values for *filter_variable*.
 
-The following example is based on examples from [Creating Triggers](#creating-triggers) and shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
+The following example is based on examples from [Creating Triggers](#creating-triggers), except that the `record_dept_changes` function returns an event trigger instead of a regular trigger. The example shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
+
+```sql
+CREATE OR REPLACE FUNCTION record_dept_changes() 
+RETURNS EVENT_TRIGGER AS
+$$
+BEGIN 
+IF NEW.department <> OLD.department 
+THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on) 
+VALUES(OLD.employee_no, OLD.name, OLD.department, now()); 
+END IF; 
+END;
+$$
+LANGUAGE 'plpgsql';
+```
 
 ```sql
 CREATE EVENT TRIGGER dept_changes ON sql_drop
