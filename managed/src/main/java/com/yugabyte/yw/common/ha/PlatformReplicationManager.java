@@ -282,10 +282,13 @@ public class PlatformReplicationManager {
         config.getLocal().ifPresent(localInstance -> {
           localInstance.updateLastBackup();
 
-          // Send the platform backup to remote instances that successfully received the backup.
-          remoteInstances.stream()
+          // Send the platform backup to all followers.
+          Set<PlatformInstance> instancesToSync = remoteInstances.stream()
             .filter(this::sendBackup)
-            .forEach(replicationHelper::syncToRemoteInstance);
+            .collect(Collectors.toSet());
+
+          // Sync the HA cluster state to all followers that successfully received a backup.
+          instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
         });
       } catch (Exception e) {
         LOG.error("Error running sync for HA config {}", config.getUUID(), e);
