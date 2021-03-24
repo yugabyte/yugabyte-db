@@ -498,7 +498,7 @@ export default class ListBackups extends Component {
                           disabled={this.state.selected.length < 1 || currentUniverse.universeDetails.backupInProgress}
                           currentRow={{
                             type: "bulkDelete",
-                            data: this.state.selected
+                            data: selected
                           }}
                           className="table-action"
                           btnClass="btn-default"
