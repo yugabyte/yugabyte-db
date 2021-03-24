@@ -203,7 +203,7 @@ public class BackupsController extends AuthenticatedController {
         Audit.createAuditEntry(ctx(), request(), taskUUID);
       }
     }
-    resultNode.put("taskUUID", "will give");
+    resultNode.put("taskUUID", taskUUID.toString());
     // if (backup.state != Backup.BackupState.Completed) {
     //   String errMsg = String.format("Cannot delete backup %s since it hasn't been completed",
     //                                 backupUUID.toString());
