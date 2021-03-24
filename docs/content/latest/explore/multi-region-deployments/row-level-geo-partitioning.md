@@ -65,7 +65,7 @@ First, we create the parent table that contains a `geo_partition` column which i
 
 This can be achieved by creating the parent table as shown below.
 
-```
+```sql
 CREATE TABLE transactions (
     user_id   INTEGER NOT NULL,
     account_id INTEGER NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE transactions (
 Next, we create one partition per desired geography under the parent table. In the example below, we create three table partitions – one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
 
 
-```
+```sql
 CREATE TABLE transactions_eu 
     PARTITION OF transactions 
       (user_id, account_id, geo_partition, account_type, 
@@ -105,9 +105,11 @@ CREATE TABLE transactions_default
 
 Note that these statements above will create the partitions, but will not pin them to the desired  geographical locations. This is done in the next step. The table and partitions created so far can be viewed using the `\d` command.
 
+```sql
+yugabyte=# \d
+```
 
 ```
-yugabyte=# \d
                 List of relations
  Schema |         Name         | Type  |  Owner
 --------+----------------------+-------+----------
@@ -124,37 +126,31 @@ Now that we have a table with the desired three partitions, the final step is to
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
-
 First, we pin the data of the EU partition `transactions_eu` to live across three zones of the Europe (Frankfurt) region `eu-central-1` as shown below.
 
 
-```
+```sh
 $ yb-admin --master_addresses <yb-master-addresses>           \
     modify_table_placement_info ysql.yugabyte transactions_eu \
     aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,\
     ... 3
 ```
 
-
 Second, we pin the data of the India partition `transactions_india` to live across three zones in India - Asia Pacific (Mumbai) region `ap-south-1` as shown below.
 
-
-```
+```sh
 $ yb-admin --master_addresses <yb-master-addresses>              \
     modify_table_placement_info ysql.yugabyte transactions_india \
     aws.ap-south-1.ap-south-1a,aws.ap-south-1.ap-south-1b,... 3
 ```
 
-
 Finally, pin the data of the default partition `transactions_default` to live across three zones in the US West (Oregon) region `us-west-2`. This is shown below.
 
-
-```
+```sh
 $ yb-admin --master_addresses <yb-master-addresses>                \
     modify_table_placement_info ysql.yugabyte transactions_default \
     aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,... 3
 ```
-
 
 ## Step 3. Pinning user transactions to geographic locations
 
@@ -164,27 +160,28 @@ Now, the setup should automatically be able to pin rows to the appropriate regio
 
 Let us test this by inserting a few rows of data and verifying they are written to the correct partitions. First, we insert a row into the table with the `geo_partition` column value set to `EU` below.
 
-
-```
+```sql
 INSERT INTO transactions 
     VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
 ```
 
-
 All of the rows above should be inserted into the `transactions_eu `partition, and not in any of the others. We can verify this as shown below. Note that we have turned on the expanded auto mode output formatting for better readability by running the statement shown below.
 
+```sql
+yugabyte=# \x auto
+```
 
 ```
-yugabyte=# \x auto
 Expanded display is used automatically.
 ```
 
-
 The row must be present in the `transactions` table, as seen below.
 
+```sql
+yugabyte=# select * from transactions;
+```
 
 ```
-yugabyte=# select * from transactions;
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -194,13 +191,14 @@ amount        | 120.5
 txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
-
 
 Additionally, the row must be present only in the `transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
+```sql
+yugabyte=# select * from transactions_eu;
+```
 
 ```
-yugabyte=# select * from transactions_eu;
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -209,35 +207,44 @@ account_type  | checking
 amount        | 120.5
 txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
+```
 
+```sql
 yugabyte=# select count(*) from transactions_india;
+```
+
+```
  count
 -------
      0
+```
 
+```sql
 yugabyte=# select count(*) from transactions_default;
+```
+
+```sql
  count
 -------
      0
 ```
 
+Now, let's insert data into the other partitions.
 
-Now, let us insert data into the other partitions.
-
-
-```
+```sql
 INSERT INTO transactions 
     VALUES (200, 20001, 'India', 'savings', 1000, 'credit');
 INSERT INTO transactions 
     VALUES (300, 30001, 'US', 'checking', 105.25, 'debit');
 ```
 
+These can be verified as follows:
 
-These can be verified as shown below.
-
+```sql
+yugabyte=# select * from transactions_india;
+```
 
 ```
-yugabyte=# select * from transactions_india;
 -[ RECORD 1 ]-+---------------------------
 user_id       | 200
 account_id    | 20001
@@ -246,8 +253,13 @@ account_type  | savings
 amount        | 1000
 txn_type      | credit
 created_at    | 2020-11-07 21:45:26.011636
+```
 
+```sql
 yugabyte=# select * from transactions_default;
+```
+
+```
 -[ RECORD 1 ]-+---------------------------
 user_id       | 300
 account_id    | 30001
@@ -258,26 +270,24 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-
-
 ## Step 4. Users travelling across geographic locations
 
 In order to make things interesting, let us say user 100, whose first transaction was performed in the EU region travels to India and the US, and performs two other transactions. This can be simulated by using the following statements.
 
-
-```
+```sql
 INSERT INTO transactions 
     VALUES (100, 10001, 'India', 'savings', 2000, 'credit');
 INSERT INTO transactions 
     VALUES (100, 10001, 'US', 'checking', 105, 'debit');
 ```
 
-
 Now, each of the transactions would be pinned to the appropriate geographic locations. This can be verified as follows.
 
+```sql
+yugabyte=# select * from transactions_india where user_id=100;
+```
 
 ```
-yugabyte=# select * from transactions_india where user_id=100;
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -286,8 +296,13 @@ account_type  | savings
 amount        | 2000
 txn_type      | credit
 created_at    | 2020-11-07 21:56:26.760253
+```
 
+```sql
 yugabyte=# select * from transactions_default where user_id=100;
+```
+
+```
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -298,12 +313,13 @@ txn_type      | debit
 created_at    | 2020-11-07 21:56:26.794173
 ```
 
-
 All the transactions made by the user can efficiently be retrieved using the following SQL statement.
 
+```sql
+yugabyte=# select * from transactions where user_id=100 order by created_at desc;
+```
 
 ```
-yugabyte=# select * from transactions where user_id=100 order by created_at desc;
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -330,35 +346,35 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-
-
 ## Step 5. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
-
-```
+```sql
 CREATE TABLE transactions_brazil 
     PARTITION OF transactions
       (user_id, account_id, geo_partition, account_type, 
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('Brazil');
+```
 
+```sh
 $ yb-admin --master_addresses <yb-master-addresses>               \
     modify_table_placement_info ysql.yugabyte transactions_brazil \
     aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,... 3
 ```
 
-
 And with that, the new region is ready to store transactions of the residents of Brazil.
 
-
-```
+```sql
 INSERT INTO transactions 
     VALUES (400, 40001, 'Brazil', 'savings', 1000, 'credit');
 
-yugabyte=# select * from transactions_brazil;
+select * from transactions_brazil;
+```
+
+```
 -[ RECORD 1 ]-+-------------------------
 user_id       | 400
 account_id    | 40001
@@ -368,6 +384,3 @@ amount        | 1000
 txn_type      | credit
 created_at    | 2020-11-07 22:09:04.8537
 ```
-
-
-
