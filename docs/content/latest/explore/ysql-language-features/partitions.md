@@ -48,7 +48,7 @@ CREATE TABLE employees (
 
 *change_date* represents the date when any type of change occurred on the employee record. This date is typically required when generating monthly reports. Assuming that typically only the last month's data is queried often, then the data that is older than one year is removed from the table every month. To simplify this process, you can partition the `employees` table. You start by specifying bounds corresponding to the partitioning method and partition key of the `employees` table. This means you create partitions as regular tables and YSQL generates partition constraints automatically based on the partition bound specification every time they have to be referenced.
 
-You can declare partitioning on the `employees` table by first creating it as a partitioned table. You specify the `PARTITION BY` clause and supply it with the partitioning method such as `RANGE`  as well as a list of columns as a partition key, as shown in the following example:
+You can declare partitioning on the `employees` table by first creating it as a partitioned table. You specify the `PARTITION BY` clause and supply it with the partitioning method such as `RANGE`, as well as a list of columns as a partition key, as shown in the following example:
 
 ```sql
 CREATE TABLE employees (
@@ -88,6 +88,9 @@ CREATE TABLE employees_2020_12 PARTITION OF employees
 CREATE TABLE employees_2021_01 PARTITION OF employees
   FOR VALUES FROM ('2021-01-01') TO ('2021-02-01');
 ```
+
+Partitioning ranges are inclusive at the lower ( `FROM` ) bound and exclusive at the upper ( `TO` ) bound.
+Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
 
 Optionally, you can create an index on the key columns and other indexes for every partition, as follows:
 

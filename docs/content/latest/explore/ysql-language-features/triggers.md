@@ -247,6 +247,6 @@ LANGUAGE 'plpgsql';
 
 ```sql
 CREATE EVENT TRIGGER dept_changes ON sql_drop
-  EXECUTE PROCEDURE record_dept_changes1();
+  EXECUTE PROCEDURE record_dept_changes();
 ```
 

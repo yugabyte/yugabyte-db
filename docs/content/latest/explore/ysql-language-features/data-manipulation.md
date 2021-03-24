@@ -56,13 +56,13 @@ yugabyte=# \d employees
 
 ### Default Values
 
-In some cases you might not know values for all the columns when you insert a row. You have an option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstrated in the following example:
+In some cases you might not know values for all the columns when you insert a row. You have the option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstrated in the following example:
 
 ```sql
 INSERT INTO employees (employee_no, name) VALUES (1, 'John Smith');  
 ```
 
-Another option is to explicitly specify the missing values as  `DEFAULT`  in the `INSERT`  statement, as shown in the following example:
+Another option is to explicitly specify the missing values as `DEFAULT` in the `INSERT` statement, as shown in the following example:
 
 ```sql
 INSERT INTO employees (employee_no, name, department) 
@@ -74,10 +74,10 @@ VALUES (1, 'John Smith', DEFAULT);
 You can use YSQL to insert multiple rows by executing a single `INSERT`  statement, as shown in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
-VALUES 	
+INSERT INTO employees 
+VALUES 
 (1, 'John Smith', 'Marketing'),
-(2, 'Betty Davis', 'Sales'),
+(2, 'Bette Davis', 'Sales'),
 (3, 'Lucille Ball', 'Operations'); 
 ```
 
@@ -85,16 +85,52 @@ VALUES
 
 Upsert is a merge during a row insert: when you insert a new table row, YSQL checks if this row already exists, and if so, updates the row; otherwise, a new row is inserted.
 
-YSQL provides the `INSERT ON CONFLICT` statement that you can use to perform upserts, as follows:
+The following example creates a table and populates it with data:
+
+```sql
+CREATE TABLE employees (
+    employee_no integer PRIMARY KEY,
+    name text UNIQUE,
+    department text NOT NULL
+);
+```
+
+```sql
+INSERT INTO employees 
+VALUES 
+(1, 'John Smith', 'Marketing'),
+(2, 'Bette Davis', 'Sales'),
+(3, 'Lucille Ball', 'Operations'); 
+```
+
+If the department for the employee John Smith changed from Marketing to Sales, the `employees` table could have been modified using the `UPDATE` statement. YSQL provides the `INSERT ON CONFLICT` statement that you can use to perform upserts: if John Smith was assigned to work in both departments, you can use `UPDATE` as the action of the `INSERT` statement, as shown in the following example:
 
 ```sql
 INSERT INTO employees (employee_no, name, department) 
 VALUES (1, 'John Smith', 'Sales')
+ON CONFLICT (name) 
+DO 
+UPDATE SET department = EXCLUDED.department || ';' || employees.department;
+```
+
+The following is the output produced by the preceding example:
+
+```
+ employee_no | name          | department   
+-------------+---------------+-----------------
+ 1           | John Smith    | Sales;Marketing
+ 2           | Bette Davis   | Sales
+ 3           | Lucille Ball  | Operations
+```
+
+There are cases when no action is required ( `DO NOTHING` ) if a specific record already exists in the table. For example, executing the following does not change the department for Bette Davis:
+
+```sql
+INSERT INTO employees (employee_no, name, department) 
+VALUES (2, 'Bette Davis', 'Operations')
 ON CONFLICT
 DO NOTHING;
 ```
-
-In the preceding example, since no actions are required during merge of the employee, upsert does not cause any changes. 
 
 ## Loading Data from a File
 
