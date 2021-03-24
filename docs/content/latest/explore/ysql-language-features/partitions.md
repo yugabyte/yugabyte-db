@@ -38,23 +38,23 @@ A regular table cannot become a partitioned table, just as a partitioned table c
 Suppose you work with a database that includes the following table:
 
 ```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  change_date date
+CREATE TABLE product_changes (
+  product_name text,
+  price int,
+  change_date date PRIMARY KEY
 );
 ```
 
-*change_date* represents the date when any type of change occurred on the employee record. This date is typically required when generating monthly reports. Assuming that typically only the last month's data is queried often, then the data that is older than one year is removed from the table every month. To simplify this process, you can partition the `employees` table. You start by specifying bounds corresponding to the partitioning method and partition key of the `employees` table. This means you create partitions as regular tables and YSQL generates partition constraints automatically based on the partition bound specification every time they have to be referenced.
+*change_date* represents the date when any type of change occurred on the product record. This date might be required when generating monthly reports. Assuming that typically only the last month's data is queried often, then the data older than one year is removed from the table every month. To simplify this process, you can partition the `product_changes` table. You start by specifying bounds corresponding to the partitioning method and partition key of the `product_changes` table. This means you create partitions as regular tables and YSQL generates partition constraints automatically based on the partition bound specification every time they have to be referenced.
 
-You can declare partitioning on the `employees` table by first creating it as a partitioned table. You specify the `PARTITION BY` clause and supply it with the partitioning method such as `RANGE`, as well as a list of columns as a partition key, as shown in the following example:
+Note that the primary key for a table should always contain partition key. In the current release of YugabyteDB, it is recommended to set the primary key directly on partitions.
+
+You can declare partitioning on a table by creating it as a partitioned table: you specify the `PARTITION BY` clause which you supply with the partitioning method, such as `RANGE`, and a list of columns as a partition key, as shown in the following example:
 
 ```sql
-CREATE TABLE employees (
-  employee_no integer,
-  name text,
-  department text,
+CREATE TABLE product_changes (
+  product_name text,
+  price int,
   change_date date PRIMARY KEY
 ) 
 PARTITION BY RANGE (change_date);
@@ -63,29 +63,29 @@ PARTITION BY RANGE (change_date);
 You create the actual partitions as follows:
 
 ```sql
-CREATE TABLE employees_2019_02 PARTITION OF employees
+CREATE TABLE product_changes_2019_02 PARTITION OF product_changes
   FOR VALUES FROM ('2019-02-01') TO ('2019-03-01');
 ```
 
 ```sql
-CREATE TABLE employees_2019_03 PARTITION OF employees
+CREATE TABLE product_changes_2019_03 PARTITION OF product_changes
   FOR VALUES FROM ('2019-03-01') TO ('2019-04-01');
 ```
 
 ...
 
 ```sql
-CREATE TABLE employees_2020_11 PARTITION OF employees
+CREATE TABLE product_changes_2020_11 PARTITION OF product_changes
   FOR VALUES FROM ('2020-11-01') TO ('2020-12-01');
 ```
 
 ```sql
-CREATE TABLE employees_2020_12 PARTITION OF employees
+CREATE TABLE product_changes_2020_12 PARTITION OF product_changes
   FOR VALUES FROM ('2020-12-01') TO ('2021-01-01');
 ```
 
 ```sql
-CREATE TABLE employees_2021_01 PARTITION OF employees
+CREATE TABLE product_changes_2021_01 PARTITION OF product_changes
   FOR VALUES FROM ('2021-01-01') TO ('2021-02-01');
 ```
 
@@ -95,12 +95,12 @@ Each month range in the preceding examples includes the start of the month, but 
 Optionally, you can create an index on the key columns and other indexes for every partition, as follows:
 
 ```sql
-CREATE INDEX ON employees_2019_02 (change_date);
-CREATE INDEX ON employees_2019_03 (change_date);
+CREATE INDEX ON product_changes_2019_02 (change_date);
+CREATE INDEX ON product_changes_2019_03 (change_date);
 ...
-CREATE INDEX ON employees_2020_11 (change_date);
-CREATE INDEX ON employees_2020_12 (change_date);
-CREATE INDEX ON employees_2021_01 (change_date);
+CREATE INDEX ON product_changes_2020_11 (change_date);
+CREATE INDEX ON product_changes_2020_12 (change_date);
+CREATE INDEX ON product_changes_2021_01 (change_date);
 ```
 
 Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for  new data when required. You do this by changing the partition structure instead of the actual data.
@@ -108,13 +108,13 @@ Partitioning is a flexible technique that allows you to remove old partitions an
 The following example shows how to remove the partition from the partitioned table while retaining access to it as a separate table which enables you to perform operations on the data:
 
 ```sql
-ALTER TABLE employees DETACH PARTITION employees_2019_03;
+ALTER TABLE product_changes DETACH PARTITION product_changes_2019_03;
 ```
 
 The following example shows how to add a new partition to deal with new data by creating an empty partition in the partitioned table:
 
 ```sql
-CREATE TABLE employees_2021_02 PARTITION OF employees
+CREATE TABLE product_changes_2021_02 PARTITION OF product_changes
   FOR VALUES FROM ('2021-02-01') TO ('2021-03-01');
 ```
 
@@ -127,17 +127,17 @@ Note the following:
 
 YSQL allows you to optimize queries ran on partitioned tables by eliminating (pruning) partitions that are no longer needed.
 
-The following example shows a query that scans every partition of the `employees` table:
+The following example shows a query that scans every partition of the `product_changes` table:
 
 ```sql
-SELECT count(*) FROM employees WHERE change_date >= DATE '2020-01-01';
+SELECT count(*) FROM product_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
 If you enable partition pruning on the preceding query by setting  `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
 
 ```sql
 SET enable_partition_pruning = on;
-SELECT count(*) FROM employees12 WHERE change_date >= DATE '2020-01-01';
+SELECT count(*) FROM product_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
 To disable partition pruning, set `enable_partition_pruning` to `off`.
@@ -148,10 +148,10 @@ You can improve performance of partitioned tables by using a query optimization 
 
 ```sql
 SET constraint_exclusion = on;
-SELECT count(*) FROM employees WHERE change_date >= DATE '2021-01-01';
+SELECT count(*) FROM product_changes WHERE change_date >= DATE '2021-01-01';
 ```
 
-If you do not apply constraint exclusion, the preceding query would scan every partition of the `employees` table. If you add constraint exclusion, the query planner examines the constraints of each partition and attempts to prove that the partition does not require scanning because it cannot contain rows that meet the `WHERE` clause. If proven, the planner removes the partition from the query plan.
+If you do not apply constraint exclusion, the preceding query would scan every partition of the `product_changes` table. If you add constraint exclusion, the query planner examines the constraints of each partition and attempts to prove that the partition does not require scanning because it cannot contain rows that meet the `WHERE` clause. If proven, the planner removes the partition from the query plan.
 
 `constraint_exclusion` is not enabled (set to `on`) nor disabled (set to `off`) by default; instead, it is set to `partition`, therefore making constraint exclusion applied to queries that are executed on partitioned tables. When constraint exclusion is enabled, the planner examines `CHECK` constraints in all queries regardless of their complexity.
 
