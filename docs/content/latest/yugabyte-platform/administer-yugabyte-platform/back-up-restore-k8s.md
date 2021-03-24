@@ -35,6 +35,8 @@ Yugabyte Platform installations include configuration settings, certificates and
 
 You can use the Yugabyte Platform backup script to back up an existing Yugabyte Platform server and restore it, when needed, for disaster recovery or migrating to a new server.
 
+The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For more details, refer to the [Yugabyte Platform overview](https://docs.yugabyte.com/latest/yugabyte-platform/overview/).
+
 ## Back up a Yugabyte Platform server
 
 1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the yugabyte-db repository to your local workstation using the following wget command:
@@ -46,12 +48,8 @@ You can use the Yugabyte Platform backup script to back up an existing Yugabyte 
 1. Verify that the machine performing the backup operation can access the Yugabyte Platform kubernetes pod instance:
 
     ```sh
-    kubectl exec --namespace <kubernetes_namespace> -it <kubernetes_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
+    kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
     ```
-
-    <br/>
-
-    The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For more details, refer to the [Yugabyte Platform overview](https://docs.yugabyte.com/latest/yugabyte-platform/overview/).
 
     <br/>
 
@@ -61,7 +59,7 @@ You can use the Yugabyte Platform backup script to back up an existing Yugabyte 
 1. Run the `yb_platform_backup.sh` script using the `backup` command:
 
     ```sh
-    ./yb_platform_backup.sh backup --output <output_path> --k8s_namespace <kubernetes_namespace> --k8s_pod <kubernetes_pod> [--exclude_releases --verbose]
+    ./yb_platform_backup.sh backup --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
     ```
 
     * `backup` is the command to run the backup of the Yugabyte Platform server.
@@ -77,7 +75,7 @@ Backup and restore of Prometheus metrics data is not currently supported.
 
     {{< /note >}}
 
-1. Verify that the backup `.tar` file, with the correct timestamp, is in the specified output directory.
+1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
 
 1. Upload the backup file to your preferred storage location, and delete it from the local disk.
 
@@ -94,12 +92,8 @@ To restore the Yugabyte Platform content from your saved backup, do the followin
 1. Verify that the machine performing the backup operation can access the Yugabyte Platform kubernetes pod instance:
 
     ```sh
-    kubectl exec --namespace <kubernetes_namespace> -it <kubernetes_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
+    kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
     ```
-
-    <br/>
-
-    The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For more details, refer to the [Yugabyte Platform overview](https://docs.yugabyte.com/latest/yugabyte-platform/overview/).
 
     <br/>
 
@@ -109,13 +103,13 @@ To restore the Yugabyte Platform content from your saved backup, do the followin
 1. Run the `yb_platform_backup.sh` script using the `restore` command:
 
     ```sh
-    ./yb_platform_backup.sh restore --input <input_path> --k8s_namespace <kubernetes_namespace> --k8s_pod <kubernetes_pod> [--verbose]
+    ./yb_platform_backup.sh restore --input <input_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--verbose]
     ```
 
     <br/>
 
     * `restore` is the command to restore the Yugabyte Platform server content.
-    * `input_path` is the path to the .tar backup file to restore.
+    * `input_path` is the path to the `.tar.gz` backup file to restore.
     * `k8s_namespace` specifies the kubernetes namespace where the Yugabyte Platform pod is running.
     * `k8s_pod` specifies the name of the Yugabyte Platform Kubernetes pod.
     * `verbose` prints debug output.
