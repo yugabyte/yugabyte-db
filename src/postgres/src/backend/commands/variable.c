@@ -521,7 +521,7 @@ assign_transaction_read_only(bool newval, void *extra)
 	XactReadOnly = newval;
 	if (YBTransactionsEnabled())
 	{
-		YBCPgSetTransactionReadOnly(XactReadOnly);
+		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 	}
 }
 
@@ -608,7 +608,7 @@ assign_XactIsoLevel(const char *newval, void *extra)
 	XactIsoLevel = *((int *) extra);
 	if (YBTransactionsEnabled())
 	{
-		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
 	}
 }
 
@@ -708,7 +708,7 @@ assign_transaction_deferrable(bool newval, void *extra)
   XactDeferrable = newval;
 	if (YBTransactionsEnabled())
 	{
-		YBCPgSetTransactionDeferrable(XactDeferrable);
+		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
 }
 
