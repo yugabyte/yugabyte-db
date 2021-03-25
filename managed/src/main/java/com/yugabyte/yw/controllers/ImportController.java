@@ -63,12 +63,8 @@ public class ImportController extends AuthenticatedController {
   // Threadpool to run user submitted tasks.
   static ExecutorService executor;
 
-  // Minimum number of concurrent tasks to execute at a time.
+  // Size of thread pool.
   private static final int TASK_THREADS = 200;
-
-  // The maximum time that excess idle threads will wait for new tasks before terminating.
-  // The unit is specified in the API (and is seconds).
-  private static final long THREAD_ALIVE_TIME = 60L;
 
   // The RPC timeouts.
   private static final Duration RPC_TIMEOUT_MS = Duration.ofMillis(5000L);
@@ -818,12 +814,7 @@ public class ImportController extends AuthenticatedController {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
       new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
-    // Create an task pool which can handle an unbounded number of tasks, while using an initial set
-    // of threads that get spawned upto TASK_THREADS limit.
-    executor =
-      new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
-        TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
-        namedThreadFactory);
+    executor = Executors.newFixedThreadPool(TASK_THREADS, namedThreadFactory);
     LOG.trace("Started Import Thread Pool.");
   }
 }

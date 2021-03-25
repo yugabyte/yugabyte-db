@@ -55,8 +55,9 @@ public class HealthCheck extends Model {
 
   /**
    * Creates an empty universe.
-   * @param taskParams: The details that will describe the universe.
-   * @param customerId: UUID of the customer creating the universe
+   * @param universeUUID: UUID of the universe..
+   * @param customerId:   UUID of the customer creating the universe.
+   * @param details:      The details that will describe the universe.
    * @return the newly created universe
    */
   public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, String details) {

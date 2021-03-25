@@ -19,11 +19,12 @@ object UIRunHook {
       }
 
       override def afterStarted(addr: InetSocketAddress): Unit = {
-        watchProcess = Some(Process("npm start", base).run)
+        watchProcess = Some(Process("node node_modules/react-scripts/scripts/start.js", base).run())
       }
 
       override def afterStopped(): Unit = {
-        watchProcess.map(p => p.destroy())
+        println("Shutting down UI...")
+        watchProcess foreach( _.destroy() )
         watchProcess = None
       }
     }

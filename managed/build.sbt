@@ -228,7 +228,7 @@ consoleSetting := {
               consoleReader.clearScreen(); waitEOF()
             case 10 | 13 =>
               println(); waitEOF()
-            case x => waitEOF()
+            case _ => waitEOF()
           }
         }
         doWithoutEcho(waitEOF())
