@@ -232,6 +232,8 @@ public class PlatformReplicationManager {
     // Import the new instances, or update existing ones.
     return newInstances.stream()
       .map(replicationHelper::processImportedInstance)
+      .filter(Optional::isPresent)
+      .map(Optional::get)
       .collect(Collectors.toSet());
   }
 
