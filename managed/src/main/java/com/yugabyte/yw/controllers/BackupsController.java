@@ -207,7 +207,10 @@ public class BackupsController extends AuthenticatedController {
         data = taskUUID.toString();
       }
     }
-    resultNode.put("taskUUID", data);
+    ArrayNode arrayNode = resultNode.putArray("taskUUID");
+    for (String item : taskUUIDLIst) {
+      arrayNode.add(item);
+  }
     return ApiResponse.success(resultNode);
   }
 }
