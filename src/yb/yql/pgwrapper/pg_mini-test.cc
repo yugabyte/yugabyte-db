@@ -687,6 +687,7 @@ class PgMiniTestManualSysTableTxn : public PgMiniTest {
     // Enable manual transaction control for operations on system tables. Otherwise, they would
     // execute non-transactionally.
     FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
+    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 

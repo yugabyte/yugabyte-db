@@ -1875,10 +1875,10 @@ YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		YBCPgBeginTransaction();
-		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
-		YBCPgSetTransactionReadOnly(XactReadOnly);
-		YBCPgSetTransactionDeferrable(XactDeferrable);
+		HandleYBStatus(YBCPgBeginTransaction());
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
+		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
 }
 

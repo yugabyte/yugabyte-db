@@ -995,7 +995,7 @@ bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
              // In this mode, used for some tests, we will execute direct statements on YSQL system
              // catalog tables in the user-controlled transaction, as opposed to executing them
              // non-transactionally.
-             FLAGS_ysql_enable_manual_sys_table_txn_ctl);
+             (FLAGS_ysql_enable_manual_sys_table_txn_ctl && pg_txn_manager_->IsTxnInProgress()));
 }
 
 Result<YBSession*> PgSession::GetSession(bool transactional,
