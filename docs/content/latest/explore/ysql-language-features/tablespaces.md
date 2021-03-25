@@ -13,7 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document provides an overview of tablespaces in YSQL and demonstrates how they can be used to specify data placement in the cloud by guiding you through the process of creating the following:
+This document provides an overview of tablespaces in YSQL and demonstrates how they can be used to specify data placement in the cloud. 
+
+This document guides you through the process of creating the following:
 
 - Multi-zone and single-zone tablespaces.
 - Tables that use multi-zone and single-zone tablespaces.
@@ -71,21 +73,19 @@ WITH (replica_placement='{"num_replicas": 5, "placement_blocks":
 {"cloud":"aws","region":"us-east","zone":"us-east-1c","min_num_replicas":1}]}');
 ```
 
-Even though `us_east_tablespace` shown in the preceding example has been created successfully, a notice is displayed after the execution stating that the additional two replicas are to be placed at the YB-Load balancer’s discretion in  `aws.us-east.us-east-1a`, `aws.us-east.us-east-1b`, and `aws.us-east.us-east-1c`. Based on the load, `aws.us-east.us-east-1a` may have three replicas and the other zones may have one, or it might later change such that `aws.us-east.us-east-1a` and `aws.us-east.us-east-1b` have two replicas each, whereas `aws.us-east.us-east-1c` has one replica. YB-Load balancer always honours the value of `min_num_replicas` and have at least one replica in each cloud.region.zone, and the additional replicas may be moved around based on the cluster load. 
+In the preceding example, the three `min_num_replicas` fields sum up to 3, whereas the total required replication factor is 5. As a result, even though `us_east_tablespace` has been created successfully, a notice is displayed after the execution stating that the additional two replicas are to be placed at the YB-Load balancer’s discretion in  `aws.us-east.us-east-1a`, `aws.us-east.us-east-1b`, and `aws.us-east.us-east-1c`. Based on the load, `aws.us-east.us-east-1a` may have three replicas and the other zones may have one, or it might later change such that `aws.us-east.us-east-1a` and `aws.us-east.us-east-1b` have two replicas each, whereas `aws.us-east.us-east-1c` has one replica. YB-Load balancer always honours the value of `min_num_replicas` and have at least one replica in each cloud.region.zone, and the additional replicas may be moved around based on the cluster load. 
 
 ### How to Create a Single-Zone Tablespace
 
 To highlight the difference between multi-zone and single-zone tablespaces, the following example shows how to create a single-zone tablespace:
 
-DEV INPUT REQUIRED
-
 ```sql
 CREATE TABLESPACE us_west_1a_tablespace 
-WITH (replica_placement='{"num_replicas": 1, "placement_blocks":
-[{"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1}]}');
+WITH (replica_placement='{"num_replicas": 3, "placement_blocks":
+[{"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":3}]}');
 ```
 
-If you create a table and use the preceding tablespace, each tablet of the table will have one replica, as per the `num_replicas` value. Since `placement_blocks` contains one placement block where `min_num_replicas` is set to 1, YB-Load balancer will ensure that `aws.us-west.us-west-1a` will have one replica.
+If you create a table that uses `us_west_1a_tablespace`, each tablet of the table will have three replicas, but unlike multi-zone tablespaces, all three replicas for any tables and indexes in this tablespaces will be placed within the `us-west-1a` zone.
 
 ## Creating Tables and Indexes in Tablespaces
 
@@ -114,9 +114,9 @@ The preceding statements ensure that data in the `employees` and `employee_no_id
 
 ### How to Use a Single-Zone Tablespace
 
-Using the single-zone tablespace defined in [How to Create a Single-Zone Tablespace](how-to-create-a-single-zone-tablespace), you can apply the YSQL's `TABLESPACE` option to `CREATE TABLE` and `CREATE INDEX` statements, as follows:
+There is no difference between creating tables and indexes that use multi-zone tablespaces and those that use single-zone tablespaces. 
 
-DEV INPUT REQUIRED
+Using the single-zone tablespace defined in [How to Create a Single-Zone Tablespace](how-to-create-a-single-zone-tablespace), you can apply the YSQL's `TABLESPACE` option to `CREATE TABLE` and `CREATE INDEX` statements, as follows:
 
 ```sql
 CREATE TABLE employees (
@@ -143,14 +143,20 @@ You can drop a tablespace in YSQL using the following syntax:
 DROP TABLESPACE tablespace_name;
 ```
 
-The preceding operation cannot be performed if the tablespace has associated tables or indexes.
+The following example shows how to drop one of the tablespaces created in [How to Create a Multi-Zone Tablespace](how-to-create-a-multi-zone-tablespace):
+
+```sql
+DROP TABLESPACE us_west_tablespace;
+```
+
+Note that the preceding operation cannot be performed if the tablespace has associated tables or indexes.
 
 ## Limitations
 
 The current release of YugabyteDB has the following limitations related to tablespaces:
 
-1. `ALTER TABLE` in combination with `SET TABLESPACE` is not supported.
-2. `ALTER TABLESPACE` is not supported.
-3. Setting read replica placements and affinitized leaders using tablespaces is not supported.
-4. Setting tablespace for a database is not supported.
+- `ALTER TABLE` in combination with `SET TABLESPACE` is not supported.
+- `ALTER TABLESPACE` is not supported.
+- Setting read replica placements and affinitized leaders using tablespaces is not supported.
+- Setting tablespaces for colocated tables and databases is not supported.
 
