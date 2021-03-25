@@ -454,13 +454,16 @@ export default class ListBackups extends Component {
         )}
         {showAlert && (
           <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
-            {taskUUID ? (
+            {taskUUID.length < 2 ? (
               <div>
                 {alertType} started successfully. See{' '}
                 <Link to={`/tasks/${taskUUID}`}>task progress</Link>
               </div>
             ) : (
-              `${alertType} task failed to initialize.`
+              <div>
+                {alertType} started successfully. See{' '}
+                <Link to="/tasks">task progress</Link>
+              </div>
             )}
           </Alert>
         )}
