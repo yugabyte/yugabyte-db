@@ -437,11 +437,12 @@ get_tablegroup_name(Oid grp_oid)
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
+	{
 		result = pstrdup(NameStr(((Form_pg_tablegroup) GETSTRUCT(tuple))->grpname));
+		ReleaseSysCache(tuple);
+	}
 	else
 		result = NULL;
-
-	ReleaseSysCache(tuple);
 
 	return result;
 }

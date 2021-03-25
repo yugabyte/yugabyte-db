@@ -332,6 +332,15 @@ typedef struct StdRdOptions
 	 ((StdRdOptions *) (relation)->rd_options)->tablegroup : 0)
 
 /*
+ * RelationGetColocated
+ *		Returns the relation's colocated reloption setting.
+ *		Note multiple eval of argument!
+ */
+#define RelationGetColocated(relation) \
+	((relation)->rd_options ? \
+	 ((StdRdOptions *) (relation)->rd_options)->colocated : false)
+
+/*
  * RelationGetTableOid
  *		Returns the relation's table_oid reloption setting.
  *		Note multiple eval of argument!

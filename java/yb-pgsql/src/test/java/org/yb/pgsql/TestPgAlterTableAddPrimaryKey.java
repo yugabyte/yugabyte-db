@@ -303,29 +303,28 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
 
-      runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id)",
-          "adding primary key to a colocated table is not yet implemented");
-      runInvalidQuery(stmt, "ALTER TABLE nopk_nc ADD PRIMARY KEY (id)",
-          "adding primary key to a table within a colocated database is not yet implemented");
+      assertEquals(1, getNumTablets("clc", "normal_table"));
+      assertEquals(1, getNumTablets("clc", "nopk_c"));
+      assertEquals(NUM_TABLET_SERVERS, getNumTablets("clc", "nopk_nc"));
 
-      // Once we start supporting altering colocated tables, we should run checks like these...
       // This doesn't really accomplish much though, since colocated property is invisible to SQL
       // - we can't check whether a re-created table keeps/gains/loses it.
       // See #6159
-      if (false) {
-        alterAddPrimaryKey(stmt, "nopk_c", "ADD PRIMARY KEY (id)");
-        alterAddPrimaryKey(stmt, "nopk_nc", "ADD PRIMARY KEY (id)");
+      alterAddPrimaryKey(stmt, "nopk_c", "ADD PRIMARY KEY (id)");
+      alterAddPrimaryKey(stmt, "nopk_nc", "ADD PRIMARY KEY (id)");
 
-        assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
-            new Row(1),
-            new Row(2)));
-        assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
-            new Row(3),
-            new Row(4)));
-        assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
-            new Row(5),
-            new Row(6)));
-      }
+      assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
+          new Row(1),
+          new Row(2)));
+      assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
+          new Row(5),
+          new Row(6)));
+      assertEquals(1, getNumTablets("clc", "normal_table"));
+      assertEquals(1, getNumTablets("clc", "nopk_c"));
+      assertEquals(NUM_TABLET_SERVERS, getNumTablets("clc", "nopk_nc"));
     }
   }
 
@@ -341,26 +340,46 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
 
       stmt.executeUpdate("CREATE TABLE nopk (id int)"
           + " TABLEGROUP tgroup1");
-      stmt.executeUpdate("INSERT INTO nopk VALUES (5)");
-      stmt.executeUpdate("INSERT INTO nopk VALUES (6)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (3)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (4)");
 
-      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)",
-          "adding primary key to a colocated table is not yet implemented");
+      stmt.executeUpdate("CREATE TABLE nopk2 (id int, id2 int unique)"
+          + " TABLEGROUP tgroup1");
+      stmt.executeUpdate("INSERT INTO nopk2 VALUES (5, 5)");
+      stmt.executeUpdate("INSERT INTO nopk2 VALUES (6, 6)");
 
-      // Once we start supporting altering colocated tables, we should run checks like these...
-      // This doesn't really accomplish much though, since colocated property is invisible to SQL
-      // - we can't check whether a re-created table keeps/gains/loses it.
-      // See #6159
-      if (false) {
-        alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)");
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "normal_table"));
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "nopk"));
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "nopk2"));
+      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)");
+      alterAddPrimaryKey(stmt, "nopk2", "ADD PRIMARY KEY (id)");
 
-        assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
-            new Row(1),
-            new Row(2)));
-        assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
-            new Row(5),
-            new Row(6)));
-      }
+      assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
+          new Row(1),
+          new Row(2)));
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk2 ORDER BY id", Arrays.asList(
+          new Row(5, 5),
+          new Row(6, 6)));
+
+      assertRowList(stmt,
+        "SELECT s.relname, pg_tablegroup.grpname " +
+        "FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) " +
+        "s, pg_tablegroup WHERE opts LIKE " +
+        "CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%') " +
+        "ORDER BY s", Arrays.asList(
+          new Row("nopk", "tgroup1"),
+          new Row("nopk2", "tgroup1"),
+          new Row("nopk2_id2_key", "tgroup1"),
+          new Row("nopk2_pkey", "tgroup1"),
+          new Row("nopk_pkey", "tgroup1"),
+          new Row("normal_table", "tgroup1"),
+          new Row("normal_table_pkey", "tgroup1")));
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "normal_table"));
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "nopk"));
+      assertEquals(1, getNumTablets(DEFAULT_PG_DATABASE, "nopk2"));
     }
   }
 
@@ -624,9 +643,9 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   public void splitInto() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int) SPLIT INTO 2 TABLETS");
-      assertEquals(2, getNumTablets("nopk"));
+      assertEquals(2, getNumTablets(DEFAULT_PG_DATABASE, "nopk"));
       alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)");
-      assertEquals(2, getNumTablets("nopk"));
+      assertEquals(2, getNumTablets(DEFAULT_PG_DATABASE, "nopk"));
     }
   }
 
@@ -755,7 +774,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     List<Row> oldTableNames = getRowList(stmt.executeQuery(getTableNames));
     List<Row> oldSequences = getRowList(stmt.executeQuery(getSequences));
 
-    PgSystemTableInfo oldState = new PgSystemTableInfo(connection, oldOid);
+    PgSystemTableInfo oldState = new PgSystemTableInfo(stmt.getConnection(), oldOid);
 
     stmt.executeUpdate("ALTER TABLE " + tableName + " " + alterSpec);
 
@@ -772,7 +791,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     assertRowList(stmt, getTableNames, oldTableNames);
     assertRowList(stmt, getSequences, oldSequences);
 
-    PgSystemTableInfo newState = new PgSystemTableInfo(connection, newOid);
+    PgSystemTableInfo newState = new PgSystemTableInfo(stmt.getConnection(), newOid);
 
     assertPgStateEquals(oldState, newState);
   }
@@ -792,13 +811,13 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     assertRows(oldState.triggers, newState.triggers);
   }
 
-  private int getNumTablets(String tableName) throws Exception {
+  private int getNumTablets(String databaseName, String tableName) throws Exception {
     List<String> lines = runProcess(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",
         masterAddresses,
         "list_tablets",
-        "ysql." + DEFAULT_PG_DATABASE,
+        "ysql." + databaseName,
         tableName);
     // We don't care about the output, just number of lines (minus header line).
     return lines.size() - 1;
