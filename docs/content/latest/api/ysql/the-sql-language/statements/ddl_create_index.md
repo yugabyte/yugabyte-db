@@ -55,7 +55,7 @@ The following table explains some of the differences between creating an index o
 | :-------- | :----- | :--------- |
 | Safe to do other DMLs during `CREATE INDEX`? | yes | no |
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
-| parallelizes index loading? | yes | no |
+| Parallelizes index loading? | yes | no |
 
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
