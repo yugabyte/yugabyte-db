@@ -343,7 +343,7 @@ create_pymodules_package() {
   run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
     --target="$YB_PYTHON_MODULES_DIR"
   # Change shebangs to be path-independent.
-  current_py_exec=$(which python)
+  current_py_exec=$(which $PYTHON_EXECUTABLE)
   LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
     -e "1s|${current_py_exec}|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
   tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
