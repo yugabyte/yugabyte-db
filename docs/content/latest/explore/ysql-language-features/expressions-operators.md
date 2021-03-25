@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to use boolean, numeric, and date expressions, as well as basic operators. 
+This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
 
 ## Basic Operators
 
-A large number of YSQL types have corresponding mathematical operators that are typically used in `WHERE` clauses to perform comparisons and mathematical operations. Operators allow you to specify conditions in YSQL statements and create links between conditions.
+A large number of YSQL types have corresponding mathematical operators that are typically used for performing comparisons and mathematical operations. Operators allow you to specify conditions in YSQL statements and create links between conditions.
 
 ### Mathematical Operators
 
@@ -33,8 +33,7 @@ The following table lists some of the mathematical operators that you can use in
 | ^        | Exponent (associatiation of left to right) | 2.0 ^ 3.0 results in 8  |
 | \|/      | Square root                                | \|/ 16.0 results in 4   |
 | \|\|/    | Cube root                                  | \|\|/ 27.0 results in 3 |
-| !        | Factor (suffix)                            | 5 ! results in 120      |
-| !!       | Factor (prefix)                            | !! 5  results in 120    |
+| !        | Factorial (suffix)                         | 5 ! results in 120      |
 
 The following examples show how to use mathematical operators in a `SELECT` statement:
 
@@ -99,6 +98,14 @@ employee_no | name             | department   | salary
 1224        | John Zimmerman   | Sales        | 60000
 ```
 
+### String Operators
+
+The following table describes a string operator that you can use in YSQL.
+
+| Operator | Description                                         | Example                        |
+| -------- | --------------------------------------------------- | ------------------------------ |
+| \|\|     | Concatenates two strings or a string and non-string <br> | 'wo' \|\| 'rd' results in word <br>'number' \|\| 55 results in number 55 <br>2021 \|\| 'is here' results in 2021 is here |
+
 ### Logical Operators
 
 The following table lists logical operators that you can use in YSQL.
@@ -136,9 +143,9 @@ The following table lists bitwise operators that you can use in YSQL.
 | <<       | Bitwise shift left <br>Moves the value of the left operand left by the number of bits specified by the right operand. | 1 << 4 results in 16  |
 | >>       | Bitwise shift right<br/>Moves the value of the left operand right by the number of bits specified by the right operand. | 8 >> 2 results in 2   |
 
-Bitwise operators can only be applied to integral data types.
+Bitwise operators can be applied to bit data types and data types related to it.
 
-## Expressions
+## Basic Expressions
 
 An expression combines values, operators, and YSQL functions that evaluate to a value.
 
@@ -214,3 +221,29 @@ now
 
  You can use these expressions during data manipulation.
 
+## Conditional Expressions and Operators
+
+Conditional expressions and operators assist you with forming conditional queries.
+
+### CASE
+
+The `CASE` expression enables you to add if-else logic to your queries (for example, in `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ). `CASE` has a general and a simple form.
+
+The following illustrates the general form of the `CASE` statement:
+
+```
+     CASE 
+      WHEN condition_1  THEN result_1
+      WHEN condition_2  THEN result_2
+      [WHEN ...]
+      [ELSE else_result]
+ENDCode language: SQL (Structured Query Language) (sql)
+```
+
+In this syntax, each condition (`condition_1`, `condition_2`…) is a boolean expression that returns either `true` or `false`.
+
+When a condition evaluates to `false`, the `CASE` expression evaluates the next condition from the top to bottom until it finds a condition that evaluates to `true`.
+
+If a condition evaluates to `true`, the `CASE` expression returns the corresponding result that follows the condition. For example, if the `condition_2` evaluates to `true`, the `CASE` expression returns the `result_2`. Also, it immediately stops evaluating the next expression.
+
+In case all conditions evaluate to `false`, the `CASE` expression returns the result (`else_result`) that follows the `ELSE` keyword. If you omit the `ELSE` clause, the `CASE` expression returns `NULL`.
