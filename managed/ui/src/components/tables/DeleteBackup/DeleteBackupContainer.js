@@ -2,11 +2,7 @@
 
 import { connect } from 'react-redux';
 import { DeleteBackup } from '../';
-import {
-  bulkDeleteBackup,
-  deleteBackup,
-  deleteBackupResponse
-} from '../../../actions/tables';
+import { deleteBackup, deleteBackupResponse } from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -18,16 +14,7 @@ const mapDispatchToProps = (dispatch) => {
         }
         throw new Error(response.error);
       });
-    },
-    bulkDeleteBackup: (payload) => {
-      return dispatch(bulkDeleteBackup(payload)).then((res) => {
-        if (!res.error) {
-          dispatch(deleteBackupResponse(res));
-          return res.payload;
-        }
-        throw new Error(res.error);
-      });
-    },
+    }
   };
 };
 
