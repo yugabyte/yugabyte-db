@@ -76,7 +76,7 @@ class DownloadCertificateForm extends Component {
               type="text"
               label="Username"
               component={YBFormInput}
-              infoContent={'Username that will be tied to certificates'}
+              infoContent="Connect to the database using this username for certificate-based authentication"
             />
           </Col>
         </Row>
