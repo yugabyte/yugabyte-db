@@ -7525,18 +7525,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	constr = RelationGetDescr(*mutable_rel)->constr;
 
-	/*
-	 * Colocation support is further complicated by the fact that we can't
-	 * verify it via pure SQL, see #6159.
-	 * YBCIsTableColocated check also covers tablegroups.
-	 */
-	if (YBCIsTableColocated(MyDatabaseId, old_relid))
-		elog(ERROR, "adding primary key to a colocated table "
-		            "is not yet implemented");
-	if (YBCIsDatabaseColocated(MyDatabaseId))
-		elog(ERROR, "adding primary key to a table within a colocated database "
-		            "is not yet implemented");
-
 	if ((*mutable_rel)->rd_partkey != NULL || (*mutable_rel)->rd_rel->relispartition)
 		elog(ERROR, "adding primary key to a partitioned table "
 		            "is not yet implemented");
@@ -7605,6 +7593,23 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	        : NULL);
 	create_stmt->tablespacename = get_tablespace_name((*mutable_rel)->rd_rel->reltablespace);
 	create_stmt->tablegroup     = NULL;
+
+	/*
+	 * Colocation support is further complicated by the fact that we can't
+	 * verify it via pure SQL, see #6159.
+	 */
+	const Oid tablegroup_id = RelationGetTablegroup(*mutable_rel);
+	if (OidIsValid(tablegroup_id))
+	{
+		create_stmt->tablegroup = makeNode(OptTableGroup);
+		create_stmt->tablegroup->has_tablegroup = true;
+		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
+		Assert(create_stmt->tablegroup->tablegroup_name);
+	} else if ((*mutable_rel)->rd_options) {
+		const bool colocated = RelationGetColocated(*mutable_rel);
+		create_stmt->options = lappend(create_stmt->options,
+			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
+	}
 
 	/*
 	 * While there is little to no sense for a user to be doing
@@ -7900,6 +7905,43 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
 
+		/* The tablegroup attribute of a table is not a reloption at syntax level 
+		 * but it is recorded as a reloption by DefineIndex (which makes a special 
+		 * case only for "tablegroup" to convert it to a reloption). As a result, 
+		 * if the old table has a tablegroup, then every index on the old table 
+		 * including the dummy pkey index has also stored a reloption for the 
+		 * tablegroup when DefineIndex was called for it.
+		 *
+		 * When generateClonedIndexStmt is called to make a new index statement, it
+		 * will have cloned the old index's reloptions, which includes the special
+		 * reloption for "tablegroup".
+		 *
+		 * Next we will call DefineIndex for each cloned index statement. DefineIndex 
+		 * will again make a special case for "tablegroup" and convert "tablegroup"
+		 * to another reloption. This means that the new index statement gets two
+		 * "tablegroup" reloption instances and caused postgres error:
+		 *   ERROR: parameter "tablegroup" specified more than once
+		 * To prevent this error, remove "tablegroup" reloption if there is one.
+		 */
+		if (idx_stmt->options)
+		{
+			ListCell   *option;
+			ListCell   *prev;
+
+			prev = NULL;
+			foreach(option, idx_stmt->options)
+			{
+				DefElem *elem = lfirst_node(DefElem, option);
+				if (strcmp(elem->defname, "tablegroup") == 0)
+				{
+					idx_stmt->options = list_delete_cell(idx_stmt->options, option, prev);
+					break;
+				}
+				else
+					prev = option;
+			}
+		}
+
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);
 		idx_addr = DefineIndex(new_relid,
@@ -8127,7 +8169,6 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
-
 	if (IsYBRelation(*mutable_rel) && stmt->primary)
 	{
 		/* Table will be re-created, along with the dummy PK index. */
