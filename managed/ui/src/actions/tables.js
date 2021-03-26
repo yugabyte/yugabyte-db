@@ -159,7 +159,12 @@ export function restoreTableBackupResponse(response) {
 
 export function deleteBackup(payload) {
   const baseUrl = getCustomerEndpoint();
-  const request = axios.delete(`${baseUrl}/backups`, { data: payload });
+  const request = axios.delete(`${baseUrl}/backups`, {
+    data: {
+      backupUUID: payload
+    }
+  });
+
   return {
     type: DELETE_BACKUP,
     payload: request
