@@ -11,6 +11,7 @@
 . "${0%/*}/common.sh"
 should_create_package="0"
 should_use_package="0"
+use_dynamic_paths="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -40,20 +41,36 @@ while [[ $# -gt 0 ]]; do
     --use_package)
       should_use_package=1
     ;;
+    --use_dynamic_paths)
+      use_dynamic_paths="1"
+    ;;
     *)
       fatal "Invalid option: $1"
   esac
   shift
 done
 
+if [[ "$should_create_package" == "1" ]]; then
+  log "Creating wheels package $YB_PYTHON_MODULES_PACKAGE"
+  create_pymodules_package
+  exit
+fi
+
+if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
+  log "Installing from $YB_PYTHON_MODULES_PACKAGE"
+  install_pymodules_package
+  log "Finished installing to $YB_INSTALLED_MODULES_DIR"
+  exit
+fi
+
 if should_use_virtual_env; then
   activate_virtualenv
   fix_virtualenv_permissions
 fi
 
-if [[ $should_use_package == "1" && -f "$virtualenv_package" ]]; then
-  log "Found virtualenv package $virtualenv_package"
-  tar -xf $virtualenv_package
+if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
+  log "Found virtualenv package $YB_PYTHON_MODULES_PACKAGE"
+  tar -xf $YB_PYTHON_MODULES_PACKAGE
 else
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     # looks like there is some issue with setuptools and virtualenv on python2.
@@ -65,18 +82,20 @@ else
   log "Installing ybops package"
   install_ybops_package
 
-  log "Changing virtualenv absolute paths to dynamic paths"
-  # Change shebangs to use local python instead of absolute python path - required for our Jenkins
-  # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")
-  LC_ALL=C find $virtualenv_dir ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
-    -e "1s|${virtualenv_dir}/bin/python|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
+  if [[ "$use_dynamic_paths" == "1" ]]; then
+    log "Changing virtualenv absolute paths to dynamic paths"
+    # Change shebangs to use local python instead of absolute python path - required for our Jenkins
+    # pipeline and packaging (e.g. "/tmp/python_virtual_env/bin/python" -> "/usr/bin/env python")
+    LC_ALL=C find $virtualenv_dir ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
+      -e "1s|${virtualenv_dir}/bin/python|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
 
-  # Change VIRTUAL_ENV variable to be dynamic. Instead of hardcoding the path to the vitualenv
-  # directory, the VIRTUAL_ENV variable should print the filepath of the directory two above it.
-  new_venv_assignment='VIRTUAL_ENV="$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}" )")" \&\& pwd -P)"'
-  sed -i.yb_tmp \
-    -e "s|VIRTUAL_ENV=\"${virtualenv_dir}\"|${new_venv_assignment}|" $virtualenv_dir/bin/activate
-  rm $virtualenv_dir/bin/activate.yb_tmp
+    # Change VIRTUAL_ENV variable to be dynamic. Instead of hardcoding the path to the vitualenv
+    # directory, the VIRTUAL_ENV variable should print the filepath of the directory two above it.
+    new_venv_assignment='VIRTUAL_ENV="$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}" )")" \&\& pwd -P)"'
+    sed -i.yb_tmp \
+      -e "s|VIRTUAL_ENV=\"${virtualenv_dir}\"|${new_venv_assignment}|" $virtualenv_dir/bin/activate
+    rm $virtualenv_dir/bin/activate.yb_tmp
+  fi
 
   if should_use_virtual_env; then
     log "Expecting there to be no differences between the output of 'pip freeze' and the contents" \
@@ -95,9 +114,4 @@ else
           "$virtualenv_dir."
     fi
   fi
-fi
-
-if [[ $should_create_package == "1" ]]; then
-  log "Creating virtualenv package $virtualenv_package"
-  create_virtualenv_package
 fi
