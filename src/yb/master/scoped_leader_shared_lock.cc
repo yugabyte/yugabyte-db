@@ -39,8 +39,21 @@
 
 using namespace std::literals;
 
-DEFINE_int32(master_log_lock_warning_ms, 100,
-             "Print warnings if lock is held for longer than this amount of time.");
+constexpr int32_t kMasterLogLockWarningMsDefault =
+    ::yb::RegularBuildVsSanitizers<int32_t>(100, 750);
+
+DEFINE_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
+             "Print warnings if the master leader shared lock is held for longer than this amount "
+             "of time. Note that this is a shared lock, so these warnings simply indicate "
+             "long-running master operations that could delay system catalog loading by a new "
+             "master leader.");
+
+constexpr int32_t kMasterLeaderLockStackTraceMsDefault =
+    ::yb::RegularBuildVsSanitizers<int32_t>(1000, 3000);
+
+DEFINE_int32(master_leader_lock_stack_trace_ms, kMasterLeaderLockStackTraceMsDefault,
+             "Dump a stack trace if the master leader shared lock is held for longer than this "
+             "of time. Also see master_log_lock_warning_ms.");
 
 using yb::consensus::Consensus;
 using yb::consensus::ConsensusStatePB;
@@ -50,10 +63,17 @@ using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 namespace yb {
 namespace master {
 
-ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* catalog)
+ScopedLeaderSharedLock::ScopedLeaderSharedLock(
+    CatalogManager* catalog,
+    const char* file_name,
+    int line_number,
+    const char* function_name)
     : catalog_(DCHECK_NOTNULL(catalog)),
       leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
-      start_(std::chrono::steady_clock::now()) {
+      start_(std::chrono::steady_clock::now()),
+      file_name_(file_name),
+      line_number_(line_number),
+      function_name_(function_name) {
   int64_t catalog_leader_ready_term;
   {
     // Check if the catalog manager is running.
@@ -116,11 +136,15 @@ void ScopedLeaderSharedLock::Unlock() {
       lock.swap(leader_shared_lock_);
     }
     auto finish = std::chrono::steady_clock::now();
-    static const auto kLongLockLimit = RegularBuildVsSanitizers(
-        FLAGS_master_log_lock_warning_ms * 1ms, 750ms);
-    if (finish > start_ + kLongLockLimit) {
-      LOG(WARNING) << "Long lock of catalog manager: " << yb::ToString(finish - start_) << "\n"
-                   << GetStackTrace();
+
+    bool need_stack_trace = finish > start_ + 1ms * FLAGS_master_leader_lock_stack_trace_ms;
+    bool need_warning =
+        need_stack_trace || (finish > start_ + 1ms * FLAGS_master_log_lock_warning_ms);
+    if (need_warning) {
+      LOG(WARNING)
+          << "Long lock of catalog manager (" << file_name_ << ":" << line_number_ << ", "
+          << function_name_ << "): " << AsString(finish - start_)
+          << (need_stack_trace ? "\n" + GetStackTrace() : "");
     }
   }
 }
