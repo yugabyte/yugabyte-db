@@ -167,15 +167,14 @@ public class BackupsController extends AuthenticatedController {
 
   public Result delete(UUID customerUUID) {
     List<UUID> validBackups = new ArrayList<UUID>();
-    List<String> taskUUIDLIst = new ArrayList<String>();
-    ArrayNode formData = (ArrayNode) request().body().asJson();
+    List<String> taskUUIDList = new ArrayList<String>();
+    ObjectNode formData = (ObjectNode) request().body().asJson();
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-
-    for (JsonNode backupUUID : formData ) {
+    for (JsonNode backupUUID : formData.get("backupUUIDs")) {
       Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.asText()));
       if (backup == null) {
           LOG.info("Can not delete {} backup as it is not present in the database.",
@@ -186,9 +185,6 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     ObjectNode resultNode = Json.newObject();
-    String data;
-    // Change it .
-    data="Success";
     for (UUID uuid : validBackups) {
       Backup backup = Backup.get(customerUUID, uuid);
       
@@ -202,15 +198,14 @@ public class BackupsController extends AuthenticatedController {
         LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
         CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
             CustomerTask.TaskType.Delete, "Backup");
-        taskUUIDLIst.add(taskUUID.toString());
+        taskUUIDList.add(taskUUID.toString());
         Audit.createAuditEntry(ctx(), request(), taskUUID);
-        data = taskUUID.toString();
       }
     }
-    ArrayNode arrayNode = resultNode.putArray("taskUUID");
-    for (String item : taskUUIDLIst) {
+    ArrayNode arrayNode = resultNode.putArray("taskUUIDs");
+    for (String item : taskUUIDList) {
       arrayNode.add(item);
-  }
+    }
     return ApiResponse.success(resultNode);
   }
 }
