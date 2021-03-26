@@ -882,16 +882,15 @@ public class Universe extends Model {
     Universe.saveDetails(universeUUID, ignoreUniverse -> {
     });
   }
+  
+  public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
+    return Customer.get(customerUUID).getUniverses().stream()
+        .filter(s -> s.getUniverseDetails().rootCA != null
+        && s.getUniverseDetails().rootCA.equals(certUUID))
+        .collect(Collectors.toSet());
+  }
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
-    Set<Universe> universeList = Customer.get(customerUUID).getUniverses();
-    universeList =
-      universeList.stream()
-        .filter(
-          s ->
-            s.getUniverseDetails().rootCA != null
-              && s.getUniverseDetails().rootCA.equals(certUUID))
-        .collect(Collectors.toSet());
-    return universeList.size() != 0;
+    return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
   }
 }
