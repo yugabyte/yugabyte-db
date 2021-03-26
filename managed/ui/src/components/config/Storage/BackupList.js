@@ -72,7 +72,13 @@ export const BackupList = (props) => {
   // This method will handle all the required actions for
   // the particular row.
   const formatConfigActions = (cell, row) => {
-    const { configUUID, inUse, name, universeDetails } = row;
+    const {
+      configName,
+      configUUID,
+      inUse,
+      name,
+      universeDetails
+    } = row;
 
     return (
       <DropdownButton
@@ -124,6 +130,7 @@ export const BackupList = (props) => {
 
         <MenuItem
           onClick={() => {
+            setConfigData(configName);
             setUniverseDetails([...universeDetails]);
             setIsUniverseVisible(true);
           }}
@@ -136,7 +143,7 @@ export const BackupList = (props) => {
             visible={isUniverseVisible}
             onHide={() => setIsUniverseVisible(false)}
             associatedUniverses={associatedUniverses}
-            title="Backup Configuration"
+            title={`Backup Configuration ${configData}`}
           />
         }
       </DropdownButton>

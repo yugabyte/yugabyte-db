@@ -61,7 +61,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
       onHide={onHide}
       submitLabel='Close'
       onFormSubmit={onHide}
-      title={`Universes using this ${title}`}
+      title={`Universes using ${title}`}
     >
       {associatedUniverses?.length ? (
         <div>

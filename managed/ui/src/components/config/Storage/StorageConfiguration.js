@@ -324,13 +324,10 @@ class StorageConfiguration extends Component {
   render() {
     const {
       handleSubmit,
-      submitting,
-      addConfig: { loading },
       customerConfigs
     } = this.props;
     const { iamRoleEnabled } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
-    const config = this.getConfigByType(activeTab, customerConfigs);
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
         return list;

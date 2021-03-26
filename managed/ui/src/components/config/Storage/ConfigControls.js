@@ -12,9 +12,6 @@ export const ConfigControls = (props) => {
   const {
     activeTab,
     editView,
-    editView: {
-      [activeTab]: { data }
-    },
     listView,
     showListView
   } = props;
