@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
@@ -54,6 +55,8 @@ const header = (currTab, onCreateBackup) => (
 
 export const BackupList = (props) => {
   const [configData, setConfigData] = useState({});
+  const [associatedUniverses, setUniverseDetails] = useState([]);
+  const [isUniverseVisible, setIsUniverseVisible] = useState(false);
   const {
     activeTab,
     data,
@@ -69,7 +72,7 @@ export const BackupList = (props) => {
   // This method will handle all the required actions for
   // the particular row.
   const formatConfigActions = (cell, row) => {
-    const { configUUID, inUse, name } = row;
+    const { configUUID, inUse, name, universeDetails } = row;
 
     return (
       <DropdownButton
@@ -119,10 +122,23 @@ export const BackupList = (props) => {
           </YBConfirmModal>
         }
 
-        {/* TODO: Need to implement the show universe which is in review list */}
-        <MenuItem>
+        <MenuItem
+          onClick={() => {
+            setUniverseDetails([...universeDetails]);
+            setIsUniverseVisible(true);
+          }}
+        >
           <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
+
+        {
+          <AssociatedUniverse
+            visible={isUniverseVisible}
+            onHide={() => setIsUniverseVisible(false)}
+            associatedUniverses={associatedUniverses}
+            title="Backup Configuration"
+          />
+        }
       </DropdownButton>
     );
   };
