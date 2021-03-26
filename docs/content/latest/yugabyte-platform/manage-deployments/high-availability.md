@@ -144,8 +144,14 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     <br/>
 
+    The restore should take only a few seconds, and you'll be logged out when it's finished.
+
+    <br/>
+
     ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
-1. The restore should take only a few seconds, and you'll be logged out when it's finished. To log back in, use the user credentials that you had configured on the previously active platform.
+1. To log back in, use the user credentials that you had configured on the previously active platform.
 
-1. Once you're logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
+    <br/>
+
+    Once you're logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
