@@ -3,7 +3,8 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -32,6 +33,8 @@ import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import play.libs.Json;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -322,5 +325,21 @@ public class Util {
 
   public static void moveFile(Path source, Path destination) throws IOException {
     Files.move(source, destination, REPLACE_EXISTING);
+  }
+
+  public static ArrayNode getUniverseDetails(Set<Universe> universes) {
+    ArrayNode details = Json.newArray();
+    for (Universe universe : universes) {
+      ObjectNode universePayload = Json.newObject();
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universePayload.put("name", universe.name);
+      universePayload.put("updateInProgress", universeDetails.updateInProgress);
+      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
+      universePayload.put("uuid", universe.universeUUID.toString());
+      universePayload.put("creationDate", universe.creationDate.getTime());
+      universePayload.put("universePaused", universeDetails.universePaused);
+      details.add(universePayload);
+    }
+    return details;
   }
 }

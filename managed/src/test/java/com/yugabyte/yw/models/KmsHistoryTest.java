@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.commissioner.tasks.CreateUniverse;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -19,6 +20,7 @@ import org.junit.Test;
 import play.libs.Json;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
@@ -93,5 +95,16 @@ public class KmsHistoryTest extends FakeDBApplication {
         List<KmsHistory> targetHistory = KmsHistory
                 .getAllConfigTargetKeyRefs(configUUID, universeUUID, TargetType.UNIVERSE_KEY);
         assertEquals(targetHistory.size(), 0);
+    }
+
+    @Test
+    public void testGetUniverses() {
+      UUID configUUID = testKMSConfig.configUUID;
+      Universe universe = ModelFactory.createUniverse();
+      KmsHistory keyRef = KmsHistory
+          .createKmsHistory(configUUID, universe.universeUUID, TargetType.UNIVERSE_KEY, "a");
+      assertNotNull(keyRef);
+      Set<Universe> universes = KmsHistory.getUniverses(configUUID, TargetType.UNIVERSE_KEY);
+      assertEquals(universes.size(), 1);
     }
 }
