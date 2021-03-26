@@ -23,8 +23,6 @@
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/gutil/strings/join.h"
-
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
@@ -33,7 +31,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/crypt.h"
@@ -241,7 +238,7 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
 }
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
-    const CQLMessage::QueryId& query_id, const string& keyspace, const string& query) {
+    const ql::CQLMessage::QueryId& query_id, const string& keyspace, const string& query) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -269,7 +266,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
 }
 
 shared_ptr<const CQLStatement> CQLServiceImpl::GetPreparedStatement(
-    const CQLMessage::QueryId& query_id) {
+    const ql::CQLMessage::QueryId& query_id) {
   // Get exclusive lock before looking up a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 

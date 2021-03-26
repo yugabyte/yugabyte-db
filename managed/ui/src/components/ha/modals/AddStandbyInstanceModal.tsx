@@ -71,6 +71,7 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
             <Field
               label="Enter IP Address / Hostname for standby platform instance"
               name="instanceAddress"
+              placeholder="http://"
               type="text"
               component={YBFormInput}
             />

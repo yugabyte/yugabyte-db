@@ -119,7 +119,6 @@ Status CompactedDBImpl::Init(const Options& options) {
   if (!s.ok()) {
     return s;
   }
-  NewThreadStatusCfInfo(cfd_);
   version_ = cfd_->GetSuperVersion()->current;
   user_comparator_ = cfd_->user_comparator();
   auto* vstorage = version_->storage_info();

@@ -19,35 +19,23 @@
 namespace yb {
 namespace master {
 
+#define YB_MASTER_BACKUP_SERVICE_METHODS \
+  (CreateSnapshot)(ListSnapshots)(ListSnapshotRestorations)(RestoreSnapshot)(DeleteSnapshot) \
+  (ImportSnapshotMeta)(CreateSnapshotSchedule)(ListSnapshotSchedules)
+
+#define YB_MASTER_BACKUP_SERVICE_METHOD_DECLARE(r, data, elem) \
+  void elem( \
+      const BOOST_PP_CAT(elem, RequestPB)* req, BOOST_PP_CAT(elem, ResponsePB)* resp, \
+      rpc::RpcContext rpc) override;
+
 // Implementation of the master backup service. See master_backup.proto.
 class MasterBackupServiceImpl : public MasterBackupServiceIf,
                                 public MasterServiceBase {
  public:
   explicit MasterBackupServiceImpl(Master* server);
 
-  void CreateSnapshot(
-      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
-      rpc::RpcContext rpc) override;
-
-  void ListSnapshots(
-      const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
-      rpc::RpcContext rpc) override;
-
-  void ListSnapshotRestorations(
-      const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp,
-      rpc::RpcContext rpc) override;
-
-  void RestoreSnapshot(
-      const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp,
-      rpc::RpcContext rpc) override;
-
-  void DeleteSnapshot(
-      const DeleteSnapshotRequestPB* req, DeleteSnapshotResponsePB* resp,
-      rpc::RpcContext rpc) override;
-
-  void ImportSnapshotMeta(
-      const ImportSnapshotMetaRequestPB* req, ImportSnapshotMetaResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_MASTER_BACKUP_SERVICE_METHOD_DECLARE, ~, YB_MASTER_BACKUP_SERVICE_METHODS)
 
  private:
   DISALLOW_COPY_AND_ASSIGN(MasterBackupServiceImpl);

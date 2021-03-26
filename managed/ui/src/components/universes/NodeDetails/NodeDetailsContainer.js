@@ -21,7 +21,8 @@ import {
 function mapStateToProps(state) {
   return {
     universe: state.universe,
-    customer: state.customer
+    customer: state.customer,
+    providers: state.cloud.providers
   };
 }
 

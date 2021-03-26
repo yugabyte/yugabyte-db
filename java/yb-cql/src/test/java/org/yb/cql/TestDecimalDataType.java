@@ -31,9 +31,13 @@ import java.util.TreeSet;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestDecimalDataType extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDecimalDataType.class);
+
   private String getRandomVarInt(boolean withSign, int length) {
     String digits = "0123456789";
     final Random random = new Random();

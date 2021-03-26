@@ -66,8 +66,9 @@ lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
 
-scalaVersion := "2.11.7"
-version := (sys.process.Process("cat version.txt").lines_!.head)
+scalaVersion := "2.12.10"
+version := (sys.process.Process("cat version.txt").lineStream_!.head)
+Global / onChangedBuildSource := ReloadOnSourceChanges
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -109,7 +110,10 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
-  "org.apache.velocity" % "velocity-tools" % "2.0"
+  "org.apache.velocity" % "velocity-tools" % "2.0",
+  "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "commons-io" % "commons-io" % "2.8.0",
+  "commons-codec" % "commons-codec" % "1.15"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -202,7 +206,7 @@ topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
-playMonitoredFiles := { if (autoReload) playMonitoredFiles.value else Seq() }
+playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
 
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
@@ -224,7 +228,7 @@ consoleSetting := {
               consoleReader.clearScreen(); waitEOF()
             case 10 | 13 =>
               println(); waitEOF()
-            case x => waitEOF()
+            case _ => waitEOF()
           }
         }
         doWithoutEcho(waitEOF())

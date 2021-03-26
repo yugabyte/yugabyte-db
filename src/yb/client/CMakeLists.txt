@@ -106,7 +106,7 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc)
+add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_base.cc)
 target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests
@@ -123,5 +123,6 @@ ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
 ADD_YB_TEST(seal-txn-test)
 ADD_YB_TEST(snapshot-txn-test)
+ADD_YB_TEST(snapshot-schedule-test)
 ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)

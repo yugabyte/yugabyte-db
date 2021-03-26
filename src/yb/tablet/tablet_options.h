@@ -72,6 +72,7 @@ struct TabletInitData {
   IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
+  std::function<HybridTime(const RaftGroupMetadata&)> allowed_history_cutoff_provider;
 };
 
 } // namespace tablet

@@ -138,9 +138,8 @@ ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_unique UNIQUE (id);
 SET default_tablespace TO '';
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_pkey PRIMARY KEY (id);
 \d testschema.test_tab_unique
-/*
 \d testschema.test_tab_pkey
-*/
+\d testschema.test_tab;
 SELECT * FROM testschema.test_tab;
 DROP TABLE testschema.test_tab;
 

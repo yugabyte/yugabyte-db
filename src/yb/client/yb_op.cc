@@ -51,6 +51,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/primitive_value_util.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -554,14 +555,18 @@ CHECKED_STATUS GetRangePartitionBounds(const YBPgsqlReadOp& op,
   const auto& request = op.request();
   const auto& range_cols = request.range_column_values();
   const auto& condition_expr = request.condition_expr();
-  if (range_cols.size() > 0) {
+  if (condition_expr.has_condition() && range_cols.size() < schema.num_range_key_columns()) {
+    auto prefixed_range_components = VERIFY_RESULT(docdb::InitKeyColumnPrimitiveValues(
+        range_cols, schema, schema.num_hash_key_columns()));
+    QLScanRange scan_range(schema, condition_expr.condition());
+    *lower_bound = docdb::GetRangeKeyScanSpec(
+        schema, &prefixed_range_components, &scan_range, true /* lower_bound */);
+    *upper_bound = docdb::GetRangeKeyScanSpec(
+        schema, &prefixed_range_components, &scan_range, false /* upper_bound */);
+  } else if (!range_cols.empty()) {
     RETURN_NOT_OK(GetRangeComponents(schema, range_cols, lower_bound));
     *upper_bound = *lower_bound;
     upper_bound->emplace_back(docdb::ValueType::kHighest);
-  } else if (condition_expr.has_condition()) {
-    QLScanRange scan_range(schema, condition_expr.condition());
-    *lower_bound = docdb::GetRangeKeyScanSpec(schema, &scan_range, true /* lower bound */);
-    *upper_bound = docdb::GetRangeKeyScanSpec(schema, &scan_range, false /* upper bound */);
   }
   return Status::OK();
 }

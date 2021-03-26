@@ -115,14 +115,21 @@ public class PlatformInstanceClient {
     this.makeRequest(this.controller.demoteLocalLeader(timestamp), formData);
   }
 
-  public JsonNode syncBackups(
+  public boolean syncBackups(
     String leaderAddr,
     String senderAddr,
     File backupFile) {
-    return this.apiHelper.multipartRequest(
+    JsonNode response = this.apiHelper.multipartRequest(
       this.controller.syncBackups().url(),
       this.requestHeader,
-      buildPartsList(backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+      buildPartsList(backupFile,
+        ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+    if (response == null || response.get("error") != null) {
+      LOG.error("Error received from remote instance {}", this.remoteAddress);
+      return false;
+    } else {
+      return true;
+    }
   }
 
   public static List<Http.MultipartFormData.Part<Source<ByteString, ?>>> buildPartsList(

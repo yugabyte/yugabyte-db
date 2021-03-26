@@ -23,7 +23,7 @@ from texttable import Texttable
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    YB_HOME_DIR
+    YB_HOME_DIR, YB_SUDO_PASS
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
 
@@ -733,31 +733,35 @@ class ControlInstanceMethod(AbstractInstancesMethod):
             self.base_command.name, self.name, args, self.extra_vars, host_info)
 
 
-class AccessCreateVaultMethod(AbstractMethod):
-    def __init__(self, base_command):
-        super(AccessCreateVaultMethod, self).__init__(base_command, "create-vault")
+class AbstractVaultMethod(AbstractMethod):
+    def __init__(self, base_command, method_name):
+        super(AbstractVaultMethod, self).__init__(base_command, method_name)
         self.cluster_vault = dict()
 
     def add_extra_args(self):
-        super(AccessCreateVaultMethod, self).add_extra_args()
+        super(AbstractVaultMethod, self).add_extra_args()
         self.parser.add_argument("--private_key_file", required=True, help="Private key filename")
         self.parser.add_argument("--has_sudo_password", action="store_true", help="sudo password")
         self.parser.add_argument("--vault_file", required=False, help="Vault filename")
-        self.parser.add_argument("--vault_password", required=False, help="Vault password filename")
+
+
+class AccessCreateVaultMethod(AbstractVaultMethod):
+    def __init__(self, base_command):
+        super(AccessCreateVaultMethod, self).__init__(base_command, "create-vault")
 
     def callback(self, args):
         file_prefix = os.path.splitext(args.private_key_file)[0]
-        if args.vault_password is None:
+        if args.vault_password_file is None:
             vault_password = generate_random_password()
-            args.vault_password = "{}.vault_password".format(file_prefix)
-            with open(args.vault_password, "w") as f:
+            args.vault_password_file = "{}.vault_password".format(file_prefix)
+            with open(args.vault_password_file, "w") as f:
                 f.write(vault_password)
-        elif os.path.exists(args.vault_password):
-            with open(args.vault_password, "r") as f:
+        elif os.path.exists(args.vault_password_file):
+            with open(args.vault_password_file, "r") as f:
                 vault_password = f.read().strip()
 
             if vault_password is None:
-                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password))
+                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
         else:
             raise YBOpsRuntimeError("Vault password file doesn't exists.")
 
@@ -790,7 +794,45 @@ class AccessCreateVaultMethod(AbstractMethod):
 
         vault = Vault(vault_password)
         vault.dump(vault_data, open(args.vault_file, 'w'))
-        print(json.dumps({"vault_file": args.vault_file, "vault_password": args.vault_password}))
+        print(json.dumps({
+            "vault_file": args.vault_file,
+            "vault_password": args.vault_password_file
+        }))
+
+
+class AccessEditVaultMethod(AbstractVaultMethod):
+    def __init__(self, base_command):
+        super(AccessEditVaultMethod, self).__init__(base_command, "edit-vault")
+
+    def callback(self, args):
+        file_prefix = os.path.splitext(args.private_key_file)[0]
+        args.vault_password_file = args.vault_password_file or \
+            "{}.vault_password".format(file_prefix)
+        if os.path.exists(args.vault_password_file):
+            with open(args.vault_password_file, "r") as f:
+                vault_password = f.read().strip()
+
+            if vault_password is None:
+                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
+        else:
+            raise YBOpsRuntimeError("Vault password file doesn't exists.")
+
+        if args.vault_file is None:
+            args.vault_file = "{}.vault".format(file_prefix)
+
+        vault = Vault(vault_password)
+        data = vault.load(open(args.vault_file).read())
+
+        if args.has_sudo_password:
+            if not YB_SUDO_PASS:
+                raise YBOpsRuntimeError("Did not find sudo password.")
+            data['ansible_become_pass'] = YB_SUDO_PASS
+
+        vault.dump(data, open(args.vault_file, 'w'))
+        print(json.dumps({
+            "vault_file": args.vault_file,
+            "vault_password": args.vault_password_file
+        }))
 
 
 class AbstractAccessMethod(AbstractMethod):

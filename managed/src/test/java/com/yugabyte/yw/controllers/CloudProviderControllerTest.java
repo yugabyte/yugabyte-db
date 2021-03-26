@@ -2,14 +2,14 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -23,55 +23,11 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 import static play.test.Helpers.contentAsString;
-
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Users;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.Helpers;
 
 import java.io.File;
 import java.io.IOException;
@@ -79,13 +35,55 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.UUID;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
+
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Mock;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+
+import play.libs.Json;
+import play.mvc.Result;
+
 
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
+
+  @Mock
+  Config mockConfig;
+
   Customer customer;
   Users user;
 
@@ -416,6 +414,36 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteProviderWithInstanceType() {
+    Provider p = ModelFactory.onpremProvider(customer);
+    Region r = Region.create(p, "region-1", "region 1", "yb image");
+
+    ObjectNode metaData = Json.newObject();
+    metaData.put("numCores", 4);
+    metaData.put("memSizeGB", 300);
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    instanceTypeDetails.volumeDetailsList = new ArrayList<>();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeSizeGB = 20;
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    instanceTypeDetails.volumeDetailsList.add(volumeDetails);
+    metaData.put("longitude", -119.417932);
+    metaData.put("ybImage", "yb-image-1");
+    metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
+
+    InstanceType.createWithMetadata(p, "region-1", metaData);
+    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    Result result = deleteProvider(p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.asText(),
+      allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertNull(Provider.get(p.uuid));
+  }
+
+  @Test
   public void testDeleteProviderWithMultiRegionAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
@@ -549,7 +577,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
-    assertEquals("1234", p.getConfig().get("AWS_HOSTED_ZONE_ID"));
+    assertEquals("1234", p.getConfig().get("HOSTED_ZONE_ID"));
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -592,7 +620,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
     assertNotNull(provider);
-    assertEquals("1234", provider.getAwsHostedZoneId());
+    assertEquals("1234", provider.getHostedZoneId());
     assertEquals("test", provider.getAwsHostedZoneName());
     assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
     assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));
