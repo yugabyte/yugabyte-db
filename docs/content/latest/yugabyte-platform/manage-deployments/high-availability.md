@@ -1,7 +1,7 @@
 ---
 title: Enable High Availability features
 headerTitle: Enable high availability
-linkTitle: High availability
+linkTitle: Enable high availability
 description: Enable Yugabyte Platform's high-availability features
 aliases:
 menu:
@@ -34,60 +34,118 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 ### Prerequisites
 
 * Yugabyte Platform v2.5.3.1 or above.
-* You have already installed multiple YB Platforms to be used in the HA cluster. They should be [installed]() the same way they normally are installed.
+* You have already [installed](../../install-yugabyte-platform/) multiple YB Platform instances to be used in the HA cluster.
 * Platform VMs are all able to connect to each other over the port that the Platform UI/API is normally reachable over (80/443, for example).
 * All platforms are running the same version of Yugabyte Platform software (it is good practice to upgrade all platforms in the HA cluster at close to the same time).
 
 ### Set Up the Active Platform
 
-1. Go to the "Administration" tab on the bottom of the left-hand navigation panel.
+1. Click the "Administration" tab at the bottom of the left-side navigation panel.
 
-1. You should be presented with a screen similar to:
+    <br/>
 
-    ![Add Node Actions](/images/ee/node-actions-add-node.png)
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
-1. Ensure "Active" instance type is selected
+1. Select the `Active` instance type.
 
-1. Enter this platform’s IP/hostname (ensure to include the HTTP/HTTPS protocol prefix)
+    <br/>
 
-1. Generate a key
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
-1. Select your desired replication frequency
+1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
 
-1. Click "Create"
+    <br/>
 
-1. Now navigate to the "Instance Configuration" tab at the top of the screen
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
-1. You should now see the address for this platform as the only entry row in the table like:
+1. Generate a key.
 
-    ![Add Node Actions](/images/ee/node-actions-add-node.png)
+    <br/>
 
-1. Now click "Add Instance" for each standby platform you would like to add to the HA cluster and enter the standby platform’s IP address/hostname.
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Select your desired replication frequency, in minutes.
+
+    <br/>
+
+    In most cases, you don't need to replicate very often. Yugabyte recommends... **DANIEL, WHAT IS THE REC HERE?**
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Click "Create".
+
+1. Next, click the "Instance Configuration" tab at the top of the screen.
+
+    <br/>
+
+    The address for this platform should be the only entry row in the table, similar to the following:
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Click "Add Instance" for each standby platform you would like to add to the HA cluster, and enter the standby platform’s IP address or hostname (including the HTTP/HTTPS protocol prefix).
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
 ### Set up a Standby Platform
 
-1. Go to the same "Administration" tab
+Once you've set up the active platform, you can set up one or more standby platforms.
 
-1. Select "Standby" as the Instance type
+**Repeat the following steps for each standby platform** you wish to add to the HA cluster:
 
-1. Enter this platform’s IP/hostname (ensure to include the HTTP/HTTPS protocol prefix)
+1. Click the "Administration" tab at the bottom of the left-side navigation panel.
 
-1. Copy the shared authentication key that was generated on the active platform + paste it into the shared authentication key text box (make sure it matches!)
+    <br/>
 
-1. Wait for however long you had set up the replication frequency on the active platform and then refresh the page. You should see that the other instances in the HA cluster appear in the list of instances here
+    You should be presented with a screen similar to the following:
 
-1. Repeat all of these steps for each standby platform you want to add to the HA cluster
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Select the `Standby` instance type.
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Copy the shared authentication key you generated on the active platform, and paste it into the Shared authentication key field. Double-check to make sure the keys match.
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Wait for a replication interval (you set this when you [set up the active instance](#set-up-the-active-platform)), then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
 ### Promote a Standby Platform to Active
 
-1. Go to the standby platform you desire to promote to active
+1. On the standby platform you wish to promote to active, click the Make Active button in the upper-right corner of the "Replication Configuration" tab.
 
-1. Select the "Make Active" button in the upper right-hand corner of the "Replication Configuration" tab
+    <br/>
 
-1. Select the backup you want to restore (note: it is strongly recommended to choose the most recent * backup in the vast majority of cases)
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
-1. Confirm that you want to continue with the promotion
+1. Select the backup you want to restore (we strongly recommend you choose the most recent backup in the vast majority of cases!), and confirm that you want to promote this instance to active.
 
-1. You will be logged out when the restore completes (this should only take a few seconds). When logging back in, please note that you will have to use the user-credentials that you had configured on the previously active platform
+    <br/>
 
-1. Once logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. The restore should take only a few seconds, and you'll be logged out when it's finished. To log back in, use the user credentials that you had configured on the previously active platform.
+
+1. Once you're logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
