@@ -144,7 +144,7 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadDisabled = true || row.type !== 'SelfSigned';
+    const downloadDisabled = row.type !== 'SelfSigned';
     const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
