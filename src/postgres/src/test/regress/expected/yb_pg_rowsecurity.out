@@ -174,7 +174,7 @@ ORDER BY 1, 2;
  dtitle  | text    |           |          |
  k       | integer |           | not null | nextval('document_k_seq'::regclass)
 Indexes:
-    "document_pkey" PRIMARY KEY, lsm (k)
+    "document_pkey" PRIMARY KEY, lsm (k ASC)
     "document_did_key" UNIQUE CONSTRAINT, lsm (did HASH)
 Foreign-key constraints:
     "document_cid_fkey" FOREIGN KEY (cid) REFERENCES category(cid)
