@@ -687,6 +687,7 @@ class PgMiniTestManualSysTableTxn : public PgMiniTest {
     // Enable manual transaction control for operations on system tables. Otherwise, they would
     // execute non-transactionally.
     FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
+    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 
@@ -1364,7 +1365,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
 
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
-TEST_F(PgMiniTest, NoRestartSecondRead) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
   FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());

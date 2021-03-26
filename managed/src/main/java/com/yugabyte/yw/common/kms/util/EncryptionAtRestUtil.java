@@ -13,12 +13,14 @@ package com.yugabyte.yw.common.kms.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -203,6 +205,12 @@ public class EncryptionAtRestUtil {
 
     public static boolean configInUse(UUID configUUID) {
         return KmsHistory.configHasHistory(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+    }
+
+    public static ArrayNode getUniverses(UUID configUUID) {
+      Set<Universe> universes = KmsHistory.getUniverses(
+          configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+      return Util.getUniverseDetails(universes);
     }
 
     public static int getNumKeyRotations(UUID universeUUID) {

@@ -51,6 +51,28 @@ POST    /customers/:cUUID/configs                                              c
 GET     /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.delete(cUUID: java.util.UUID, configUUID: java.util.UUID)
 
+#---------------------------------------------------------------------------------------------------
+#                       Runtime Config
+#---------------------------------------------------------------------------------------------------
+# List keys that we allow configuring - no auth needed
+GET /runtime_config/mutable_keys                                   com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
+
+# List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
+# sub-scopes (i.e. universes and providers owned by this customer)
+GET /customers/:cUUID/runtime_config/scopes                        com.yugabyte.yw.controllers.RuntimeConfController.listScopes(cUUID: java.util.UUID)
+
+# List of runtime config key values overridden in specific scope for a customer
+GET /customers/:cUUID/runtime_config/:scope                        com.yugabyte.yw.controllers.RuntimeConfController.getConfig(cUUID: java.util.UUID, scope: java.util.UUID, includeInherited: java.lang.Boolean ?= false)
+
+# any customer can see values in global scope
+GET /customers/:cUUID/runtime_config/:scope/key/:key               com.yugabyte.yw.controllers.RuntimeConfController.getKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String)
+
+# If scope is for global config than only super admin can mutate that
+PUT /customers/:cUUID/runtime_config/:scope/key/:key               com.yugabyte.yw.controllers.RuntimeConfController.setKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String)
+DELETE /customers/:cUUID/runtime_config/:scope/key/:key            com.yugabyte.yw.controllers.RuntimeConfController.deleteKey(cUUID: java.util.UUID, scope: java.util.UUID, key: String)
+
+#---------------------------------------------------------------------------------------------------
+
 # KMS Configuration API
 GET     /customers/:cUUID/kms_configs/:configUUID                              com.yugabyte.yw.controllers.EncryptionAtRestController.getKMSConfig(cUUID: java.util.UUID, configUUID: java.util.UUID)
 GET     /customers/:cUUID/kms_configs                                          com.yugabyte.yw.controllers.EncryptionAtRestController.listKMSConfigs(cUUID: java.util.UUID)

@@ -300,7 +300,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
   do {
-    CatalogManager::ScopedLeaderSharedLock l(catalog_manager_.get());
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_.get());
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       return Status::OK();
     }

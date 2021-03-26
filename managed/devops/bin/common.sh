@@ -48,6 +48,7 @@ regex_from_list() {
 }
 
 set_python_executable() {
+  PYTHON_EXECUTABLE=""
   executables=( "${PYTHON3_EXECUTABLES[@]}" )
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     executables=( "${PYTHON2_EXECUTABLES[@]}" )
@@ -293,7 +294,7 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-
+    set_python_executable
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
     fi
@@ -342,7 +343,7 @@ create_pymodules_package() {
   run_pip install "setuptools<45" "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
     --target="$YB_PYTHON_MODULES_DIR"
   # Change shebangs to be path-independent.
-  current_py_exec=$(which python)
+  current_py_exec=$(which $PYTHON_EXECUTABLE)
   LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
     -e "1s|${current_py_exec}|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
   tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
