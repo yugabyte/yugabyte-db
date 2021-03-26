@@ -15,11 +15,17 @@ object UIRunHook {
       var watchProcess: Option[Process] = None
 
       override def beforeStarted(): Unit = {
-        Process("npm install", base).run
+        // install UI dependencies from scratch
+        Process("npm ci", base)!
       }
 
       override def afterStarted(addr: InetSocketAddress): Unit = {
-        watchProcess = Some(Process("node node_modules/react-scripts/scripts/start.js", base).run())
+        // don't run "npm start" directly as it leaves zombie node.js child processes on termination
+        watchProcess = Some(
+          Process(
+            "node node_modules/react-scripts/scripts/start.js", base, "EXTEND_ESLINT" -> "true"
+          ).run()
+        )
       }
 
       override def afterStopped(): Unit = {
