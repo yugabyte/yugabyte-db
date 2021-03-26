@@ -450,7 +450,28 @@ CREATE INDEX tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH);
 -- Name: tbl8_idx2; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b);
+CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC);
+
+
+--
+-- Name: tbl8_idx3; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX tbl8_idx3 ON public.tbl8 USING lsm (b ASC);
+
+
+--
+-- Name: tbl8_idx4; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
+
+
+--
+-- Name: tbl8_idx5; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE INDEX tbl8_idx5 ON public.tbl8 USING lsm (c HASH);
 
 
 --
