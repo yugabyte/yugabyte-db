@@ -392,9 +392,7 @@ TEST_F(SharedMemoryTest, TestSharedMemoryOwnership) {
       sizeof(SimpleObject)));
 }
 
-// This test expects SIGSEGV as a result of storing in unmapped memory region, but due to some
-// reason that doesn't happen in TSAN build after initialization of libbacktrace.
-TEST_F(SharedMemoryTest, YB_DISABLE_TEST_IN_TSAN(TestAccessAfterClose)) {
+TEST_F(SharedMemoryTest, TestAccessAfterClose) {
   SimpleObject* object = nullptr;
 
   { // Shared memory scope.
