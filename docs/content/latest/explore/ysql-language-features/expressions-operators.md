@@ -223,7 +223,7 @@ now
 
 ## Conditional Expressions and Operators
 
-Conditional expressions and operators assist you with forming conditional queries.
+Conditional expressions and operators assist you with forming conditional queries. YSQL supports `CASE` and `CAST`, among others.
 
 ### CASE
 
@@ -231,7 +231,7 @@ The `CASE` expression enables you to add if-else logic to your queries (for exam
 
 The following is the syntax of the general form of the `CASE` expression:
 
-```sql
+```
 CASE 
   WHEN condition_a  THEN result_a
   WHEN condition_b  THEN result_b
@@ -322,5 +322,19 @@ The preceding example produces the following output:
  date       | date   
 ------------+----------------
  2021-02-02 | 2020-12-02
+```
+
+YSQL supports another syntax for casting data types:
+
+```sql
+expression::type
+```
+
+The following example demonstrates the use of the :: operator:
+
+```sql
+SELECT 
+'25'::INTEGER,
+'02-DEC-2020'::DATE;
 ```
 
