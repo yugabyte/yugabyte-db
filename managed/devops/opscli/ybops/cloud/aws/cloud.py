@@ -399,10 +399,11 @@ class AwsCloud(AbstractCloud):
                 if result == 0:
                     break
             else:
-                logging.error("Start instance %s exceeded maxRetries!", args["id"])
+                logging.error("Start instance {} exceeded maxRetries!".format(args["id"]))
                 raise YBOpsRuntimeError(
-                    "Can not start the instance %s as the instance is not reachable.", args["id"]
-                    )   
+                    "Cannot reach the instance {} after its start at port {}".format(
+                        args["id"], ssh_port)
+                    )
         except ClientError as e:
             logging.error(e)
         finally:

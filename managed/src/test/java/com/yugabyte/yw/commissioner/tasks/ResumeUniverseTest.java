@@ -56,9 +56,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   Universe defaultUniverse;
   String nodePrefix = "demo-universe";
 
-  Map<String, String> config= new HashMap<String, String>();
-  AvailabilityZone az1, az2, az3;
-
+  Map<String, String> config = new HashMap<String, String>();
 
   @Before
   public void setUp() {
