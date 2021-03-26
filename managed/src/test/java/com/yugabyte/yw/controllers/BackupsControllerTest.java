@@ -270,14 +270,14 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode resultNode = Json.newObject();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     
-    ArrayNode arrayNode = resultNode.putArray("backupUUIDs");
+    ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
       arrayNode.add(item);
     }
     Result result = deleteBackup(resultNode, null);
     assertEquals(200, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(json.get("taskUUIDs").size(), 1);
+    assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 }

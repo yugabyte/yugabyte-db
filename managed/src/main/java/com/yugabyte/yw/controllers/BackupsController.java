@@ -174,7 +174,7 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    for (JsonNode backupUUID : formData.get("backupUUIDs")) {
+    for (JsonNode backupUUID : formData.get("backupUUID")) {
       Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.asText()));
       if (backup == null) {
           LOG.info("Can not delete {} backup as it is not present in the database.",
@@ -202,7 +202,7 @@ public class BackupsController extends AuthenticatedController {
         Audit.createAuditEntry(ctx(), request(), taskUUID);
       }
     }
-    ArrayNode arrayNode = resultNode.putArray("taskUUIDs");
+    ArrayNode arrayNode = resultNode.putArray("taskUUID");
     for (String item : taskUUIDList) {
       arrayNode.add(item);
     }
