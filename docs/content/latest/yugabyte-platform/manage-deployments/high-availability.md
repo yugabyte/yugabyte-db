@@ -13,21 +13,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-One of Yugabyte’s biggest selling features is the high availability of DB clusters (universes) due to YB’s distributed architecture. This has been something that has been missing on the platform side of things. The platform is the central source of DB orchestration, monitoring, alerting, and so on. This means that when the platform is down/unavailable, customers lose the ability to manage + monitor their clusters (including stuff like metric collection). In an even more severe scenario, if a VM hosting the platform permanently crashes/it’s disk is wiped away, customers lose the ability to monitor/manage their universes and have lost their configurations/metrics data for good.
+Yugabyte’s distributed architecture enables your database clusters (called universes) to have extremely high availability. And as the central source of database orchestration, monitoring, alerting, and more, Yugabyte Platform brings its own distributed architecture to the table in the form of the High Availability feature. 
 
-Platform HA tries to address this shortcoming by implementing an active-standby model for multiple platforms in a cluster with asynchronous replication. This means that a customer’s YB platform data can be replicated across multiple VMs ensuring that one VM crashing will not result in the customer not being able to manage/monitor their universes.
+Platform's high availability feature is an active-standby model for multiple platforms in a cluster with asynchronous replication. Your platform data is replicated across multiple VMs, ensuring that you can recover smoothly and quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 ## General Architecture
 
-Each HA cluster includes a single **active platform** and at least one **standby platform**, configured as follows:
+Each HA cluster includes a single _active platform_ and at least one _standby platform_, configured as follows:
 
-* The active platform runs normally, but also pushes out backups of it’s state to all of the standby platforms in the HA cluster.
+* **The active platform** runs normally, but also pushes out backups of it’s state to all of the standby platforms in the HA cluster.
 
-* Standby platforms are completely passive while in standby mode and cannot be used for managing/monitoring clusters until they are manually promoted to active by a user.
+* **A standby platform** is completely passive while in standby mode and can't be used for managing or monitoring clusters until you manually promote it to active.
 
-**Backups** from the active platform are periodically taken and pushed to followers at a customer-configured frequency (no more than once every minute). The active platform will also create + send one-off backups to standbys whenever a task completes (for example, creating a new universe). Metrics will be duplicated to standby platforms using Prometheus federation. Standby platforms will persist the 10 most recent backups to disk.
+**Backups** from the active platform are periodically taken and pushed to followers at a user-configurable frequency (no more than once per minute). The active platform also creates and sends one-off backups to standby platforms whenever a task completes (such as creating a new universe). Metrics are duplicated to standby platforms using Prometheus federation. Standby platforms retain the 10 most recent backups on disk.
 
-When **promoting a standby platform** to active, Yugabyte Platform restores the user-selected backup and automatically demotes the previous active platform to standby mode.
+When you promote a standby platform to active, Yugabyte Platform restores your selected backup, and automatically demotes the previous active platform to standby mode.
 
 ## Setting up an HA Cluster
 
