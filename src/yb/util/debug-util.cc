@@ -408,11 +408,6 @@ class GlobalBacktraceState {
         /* threaded = */ 0,
         BacktraceErrorCallback,
         /* data */ nullptr);
-
-    // To complete initialization we should call backtrace, otherwise it could fail in case of
-    // concurrent initialization.
-    backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
-                   BacktraceErrorCallback, nullptr);
   }
 
   backtrace_state* GetState() { return bt_state_; }
@@ -650,6 +645,14 @@ Status ListThreads(std::vector<pid_t> *tids) {
   return Status::OK();
 }
 
+void InitLibBackTrace() {
+#ifdef __linux__
+  if (FLAGS_use_libbacktrace) {
+    Singleton<GlobalBacktraceState>::get();
+  }
+#endif
+}
+
 std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
                           int num_top_frames_to_skip) {
   std::string buf;
@@ -668,6 +671,15 @@ std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
 
     // TODO: https://yugabyte.atlassian.net/browse/ENG-4729
 
+    // Note that first call to backtrace_full finishes libbacktrace state initialization, so
+    // if we find a way to use backtrace_full concurrently we will need to add the following code
+    // back to GlobalBacktraceState() constructor or use some other approach so first call to
+    // backtrace_full is executed without other concurrent calls of backtrace_full:
+    //   backtrace_full(bt_state_, /* skip = */ 1, DummyCallback, BacktraceErrorCallback, nullptr);
+    // See: https://github.com/yugabyte/yugabyte-db/commit/bf6b7e9d4ba11123cd6c7eb68ca94b2f171921d9
+    // As of 2021-03-20 this call was removed from GlobalBacktraceState() in order to avoid
+    // binaries execution slowdown for 1-2 seconds that slows down tests and scripts using some
+    // YB tools extensively (for example yb_backup.py do a lot of executions of yb-admin).
     const int backtrace_full_rv = backtrace_full(
         backtrace_state, /* skip = */ num_top_frames_to_skip + 1, BacktraceFullCallback,
         BacktraceErrorCallback, &context);
