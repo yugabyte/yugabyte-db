@@ -227,23 +227,100 @@ Conditional expressions and operators assist you with forming conditional querie
 
 ### CASE
 
-The `CASE` expression enables you to add if-else logic to your queries (for example, in `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ). `CASE` has a general and a simple form.
+The `CASE` expression enables you to add if-else logic to your queries (for example, to `SELECT`, `WHERE`, `GROUP BY`, and `HAVING` ). 
 
-The following illustrates the general form of the `CASE` statement:
+The following is the syntax of the general form of the `CASE` expression:
+
+```sql
+CASE 
+  WHEN condition_a  THEN result_a
+  WHEN condition_b  THEN result_b
+  [WHEN ...]
+  [ELSE result_else]
+END
+```
+
+Each condition is a boolean expression. If it evaluates to `false`, `CASE` continues evaluation until it finds a condition that evaluates to `true`. If a condition evaluates to `true`, `CASE` returns the result that follows the condition and stops evaluation. If all conditions evaluate to `false`, `CASE` returns the result that follows `ELSE`. If `ELSE` is not included in the statement, the `CASE` expression returns `NULL`.
+
+Suppose you work with a database that includes the following table populated with data:
+
+```sql
+CREATE TABLE employees (
+  employee_no integer PRIMARY KEY,
+  name text,
+  department text
+);
+```
+
+```sql
+INSERT INTO employees VALUES 
+  (1221, 'John Smith', 'Marketing'),
+  (1222, 'Bette Davis', 'Sales'),
+  (1223, 'Lucille Ball', 'Operations'),
+  (1224, 'John Zimmerman', 'Sales'),
+  (1225, 'Lee Bo', 'Sales'),
+  (1226, 'Frank Sinatra', 'Operations'); 
+```
+
+The following example uses the `CASE` expression in the `SELECT` statement to create labels for employees based on their employee number: if the number is smaller than 1223, the employee is a senior; if the number is greater than 1223 and smaller than or equal to 1225, the employee is intermediate; if the number is greater than 1225, the employee is a junior:
+
+```sql
+SELECT employee_no, name,
+  CASE
+    WHEN employee_no > 0
+      AND employee_no <= 1223 THEN 'Senior'
+    WHEN employee_no > 1223
+      AND employee_no <= 1225 THEN 'Intermediate'
+    WHEN employee_no > 1225 THEN 'Junior'
+  END seniority
+FROM employees
+ORDER BY name;
+```
+
+The preceding example produces the following output, with a column alias `seniority` placed after the `CASE` expression:
 
 ```
-     CASE 
-      WHEN condition_1  THEN result_1
-      WHEN condition_2  THEN result_2
-      [WHEN ...]
-      [ELSE else_result]
-ENDCode language: SQL (Structured Query Language) (sql)
+ employee_no  | name           | seniority
+--------------+----------------+--------------
+1222          | Bette Davis    | Senior
+1226          | Frank Sinatra  | Junior
+1221          | John Smith     | Senior
+1224          | John Zimmerman | Intermediate
+1225          | Lee Bo         | Intermediate
+1223          | Lucille Ball   | Senior
 ```
 
-In this syntax, each condition (`condition_1`, `condition_2`…) is a boolean expression that returns either `true` or `false`.
+### CAST
 
-When a condition evaluates to `false`, the `CASE` expression evaluates the next condition from the top to bottom until it finds a condition that evaluates to `true`.
+You can use the `CAST` operator to convert a value of one data type to another.
 
-If a condition evaluates to `true`, the `CASE` expression returns the corresponding result that follows the condition. For example, if the `condition_2` evaluates to `true`, the `CASE` expression returns the `result_2`. Also, it immediately stops evaluating the next expression.
+The following is the syntax of the `CAST` operator:
 
-In case all conditions evaluate to `false`, the `CASE` expression returns the result (`else_result`) that follows the `ELSE` keyword. If you omit the `ELSE` clause, the `CASE` expression returns `NULL`.
+```sql
+CAST (expression AS new_type);
+```
+
+*expression* is a constant, a table column, or an expression that evaluates to a value. *new_type* is a data type to which to convert the result of the *expression*.
+
+The following example converts a string constant to an integer:
+
+```sql
+SELECT CAST ('25' AS INTEGER);
+```
+
+The following example converts a string constant to a date:
+
+```sql
+SELECT 
+  CAST ('2021-02-02' AS DATE),
+  CAST ('02-DEC-2020' AS DATE);
+```
+
+The preceding example produces the following output:
+
+```
+ date       | date   
+------------+----------------
+ 2021-02-02 | 2020-12-02
+```
+
