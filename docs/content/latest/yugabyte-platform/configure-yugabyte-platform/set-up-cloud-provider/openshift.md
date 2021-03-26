@@ -101,6 +101,12 @@ rolebinding.rbac.authorization.k8s.io/yugabyte-management created
 The next step is to create a kubeconfig for this ServiceAccount. You download a helper script for generating a kubeconfig file by executing the following command:
 
 ```shell
+wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
+```
+
+To generate the kubeconfig file, execute the following:
+
+```shell
 python generate_kubeconfig.py \
  --service_account yugabyte-platform-universe-management \
  --namespace yb-platform
