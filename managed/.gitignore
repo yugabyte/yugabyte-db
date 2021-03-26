@@ -36,6 +36,7 @@ src/main/public/*
 *.pyc
 docker/yugaware/*.yml
 
+ui/.env
 ui/public/map/
 ui/coverage/
 
