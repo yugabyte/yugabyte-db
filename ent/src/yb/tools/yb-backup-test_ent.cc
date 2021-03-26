@@ -323,7 +323,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
        --------+---------+-----------+----------+---------
         k      | integer |           | not null |
        Indexes:
-           "rangetbl_pkey" PRIMARY KEY, lsm (k)
+           "rangetbl_pkey" PRIMARY KEY, lsm (k ASC)
       )#"
   ));
   ASSERT_NO_FATALS(RunPsqlCommand(

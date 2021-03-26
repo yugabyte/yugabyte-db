@@ -116,7 +116,7 @@ CREATE INDEX idx_range2 ON tab_range2 (a);
  a      | integer |           |          |
  b      | integer |           |          |
 Indexes:
-    "idx_range2" lsm (a), tablegroup "tg_test2"
+    "idx_range2" lsm (a ASC), tablegroup "tg_test2"
 Tablegroup: "tg_test2"
 
 INSERT INTO tab_range2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);

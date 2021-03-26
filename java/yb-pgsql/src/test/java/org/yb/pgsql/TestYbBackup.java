@@ -47,7 +47,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 360; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
+    return 600; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
   }
 
   @Override
@@ -55,7 +55,7 @@ public class TestYbBackup extends BasePgSQLTest {
     return 2;
   }
 
-  public void doAlteredYSQLTableBackup(String dbName, TableProperties tp) throws Exception {
+  public void doAlteredTableBackup(String dbName, TableProperties tp) throws Exception {
     String colocString = tp.isColocated() ? "TRUE" : "FALSE";
     String initialDBName = dbName + "1";
     String restoreDBName = dbName + "2";
@@ -104,19 +104,19 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testAlteredYSQLTableBackup() throws Exception {
-    doAlteredYSQLTableBackup("altered_db", new TableProperties(
+  public void testAlteredTable() throws Exception {
+    doAlteredTableBackup("altered_db", new TableProperties(
         TableProperties.TP_YSQL | TableProperties.TP_NON_COLOCATED));
   }
 
   @Test
-  public void testAlteredYSQLTableBackupInColocatedDB() throws Exception {
-    doAlteredYSQLTableBackup("altered_colocated_db", new TableProperties(
+  public void testAlteredTableInColocatedDB() throws Exception {
+    doAlteredTableBackup("altered_colocated_db", new TableProperties(
         TableProperties.TP_YSQL | TableProperties.TP_COLOCATED));
   }
 
   @Test
-  public void testMixedColocatedYSQLDatabaseBackup() throws Exception {
+  public void testMixedColocatedDatabase() throws Exception {
     String initialDBName = "yb_colocated";
     String restoreDBName = "yb_colocated2";
 
@@ -208,7 +208,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testAlteredYSQLTableBackupInOriginalCluster() throws Exception {
+  public void testAlteredTableInOriginalCluster() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
@@ -247,7 +247,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testYSQLColocatedBackupWithTableOidAlreadySet() throws Exception {
+  public void testColocatedWithTableOidAlreadySet() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
     }
@@ -288,7 +288,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testAlteredYSQLTableBackupWithNotNull() throws Exception {
+  public void testAlteredTableWithNotNull() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl(id int)");
 
@@ -327,7 +327,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testYSQLIndexBackup() throws Exception {
+  public void testIndex() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
       stmt.execute("CREATE INDEX test_idx ON test_tbl (a)");
@@ -370,6 +370,57 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=101", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=1100", new Row(1000, 1100, 1002.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE a=8888");
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testIndexTypes() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, c1 INT, c2 INT, c3 INT, c4 INT)");
+      stmt.execute("CREATE INDEX test_idx1 ON test_tbl (c1)");
+      stmt.execute("CREATE INDEX test_idx2 ON test_tbl (c2 HASH)");
+      stmt.execute("CREATE INDEX test_idx3 ON test_tbl (c3 ASC)");
+      stmt.execute("CREATE INDEX test_idx4 ON test_tbl (c4 DESC)");
+
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES (1, 11, 12, 13, 14)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES (9, 21, 22, 23, 24)");
+
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1=11", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=12", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3=13", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=14", new Row(1, 11, 12, 13, 14));
+
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9", new Row(9, 21, 22, 23, 24));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1=21", new Row(9, 21, 22, 23, 24));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=22", new Row(9, 21, 22, 23, 24));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3=23", new Row(9, 21, 22, 23, 24));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=24", new Row(9, 21, 22, 23, 24));
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1=11", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=12", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3=13", new Row(1, 11, 12, 13, 14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=14", new Row(1, 11, 12, 13, 14));
+
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1=21");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2=22");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3=23");
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4=24");
     }
 
     // Cleanup.

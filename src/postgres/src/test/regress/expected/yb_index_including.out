@@ -13,10 +13,10 @@ CREATE INDEX ON tbl_include_reg (c1, c2) INCLUDE (c1, c3);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
-                                                 pg_get_indexdef
-------------------------------------------------------------------------------------------------------------------
- CREATE INDEX tbl_include_reg_c1_c2_c11_c3_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2) INCLUDE (c1, c3)
- CREATE INDEX tbl_include_reg_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2) INCLUDE (c3, c4)
+                                                   pg_get_indexdef
+----------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX tbl_include_reg_c1_c2_c11_c3_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2 ASC) INCLUDE (c1, c3)
+ CREATE INDEX tbl_include_reg_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
 (2 rows)
 
 \d tbl_include_reg_idx
@@ -38,10 +38,10 @@ ALTER TABLE tbl_include_unique1 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
-                                                        pg_get_indexdef
---------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_include_unique1_c1_c2_c3_c4_key ON public.tbl_include_unique1 USING lsm (c1 HASH, c2) INCLUDE (c3, c4)
- CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON public.tbl_include_unique1 USING lsm (c1, c2) INCLUDE (c3, c4)
+                                                          pg_get_indexdef
+------------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_include_unique1_c1_c2_c3_c4_key ON public.tbl_include_unique1 USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+ CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON public.tbl_include_unique1 USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (2 rows)
 
 -- Unique index and unique constraint. Both must fail.
@@ -58,9 +58,9 @@ ALTER TABLE tbl_include_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
-                                              pg_get_indexdef
------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_include_pk_pkey ON public.tbl_include_pk USING lsm (c1 HASH, c2) INCLUDE (c3, c4)
+                                                pg_get_indexdef
+---------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_include_pk_pkey ON public.tbl_include_pk USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 -- NOT SUPPORTED
@@ -193,9 +193,9 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
 CREATE UNIQUE INDEX tbl_idx ON tbl using lsm(c1, c2, c3, c4);
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                 indexdef
----------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2, c3, c4)
+                                       indexdef
+---------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2 ASC, c3 ASC, c4 ASC)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -213,9 +213,9 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
 CREATE UNIQUE INDEX tbl_idx ON tbl using lsm(c1, c2) INCLUDE(c3,c4);
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                      indexdef
-------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2) INCLUDE (c3, c4)
+                                        indexdef
+----------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -232,9 +232,9 @@ DROP TABLE tbl;
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                            indexdef
-------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 HASH, c2) INCLUDE (c3, c4)
+                                              indexdef
+----------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;

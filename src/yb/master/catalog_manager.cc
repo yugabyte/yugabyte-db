@@ -2576,7 +2576,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << ts_descs.size() << " primary servers";
   }
-  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // Create partitions.
   PartitionSchema partition_schema;
@@ -2584,7 +2583,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (colocated || req.has_tablegroup_id()) {
     RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
     req.clear_partition_schema();
-    req.set_num_tablets(1);
+    num_tablets = 1;
   } else {
     s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
     if (req.partitions_size() > 0) {
@@ -2605,9 +2604,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         partitions.push_back(std::move(np));
       }
     } else {
+      // Supplied number of partitions is merely a suggestion, actual number of
+      // created partitions might differ.
       RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
     }
+    // The vector 'partitions' contains real setup partitions, so the variable
+    // should be updated.
+    num_tablets = partitions.size();
   }
+
+  LOG(INFO) << "Set number of tablets: " << num_tablets;
+  req.set_num_tablets(num_tablets);
+  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // For index table, populate the index info.
   IndexInfoPB index_info;

@@ -13,7 +13,7 @@
  grpacl     | aclitem[] |           |          |
  grpoptions | text[]    |           |          |
 Indexes:
-    "pg_tablegroup_oid_index" PRIMARY KEY, lsm (oid)
+    "pg_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_tablegroup', 'pg_tablegroup_oid_index');
  oid  |         relname         | reltype | relnatts
@@ -203,8 +203,8 @@ Tablegroup: "tgroup1"
  col1   | integer |           |          |
  col2   | integer |           |          |
 Indexes:
-    "tgroup_test4_col1_idx" lsm (col1), tablegroup "tgroup2"
-    "tgroup_test4_col2_idx" lsm (col2), tablegroup "tgroup2"
+    "tgroup_test4_col1_idx" lsm (col1 ASC), tablegroup "tgroup2"
+    "tgroup_test4_col2_idx" lsm (col2 ASC), tablegroup "tgroup2"
 Tablegroup: "tgroup2"
 
 \d tgroup_test4_col1_idx
@@ -227,9 +227,9 @@ CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
 --------+---------+-----------+----------+---------
  col1   | integer |           |          |
 Indexes:
-    "tgroup_describe_col1_idx" lsm (col1), tablegroup "tgroup_describe1"
-    "tgroup_describe_col1_idx1" lsm (col1)
-    "tgroup_describe_col1_idx2" lsm (col1), tablegroup "tgroup_describe2"
+    "tgroup_describe_col1_idx" lsm (col1 ASC), tablegroup "tgroup_describe1"
+    "tgroup_describe_col1_idx1" lsm (col1 ASC)
+    "tgroup_describe_col1_idx2" lsm (col1 ASC), tablegroup "tgroup_describe2"
 Tablegroup: "tgroup_describe1"
 
 --

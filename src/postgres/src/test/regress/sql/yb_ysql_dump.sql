@@ -17,6 +17,9 @@ CREATE TABLE tbl7 (a INT, b INT, c INT, d INT, PRIMARY KEY(b HASH, c));
 CREATE TABLE tbl8 (a INT, b INT, c INT, d INT, PRIMARY KEY(a HASH, d));
 CREATE INDEX tbl8_idx ON tbl8 ((b,c) HASH);
 CREATE INDEX tbl8_idx2 ON tbl8 (a HASH, b);
+CREATE INDEX tbl8_idx3 ON tbl8 (b ASC);
+CREATE INDEX tbl8_idx4 ON tbl8 (b DESC);
+CREATE INDEX tbl8_idx5 ON tbl8 (c);
 
 CREATE TABLE tbl9 (a INT, b INT, c INT, PRIMARY KEY((a,b) HASH));
 

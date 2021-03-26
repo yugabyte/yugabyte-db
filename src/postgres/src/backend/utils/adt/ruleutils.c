@@ -1413,6 +1413,9 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				}
 				else
 				{
+					if (!(opt & INDOPTION_HASH))
+						appendStringInfoString(&buf, " ASC");
+
 					if (opt & INDOPTION_NULLS_FIRST)
 						appendStringInfoString(&buf, " NULLS FIRST");
 				}
