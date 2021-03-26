@@ -273,7 +273,7 @@ Instead of using the default values in the Helm chart, you can also modify the c
 
 The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The most important ones are listed below. As noted in the Prerequisites section above, the defaults are set for a 3-node Kubernetes cluster, each node with 4 CPU cores and 15 GB RAM.
 
-```
+```yaml
 storage:
   master:
     count: 2
