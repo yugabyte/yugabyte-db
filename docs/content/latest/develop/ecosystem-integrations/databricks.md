@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Databricks is a cloud-based data engineering tool used for processing and transforming massive quantities of data and exploring the data through machine learning models. Users can achieve the full potential of combining data, ELT processes, and machine learning in a cohesive context. Since YugaByteDB is API-compatible with both Cassandra and PostgreSQL, you can use Yugabyte's Cassandra Connector and PostgreSQL JDBC driver to quickly get started with Databricks and Yugabyte.
+[Databricks](https://www.databricks.com/) is a cloud-based data engineering tool used for processing and transforming massive quantities of data and exploring the data through machine learning models. Users can achieve the full potential of combining data, ELT processes, and machine learning in a cohesive context. Since YugabyteDB is API-compatible with both Cassandra and PostgreSQL, you can use Yugabyte's Cassandra-compatible [YCQL](../../../quick-start/explore/ycql/) or PostgreSQL-compatible [JDBC driver](../../../reference/drivers/yugabytedb-jdbc-driver/) to quickly get started with Databricks and Yugabyte.
 
 The instructions on this page assume that **you have a Databricks cluster, and you want to connect it to Yugabyte using TLS** encryption in-transit.
 
@@ -30,11 +30,10 @@ The instructions on this page assume that **you have a Databricks cluster, and y
 
 ### Connect your cluster
 
-1. Download Yugabyte self-signed certificates from Yugabyte Platform to your local workstation:
-    * Configs (Left Pane) => Security (Tab) => Encryption In-Transit (Tab)
-    * Select the desired self-signed certificate chain
-    * Actions (Drop-down) => Download YSQL Cert (Menu Item) 
-    * Actions (Drop-down) => Download Root CA Cert (Menu Item) 
+1. Do the following to download Yugabyte self-signed certificates from Yugabyte Platform to your local workstation:
+    * Click Configs in the left-side navigation pane.
+    * Click the Security tab, then click the Encryption In-Transit tab.
+    * Use the Actions dropdown for the self-signed certificate chain to download the `YSQL Cert`, and the `Root CA Cert`.
 
     ![download page](/images/develop/ecosystem-integrations/databricks/download-certs.png)
 
@@ -50,9 +49,13 @@ The instructions on this page assume that **you have a Databricks cluster, and y
     openssl pkcs8 -topk8 -outform der -in yugabytedb.key -out yugabytedb.key.pk8 -nocrypt
     ```
 
-1. Copy `yugabytedb.crt.der`, `yugabytedb.key.pk8`, and `root.crt` to the Databricks DBFS certificate folder (`/dbfs/<path-to-certs>/`). (Refer to the [Databricks documentation](https://docs.databricks.com/data/databricks-file-system.html) for details.)
+1. Copy the following files to the Databricks DBFS certificate folder (`/dbfs/<path-to-certs>/`). (Refer to the [Databricks documentation](https://docs.databricks.com/data/databricks-file-system.html) for details.):
 
-1. In Databricks Scala notebook, set the following JDBC Driver options in one of the following ways:
+    * `yugabytedb.crt.der`
+    * `yugabytedb.key.pk8`
+    * `root.crt` 
+
+1. In Databricks Scala notebook, set the following JDBC Driver options in either of the following ways:
 
     ```scala
     val jdbcDF = spark.read
@@ -132,24 +135,25 @@ The instructions on this page assume that **you have a Databricks cluster, and y
     jdbcDF.show()
     ```
 
-The preceding command should produce the following output:
+    <br/>
+    This should produce the following output:
 
-```
-(1) Spark Jobs
-jdbcDF:org.apache.spark.sql.DataFrame
-id:long
-lastname:string
-firstname:string
-+---+---------------+---------+
-| id|       lastname|firstname|
-+---+---------------+---------+
-|  3|          FRAME|     Alex|
-|  5|     KRUIKSWIJK|   Steven|
-|  4|      TIRALONGO|    Paolo|
-|  2|VAN DER BREGGEN|     Anna|
-|  6|       MATTHEWS|  Michael|
-|  1|            VOS| Marianne|
-+---+---------------+---------+
+    ```
+    (1) Spark Jobs
+    jdbcDF:org.apache.spark.sql.DataFrame
+    id:long
+    lastname:string
+    firstname:string
+    +---+---------------+---------+
+    | id|       lastname|firstname|
+    +---+---------------+---------+
+    |  3|          FRAME|     Alex|
+    |  5|     KRUIKSWIJK|   Steven|
+    |  4|      TIRALONGO|    Paolo|
+    |  2|VAN DER BREGGEN|     Anna|
+    |  6|       MATTHEWS|  Michael|
+    |  1|            VOS| Marianne|
+    +---+---------------+---------+
 
-jdbcDF: org.apache.spark.sql.DataFrame = [id: bigint, lastname: string ... 1 more field]
-```
+    jdbcDF: org.apache.spark.sql.DataFrame = [id: bigint, lastname: string ... 1 more field]
+    ```
