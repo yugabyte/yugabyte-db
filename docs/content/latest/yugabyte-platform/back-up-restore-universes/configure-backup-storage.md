@@ -65,7 +65,7 @@ To configure NFS as the backup target, follow these steps:
 
 ## Google Cloud Storage (GCS)
 
-To configure NFS as the backup target, follow these steps:
+To configure GCS as the backup target, follow these steps:
 
 1. Click **Configs** on the left panel.
 2. Click the **Backup** tab.
@@ -74,13 +74,56 @@ To configure NFS as the backup target, follow these steps:
 
 ![GCS Backup](/images/yp/cloud-provider-configuration-backup-gcs.png)
 
-## Microsoft Azure
+## Microsoft Azure OLD INSTRUCTIONS
 
-To configure NFS as the backup target, follow these steps:
 
 1. Click **Configs** on the left panel.
 2. Click the **Backup** tab.
 3. Click **Azure** and enter values for **Container URL** and **SAS Token**.
 4. Click **Save**.
 
-![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
+## Microsoft Azure
+
+To configure Azure as the backup target, follow these steps:
+
+1. Create a storage account as follows:
+
+    <br/>
+
+    * Portal -> Storage Account -> Add (+)
+    * Provide Resource Group & Storage account name, Location - Mandatory fields
+    * All other fields can have default values (or user preferences)
+
+    <br/>
+    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+1. Create Blob Container as follows:
+
+    <br/>
+
+    * Go to the storage -> “storagetestazure”
+    * Blob Service -> Container -> + Container -> Create
+
+    <br/>
+    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+1. Get the Container URL: Go to container -> Properties.
+
+    <br/>
+    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+1. Get SAS Token, as follows:
+
+    <br/>
+
+    * Storagetestazure -> Shared access Signature
+    * Select “Object” under “Allowed Resource Types”
+    * Click “Generate SAS and connection string”
+    * Copy the SAS token 
+
+    <br/>
+    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+1. Provide container URL and SAS Token for creating backup on Platform
+
+    ![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
