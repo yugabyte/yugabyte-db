@@ -138,13 +138,17 @@ public class PlatformInstance extends Model {
   }
 
   public void promote() {
-    this.setIsLeader(true);
-    this.update();
+    if (!this.getIsLeader()) {
+      this.setIsLeader(true);
+      this.update();
+    }
   }
 
   public void demote() {
-    this.setIsLeader(false);
-    this.update();
+    if (this.getIsLeader()) {
+      this.setIsLeader(false);
+      this.update();
+    }
   }
 
   public static PlatformInstance create(

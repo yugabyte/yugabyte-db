@@ -400,23 +400,36 @@ public class PlatformReplicationHelper {
     this.cleanupBackups(backups, numToRetain);
   }
 
-  PlatformInstance processImportedInstance(PlatformInstance i) {
+  Optional<PlatformInstance> processImportedInstance(PlatformInstance i) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     Optional<PlatformInstance> existingInstance = PlatformInstance.getByAddress(i.getAddress());
-    if (existingInstance.isPresent()) {
-      // Since we sync instances after sending backups, the leader instance has the source of
-      // truth as to when the last backup has been successfully sent to followers.
-      existingInstance.get().setLastBackup(i.getLastBackup());
-      existingInstance.get().setIsLeader(i.getIsLeader());
-      existingInstance.get().update();
-      i = existingInstance.get();
-    } else if (config.isPresent()) {
-      i.setIsLocal(false);
-      i.setConfig(config.get());
-      i.save();
+    if (config.isPresent()) {
+      // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
+      if (i.getIsLeader()) {
+        Optional<PlatformInstance> existingLeader = config.get().getLeader();
+        if (existingLeader.isPresent()
+          && !existingLeader.get().getAddress().equals(i.getAddress())) {
+          existingLeader.get().demote();
+        }
+      }
+
+      if (existingInstance.isPresent()) {
+        // Since we sync instances after sending backups, the leader instance has the source of
+        // truth as to when the last backup has been successfully sent to followers.
+        existingInstance.get().setLastBackup(i.getLastBackup());
+        existingInstance.get().setIsLeader(i.getIsLeader());
+        existingInstance.get().update();
+        i = existingInstance.get();
+      } else {
+        i.setIsLocal(false);
+        i.setConfig(config.get());
+        i.save();
+      }
+
+      return Optional.of(i);
     }
 
-    return i;
+    return Optional.empty();
   }
 
   synchronized <T extends PlatformBackupParams> ShellResponse runCommand(T params) {

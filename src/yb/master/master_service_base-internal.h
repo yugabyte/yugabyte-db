@@ -53,12 +53,16 @@ CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
 }
 
 template <class ReqType, class RespType, class FnType>
-void MasterServiceBase::HandleOnLeader(const ReqType* req,
-                                       RespType* resp,
-                                       rpc::RpcContext* rpc,
-                                       FnType f,
-                                       HoldCatalogLock hold_catalog_lock) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+void MasterServiceBase::HandleOnLeader(
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    FnType f,
+    const char* file_name,
+    int line_number,
+    const char* function_name,
+    HoldCatalogLock hold_catalog_lock) {
+  ScopedLeaderSharedLock l(server_->catalog_manager(), file_name, line_number, function_name);
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
@@ -74,47 +78,63 @@ void MasterServiceBase::HandleOnLeader(const ReqType* req,
 
 template <class HandlerType, class ReqType, class RespType>
 void MasterServiceBase::HandleOnAllMasters(
-    const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-    Status (HandlerType::*f)(const ReqType* req, RespType*)) {
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(const ReqType*, RespType*),
+    const char* file_name,
+    int line_number,
+    const char* function_name) {
   Status s = (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
   rpc->RespondSuccess();
 }
 
 template <class HandlerType, class ReqType, class RespType>
-void MasterServiceBase::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 rpc::RpcContext* rpc,
-                                 Status (HandlerType::*f)(RespType*),
-                                 HoldCatalogLock hold_catalog_lock) {
+void MasterServiceBase::HandleIn(
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(RespType* resp),
+    const char* file_name,
+    int line_number,
+    const char* function_name,
+    HoldCatalogLock hold_catalog_lock) {
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(resp); },
-      hold_catalog_lock);
+      file_name, line_number, function_name, hold_catalog_lock);
 }
 
 template <class HandlerType, class ReqType, class RespType>
-void MasterServiceBase::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 rpc::RpcContext* rpc,
-                                 Status (HandlerType::*f)(const ReqType*, RespType*),
-                                 HoldCatalogLock hold_catalog_lock) {
+void MasterServiceBase::HandleIn(
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(const ReqType*, RespType*),
+    const char* file_name,
+    int line_number,
+    const char* function_name,
+    HoldCatalogLock hold_catalog_lock) {
   LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
 
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
-      hold_catalog_lock);
+      file_name, line_number, function_name, hold_catalog_lock);
 }
 
 template <class HandlerType, class ReqType, class RespType>
-void MasterServiceBase::HandleIn(const ReqType* req,
-                                 RespType* resp,
-                                 rpc::RpcContext* rpc,
-                                 Status (HandlerType::*f)(
-                                     const ReqType*, RespType*, rpc::RpcContext*),
-                                 HoldCatalogLock hold_catalog_lock) {
+void MasterServiceBase::HandleIn(
+    const ReqType* req,
+    RespType* resp,
+    rpc::RpcContext* rpc,
+    Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*),
+    const char* file_name,
+    int line_number,
+    const char* function_name,
+    HoldCatalogLock hold_catalog_lock) {
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc); },
-      hold_catalog_lock);
+      file_name, line_number, function_name, hold_catalog_lock);
 }
 
 } // namespace master
