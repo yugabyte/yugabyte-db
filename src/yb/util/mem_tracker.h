@@ -172,6 +172,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
   #endif
 
+  static void SetTCMallocCacheMemory();
+
   // Removes this tracker from its parent's children. This tracker retains its
   // link to its parent. Must be called on a tracker with a parent.
   //
