@@ -72,9 +72,10 @@ public class TestSystemTables extends BaseCQLTest {
   }
 
   @Override
-  protected int systemQueryCacheMsecs() {
+  protected void resetSettings() {
+    super.resetSettings();
     // Disable the system query cache for spark tests.
-    return 0;
+    systemQueryCacheUpdateMs = 0;
   }
 
   @After
@@ -166,7 +167,7 @@ public class TestSystemTables extends BaseCQLTest {
     }
 
     // Expecting one row per tablet.
-    assertEquals(NUM_TABLET_SERVERS * overridableNumShardsPerTServer(), idx);
+    assertEquals(NUM_TABLET_SERVERS * getNumShardsPerTServer(), idx);
   }
 
   @Test

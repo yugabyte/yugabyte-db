@@ -43,7 +43,7 @@ public class TestPgParallelSelect extends BasePgSQLTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return kNumShardsPerTserver;
   }
 

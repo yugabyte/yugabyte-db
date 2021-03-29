@@ -61,11 +61,6 @@ public class TestConsistencyLevels extends BaseCQLTest {
     "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt";
 
   @Override
-  public void useKeyspace() throws Exception {
-    // Use the DEFAULT_TEST_KEYSPACE for this test.
-  }
-
-  @Override
   protected void afterBaseCQLTestTearDown() throws Exception {
     // We need to destroy the mini cluster since we don't want metrics from one test to interfere
     // with another.

@@ -12,28 +12,20 @@
 //
 package org.yb.cql;
 
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.exceptions.SyntaxError;
-import com.datastax.driver.core.exceptions.UnauthorizedException;
-import org.junit.*;
-import org.junit.rules.TestName;
+import static org.yb.AssertionWrappers.*;
+
+import java.util.Arrays;
+import java.util.Map;
+
+import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.yb.YBTestRunner;
-import org.yb.minicluster.BaseMiniClusterTest;
 
-import java.sql.Time;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.fail;
+import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.exceptions.UnauthorizedException;
 
 // This test enables ycql_require_drop_privs_for_truncate flag.
 @RunWith(value=YBTestRunner.class)
@@ -50,135 +42,135 @@ public class TestAuthorizationEnforcementWithTruncate extends TestAuthorizationE
 
   @Test
   public void testTruncateStatementWithWrongPermissionsOnTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
     grantAllPermissionsExcept(Arrays.asList(DROP, CREATE, DESCRIBE), TABLE, table, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithWrongPermissionsOnKeyspace() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
     grantAllPermissionsExcept(Arrays.asList(DESCRIBE, DROP), KEYSPACE, keyspace, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithDropPermissionOnDifferentTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
-    createTableAndInsertRecord(s, keyspace, anotherTable);
+    createTableAndInsertRecord(cs.getSession(), keyspace, anotherTable);
     grantPermission(DROP, TABLE, anotherTable, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithDropPermissionOnDifferentKeyspace() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
-    createKeyspaceAndVerify(s, anotherKeyspace);
+    createKeyspaceAndVerify(cs.getSession(), anotherKeyspace);
     grantPermission(DROP, KEYSPACE, anotherKeyspace, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStamentWithDropPermissionOnTableToDifferentRole() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
-    testCreateRoleHelperWithSession(anotherUsername, password, true, false, false, s);
+    createRole(cs.getSession(), anotherUsername, password, true, false, false);
     grantPermission(DROP, TABLE, table, anotherUsername);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithDropPermissionOnKeyspaceToDifferentRole()
       throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
-    testCreateRoleHelperWithSession(anotherUsername, password, true, false, false, s);
+    createRole(cs.getSession(), anotherUsername, password, true, false, false);
     grantPermission(DROP, KEYSPACE, keyspace, anotherUsername);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithModifyPermissionOnTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantPermission(MODIFY, TABLE, table, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithDropPermissionOnTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantPermission(DROP, TABLE, table, username);
-    truncateTableAndVerify(s2, keyspace, table);
+    truncateTableAndVerify(cs2.getSession(), keyspace, table);
   }
 
   @Test
   public void testTruncateStatementWithModifyPermissionOnKeyspace() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantPermission(MODIFY, KEYSPACE, keyspace, username);
     thrown.expect(UnauthorizedException.class);
-    s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
+    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
   }
 
   @Test
   public void testTruncateStatementWithDropPermissionOnKeyspace() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantPermission(DROP, KEYSPACE, keyspace, username);
-    truncateTableAndVerify(s2, keyspace, table);
+    truncateTableAndVerify(cs2.getSession(), keyspace, table);
   }
 
   @Test
   public void testTruncateStatementWithAllPermissionsOnTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantAllPermission(TABLE, table, username);
-    truncateTableAndVerify(s2, keyspace, table);
+    truncateTableAndVerify(cs2.getSession(), keyspace, table);
   }
 
   @Test
   public void testTruncateStatementWithAllPermissionsOnKeyspace() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
     grantAllPermission(KEYSPACE, keyspace, username);
-    truncateTableAndVerify(s2, keyspace, table);
+    truncateTableAndVerify(cs2.getSession(), keyspace, table);
   }
 
   @Test
   public void testSuperuserCanTruncateTable() throws Exception {
-    createTableAndInsertRecord(s, keyspace, table);
-    s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    truncateTableAndVerify(s2, keyspace, table);
+    createTableAndInsertRecord(cs.getSession(), keyspace, table);
+    cs.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
+    truncateTableAndVerify(cs2.getSession(), keyspace, table);
   }
 
   @Test
   public void testTruncateTableWithModifyPermission() throws Exception {
-    createTableAndVerify(s, keyspace, table);
+    createTableAndVerify(cs.getSession(), keyspace, table);
     grantPermission(MODIFY, TABLE, table, username);
     grantPermission(DROP, TABLE, table, username);
 
     // Prepare and excecute statement.
     String truncateStmt = String.format("TRUNCATE %s.%s", keyspace, table);
-    PreparedStatement stmt = s2.prepare(truncateStmt);
-    s2.execute(stmt.bind());
+    PreparedStatement stmt = cs2.prepare(truncateStmt);
+    cs2.execute(stmt.bind());
 
     revokePermission(DROP, TABLE, table, username);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(stmt.bind());
+    cs2.execute(stmt.bind());
   }
 }

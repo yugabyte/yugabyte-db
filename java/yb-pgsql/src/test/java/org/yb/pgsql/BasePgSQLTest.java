@@ -89,9 +89,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
-  // CQL and Redis settings.
-  protected static boolean startCqlProxy = false;
-  protected static boolean startRedisProxy = false;
+  // CQL and Redis settings, will be reset before each test via resetSettings method.
+  protected boolean startCqlProxy = false;
+  protected boolean startRedisProxy = false;
 
   protected static Connection connection;
 
@@ -193,8 +193,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (isTSAN() || isASAN()) {
       flagMap.put("pggate_rpc_timeout_secs", "120");
     }
-    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
-    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
+    flagMap.put("start_cql_proxy", String.valueOf(startCqlProxy));
+    flagMap.put("start_redis_proxy", String.valueOf(startRedisProxy));
 
     // Setup flag for postgres test on prefetch-limit when starting tserver.
     if (getYsqlPrefetchLimit() != null) {
@@ -220,7 +220,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 1;
   }
 
@@ -290,6 +290,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     connection = getConnectionBuilder().connect();
     pgInitialized = true;
+  }
+
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
+    // TODO(alex): Move to a superclass
+    startCqlProxy = false;
+    startRedisProxy = false;
   }
 
   static ConnectionBuilder getConnectionBuilder() {

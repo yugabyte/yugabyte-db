@@ -51,7 +51,7 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 2;
   }
 

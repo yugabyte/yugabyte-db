@@ -12,22 +12,14 @@
 //
 package org.yb.cql;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.ProtocolOptions.Compression;
-
-import com.datastax.driver.core.exceptions.UnauthorizedException;
-import org.junit.Test;
-
-import static org.yb.AssertionWrappers.*;
-
-import org.yb.YBTestRunner;
+import java.util.Map;
 
 import org.junit.runner.RunWith;
 
-import java.util.Map;
+import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestAuthenticationCache extends BaseAuthenticationCommonCQLTest {
+public class TestAuthenticationWithCacheLoginInfo extends TestAuthentication {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();

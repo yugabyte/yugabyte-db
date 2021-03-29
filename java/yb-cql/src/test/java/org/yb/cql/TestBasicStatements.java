@@ -12,7 +12,8 @@
 //
 package org.yb.cql;
 
-import java.util.Collections;
+import static org.yb.AssertionWrappers.*;
+
 import java.util.Map;
 
 import org.junit.Test;
@@ -20,15 +21,11 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.AssertionWrappers;
 import org.yb.YBTestRunner;
-import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.google.common.net.HostAndPort;
 
@@ -62,27 +59,24 @@ public class TestBasicStatements extends BaseCQLTest {
   }
 
   @Test
-  public void testCQLTimesOut() throws Exception {
-    // Set a smaller timeout for this test, so that we don't have to wait for
-    // 120s.
+  public void testClientTimeouts() throws Exception {
+    // Set a smaller timeout for this test, so that we don't have to wait for 180s.
     destroyMiniCluster();
-    BaseMiniClusterTest.tserverArgs.removeIf(
-        opt -> opt.startsWith("--client_read_write_timeout_ms="));
-    BaseMiniClusterTest.tserverArgs.add("--client_read_write_timeout_ms=10000");
+    clientReadWriteTimeoutMs = 10 * 1000;
     createMiniCluster();
     setUpCqlClient();
 
     LOG.info("Creating table ...");
     session.execute("CREATE TABLE test(id int primary key, name varchar);");
     LOG.info("Inserting one row into table ...");
-    session.execute("INSERT into test (id, name) values (1, 'foo');");
-    assertQuery(new SimpleStatement("select id, name from test;", true),
+    session.execute("INSERT INTO test (id, name) VALUES (1, 'foo');");
+    assertQuery(new SimpleStatement("SELECT id, name FROM test;", true),
                 "Row[1, foo]");
 
     // Kill 2 tablet servers.
     LOG.info("Killing 2 of the 3 TServers ...");
     Map<HostAndPort, MiniYBDaemon> tservers = miniCluster.getTabletServers();
-    AssertionWrappers.assertTrue(tservers.size() == 3);
+    assertTrue(tservers.size() == 3);
     int numKilled = 0;
     for (HostAndPort entry : tservers.keySet()) {
       Process ts = tservers.get(entry).getProcess();
@@ -104,15 +98,14 @@ public class TestBasicStatements extends BaseCQLTest {
     LOG.info("Try to insert again. But expect it to fail.");
     // Expect to see a timeout since the operation cannot complete.
     try {
-      session.execute("INSERT into test (id, name) values (2, 'bar');");
-      AssertionWrappers.fail("Expected not to get here");
-    } catch (
-        com.datastax.driver.core.exceptions.OperationTimedOutException oe) {
+      session.execute("INSERT INTO test (id, name) VALUES (2, 'bar');");
+      fail("Expected not to get here");
+    } catch (com.datastax.driver.core.exceptions.OperationTimedOutException oe) {
       LOG.info("Caught execption ", oe);
-      AssertionWrappers.fail("Not expecting a client side timeout.");
+      fail("Not expecting a client side timeout.");
     } catch (RuntimeException re) {
       LOG.info("Caught execption ", re);
-      AssertionWrappers.assertTrue(re.getMessage().contains("passed its deadline"));
+      assertTrue(re.getMessage().contains("passed its deadline"));
     }
 
     // destroy the cluster, without trying to clean up the tables etc.

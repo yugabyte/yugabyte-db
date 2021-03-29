@@ -77,16 +77,17 @@ public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
     execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
   }
 
-  private Session createRoleAndLogin(String permission, String resourceType, String resource)
-      throws Exception {
-    final String username = "test_role_" + RandomNumberUtil.randomNonNegNumber();
-    final String password = "test_role_password_" + RandomNumberUtil.randomNonNegNumber();
+  private ClusterAndSession createRoleAndLogin(String permission, String resourceType,
+      String resource) throws Exception {
+    int suffix = RandomNumberUtil.randomNonNegNumber();
+    final String username = "test_role_" + suffix;
+    final String password = "test_role_password_" + suffix;
 
     // Create new user and grant permission.
-    testCreateRoleHelperWithSession(username, password, true, false, true, session);
+    createRole(session, username, password, true, false, true);
     grantPermission(permission, resourceType, resource, username);
     LOG.info("Starting session with ROLE " + username);
-    return getSession(username, password);
+    return connectWithCredentials(username, password);
   }
 
   @Test
@@ -198,28 +199,34 @@ public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
     execute(alterStmt, session);
 
     // Alter keyspace WITHOUT correct permissions.
-    testCreateRoleHelperWithSession("test_role", "test_password", true, false, true, session);
-    executeInvalid(alterStmt, getSession("test_role", "test_password"));
+    createRole(session, "test_role", "test_password", true, false, true);
+    try (ClusterAndSession cs = connectWithCredentials("test_role", "test_password")) {
+      executeInvalid(alterStmt, cs.getSession());
+    }
 
     // Permission ALL on ALL KEYSPACES.
-    Session s1 = createRoleAndLogin(ALL, ALL_KEYSPACES, "");
-    execute(alterStmt, s1);
+    try (ClusterAndSession cs = createRoleAndLogin(ALL, ALL_KEYSPACES, "")) {
+      execute(alterStmt, cs.getSession());
+    }
 
     // Permission ALTER on ALL KEYSPACES.
-    Session s2 = createRoleAndLogin(ALTER, ALL_KEYSPACES, "");
-    execute(alterStmt, s2);
-    executeInvalid("DROP KEYSPACE \"" + keyspaceName + "\"", s2);
+    try (ClusterAndSession cs = createRoleAndLogin(ALTER, ALL_KEYSPACES, "")) {
+      execute(alterStmt, cs.getSession());
+      executeInvalid("DROP KEYSPACE \"" + keyspaceName + "\"", cs.getSession());
+    }
 
     // Permission ALL on this keyspace.
-    Session s3 = createRoleAndLogin(ALL, KEYSPACE, keyspaceName);
-    execute(alterStmt, s3);
-    executeInvalid("DROP KEYSPACE \"" + DEFAULT_TEST_KEYSPACE + "\"", s3);
+    try (ClusterAndSession cs = createRoleAndLogin(ALL, KEYSPACE, keyspaceName)) {
+      execute(alterStmt, cs.getSession());
+      executeInvalid("DROP KEYSPACE \"" + DEFAULT_TEST_KEYSPACE + "\"", cs.getSession());
+    }
 
     // Permission ALTER on this keyspace.
-    Session s4 = createRoleAndLogin(ALTER, KEYSPACE, keyspaceName);
-    execute(alterStmt, s4);
-    executeInvalid("DROP KEYSPACE \"" + DEFAULT_TEST_KEYSPACE + "\"", s4);
-    executeInvalid("DROP KEYSPACE \"" + keyspaceName + "\"", s4);
+    try (ClusterAndSession cs = createRoleAndLogin(ALTER, KEYSPACE, keyspaceName)) {
+      execute(alterStmt, cs.getSession());
+      executeInvalid("DROP KEYSPACE \"" + DEFAULT_TEST_KEYSPACE + "\"", cs.getSession());
+      executeInvalid("DROP KEYSPACE \"" + keyspaceName + "\"", cs.getSession());
+    }
 
     dropKeyspace(keyspaceName);
     LOG.info("--- TEST CQL: ALTER KEYSPACE WITH PERMISSIONS - End");

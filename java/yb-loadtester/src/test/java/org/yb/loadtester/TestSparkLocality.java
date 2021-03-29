@@ -40,9 +40,10 @@ public class TestSparkLocality extends BaseCQLTest {
   }
 
   @Override
-  protected int systemQueryCacheMsecs() {
+  protected void resetSettings() {
+    super.resetSettings();
     // Disable the system query cache for spark tests.
-    return 0;
+    systemQueryCacheUpdateMs = 0;
   }
 
   // Timeout to wait for load balancing to complete.
