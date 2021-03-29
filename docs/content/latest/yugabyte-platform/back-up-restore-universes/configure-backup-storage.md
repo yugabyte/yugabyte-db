@@ -86,7 +86,8 @@ To configure Azure as the backup target, follow these steps:
     * Fill in the mandatory fields: resource group, storage account name, and location.
 
     <br/>
-    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+    ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
 
 1. Create a blob container as follows:
 
@@ -96,12 +97,14 @@ To configure Azure as the backup target, follow these steps:
     * Navigate to Blob Service > Container > + Container and click Create.
 
     <br/>
-    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+    ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
 
 1. Get the container URL by navigating to container > Properties.
 
     <br/>
-    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+    ![Azure container properties](/images/yp/cloud-provider-configuration-backup-azure-container-properties.png)
 
 1. Generate an SAS Token as follows:
 
@@ -109,10 +112,11 @@ To configure Azure as the backup target, follow these steps:
 
     * Navigate to the container > Shared access Signature.
     * Select “Object” under “Allowed Resource Types”.
-    * Click “Generate SAS and connection string”, and copy the SAS token.
+    * Click “Generate SAS and connection string”, and copy the SAS token. Note that the token should start with `?sv=`.
 
     <br/>
-    ![PLACEHOLDER](/images/yp/cloud-provider-configuration-backup-azure-XXX.png)
+
+    ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
 1. On your Yugabyte Platform instance, provide the container URL and SAS token for creating a backup:
 
