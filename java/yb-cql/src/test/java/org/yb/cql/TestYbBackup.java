@@ -44,7 +44,7 @@ public class TestYbBackup extends BaseCQLTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 2;
   }
 
