@@ -599,8 +599,8 @@ Status TSTabletManager::Init() {
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
   ThreadPoolMetrics bootstrap_metrics = {
-          NULL,
-          NULL,
+          nullptr,
+          nullptr,
           METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
   };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
@@ -1541,7 +1541,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         server_->messenger(),
         &server_->proxy_cache(),
         log,
-        tablet->GetMetricEntity(),
+        tablet->GetTableMetricsEntity(),
+        tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
@@ -1804,7 +1805,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
-  DCHECK(tablet_peers != NULL);
+  DCHECK(tablet_peers != nullptr);
   // See AppendKeysFromMap for why this is done.
   if (tablet_peers->empty()) {
     tablet_peers->reserve(tablet_map_.size());

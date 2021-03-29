@@ -156,6 +156,7 @@ DEFINE_double(tablet_bloom_target_fp_rate, 0.01f,
               "required for bloom filters.");
 TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
 
+METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
 
 // TODO: use a lower default for truncate / snapshot restore Raft operations. The one-minute timeout
@@ -458,25 +459,27 @@ Tablet::Tablet(const TabletInitData& data)
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
     attrs["namespace_name"] = metadata_->namespace_name();
-    attrs["partition"] = metadata_->partition_schema()->PartitionDebugString(
-        *metadata_->partition(), *schema());
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
+    table_metrics_entity_ =
+        METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
+    tablet_metrics_entity_ =
+        METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
     regulardb_statistics_ = rocksdb::CreateDBStatistics();
     intentsdb_statistics_ = rocksdb::CreateDBStatistics();
     auto regulardb_statistics = regulardb_statistics_;
     auto intentsdb_statistics = intentsdb_statistics_;
-    metric_entity_->AddExternalJsonMetricsCb([regulardb_statistics, intentsdb_statistics](
-                                                 JsonWriter* jw, const MetricJsonOptions& opts) {
-      // Assume all rocksdb statistics are at "info" level.
-      if (MetricLevel::kInfo < opts.level) {
-        return;
-      }
+    tablet_metrics_entity_->AddExternalJsonMetricsCb(
+        [regulardb_statistics, intentsdb_statistics](
+            JsonWriter* jw, const MetricJsonOptions& opts) {
+          // Assume all rocksdb statistics are at "info" level.
+          if (MetricLevel::kInfo < opts.level) {
+            return;
+          }
 
-      EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
-    });
+          EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
+        });
 
-    metric_entity_->AddExternalPrometheusMetricsCb(
+    tablet_metrics_entity_->AddExternalPrometheusMetricsCb(
         [regulardb_statistics, intentsdb_statistics, attrs](
             PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
           // Assume all rocksdb statistics are at "info" level.
@@ -491,9 +494,9 @@ Tablet::Tablet(const TabletInitData& data)
           }
         });
 
-    metrics_.reset(new TabletMetrics(metric_entity_));
+    metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 
-    mem_tracker_->SetMetricEntity(metric_entity_);
+    mem_tracker_->SetMetricEntity(tablet_metrics_entity_);
   }
 
   auto table_info = metadata_->primary_table_info();
@@ -506,7 +509,7 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, metric_entity_);
+        data.transaction_participant_context, this, tablet_metrics_entity_);
     // Create transaction manager for secondary index update.
     if (has_index) {
       transaction_manager_.emplace(client_future_.get(),
@@ -703,9 +706,9 @@ Status Tablet::OpenKeyValueTablet() {
           Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_,
           AddToParent::kTrue, CreateMetrics::kFalse);
   // We may not have a metrics_entity_ instantiated in tests.
-  if (metric_entity_) {
-    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
-        Format("$0_$1", "BlockBasedTable", kRegularDB));
+  if (tablet_metrics_entity_) {
+    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
+        tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kRegularDB));
   }
 
   key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
@@ -766,9 +769,9 @@ Status Tablet::OpenKeyValueTablet() {
             Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
             AddToParent::kTrue, CreateMetrics::kFalse);
     // We may not have a metrics_entity_ instantiated in tests.
-    if (metric_entity_) {
-      intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(metric_entity_,
-        Format("$0_$1", "BlockBasedTable", kIntentsDB));
+    if (tablet_metrics_entity_) {
+      intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
+          tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kIntentsDB));
     }
     intents_rocksdb_options.statistics = intentsdb_statistics_;
 
@@ -2157,9 +2160,13 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
                        operation_state->schema_version(), current_table_info->table_id);
   if (operation_state->has_new_table_name()) {
     metadata_->SetTableName(current_table_info->namespace_name, operation_state->new_table_name());
-    if (metric_entity_) {
-      metric_entity_->SetAttribute("table_name", operation_state->new_table_name());
-      metric_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    if (table_metrics_entity_) {
+      table_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+    if (tablet_metrics_entity_) {
+      tablet_metrics_entity_->SetAttribute("table_name", operation_state->new_table_name());
+      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
 

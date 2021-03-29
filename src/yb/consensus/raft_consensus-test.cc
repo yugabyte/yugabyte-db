@@ -51,6 +51,7 @@
 
 DECLARE_bool(enable_leader_failure_detection);
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 using std::shared_ptr;
@@ -80,11 +81,11 @@ typedef std::map<OpIdPB, Status, OpIdCompareFunctor> StatusesMap;
 
 class MockQueue : public PeerMessageQueue {
  public:
-  explicit MockQueue(const scoped_refptr<MetricEntity>& metric_entity, log::Log* log,
+  explicit MockQueue(const scoped_refptr<MetricEntity>& tablet_metric_entity, log::Log* log,
                      const server::ClockPtr& clock,
                      std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
       : PeerMessageQueue(
-          metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
+          tablet_metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
           FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
           std::move(raft_pool_observers_token)) {}
 
@@ -133,7 +134,8 @@ class RaftConsensusSpy : public RaftConsensus {
                    std::unique_ptr<PeerMessageQueue> queue,
                    std::unique_ptr<PeerManager> peer_manager,
                    std::unique_ptr<ThreadPoolToken> raft_pool_token,
-                   const scoped_refptr<MetricEntity>& metric_entity,
+                   const scoped_refptr<MetricEntity>& table_metric_entity,
+                   const scoped_refptr<MetricEntity>& tablet_metric_entity,
                    const std::string& peer_uuid,
                    const scoped_refptr<server::Clock>& clock,
                    ConsensusContext* consensus_context,
@@ -147,7 +149,8 @@ class RaftConsensusSpy : public RaftConsensus {
                     std::move(queue),
                     std::move(peer_manager),
                     std::move(raft_pool_token),
-                    metric_entity,
+                    table_metric_entity,
+                    tablet_metric_entity,
                     peer_uuid,
                     clock,
                     consensus_context,
@@ -204,7 +207,10 @@ class RaftConsensusTest : public YBTest {
  public:
   RaftConsensusTest()
       : clock_(server::LogicalClock::CreateStartingAt(HybridTime(0))),
-        metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-consensus-test")),
+        table_metric_entity_(
+          METRIC_ENTITY_table.Instantiate(&metric_registry_, "raft-consensus-test-table")),
+        tablet_metric_entity_(
+          METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-consensus-test-tablet")),
         schema_(GetSimpleTestSchema()) {
     FLAGS_enable_leader_failure_detection = false;
     options_.tablet_id = kTestTablet;
@@ -226,7 +232,8 @@ class RaftConsensusTest : public YBTest {
                        fs_manager_->uuid(),
                        schema_,
                        0, // schema_version
-                       nullptr, // metric_entity
+                       nullptr, // table_metric_entity
+                       nullptr, // tablet_metric_entity
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -237,7 +244,7 @@ class RaftConsensusTest : public YBTest {
     ASSERT_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
-    queue_ = new MockQueue(metric_entity_, log_.get(), clock_, std::move(raft_pool_token));
+    queue_ = new MockQueue(tablet_metric_entity_, log_.get(), clock_, std::move(raft_pool_token));
     peer_manager_ = new MockPeerManager;
     operation_factory_.reset(new MockOperationFactory);
 
@@ -266,7 +273,8 @@ class RaftConsensusTest : public YBTest {
                                           std::unique_ptr<PeerMessageQueue>(queue_),
                                           std::unique_ptr<PeerManager>(peer_manager_),
                                           std::move(raft_pool_token),
-                                          metric_entity_,
+                                          table_metric_entity_,
+                                          tablet_metric_entity_,
                                           peer_uuid,
                                           clock_,
                                           operation_factory_.get(),
@@ -361,7 +369,8 @@ class RaftConsensusTest : public YBTest {
   gscoped_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   const Schema schema_;
   shared_ptr<RaftConsensusSpy> consensus_;
 

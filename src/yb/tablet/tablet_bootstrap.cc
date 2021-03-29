@@ -138,7 +138,7 @@ static string DebugInfo(const string& tablet_id,
                         const LogEntryPB* entry) {
   // Truncate the debug string to a reasonable length for logging.  Otherwise, glog will truncate
   // for us and we may miss important information which came after this long string.
-  string debug_str = entry ? entry->ShortDebugString() : "<NULL>"s;
+  string debug_str = entry ? entry->ShortDebugString() : "<nullptr>"s;
   if (debug_str.size() > 500) {
     debug_str.resize(500);
     debug_str.append("...");
@@ -720,13 +720,17 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
     // Open the reader.
     scoped_refptr<LogIndex> index(nullptr);
-    RETURN_NOT_OK_PREPEND(LogReader::Open(GetEnv(),
-                                          index,
-                                          tablet_->metadata()->raft_group_id(),
-                                          wal_path,
-                                          tablet_->metadata()->fs_manager()->uuid(),
-                                          tablet_->GetMetricEntity().get(),
-                                          &log_reader_), "Could not open LogReader. Reason");
+    RETURN_NOT_OK_PREPEND(
+        LogReader::Open(
+            GetEnv(),
+            index,
+            tablet_->metadata()->raft_group_id(),
+            wal_path,
+            tablet_->metadata()->fs_manager()->uuid(),
+            tablet_->GetTableMetricsEntity().get(),
+            tablet_->GetTabletMetricsEntity().get(),
+            &log_reader_),
+        "Could not open LogReader. Reason");
     return Status::OK();
   }
 
@@ -776,18 +780,20 @@ class TabletBootstrap {
         log_options.segment_size_bytes = log_segment_size;
       }
     }
-    RETURN_NOT_OK(Log::Open(log_options,
-                            tablet_->tablet_id(),
-                            metadata.wal_dir(),
-                            metadata.fs_manager()->uuid(),
-                            *tablet_->schema(),
-                            metadata.schema_version(),
-                            tablet_->GetMetricEntity(),
-                            append_pool_,
-                            allocation_pool_,
-                            metadata.cdc_min_replicated_index(),
-                            &log_,
-                            create_new_segment));
+    RETURN_NOT_OK(Log::Open(
+        log_options,
+        tablet_->tablet_id(),
+        metadata.wal_dir(),
+        metadata.fs_manager()->uuid(),
+        *tablet_->schema(),
+        metadata.schema_version(),
+        tablet_->GetTableMetricsEntity(),
+        tablet_->GetTabletMetricsEntity(),
+        append_pool_,
+        allocation_pool_,
+        metadata.cdc_min_replicated_index(),
+        &log_,
+        create_new_segment));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
     log_->DisableSync();
     return Status::OK();

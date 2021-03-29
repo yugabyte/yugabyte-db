@@ -69,13 +69,14 @@ class LogReader {
   // Opens a LogReader on a specific log directory, and sets 'reader' to the newly created
   // LogReader.
   //
-  // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not be used.
+  // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
   static CHECKED_STATUS Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
                              const std::string& tablet_id,
                              const std::string& tablet_wal_path,
                              const std::string& peer_uuid,
-                             const scoped_refptr<MetricEntity>& metric_entity,
+                             const scoped_refptr<MetricEntity>& table_metric_entity,
+                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              std::unique_ptr<LogReader> *reader);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
@@ -105,7 +106,7 @@ class LogReader {
                                      int64_t max_close_time_us,
                                      std::map<int64_t, int64_t>* max_idx_to_segment_size) const;
 
-  // Return a readable segment with the given sequence number, or NULL if it
+  // Return a readable segment with the given sequence number, or nullptr if it
   // cannot be found (e.g. if it has already been GCed).
   scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
 
@@ -197,7 +198,8 @@ class LogReader {
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
             std::string tablet_name, std::string peer_uuid,
-            const scoped_refptr<MetricEntity>& metric_entity);
+            const scoped_refptr<MetricEntity>& table_metric_entity,
+            const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Reads the headers of all segments in 'path_'.
   CHECKED_STATUS Init(const std::string& path_);

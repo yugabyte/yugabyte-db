@@ -60,6 +60,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_bool(quick_leader_election_on_create);
@@ -119,14 +120,17 @@ class RemoteBootstrapTest : public YBTabletTest {
                        fs_manager()->uuid(),
                        *tablet()->schema(),
                        0,  // schema_version
-                       nullptr, // metric_entity
+                       nullptr, // table_metric_entity
+                       nullptr, // tablet_metric_entity
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log));
 
-    scoped_refptr<MetricEntity> metric_entity =
-      METRIC_ENTITY_tablet.Instantiate(&metric_registry_, CURRENT_TEST_NAME());
+    scoped_refptr<MetricEntity> table_metric_entity =
+      METRIC_ENTITY_table.Instantiate(&metric_registry_, Format("table-$0", CURRENT_TEST_NAME()));
+    scoped_refptr<MetricEntity> tablet_metric_entity =
+      METRIC_ENTITY_tablet.Instantiate(&metric_registry_, Format("tablet-$0", CURRENT_TEST_NAME()));
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(fs_manager()->uuid());
@@ -167,7 +171,8 @@ class RemoteBootstrapTest : public YBTabletTest {
         messenger_.get(),
         proxy_cache_.get(),
         log,
-        metric_entity,
+        table_metric_entity,
+        tablet_metric_entity,
         raft_pool_.get(),
         tablet_prepare_pool_.get(),
         nullptr /* retryable_requests */,

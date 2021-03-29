@@ -99,12 +99,10 @@ DEFINE_bool(transactions_poll_check_aborted, true, "Check aborted transactions d
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 METRIC_DEFINE_simple_counter(
-    tablet, transaction_not_found,
-    "Total number of missing transactions during load",
+    tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
-    tablet, transactions_running,
-    "Total number of transactions running in participant",
+    tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
 
 namespace yb {

@@ -188,7 +188,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Create a new tablet.
   //
-  // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
+  // If 'metric_registry' is non-nullptr, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
   explicit Tablet(const TabletInitData& data);
 
@@ -409,7 +409,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
-  CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL);
+  CHECKED_STATUS DebugDump(vector<std::string>* lines = nullptr);
 
   const yb::SchemaPtr schema() const {
     return metadata_->schema();
@@ -437,11 +437,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
   // Return the metrics for this tablet.
-  // May be NULL in unit tests, etc.
+  // May be nullptr in unit tests, etc.
   TabletMetrics* metrics() { return metrics_.get(); }
 
-  // Return handle to the metric entity of this tablet.
-  const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+  // Return handle to the metric entity of this tablet/table.
+  const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
+    return table_metrics_entity_;
+  }
+  const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
+    return tablet_metrics_entity_;
+  }
 
   // Returns a reference to this tablet's memory tracker.
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
@@ -756,7 +761,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
 
-  MetricEntityPtr metric_entity_;
+  MetricEntityPtr tablet_metrics_entity_;
+  MetricEntityPtr table_metrics_entity_;
   gscoped_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
 
@@ -776,7 +782,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   };
   State state_ = kInitialized;
 
-  // Fault hooks. In production code, these will always be NULL.
+  // Fault hooks. In production code, these will always be nullptr.
   std::shared_ptr<CompactionFaultHooks> compaction_hooks_;
   std::shared_ptr<FlushFaultHooks> flush_hooks_;
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;

@@ -49,7 +49,8 @@ namespace tablet {
 
 // Container for all metrics specific to a single tablet.
 struct TabletMetrics {
-  explicit TabletMetrics(const scoped_refptr<MetricEntity>& metric_entity);
+  TabletMetrics(const scoped_refptr<MetricEntity>& table_metric_entity,
+                const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Probe stats
   scoped_refptr<Histogram> commit_wait_duration;

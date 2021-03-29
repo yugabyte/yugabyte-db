@@ -870,7 +870,7 @@ void QLStressTest::TestWriteRejection() {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
         auto counter = METRIC_majority_sst_files_rejections.Instantiate(
-            peer->tablet()->GetMetricEntity());
+            peer->tablet()->GetTabletMetricsEntity());
         rejections += counter->value();
       }
       total_rejections += rejections;

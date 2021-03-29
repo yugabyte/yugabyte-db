@@ -104,21 +104,21 @@ DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader 
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_histogram(tablet, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.",
                         10000, 2);
 
-METRIC_DEFINE_histogram(tablet, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.",
                         10000000, 2);
 
-METRIC_DEFINE_histogram(tablet, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
@@ -184,7 +184,8 @@ Status TabletPeer::InitTabletPeer(
     Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<Log>& log,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
@@ -250,14 +251,15 @@ Status TabletPeer::InitTabletPeer(
                                           meta_->fs_manager()->uuid(), &cmeta));
 
     if (retryable_requests) {
-      retryable_requests->SetMetricEntity(tablet->GetMetricEntity());
+      retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
     }
 
     consensus_ = RaftConsensus::Create(
         options,
         std::move(cmeta),
         local_peer_pb_,
-        metric_entity,
+        table_metric_entity,
+        tablet_metric_entity,
         clock_,
         this,
         messenger,
@@ -285,7 +287,7 @@ Status TabletPeer::InitTabletPeer(
 
   if (tablet_->metrics() != nullptr) {
     TRACE("Starting instrumentation");
-    operation_tracker_.StartInstrumentation(tablet_->GetMetricEntity());
+    operation_tracker_.StartInstrumentation(tablet_->GetTabletMetricsEntity());
   }
   operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 

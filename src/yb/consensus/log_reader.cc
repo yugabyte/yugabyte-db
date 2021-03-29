@@ -75,7 +75,7 @@ METRIC_DEFINE_counter(tablet, log_reader_entries_read, "Entries Read From Log",
                       yb::MetricUnit::kEntries,
                       "Number of entries read from the WAL since tablet start");
 
-METRIC_DEFINE_histogram(tablet, log_reader_read_batch_latency, "Log Read Latency",
+METRIC_DEFINE_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
                         yb::MetricUnit::kBytes,
                         "Microseconds spent reading log entry batches",
                         60000000LU, 2);
@@ -111,10 +111,11 @@ Status LogReader::Open(Env *env,
                        const std::string& tablet_id,
                        const std::string& tablet_wal_path,
                        const std::string& peer_uuid,
-                       const scoped_refptr<MetricEntity>& metric_entity,
+                       const scoped_refptr<MetricEntity>& table_metric_entity,
+                       const scoped_refptr<MetricEntity>& tablet_metric_entity,
                        std::unique_ptr<LogReader> *reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      env, index, tablet_id, peer_uuid, metric_entity));
+      env, index, tablet_id, peer_uuid, table_metric_entity, tablet_metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
@@ -125,16 +126,19 @@ LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
                      string tablet_id,
                      string peer_uuid,
-                     const scoped_refptr<MetricEntity>& metric_entity)
+                     const scoped_refptr<MetricEntity>& table_metric_entity,
+                     const scoped_refptr<MetricEntity>& tablet_metric_entity)
     : env_(env),
       log_index_(index),
       tablet_id_(std::move(tablet_id)),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid)),
       state_(kLogReaderInitialized) {
-  if (metric_entity) {
-    bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(metric_entity);
-    entries_read_ = METRIC_log_reader_entries_read.Instantiate(metric_entity);
-    read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(metric_entity);
+  if (table_metric_entity) {
+    read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(table_metric_entity);
+  }
+  if (tablet_metric_entity) {
+    bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(tablet_metric_entity);
+    entries_read_ = METRIC_log_reader_entries_read.Instantiate(tablet_metric_entity);
   }
   if (PREDICT_FALSE(FLAGS_enable_log_retention_by_op_idx &&
                         (FLAGS_TEST_record_segments_violate_max_time_policy ||

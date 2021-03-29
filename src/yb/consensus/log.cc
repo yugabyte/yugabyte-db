@@ -467,7 +467,8 @@ Status Log::Open(const LogOptions &options,
                  const std::string& peer_uuid,
                  const Schema& schema,
                  uint32_t schema_version,
-                 const scoped_refptr<MetricEntity>& metric_entity,
+                 const scoped_refptr<MetricEntity>& table_metric_entity,
+                 const scoped_refptr<MetricEntity>& tablet_metric_entity,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  int64_t cdc_min_replicated_index,
@@ -486,7 +487,8 @@ Status Log::Open(const LogOptions &options,
                                      peer_uuid,
                                      schema,
                                      schema_version,
-                                     metric_entity,
+                                     table_metric_entity,
+                                     tablet_metric_entity,
                                      append_thread_pool,
                                      allocation_thread_pool,
                                      create_new_segment));
@@ -502,7 +504,8 @@ Log::Log(
     string peer_uuid,
     const Schema& schema,
     uint32_t schema_version,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
     CreateNewSegment create_new_segment)
@@ -525,13 +528,14 @@ Log::Log(
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
-      metric_entity_(metric_entity),
+      table_metric_entity_(table_metric_entity),
+      tablet_metric_entity_(tablet_metric_entity),
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment) {
   set_wal_retention_secs(options.retention_secs);
-  if (metric_entity_) {
-    metrics_.reset(new LogMetrics(metric_entity_));
+  if (table_metric_entity_ && tablet_metric_entity_) {
+    metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
   }
 }
 
@@ -546,7 +550,8 @@ Status Log::Init() {
                                 tablet_id_,
                                 wal_dir_,
                                 peer_uuid_,
-                                metric_entity_.get(),
+                                table_metric_entity_.get(),
+                                tablet_metric_entity_.get(),
                                 &reader_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left

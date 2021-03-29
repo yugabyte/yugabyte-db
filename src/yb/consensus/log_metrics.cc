@@ -42,27 +42,27 @@ METRIC_DEFINE_counter(tablet, log_wal_size, "Size of WAL Files",
                       yb::MetricUnit::kBytes,
                       "Size of wal files");
 
-METRIC_DEFINE_histogram(tablet, log_sync_latency, "Log Sync Latency",
+METRIC_DEFINE_histogram(table, log_sync_latency, "Log Sync Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on synchronizing the log segment file",
                         60000000LU, 2);
 
-METRIC_DEFINE_histogram(tablet, log_append_latency, "Log Append Latency",
+METRIC_DEFINE_histogram(table, log_append_latency, "Log Append Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on appending to the log segment file",
                         60000000LU, 2);
 
-METRIC_DEFINE_histogram(tablet, log_group_commit_latency, "Log Group Commit Latency",
+METRIC_DEFINE_histogram(table, log_group_commit_latency, "Log Group Commit Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on committing an entire group",
                         60000000LU, 2);
 
-METRIC_DEFINE_histogram(tablet, log_roll_latency, "Log Roll Latency",
+METRIC_DEFINE_histogram(table, log_roll_latency, "Log Roll Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on rolling over to a new log segment file",
                         60000000LU, 2);
 
-METRIC_DEFINE_histogram(tablet, log_entry_batches_per_group, "Log Group Commit Batch Size",
+METRIC_DEFINE_histogram(table, log_entry_batches_per_group, "Log Group Commit Batch Size",
                         yb::MetricUnit::kRequests,
                         "Number of log entry batches in a group commit group",
                         1024, 2);
@@ -70,15 +70,16 @@ METRIC_DEFINE_histogram(tablet, log_entry_batches_per_group, "Log Group Commit B
 namespace yb {
 namespace log {
 
-#define MINIT(x) x(METRIC_log_##x.Instantiate(metric_entity))
-LogMetrics::LogMetrics(const scoped_refptr<MetricEntity>& metric_entity)
-    : MINIT(bytes_logged),
-      MINIT(wal_size),
-      MINIT(sync_latency),
-      MINIT(append_latency),
-      MINIT(group_commit_latency),
-      MINIT(roll_latency),
-      MINIT(entry_batches_per_group) {
+#define MINIT(metric_entity, x) x(METRIC_log_##x.Instantiate(metric_entity))
+LogMetrics::LogMetrics(const scoped_refptr<MetricEntity>& table_metric_entity,
+                       const scoped_refptr<MetricEntity>& tablet_metric_entity)
+    : MINIT(tablet_metric_entity, bytes_logged),
+      MINIT(tablet_metric_entity, wal_size),
+      MINIT(table_metric_entity, sync_latency),
+      MINIT(table_metric_entity, append_latency),
+      MINIT(table_metric_entity, group_commit_latency),
+      MINIT(table_metric_entity, roll_latency),
+      MINIT(table_metric_entity, entry_batches_per_group) {
 }
 #undef MINIT
 

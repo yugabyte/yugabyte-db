@@ -352,7 +352,15 @@ public class BaseMiniClusterTest extends BaseYBTest {
         JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
         for (JsonElement elem : tree.getAsJsonArray()) {
           JsonObject obj = elem.getAsJsonObject();
-          if (obj.get("type").getAsString().equals("tablet") &&
+          if (obj.get("type").getAsString().equals("table") &&
+              tableUUID.equals(obj.get("id").getAsString())) {
+            Metrics.Counter cntr = new Metrics(obj).getCounter(metricName);
+            // If the counter isn't exported by the table's metric entity, we may still find it as
+            // the summation of the corresponding tablet's metric values.
+            if (cntr != null) {
+              return cntr.value;
+            }
+          } else if (obj.get("type").getAsString().equals("tablet") &&
               tabletIds.contains(obj.get("id").getAsString())) {
             value += new Metrics(obj).getCounter(metricName).value;
           }

@@ -89,7 +89,8 @@ class ConsensusQueueTest : public YBTest {
                             fs_manager_->uuid(),
                             schema_,
                             0, // schema_version
-                            NULL,
+                            nullptr,
+                            nullptr,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index

@@ -23,9 +23,6 @@ using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
-METRIC_DECLARE_entity(tablet);
-METRIC_DECLARE_counter(transaction_not_found);
-
 namespace yb {
 namespace pgwrapper {
 
