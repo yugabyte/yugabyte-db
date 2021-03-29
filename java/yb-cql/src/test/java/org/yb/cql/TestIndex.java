@@ -59,14 +59,13 @@ public class TestIndex extends BaseCQLTest {
     return super.getTestMethodTimeoutSec()*10;
   }
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
-    BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=1000");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_wait_for_old_txns_ms=100");
-    BaseCQLTest.setUpBeforeClass();
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allow_index_table_read_write", "true");
+    flagMap.put("index_backfill_upperbound_for_user_enforced_txn_duration_ms", "1000");
+    flagMap.put("index_backfill_wait_for_old_txns_ms", "100");
+    return flagMap;
   }
 
   @Test
@@ -695,7 +694,7 @@ public class TestIndex extends BaseCQLTest {
     }
 
     // Restart the cluster
-    miniCluster.restart();
+    restartYcqlMiniCluster();
     setUpCqlClient();
 
     // Update half of the rows. Query them back and verify the unmodified rows still can still
