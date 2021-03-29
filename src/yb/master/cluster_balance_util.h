@@ -843,6 +843,10 @@ class PerTableLoadState {
       ++total_starting_;
       ++global_state_->total_starting_tablets_;
       ++per_tablet_meta_[tablet_id].starting;
+      // If the tablet wasn't over replicated before the add, it's over replicated now.
+      if (tablets_missing_replicas_.count(tablet_id) == 0) {
+        tablets_over_replicated_.insert(tablet_id);
+      }
     }
     return Status::OK();
   }
