@@ -40,7 +40,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
 ### Set Up the Active Platform
 
-1. Click the "Administration" tab at the bottom of the left-side navigation panel.
+1. Click the "Admin" tab at the bottom of the left-side navigation panel.
 
     <br/>
 
@@ -98,7 +98,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
 **Repeat the following steps for each standby platform** you wish to add to the HA cluster:
 
-1. Click the "Administration" tab at the bottom of the left-side navigation panel.
+1. Click the "Admin" tab at the bottom of the left-side navigation panel.
 
     <br/>
 
@@ -132,6 +132,12 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
+    If you click on other tabs, notice that they are greyed out. You can only use those tabs on the active instance.
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
 ### Promote a Standby Platform to Active
 
 1. On the standby platform you wish to promote to active, click the Make Active button in the upper-right corner of the "Replication Configuration" tab.
@@ -155,3 +161,19 @@ Once you've set up the active platform, you can set up one or more standby platf
     <br/>
 
     Once you're logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
+
+### Delete a Standby Platform
+
+1. On the standby platform you wish to remove from the high-availability cluster, click the...
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Next, ...
+
+    <br/>
+
+    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+
+1. Finally, ...
