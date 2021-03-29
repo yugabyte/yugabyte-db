@@ -80,7 +80,7 @@ Each successive parenthesized expression list must specify the same number of ex
 ```plpgsql
 values
   (1::int, '2019-06-25 12:05:30'::timestamp, 'dog'::text),
-  (2::int, '2020-07-30 13:10:45'::timestamp, 'cat'::text);
+  (2::int, '2020-07-30 13:10:45'::timestamp, 'cat'::text, 42::int);
 ```
 
 It causes this error:
