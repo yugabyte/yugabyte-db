@@ -62,6 +62,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -113,7 +114,8 @@ class TabletPeerTest : public YBTabletTest {
     messenger_ = ASSERT_RESULT(builder.Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
+    table_metric_entity_ = METRIC_ENTITY_table.Instantiate(&metric_registry_, "test-table");
+    tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
@@ -158,7 +160,8 @@ class TabletPeerTest : public YBTabletTest {
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
+                        table_metric_entity_.get(), tablet_metric_entity_.get(),
+                        log_thread_pool_.get(), log_thread_pool_.get(),
                         tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
@@ -167,7 +170,8 @@ class TabletPeerTest : public YBTabletTest {
                                            messenger_.get(),
                                            proxy_cache_.get(),
                                            log,
-                                           metric_entity_,
+                                           table_metric_entity_,
+                                           tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
                                            nullptr /* retryable_requests */,
@@ -274,7 +278,8 @@ class TabletPeerTest : public YBTabletTest {
   int32_t insert_counter_;
   int32_t delete_counter_;
   MetricRegistry metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<ThreadPool> raft_pool_;
