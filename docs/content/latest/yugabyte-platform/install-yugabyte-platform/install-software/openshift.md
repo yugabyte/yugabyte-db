@@ -41,15 +41,19 @@ showAsideToc: true
 
 </ul>
 
+To install Yugabyte Platform on an OpenShift cluster, you can use Operator or the Helm tool.
+
 ## Prerequisites
 
-Before you install Yugabyte Platform Operator on an OpenShift cluster, prepare the environment, as described in [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
+Before you install Yugabyte Platform on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
-## Installing the Yugabyte Platform Operator
+## Operator-Based Installation
+
+### Installing the Yugabyte Platform Operator
 
 You can install the Yugabyte Platform Operator via the OpenShift web console or command line.
 
-### How to Use the OpenShift Web Console
+#### How to Use the OpenShift Web Console
 
 You can install the Yugabyte Platform Operator as follows: 
 
@@ -67,7 +71,7 @@ Once the installation is complete, a message shown in the following illustration
 
 ![img](https://lh3.googleusercontent.com/yzcrTNR78MAAVyRr_5YN9tPA0nFF_xOGGGVdb1bZvsWNRZfS7NMEOQKp-HYcUtVB-67fIp5y7i-5glJXQn0GsjXl7mTOnQoZ7JBYe50Menba4ApdZtc1LRke4BvS7_VELR5X1WKH)
 
-### How to Use the Command Line
+#### How to Use the Command Line
 
 Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configuring oc with the OCP Cluster](#configuring-oc-with-the-ocp-cluster).
 

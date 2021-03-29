@@ -46,7 +46,7 @@ showAsideToc: true
 
 <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link active">
-      <i class="fab fa-building" aria-hidden="true"></i>
+      <i class="icon-aws" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>

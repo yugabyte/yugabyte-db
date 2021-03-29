@@ -15,7 +15,6 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
@@ -126,8 +125,8 @@ You can create a provider as follows:
   - In the **Name** field, enter ocp-test.
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
-  - In the **Image Registry** field, use `registry.connect.redhat.com/yugabytedb/yugabyte`.
-- Use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support (note that it is not required if you are using the Red Hat registry). 
+  - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
+- Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. 
 
 ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
