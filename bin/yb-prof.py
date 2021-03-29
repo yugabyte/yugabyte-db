@@ -104,7 +104,7 @@ class YBProf:
            "-d",
            arg,
            self.pprof_url_ + "/symbol"])
-        lines = result.split("\n")
+        lines = result.decode().split("\n")
         for line in lines:
             # Use whitespace as the delimiter, and produce no more than two parts
             # (i.e. max of 1 split). The symbolized function name may itself contain
