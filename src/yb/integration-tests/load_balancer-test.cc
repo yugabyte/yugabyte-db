@@ -173,5 +173,38 @@ TEST_F(LoadBalancerTest, PendingLeaderStepdownRegressTest) {
   },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
 }
 
+class LoadBalancerOddTabletsTest : public LoadBalancerTest {
+ protected:
+  int num_tablets() override {
+    return 3;
+  }
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--placement_cloud=c");
+    opts->extra_tserver_flags.push_back("--placement_region=r");
+    opts->extra_tserver_flags.push_back("--placement_zone=z${index}");
+    opts->extra_master_flags.push_back("--load_balancer_max_over_replicated_tablets=5");
+  }
+};
+
+TEST_F_EX(LoadBalancerTest, MultiZoneTest, LoadBalancerOddTabletsTest) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  std::vector<std::string> extra_opts;
+  extra_opts.push_back("--placement_cloud=c");
+  extra_opts.push_back("--placement_region=r");
+  extra_opts.push_back("--placement_zone=z1");
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+    return !is_idle;
+  },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalanced(num_tablet_servers() + 1);
+  },  kDefaultTimeout * 2, "IsLoadBalanced"));
+}
+
 } // namespace integration_tests
 } // namespace yb

@@ -24,6 +24,8 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance_mocked.h"
 
+DECLARE_bool(load_balancer_count_move_as_add);
+
 namespace yb {
 namespace master {
 
@@ -934,8 +936,9 @@ class TestLoadBalancerBase {
 
   void TestAddLoad(const string& expected_tablet_id,
                    const string& expected_from_ts,
-                   const string& expected_to_ts) {
+                   const string& expected_to_ts) NO_THREAD_SAFETY_ANALYSIS {
     string tablet_id, from_ts, to_ts;
+    auto over_replication_at_start = cb_->get_total_over_replication();
     ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
     if (!expected_tablet_id.empty()) {
       ASSERT_EQ(expected_tablet_id, tablet_id);
@@ -945,6 +948,11 @@ class TestLoadBalancerBase {
     }
     if (!expected_to_ts.empty()) {
       ASSERT_EQ(expected_to_ts, to_ts);
+    }
+
+    if (!from_ts.empty() && GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add)) {
+      ASSERT_EQ(1, cb_->get_total_over_replication() - over_replication_at_start);
+      ASSERT_OK(cb_->RemoveReplica(tablet_id, from_ts));
     }
   }
 
