@@ -10,24 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 package org.yb.cql;
 
+import static org.yb.AssertionWrappers.*;
+
 import com.datastax.driver.core.*;
-import org.junit.BeforeClass;
-import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
-import static junit.framework.TestCase.fail;
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class BaseAuthenticationCQLTest extends BaseCQLTest {
+public abstract class BaseAuthenticationCQLTest extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseAuthenticationCQLTest.class);
+
   // Type of resources.
   public static final String ALL_KEYSPACES = "ALL KEYSPACES";
   public static final String KEYSPACE = "KEYSPACE";
@@ -64,32 +64,18 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
   public static final List<String> ALL_PERMISSIONS_FOR_ALL_KEYSPACES =
       Arrays.asList(ALTER, AUTHORIZE, CREATE, DROP, MODIFY, SELECT);
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseMiniClusterTest.tserverArgs.add("--use_cassandra_authentication=true");
-    BaseMiniClusterTest.tserverArgs.add("--password_hash_cache_size=0");
-    BaseCQLTest.setUpBeforeClass();
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("use_cassandra_authentication", "true");
+    flagMap.put("password_hash_cache_size", "0");
+    return flagMap;
   }
 
+  @Override
   public Cluster.Builder getDefaultClusterBuilder() {
     // Default return cassandra/cassandra auth.
     return super.getDefaultClusterBuilder().withCredentials("cassandra", "cassandra");
-  }
-
-  public Session getDefaultSession() {
-    Cluster.Builder cb = getDefaultClusterBuilder();
-    // FIXME: Wrong design, cluster needs to be closed! See #7566.
-    Cluster c = cb.build();
-    Session s = c.connect();
-    return s;
-  }
-
-  public Session getSession(String username, String password) {
-    Cluster.Builder cb = super.getDefaultClusterBuilder().withCredentials(username, password);
-    // FIXME: Wrong design, cluster needs to be closed! See #7566.
-    Cluster c = cb.build();
-    Session s = c.connect();
-    return s;
   }
 
   public void checkConnectivity(
@@ -120,8 +106,9 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
       cb = cb.withCompression(compression);
     }
     try (Cluster c = cb.build()) {
-      Session s = c.connect();
-      s.execute("SELECT * FROM system_schema.tables;");
+      try (Session s = c.connect()) {
+        s.execute("SELECT * FROM system_schema.tables");
+      }
       // If we're expecting a failure, we should NOT be in here.
       assertFalse(expectFailure);
     } catch (com.datastax.driver.core.exceptions.AuthenticationException e) {
@@ -131,54 +118,39 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     }
   }
 
-  // Verifies that roleName exists in the system_auth.roles table, and that canLogin and isSuperuser
-  // match the fields 'can_login' and 'is_superuser' for this role.
-  public void verifyRole(String roleName, boolean canLogin, boolean isSuperuser)
-      throws Exception {
-    verifyRoleFields(roleName, canLogin, isSuperuser, new ArrayList<>());
+  /**
+   * Verifies that (lowercased) roleName exists in the system_auth.roles table, and that canLogin
+   * and isSuperuser match the fields 'can_login' and 'is_superuser' for this role.
+   */
+  public void verifyRole(Session s, String roleName,
+                         boolean canLogin, boolean isSuperuser) throws Exception {
+    verifyRoleFields(s, roleName, canLogin, isSuperuser, new ArrayList<>());
   }
 
-  public void verifyRoleWithSession(String roleName, boolean canLogin, boolean isSuperuser,
-                                    Session s) throws Exception {
-    verifyRoleFieldsWithSession(roleName, canLogin, isSuperuser, new ArrayList<>(), s);
-  }
-
-  private void verifyRoleFields(String roleName, boolean canLogin, boolean isSuperuser,
+  private void verifyRoleFields(Session s, String roleName,
+                                boolean canLogin, boolean isSuperuser,
                                 List<String> memberOf) throws Exception {
-    Session s = getDefaultSession();
-    verifyRoleFieldsWithSession(roleName, canLogin, isSuperuser, memberOf, s);
-  }
-
-  private void verifyRoleFieldsWithSession(String roleName, boolean canLogin, boolean isSuperuser,
-                                          List<String> memberOf, Session s) throws Exception {
     ResultSet rs = s.execute(
-        String.format("SELECT * FROM system_auth.roles WHERE role = '%s';", roleName));
-
-    Iterator<Row> iter = rs.iterator();
-    assertTrue(String.format("Unable to find role '%s'", roleName), iter.hasNext());
-    Row r = iter.next();
-    assertEquals(r.getBool("can_login"), canLogin);
-    assertEquals(r.getBool("is_superuser"), isSuperuser);
-    assertEquals(r.getList("member_of", String.class), memberOf);
+        String.format("SELECT * FROM system_auth.roles WHERE role = '%s';",
+            roleName.toLowerCase()));
+    List<Row> rows = rs.all();
+    assertEquals(String.format("Unable to find role '%s'", roleName), 1, rows.size());
+    Row r = rows.get(0);
+    assertEquals(canLogin, r.getBool("can_login"));
+    assertEquals(isSuperuser, r.getBool("is_superuser"));
+    assertEquals(memberOf, r.getList("member_of", String.class));
   }
 
-  protected void testCreateRoleHelper(String roleName, String password, boolean canLogin,
-                                      boolean isSuperuser) throws Exception {
-    Session s = getDefaultSession();
-    testCreateRoleHelperWithSession(roleName, password, canLogin, isSuperuser, true, s);
-  }
-
-  protected void testCreateRoleHelperWithSession(String roleName, String password,
-                                                 boolean canLogin, boolean isSuperuser,
-                                                 boolean verifyConnectivity, Session s)
+  /** Note that the role created will have lowercase name. */
+  protected void createRole(Session s, String roleName, String password,
+                            boolean canLogin, boolean isSuperuser,
+                            boolean verifyConnectivity)
       throws Exception {
 
     // Create the role.
-    String createStmt = String.format(
+    s.execute(String.format(
         "CREATE ROLE %s WITH PASSWORD = '%s' AND LOGIN = %s AND SUPERUSER = %s",
-        roleName, password, canLogin, isSuperuser);
-
-    s.execute(createStmt);
+        roleName, password, canLogin, isSuperuser));
 
     // Verify that we can connect using the new role.
     if (verifyConnectivity) {
@@ -186,7 +158,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     }
 
     // Verify that the information got written into system_auth.roles correctly.
-    verifyRoleWithSession(roleName, canLogin, isSuperuser, s);
+    verifyRole(s, roleName, canLogin, isSuperuser);
   }
 
   public void assertPermissionsGranted(Session s, String role, String resource,
@@ -202,7 +174,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
 
     assertEquals(1, rows.size());
 
-    List list = rows.get(0).getList("permissions", String.class);
+    List<String> list = rows.get(0).getList("permissions", String.class);
     assertEquals(permissions.size(), list.size());
 
     for (String permission : permissions) {
@@ -212,8 +184,8 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     }
   }
 
-  public void grantPermission(String permission, String resourceType, String resource,
-                               String role, Session s) throws Exception {
+  public void grantPermission(Session s, String permission, String resourceType, String resource,
+                              String role) throws Exception {
     s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
   }
 }
