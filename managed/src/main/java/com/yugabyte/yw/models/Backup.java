@@ -229,13 +229,13 @@ public class Backup extends Model {
     return backupList.size() != 0;
   }
 
-  public static Set<Universe> getUniverses(UUID customerConfigUUID) {
+  public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = find.query().where()
         .in("state", new Object[] {BackupState.Completed, BackupState.InProgress})
         .findList();
     backupList = backupList.stream()
-        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) &&
+        .filter(b -> b.getBackupInfo().storageConfigUUID.equals(configUUID) &&
             universeUUIDs.add(b.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
         
@@ -245,7 +245,7 @@ public class Backup extends Model {
         .findList();
     scheduleList = scheduleList.stream()
         .filter(s -> s.getTaskParams().path("storageConfigUUID").asText()
-        .equals(customerConfigUUID.toString()) &&
+        .equals(configUUID.toString()) &&
             universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
         .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<Universe>();
