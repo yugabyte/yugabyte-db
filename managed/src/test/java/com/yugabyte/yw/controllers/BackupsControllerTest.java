@@ -89,10 +89,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   private Result deleteBackup(ObjectNode bodyJson, Users user) {
-    String authToken = defaultUser.createAuthToken();
-    if (user != null) {
-      authToken = user.createAuthToken();
-    }
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
     String url = "/api/customers/" + defaultCustomer.uuid +
       "/backups";
@@ -264,12 +261,11 @@ public class BackupsControllerTest extends FakeDBApplication {
     bp.storageConfigUUID = customerConfig.configUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
-    List<String> backupUUIDList = new ArrayList<String>();
+    List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.backupUUID.toString());
     UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    
     ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
       arrayNode.add(item);
