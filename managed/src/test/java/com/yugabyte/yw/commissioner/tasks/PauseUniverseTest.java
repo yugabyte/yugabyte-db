@@ -48,13 +48,13 @@ import static org.mockito.Mockito.*;
 public class PauseUniverseTest extends CommissionerBaseTest {
 
   @InjectMocks
-  Commissioner commissioner;
-  ShellResponse dummyShellResponse;
-  ShellResponse preflightSuccessResponse;
-  YBClient mockClient;
-  Universe defaultUniverse;
-  String nodePrefix = "demo-universe";
-  Map<String, String> config = new HashMap<String, String>();
+  private Commissioner commissioner;
+  private ShellResponse dummyShellResponse;
+  private ShellResponse preflightSuccessResponse;
+  private YBClient mockClient;
+  private Universe defaultUniverse;
+  private String nodePrefix = "demo-universe";
+  private Map<String, String> config = new HashMap<String, String>();
 
   @Before
   public void setUp() {
