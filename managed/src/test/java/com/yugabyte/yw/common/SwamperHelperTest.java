@@ -114,11 +114,7 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   @Test(expected = RuntimeException.class)
   public void testUniverseTargetWriteFailure() {
-    File dir = new File("/tmp/non-writable");
-    dir.mkdir();
-    dir.setWritable(false);
-
-    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(dir.getPath());
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn("/sys");
     Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     swamperHelper.writeUniverseTargetJson(u.universeUUID);
