@@ -82,6 +82,60 @@ yugabyte=# \d pg_stat_statements;
  temp_blks_written   | bigint           |           |          | 
  blk_read_time       | double precision |           |          | 
  blk_write_time      | double precision |           |          | 
+ 
+ 
+ yugabyte=# \dS+ pg_stat_statements;
+                                 View "public.pg_stat_statements"
+       Column        |       Type       | Collation | Nullable | Default | Storage  | Description 
+---------------------+------------------+-----------+----------+---------+----------+-------------
+ userid              | oid              |           |          |         | plain    | 
+ dbid                | oid              |           |          |         | plain    | 
+ queryid             | bigint           |           |          |         | plain    | 
+ query               | text             |           |          |         | extended | 
+ calls               | bigint           |           |          |         | plain    | 
+ total_time          | double precision |           |          |         | plain    | 
+ min_time            | double precision |           |          |         | plain    | 
+ max_time            | double precision |           |          |         | plain    | 
+ mean_time           | double precision |           |          |         | plain    | 
+ stddev_time         | double precision |           |          |         | plain    | 
+ rows                | bigint           |           |          |         | plain    | 
+ shared_blks_hit     | bigint           |           |          |         | plain    | 
+ shared_blks_read    | bigint           |           |          |         | plain    | 
+ shared_blks_dirtied | bigint           |           |          |         | plain    | 
+ shared_blks_written | bigint           |           |          |         | plain    | 
+ local_blks_hit      | bigint           |           |          |         | plain    | 
+ local_blks_read     | bigint           |           |          |         | plain    | 
+ local_blks_dirtied  | bigint           |           |          |         | plain    | 
+ local_blks_written  | bigint           |           |          |         | plain    | 
+ temp_blks_read      | bigint           |           |          |         | plain    | 
+ temp_blks_written   | bigint           |           |          |         | plain    | 
+ blk_read_time       | double precision |           |          |         | plain    | 
+ blk_write_time      | double precision |           |          |         | plain    | 
+View definition:
+ SELECT pg_stat_statements.userid,
+    pg_stat_statements.dbid,
+    pg_stat_statements.queryid,
+    pg_stat_statements.query,
+    pg_stat_statements.calls,
+    pg_stat_statements.total_time,
+    pg_stat_statements.min_time,
+    pg_stat_statements.max_time,
+    pg_stat_statements.mean_time,
+    pg_stat_statements.stddev_time,
+    pg_stat_statements.rows,
+    pg_stat_statements.shared_blks_hit,
+    pg_stat_statements.shared_blks_read,
+    pg_stat_statements.shared_blks_dirtied,
+    pg_stat_statements.shared_blks_written,
+    pg_stat_statements.local_blks_hit,
+    pg_stat_statements.local_blks_read,
+    pg_stat_statements.local_blks_dirtied,
+    pg_stat_statements.local_blks_written,
+    pg_stat_statements.temp_blks_read,
+    pg_stat_statements.temp_blks_written,
+    pg_stat_statements.blk_read_time,
+    pg_stat_statements.blk_write_time
+   FROM pg_stat_statements(true) pg_stat_statements(userid, dbid, queryid, query, calls, total_time, min_time, max_time, mean_time, stddev_time, rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written, blk_read_time, blk_write_time);
 ```
 
 ### Example 1: The most consumption IO TOP 10 SQL
