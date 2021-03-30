@@ -5,12 +5,15 @@ CREATE FUNCTION @extschema@.partition_data_time(
         , p_lock_wait numeric DEFAULT 0
         , p_order text DEFAULT 'ASC'
         , p_analyze boolean DEFAULT true
-        , p_source_table text DEFAULT NULL)
+        , p_source_table text DEFAULT NULL
+        , p_ignored_columns text[] DEFAULT NULL)
     RETURNS bigint
     LANGUAGE plpgsql 
     AS $$
 DECLARE
 
+v_col                       text;
+v_column_list               text;
 v_control                   text;
 v_control_type              text;
 v_datetime_string           text;
@@ -139,6 +142,25 @@ v_partition_expression := CASE
     ELSE format('%I', v_control)
 END;
 
+-- Generate column list to use in SELECT/INSERT statements below. Allows for exclusion of GENERATED (or any other desired) columns.
+v_sql := format ('SELECT ''"''||string_agg(attname, ''","'')||''"'' FROM pg_catalog.pg_attribute a
+                    JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+                    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+                    WHERE n.nspname = %L
+                    AND c.relname = %L 
+                    AND a.attnum > 0 
+                    AND a.attisdropped = false'
+                  , v_source_schemaname
+                  , v_source_tablename);
+
+IF p_ignored_columns IS NOT NULL THEN
+    FOREACH v_col IN ARRAY p_ignored_columns LOOP
+        v_sql := v_sql || format(' AND attname != %L ', v_col);
+    END LOOP;
+END IF;
+
+EXECUTE v_sql INTO v_column_list;
+
 FOR i IN 1..p_batch_count LOOP
 
     IF p_order = 'ASC' THEN
@@ -228,7 +250,8 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                EXECUTE format('SELECT * FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L FOR UPDATE NOWAIT'
+                EXECUTE format('SELECT %s FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L FOR UPDATE NOWAIT'
+                    , v_column_list
                     , v_source_schemaname
                     , v_source_tablename
                     , v_partition_expression
@@ -258,20 +281,22 @@ FOR i IN 1..p_batch_count LOOP
         -- Temp table created above to avoid excessive temp creation in loop
         EXECUTE format('WITH partition_data AS (
                 DELETE FROM %1$I.%2$I WHERE %3$s >= %4$L AND %3$s < %5$L RETURNING *)
-            INSERT INTO partman_temp_data_storage SELECT * FROM partition_data'
+            INSERT INTO partman_temp_data_storage (%6$s) SELECT %6$s FROM partition_data'
             , v_source_schemaname
             , v_source_tablename
             , v_partition_expression
             , v_min_partition_timestamp
-            , v_max_partition_timestamp);
+            , v_max_partition_timestamp
+            , v_column_list);
 
         PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
 
         EXECUTE format('WITH partition_data AS (
                 DELETE FROM partman_temp_data_storage RETURNING *)
-            INSERT INTO %I.%I SELECT * FROM partition_data'
+            INSERT INTO %I.%I (%3$s) SELECT %3$s FROM partition_data'
             , v_source_schemaname
-            , v_current_partition_name);
+            , v_current_partition_name
+            , v_column_list);
 
     ELSE
 
@@ -279,14 +304,14 @@ FOR i IN 1..p_batch_count LOOP
 
         EXECUTE format('WITH partition_data AS (
                             DELETE FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L RETURNING *)
-                         INSERT INTO %I.%I SELECT * FROM partition_data'
+                         INSERT INTO %1$I.%6$I (%7$s) SELECT %7$s FROM partition_data'
                             , v_source_schemaname
                             , v_source_tablename
                             , v_partition_expression
                             , v_min_partition_timestamp
                             , v_max_partition_timestamp
-                            , v_source_schemaname
-                            , v_current_partition_name);
+                            , v_current_partition_name
+                            , v_column_list);
     END IF;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;

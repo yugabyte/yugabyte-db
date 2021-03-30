@@ -41,6 +41,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 
 UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table = 'partman_test.time_taptest_table';
 -- Run to get +5 trigger in place
+
 SELECT run_maintenance(p_analyze := false);
 -- Insert after maintenance so new +5 day trigger is in place
 INSERT INTO partman_test.time_taptest_table (col3) VALUES (CURRENT_TIMESTAMP + '5 days'::interval);

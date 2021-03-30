@@ -11,8 +11,7 @@ CREATE FUNCTION @extschema@.create_sub_parent(
     , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
     , p_trigger_return_null boolean DEFAULT true
-    , p_jobmon boolean DEFAULT true
-    , p_debug boolean DEFAULT false) 
+    , p_jobmon boolean DEFAULT true) 
 RETURNS boolean
     LANGUAGE plpgsql 
     AS $$
@@ -198,10 +197,10 @@ LOOP
 
             IF v_child_start_id IS NOT NULL THEN
                 v_partition_id_array[0] := v_child_start_id;
-                PERFORM @extschema@.create_partition_id(p_top_parent, v_partition_id_array, true);
+                PERFORM @extschema@.create_partition_id(p_top_parent, v_partition_id_array, true, p_start_partition);
             ELSIF v_child_start_time IS NOT NULL THEN
                 v_partition_time_array[0] := v_child_start_time;
-                PERFORM @extschema@.create_partition_time(p_top_parent, v_partition_time_array, true);
+                PERFORM @extschema@.create_partition_time(p_top_parent, v_partition_time_array, true, p_start_partition);
             END IF;
         ELSE
             SELECT a.attname
@@ -241,8 +240,7 @@ LOOP
                 , p_upsert := %L
                 , p_trigger_return_null := %L
                 , p_template_table := %L
-                , p_jobmon := %L
-                , p_debug := %L )'
+                , p_jobmon := %L)'
             , v_row.child_schema||'.'||v_row.child_tablename
             , p_control
             , p_type
@@ -256,8 +254,7 @@ LOOP
             , p_upsert
             , p_trigger_return_null
             , v_template_table
-            , p_jobmon
-            , p_debug);
+            , p_jobmon);
         EXECUTE v_sql;
     END IF; -- end recreate check
 
@@ -271,5 +268,4 @@ RETURN v_success;
 
 END
 $$;
-
 

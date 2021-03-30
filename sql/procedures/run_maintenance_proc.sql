@@ -1,4 +1,4 @@
-CREATE PROCEDURE @extschema@.run_maintenance_proc(p_wait int DEFAULT 0, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)
+CREATE PROCEDURE @extschema@.run_maintenance_proc(p_wait int DEFAULT 0, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true)
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -30,8 +30,8 @@ LOOP
  *        for more PROCEDURE features as well (return values, search_path, etc).
  *      - Also see about swapping names so this is the main object to call for maintenance instead of a function.
  */
-    v_sql := format('SELECT %I.run_maintenance(%L, p_jobmon := %L, p_debug := %L',
-        '@extschema@', v_row.parent_table, p_jobmon, p_debug);
+    v_sql := format('SELECT %I.run_maintenance(%L, p_jobmon := %L',
+        '@extschema@', v_row.parent_table, p_jobmon);
 
     IF p_analyze IS NOT NULL THEN
         v_sql := v_sql || format(', p_analyze := %L', p_analyze);
@@ -39,9 +39,7 @@ LOOP
         
     v_sql := v_sql || ')';
 
-    IF p_debug THEN
-        RAISE NOTICE 'v_sql run_maintenance_proc: %', v_sql;
-    END IF;
+    RAISE DEBUG 'v_sql run_maintenance_proc: %', v_sql;
 
     EXECUTE v_sql;
     COMMIT;

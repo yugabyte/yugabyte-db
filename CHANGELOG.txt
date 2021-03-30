@@ -1,3 +1,19 @@
+4.5.0
+NEW FEATURES
+============
+-- Officially supported minimal version is now PostgreSQL 9.6. PostgreSQL 9.6 support will be ending the next pg_partman release after PostgreSQL 14 is released.
+
+-- Removed p_debug from functions changed in this update. Slowly migrating all functions away from parameter to using debug logging level instead.
+
+BUG FIXES
+=========
+-- Fixed issue when upgrading from 4.4.0 to 4.4.1 on PG10 and below. Upgrade path now goes directly from 4.4.0 to 4.5.0 and skips 4.4.1. All changes in 4.4.1 have been included in 4.5.0 where necessary. (Github Issue #342)
+
+-- Added the parameter `p_ignored_columns` to partition_data_time(), partition_data_id(), partition_data_proc(), undo_partition() and undo_partition_proc(). The parameter is an array that can list one or more columns to ignore their values when moving the data. This allows for moving data out of the default/parent table when generated columns are in use. (Github Issue #336)
+
+-- Fixed the p_start_partition parameter working properly with id->timestamp sub-partitioning. (Github Issue #341)
+
+
 4.4.1
 NEW FEATURES
 ============

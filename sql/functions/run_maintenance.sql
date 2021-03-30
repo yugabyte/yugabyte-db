@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void 
+CREATE FUNCTION @extschema@.run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT NULL, p_jobmon boolean DEFAULT true) RETURNS void 
     LANGUAGE plpgsql 
     AS $$
 DECLARE
@@ -178,14 +178,10 @@ LOOP
         WHEN v_row.epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_row.control)
         ELSE format('%I', v_row.control)
     END;
-    IF p_debug THEN
-        RAISE NOTICE 'run_maint: v_partition_expression: %', v_partition_expression;
-    END IF;
+    RAISE DEBUG 'run_maint: v_partition_expression: %', v_partition_expression;
 
     SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(v_row.parent_table, 'DESC') LIMIT 1;
-    IF p_debug THEN
-        RAISE NOTICE 'run_maint: parent_table: %, v_last_partition: %', v_row.parent_table, v_last_partition;
-    END IF;
+    RAISE DEBUG 'run_maint: parent_table: %, v_last_partition: %', v_row.parent_table, v_last_partition;
 
     IF v_control_type = 'time' OR (v_control_type = 'id' AND v_row.epoch <> 'none') THEN
 
@@ -228,9 +224,7 @@ LOOP
         -- Check for values in the parent/default table. If they are there and greater than all child values, use that instead
         -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in default, but new tables will be created
         EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_default;
-        IF p_debug THEN
-            RAISE NOTICE 'run_maint: v_current_partition_timestamp: %, v_max_time_default: %', v_current_partition_timestamp, v_max_time_default;
-        END IF;
+        RAISE DEBUG 'run_maint: v_current_partition_timestamp: %, v_max_time_default: %', v_current_partition_timestamp, v_max_time_default;
         IF v_current_partition_timestamp IS NULL AND v_max_time_default IS NULL THEN 
             -- Partition set is completely empty and infinite time partitions not set
             -- Nothing to do
@@ -254,18 +248,14 @@ LOOP
         -- Check and see how many premade partitions there are.
         v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.partition_interval::interval));
         v_next_partition_timestamp := v_last_partition_timestamp;
-        IF p_debug THEN
-            RAISE NOTICE 'run_maint before loop: current_partition_timestamp: %, v_premade_count: %, v_sub_timestamp_min: %, v_sub_timestamp_max: %'
-                , v_current_partition_timestamp 
-                , v_premade_count
-                , v_sub_timestamp_min
-                , v_sub_timestamp_max;
-        END IF;
+        RAISE DEBUG 'run_maint before loop: current_partition_timestamp: %, v_premade_count: %, v_sub_timestamp_min: %, v_sub_timestamp_max: %'
+            , v_current_partition_timestamp 
+            , v_premade_count
+            , v_sub_timestamp_min
+            , v_sub_timestamp_max;
         -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed
         WHILE (v_premade_count < v_row.premake) LOOP
-            IF p_debug THEN
-                RAISE NOTICE 'run_maint: parent_table: %, v_premade_count: %, v_next_partition_timestamp: %', v_row.parent_table, v_premade_count, v_next_partition_timestamp;
-            END IF;
+            RAISE DEBUG 'run_maint: parent_table: %, v_premade_count: %, v_next_partition_timestamp: %', v_row.parent_table, v_premade_count, v_next_partition_timestamp;
             IF v_next_partition_timestamp < v_sub_timestamp_min OR v_next_partition_timestamp > v_sub_timestamp_max THEN
                 -- With subpartitioning, no need to run if the timestamp is not in the parent table's range
                 EXIT;
@@ -284,8 +274,7 @@ LOOP
 
             v_last_partition_created := @extschema@.create_partition_time(v_row.parent_table
                                                         , ARRAY[v_next_partition_timestamp]
-                                                        , v_analyze
-                                                        , p_debug := p_debug); 
+                                                        , v_analyze); 
             IF v_last_partition_created THEN
                 v_create_count := v_create_count + 1;
                 IF v_row.partition_type <> 'native' THEN
@@ -351,9 +340,7 @@ LOOP
         v_premade_count := ((v_last_partition_id - v_current_partition_id) / v_row.partition_interval::bigint);
         -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
         WHILE (v_premade_count < v_row.premake) LOOP 
-            IF p_debug THEN
-                RAISE NOTICE 'run_maint: parent_table: %, v_premade_count: %, v_next_partition_id: %', v_row.parent_table, v_premade_count, v_next_partition_id;
-            END IF;
+            RAISE DEBUG 'run_maint: parent_table: %, v_premade_count: %, v_next_partition_id: %', v_row.parent_table, v_premade_count, v_next_partition_id;
             IF v_next_partition_id < v_sub_id_min OR v_next_partition_id > v_sub_id_max THEN
                 -- With subpartitioning, no need to run if the id is not in the parent table's range
                 EXIT;
@@ -420,5 +407,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

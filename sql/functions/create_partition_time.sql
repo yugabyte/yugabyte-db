@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
+CREATE FUNCTION @extschema@.create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_start_partition text DEFAULT NULL) 
 RETURNS boolean
     LANGUAGE plpgsql
     AS $$
@@ -123,9 +123,7 @@ v_partition_expression := CASE
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
     ELSE format('%I', v_control)
 END;
-IF p_debug THEN
-    RAISE NOTICE 'create_partition_time: v_partition_expression: %', v_partition_expression;
-END IF;
+RAISE DEBUG 'create_partition_time: v_partition_expression: %', v_partition_expression;
 
 FOREACH v_time IN ARRAY p_partition_times LOOP    
     v_partition_timestamp_start := v_time;
@@ -221,9 +219,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         END IF;
     END IF;
 
-    IF p_debug THEN
-        RAISE NOTICE 'create_partition_time v_sql: %', v_sql;
-    END IF;
+    RAISE DEBUG 'create_partition_time v_sql: %', v_sql;
     EXECUTE v_sql;
 
 
@@ -390,7 +386,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_inherit_fk := %L
                 , p_epoch := %L
                 , p_template_table := %L
-                , p_jobmon := %L )'
+                , p_jobmon := %L
+                , p_start_partition := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
             , v_row.sub_partition_type
@@ -401,10 +398,10 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_inherit_fk
             , v_row.sub_epoch
             , v_row.sub_template_table
-            , v_row.sub_jobmon);
-        IF p_debug THEN
-            RAISE NOTICE 'create_partition_time (create_parent loop): %', v_sql;
-        END IF;
+            , v_row.sub_jobmon
+            , p_start_partition);
+        
+        RAISE DEBUG 'create_partition_time (create_parent loop): %', v_sql;
         EXECUTE v_sql;
 
         UPDATE @extschema@.part_config SET 
@@ -425,7 +422,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     END LOOP; -- end sub partitioning LOOP
 
     -- Manage additonal constraints if set
-    PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id, p_debug := p_debug);
+    PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id);
 
     IF v_publications IS NOT NULL THEN
         -- NOTE: Publications currently not supported on parent table, but are supported on the table partitions if individually assigned.
@@ -488,5 +485,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

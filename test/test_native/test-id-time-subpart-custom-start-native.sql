@@ -10,7 +10,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(299);
+SELECT plan(324);
 CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
@@ -75,8 +75,8 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that 
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p0', ARRAY[9], 'Check count from id_taptest_table_p0');
 
--- Create subpartition
-SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'native', 'daily', p_native_check := 'yes');
+-- Create subpartition (start sub partitions 2 days before premake value)
+SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'native', 'daily', p_native_check := 'yes', p_start_partition := (CURRENT_TIMESTAMP - '6 days'::interval)::text );
 --Reinsert data due to child table destruction
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 
@@ -107,16 +107,25 @@ SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMEST
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in d_dynamic_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
+
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check for no data in top parent');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p0', 'Check for no data in sub-parent');
@@ -146,8 +155,12 @@ SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_pk('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
@@ -180,16 +193,24 @@ SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in d_dynamic_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p20', 'Check that subparent table itself _p20 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p20', 'Check count from parent table _p20 (should be empty)');
@@ -214,16 +235,25 @@ SELECT has_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT has_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in d_dynamic_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in d_dynamic_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
+
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p30', 'Check that subparent table itself _p30 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p30', 'Check count from parent table _p30 (should be empty)');
@@ -248,16 +278,25 @@ SELECT has_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMES
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT has_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_pk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
+    'Check for primary key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT col_is_fk('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
+    'Check for foreign key in id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 day'::interval, 'YYYY_MM_DD'));
+
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p40', 'Check that subparent table itself _p40 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p40', 'Check count from parent table _p40 (should be empty)');
@@ -313,7 +352,6 @@ SELECT col_is_fk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMES
 SELECT col_is_fk('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
-
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p50', 'Check that subparent table itself _p50 is empty');
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p50', 'Check count from parent table _p50 (should be empty)');
@@ -350,7 +388,6 @@ SELECT col_is_fk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMES
     'Check for foreign key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT col_is_fk('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col2'], 
     'Check for foreign key in id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
-
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_p60', 'Check that subparent table itself _p60 is empty');
@@ -438,6 +475,9 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIME
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
+
 
 UPDATE part_config SET retention = '10', retention_keep_table = false WHERE parent_table = 'partman_test.id_taptest_table';
 UPDATE part_config SET retention = '2 days', retention_keep_table = false WHERE parent_table = 'partman_test.id_taptest_table_p0';
@@ -474,36 +514,49 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIM
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p30_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p40_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p50_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p60_p'||to_char(CURRENT_TIMESTAMP-'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
+
 
 SELECT undo_partition('partman_test.id_taptest_table_p10', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false); 
 SELECT has_table('partman_test', 'template_id_taptest_table', 'Check that template table was not removed yet');
@@ -532,7 +585,7 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIM
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+    'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'1 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'1 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 

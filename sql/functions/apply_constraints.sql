@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT FALSE, p_job_id bigint DEFAULT NULL, p_debug boolean DEFAULT FALSE) RETURNS void
+CREATE FUNCTION @extschema@.apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT FALSE, p_job_id bigint DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -74,9 +74,7 @@ WHERE parent_table = p_parent_table
 AND constraint_cols IS NOT NULL;
 
 IF v_constraint_cols IS NULL THEN
-    IF p_debug THEN
-        RAISE NOTICE 'Given parent table (%) not set up for constraint management (constraint_cols is NULL)', p_parent_table;
-    END IF;
+    RAISE DEBUG 'Given parent table (%) not set up for constraint management (constraint_cols is NULL)', p_parent_table;
     -- Returns silently to allow this function to be simply called by maintenance processes without having to check if config options are set.
     RETURN;
 END IF;
@@ -124,9 +122,7 @@ IF p_child_table IS NULL THEN
 
     v_child_tablename := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
 
-    IF p_debug THEN
-        RAISE NOTICE 'apply_constraint: v_parent_tablename: % , v_partition_suffix: %', v_parent_tablename, v_partition_suffix;
-    END IF;
+    RAISE DEBUG 'apply_constraint: v_parent_tablename: % , v_partition_suffix: %', v_parent_tablename, v_partition_suffix;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', format('Target child table: %s.%s', v_parent_schema, v_child_tablename));
@@ -147,9 +143,7 @@ IF v_child_exists IS NULL THEN
             PERFORM close_job(v_job_id);
         END IF;
     END IF;
-    IF p_debug THEN
-        RAISE NOTICE 'Target child table (%) does not exist. Skipping constraint creation.', v_child_tablename;
-    END IF;
+    RAISE DEBUG 'Target child table (%) does not exist. Skipping constraint creation.', v_child_tablename;
     EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RETURN;
 ELSE
@@ -182,9 +176,7 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'NOTICE', format('Partman managed constraint already exists on this table (%s) and column (%s). Skipping creation.', v_child_tablename, v_col));
         END IF;
-        IF p_debug THEN
-            RAISE NOTICE 'Partman managed constraint already exists on this table (%) and column (%). Skipping creation.', v_child_tablename, v_col ;
-        END IF;
+        RAISE DEBUG 'Partman managed constraint already exists on this table (%) and column (%). Skipping creation.', v_child_tablename, v_col ;
         CONTINUE;
     END IF;
 
@@ -207,18 +199,14 @@ LOOP
             v_sql := format('%s NOT VALID', v_sql);
         END IF;
 
-        IF p_debug THEN
-            RAISE NOTICE 'Constraint creation query: %', v_sql;
-        END IF;
+        RAISE DEBUG 'Constraint creation query: %', v_sql;
         EXECUTE v_sql;
 
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', format('New constraint created: %s', v_sql));
         END IF;
     ELSE
-        IF p_debug THEN
-            RAISE NOTICE 'Given column (%) contains all NULLs. No constraint created', v_col;
-        END IF;
+        RAISE DEBUG 'Given column (%) contains all NULLs. No constraint created', v_col;
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'NOTICE', format('Given column (%s) contains all NULLs. No constraint created', v_col));
         END IF;
@@ -230,10 +218,7 @@ IF p_analyze THEN
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, format('Applying additional constraints: Running analyze on partition set: %s', v_parent_table));
     END IF;
-    IF p_debug THEN
-        RAISE NOTICE 'Running analyze on partition set: %', v_parent_table;
-    END IF;
-
+    RAISE DEBUG 'Running analyze on partition set: %', v_parent_table;
     EXECUTE format('ANALYZE %I.%I', v_parent_schema, v_parent_tablename);
 
     IF v_jobmon_schema IS NOT NULL THEN
@@ -269,5 +254,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

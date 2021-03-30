@@ -1,4 +1,4 @@
-CREATE PROCEDURE @extschema@.partition_data_proc (p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_source_table text DEFAULT NULL, p_order text DEFAULT 'ASC', p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false)
+CREATE PROCEDURE @extschema@.partition_data_proc (p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_source_table text DEFAULT NULL, p_order text DEFAULT 'ASC', p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false, p_ignored_columns text[] DEFAULT NULL)
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -79,6 +79,9 @@ END IF;
 IF p_source_table IS NOT NULL THEN
     v_sql := v_sql || format(', p_source_table := %L', p_source_table);
 END IF;
+IF p_ignored_columns IS NOT NULL THEN
+    v_sql := v_sql || format(', p_ignored_columns := %L', p_ignored_columns);
+END IF;
 v_sql := v_sql || ')';
 RAISE DEBUG 'partition_data sql: %', v_sql;
 
@@ -143,5 +146,4 @@ EXCEPTION
 */
 END;
 $$;
-
 

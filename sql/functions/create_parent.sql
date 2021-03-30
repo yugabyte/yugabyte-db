@@ -13,8 +13,7 @@ CREATE FUNCTION @extschema@.create_parent(
     , p_publications text[] DEFAULT NULL
     , p_trigger_return_null boolean DEFAULT true
     , p_template_table text DEFAULT NULL
-    , p_jobmon boolean DEFAULT true
-    , p_debug boolean DEFAULT false) 
+    , p_jobmon boolean DEFAULT true) 
 RETURNS boolean 
     LANGUAGE plpgsql 
     AS $$

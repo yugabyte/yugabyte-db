@@ -1,4 +1,4 @@
-CREATE PROCEDURE @extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false) 
+CREATE PROCEDURE @extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false, p_ignored_columns text[] DEFAULT NULL) 
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -76,6 +76,9 @@ IF p_interval IS NOT NULL THEN
 END IF;
 IF p_target_table IS NOT NULL THEN
     v_sql := v_sql || format(', p_target_table := %L', p_target_table);
+END IF;
+IF p_ignored_columns IS NOT NULL THEN
+    v_sql := v_sql || format(', p_ignored_columns := %L', p_ignored_columns);
 END IF;
 v_sql := v_sql || ')';
 RAISE DEBUG 'partition_data sql: %', v_sql;

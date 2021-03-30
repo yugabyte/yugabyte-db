@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, p_target_table text DEFAULT NULL, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record
+CREATE FUNCTION @extschema@.undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, p_target_table text DEFAULT NULL, p_ignored_columns text[] DEFAULT NULL, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record
     LANGUAGE plpgsql 
     AS $$
 DECLARE
@@ -13,6 +13,8 @@ v_batch_interval_time   interval;
 v_batch_loop_count      int := 0;
 v_child_loop_total      bigint := 0;
 v_child_table           text;
+v_col                   text;
+v_column_list           text;
 v_control               text;
 v_control_type          text;
 v_child_min_id          bigint;
@@ -35,6 +37,7 @@ v_partition_type        text;
 v_relkind               char;
 v_row                   record;
 v_rowcount              bigint;
+v_sql                   text;
 v_step_id               bigint;
 v_sub_count             int;
 v_target_schema         text;
@@ -226,6 +229,25 @@ IF v_jobmon_schema IS NOT NULL THEN
     END IF;
 END IF;
 
+-- Generate column list to use in SELECT/INSERT statements below. Allows for exclusion of GENERATED (or any other desired) columns.
+v_sql := format ('SELECT ''"''||string_agg(attname, ''","'')||''"'' FROM pg_catalog.pg_attribute a
+                    JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+                    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+                    WHERE n.nspname = %L
+                    AND c.relname = %L 
+                    AND a.attnum > 0 
+                    AND a.attisdropped = false'
+                  , v_target_schema
+                  , v_target_tablename);
+
+IF p_ignored_columns IS NOT NULL THEN
+    FOREACH v_col IN ARRAY p_ignored_columns LOOP
+        v_sql := v_sql || format(' AND attname != %L ', v_col);
+    END LOOP;
+END IF;
+
+EXECUTE v_sql INTO v_column_list;
+
 <<outer_child_loop>>
 LOOP
     -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left or batch count is reached.
@@ -337,12 +359,13 @@ LOOP
 
             -- Get everything from the current child minimum up to the multiples of the given interval
             EXECUTE format('WITH move_data AS (
-                                    DELETE FROM %I.%I WHERE %s <= %L RETURNING *)
-                                  INSERT INTO %I.%I SELECT * FROM move_data'
+                                    DELETE FROM %I.%I WHERE %s <= %L RETURNING %s )
+                                  INSERT INTO %I.%I (%5$s) SELECT %5$s FROM move_data'
                 , v_parent_schema
                 , v_child_table
                 , v_partition_expression
                 , v_child_min_time + (v_batch_interval_time * v_inner_loop_count)
+                , v_column_list
                 , v_target_schema
                 , v_target_tablename);
             GET DIAGNOSTICS v_rowcount = ROW_COUNT;
@@ -388,12 +411,13 @@ LOOP
 
             -- Get everything from the current child minimum up to the multiples of the given interval
             EXECUTE format('WITH move_data AS (
-                                    DELETE FROM %I.%I WHERE %s <= %L RETURNING *)
-                                  INSERT INTO %I.%I SELECT * FROM move_data'
+                                    DELETE FROM %I.%I WHERE %s <= %L RETURNING %s)
+                                  INSERT INTO %I.%I (%5$s) SELECT %5$s FROM move_data'
                 , v_parent_schema
                 , v_child_table
                 , v_partition_expression
                 , v_child_min_id + (v_batch_interval_id * v_inner_loop_count)
+                , v_column_list
                 , v_target_schema
                 , v_target_tablename);
             GET DIAGNOSTICS v_rowcount = ROW_COUNT;
@@ -480,5 +504,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 
