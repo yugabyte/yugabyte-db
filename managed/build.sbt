@@ -2,6 +2,18 @@ import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 
+import scala.sys.process.Process
+
+// ------------------------------------------------------------------------------------------------
+// Constants
+// ------------------------------------------------------------------------------------------------
+
+// This is used to decide whether to clean/build the py2 or py3 venvs.
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"))
+
+// Use this to enable debug logging in this script.
+lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
+
 // ------------------------------------------------------------------------------------------------
 // Functions
 // ------------------------------------------------------------------------------------------------
@@ -14,9 +26,6 @@ def strToBool(s: String): Boolean = {
   val normalizedStr = normalizeEnvVarValue(s)
   normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
 }
-
-// Use this to enable debug logging in this script.
-val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
 
 def ybLog(s: String): Unit = {
   println("[Yugabyte sbt log] " + s)
@@ -55,6 +64,45 @@ def validateResolver(
   ybLog("[Resolver] " + description + ": " + resolver)
   resolver
 }
+
+def clean_ui(baseDirectory: File): Int = {
+  ybLog("Cleaning UI...")
+  Process("rm -rf node_modules", baseDirectory / "ui")!
+}
+
+def build_ui(baseDirectory: File): Int = {
+  ybLog("Building UI...")
+  Process("npm ci", baseDirectory / "ui")!
+}
+
+def get_venv_dir(): String = {
+  if (USE_PYTHON3) "venv" else "python_virtual_env"
+}
+
+def clean_venv(baseDirectory: File): Int = {
+  ybLog("Cleaning virtual env...")
+  val venvDir: String = get_venv_dir()
+  Process("rm -rf " + venvDir, baseDirectory / "devops")!
+}
+
+def build_venv(baseDirectory: File): Int = {
+  ybLog("Building virtual env...")
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+}
+
+// ------------------------------------------------------------------------------------------------
+// Task Keys
+// ------------------------------------------------------------------------------------------------
+
+lazy val cleanPlatform = taskKey[Int]("Clean Yugabyte Platform")
+
+lazy val compilePlatform = taskKey[Int]("Compile Yugabyte Platform")
+
+lazy val runPlatformTask = taskKey[Unit]("Run Yugabyte Platform helper task")
+
+lazy val runPlatform = inputKey[Unit]("Run Yugabyte Platform with UI")
+
+lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
@@ -189,6 +237,34 @@ externalResolvers := {
   validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
 }
 
+(Compile / compilePlatform) := {
+  (Compile / compile).value
+  build_venv(baseDirectory.value)
+  build_ui(baseDirectory.value)
+}
+
+cleanPlatform := {
+  clean.value
+  clean_venv(baseDirectory.value)
+  clean_ui(baseDirectory.value)
+}
+
+runPlatformTask := {
+  (Compile / run).toTask("").value
+}
+
+/**
+ * Add UI Run hook to run UI alongside with API.
+ */
+runPlatform := {
+  val curState = state.value
+  val newState = Project.extract(curState).appendWithoutSession(
+    Vector(PlayKeys.playRunHooks += UIRunHook(baseDirectory.value / "ui")),
+    curState
+  )
+  Project.extract(newState).runTask(runPlatformTask, newState)
+}
+
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
@@ -208,7 +284,6 @@ topLevelDirectory := None
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
 playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
 
-lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
 consoleSetting := {
   object PlayConsoleInteractionModeNew extends PlayInteractionMode {
