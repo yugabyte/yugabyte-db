@@ -7,6 +7,7 @@ export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 
+# Use dynamic paths to shorten shebangs below 64 characters.
 "$DEVOPS_HOME/bin/install_python_requirements.sh" --use_dynamic_paths
 
 activate_virtualenv
