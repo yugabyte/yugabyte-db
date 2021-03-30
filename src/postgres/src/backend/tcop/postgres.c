@@ -4069,23 +4069,6 @@ yb_is_restart_possible(const ErrorData* edata,
 }
 
 /*
- * Make a deep copy of ParamListInfo, allocating it in the current memory context.
- */
-static ParamListInfo
-yb_copy_param_list(ParamListInfo source)
-{
-	if (source == NULL)
-		return NULL;
-
-	size_t alloc_size = offsetof(ParamListInfoData, params) +
-	                    source->numParams * sizeof(ParamExternData);
-	ParamListInfo result = (ParamListInfo) palloc(alloc_size);
-	/* no allocated data structure pointers within ParamListInfo so we use a simple memcpy */
-	memcpy(result, source, alloc_size);
-	return result;
-}
-
-/*
  * Collect data necessary for yb_attempt_to_restart_on_error invocation.
  */
 static YBQueryRestartData*

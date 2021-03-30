@@ -69,8 +69,14 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
         """
         self.create_method = GcpCreateInstancesMethod(self.base_command)
 
+    def add_extra_args(self):
+        super(GcpProvisionInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to use chrony instead of NTP.")
+
     def update_ansible_vars_with_args(self, args):
         super(GcpProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
 

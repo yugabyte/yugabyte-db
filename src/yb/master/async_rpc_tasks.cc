@@ -479,7 +479,8 @@ TabletServerId AsyncTabletLeaderTask::permanent_uuid() const {
 AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
-                                       const scoped_refptr<TabletInfo>& tablet)
+                                       const scoped_refptr<TabletInfo>& tablet,
+                                       const std::vector<SnapshotScheduleId>& snapshot_schedules)
   : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
     tablet_id_(tablet->tablet_id()) {
   deadline_ = start_ts_;
@@ -502,6 +503,11 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.set_colocated(tablet_pb.colocated());
   if (table_lock->data().pb.has_index_info()) {
     req_.mutable_index_info()->CopyFrom(table_lock->data().pb.index_info());
+  }
+  auto& req_schedules = *req_.mutable_snapshot_schedules();
+  req_schedules.Reserve(snapshot_schedules.size());
+  for (const auto& id : snapshot_schedules) {
+    req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
 }
 

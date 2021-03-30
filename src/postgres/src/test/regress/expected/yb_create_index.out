@@ -150,8 +150,8 @@ CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "t1_pkey" PRIMARY KEY, lsm (h HASH, r)
-    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2)
+    "t1_pkey" PRIMARY KEY, lsm (h HASH, r ASC)
+    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
     "t1_v1_idx" lsm (v1 HASH)
 
 \d t2
@@ -163,7 +163,7 @@ Indexes:
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "t2_pkey" PRIMARY KEY, lsm (h HASH, r)
+    "t2_pkey" PRIMARY KEY, lsm (h HASH, r ASC)
 
 INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12);
 INSERT INTO t2 VALUES (1, 1, 21, 21);
@@ -615,9 +615,9 @@ CREATE INDEX ON test_split (h2) SPLIT INTO 20 TABLETS;
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "test_split_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1, r2)
+    "test_split_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
     "test_split_h2_idx" lsm (h2 HASH)
-    "test_split_h2_r2_r1_idx" lsm (h2 HASH, r2, r1)
+    "test_split_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
     "test_split_r1_r2_idx" lsm ((r1, r2) HASH)
 
 -- These should fail
@@ -645,10 +645,10 @@ CREATE UNIQUE INDEX ON test_method (v1, v2);
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1, r2)
-    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2)
-    "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2, r1)
-    "test_method_r1_r2_idx" lsm (r1 HASH, r2)
+    "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
+    "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
+    "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
 
 -- These should fail
 CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);

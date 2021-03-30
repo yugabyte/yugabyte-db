@@ -103,15 +103,18 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return -1;
   }
 
-  // Subclasses can override this to set the number of shards per tablet server.
-  protected int overridableNumShardsPerTServer() {
+  /** Subclasses can override this to set the number of shards per tablet server. */
+  protected int getNumShardsPerTServer() {
     return MiniYBClusterParameters.DEFAULT_NUM_SHARDS_PER_TSERVER;
   }
 
   /** This allows subclasses to optionally skip the usage of a mini-cluster in a test. */
-  protected boolean miniClusterEnabled() {
+  protected boolean isMiniClusterEnabled() {
     return true;
   }
+
+  /** Reset per-test settings to their default values, can be overridden to customize values. */
+  protected void resetSettings() {}
 
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     Preconditions.checkNotNull(builder);
@@ -135,13 +138,21 @@ public class BaseMiniClusterTest extends BaseYBTest {
    */
   @Before
   public void setUpBefore() throws Exception {
-    if (!miniClusterEnabled()) {
+    resetSettings();
+    if (!isMiniClusterEnabled()) {
       return;
     }
     TestUtils.clearReservedPorts();
     if (miniCluster == null) {
       createMiniCluster();
+    } else if (shouldRestartMiniClusterBetweenTests()) {
+      LOG.info("Restarting the MiniCluster");
+      miniCluster.restart();
     }
+  }
+
+  protected boolean shouldRestartMiniClusterBetweenTests() {
+    return false;
   }
 
   /**
@@ -149,7 +160,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * @return true if the number of tablet servers found is as expected
    */
   public boolean waitForTServersAtMasterLeader() throws Exception {
-    if (!miniClusterEnabled()) {
+    if (!isMiniClusterEnabled()) {
       return true;
     }
     return miniCluster.waitForTabletServers(miniCluster.getTabletServers().size());
@@ -159,7 +170,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * Override this method to create a custom minicluster for your test.
    */
   protected void createMiniCluster() throws Exception {
-    if (!miniClusterEnabled()) {
+    if (!isMiniClusterEnabled()) {
       return;
     }
     final int replicationFactor = getReplicationFactor();
@@ -176,7 +187,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * Creates a new cluster with the requested number of masters and tservers.
    */
   public void createMiniCluster(int numMasters, int numTservers) throws Exception {
-    if (!miniClusterEnabled()) {
+    if (!isMiniClusterEnabled()) {
       return;
     }
     createMiniCluster(numMasters, Collections.nCopies(numTservers, tserverArgs), tserverEnvVars);
@@ -189,7 +200,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   public void createMiniCluster(int numMasters, List<List<String>> tserverArgs,
                                 Map<String, String> tserverEnvVars)
       throws Exception {
-    if (!miniClusterEnabled()) {
+    if (!isMiniClusterEnabled()) {
       return;
     }
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
@@ -201,7 +212,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .testClassName(getClass().getName())
                       .masterArgs(masterArgs)
                       .perTServerArgs(tserverArgs)
-                      .numShardsPerTServer(overridableNumShardsPerTServer())
+                      .numShardsPerTServer(getNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
                       .replicationFactor(getReplicationFactor())
                       .sslCertFile(certFile)
@@ -237,7 +248,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                                 List<List<String>> tserverArgs,
                                 boolean enablePgTransactions)
       throws Exception {
-    if (!miniClusterEnabled()) {
+    if (!isMiniClusterEnabled()) {
       return;
     }
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");

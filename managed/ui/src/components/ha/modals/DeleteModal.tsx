@@ -10,9 +10,16 @@ interface DeleteModalProps {
   onClose(): void;
   configId: string;
   instanceId?: string; // if defined - will delete platform instance
+  isStandby?: boolean;
 }
 
-export const DeleteModal: FC<DeleteModalProps> = ({ visible, onClose, configId, instanceId }) => {
+export const DeleteModal: FC<DeleteModalProps> = ({
+  visible,
+  onClose,
+  configId,
+  instanceId,
+  isStandby
+}) => {
   const formik = useRef({} as FormikProps<{}>);
   const queryClient = useQueryClient();
   const { mutateAsync: deleteConfig } = useMutation(() => api.deleteHAConfig(configId));
@@ -32,6 +39,7 @@ export const DeleteModal: FC<DeleteModalProps> = ({ visible, onClose, configId, 
         await deleteConfig();
       }
       queryClient.resetQueries(QUERY_KEY.getHAConfig);
+      queryClient.resetQueries(QUERY_KEY.getHAReplicationSchedule);
     } catch (error) {
       toast.error(`Failed to delete ${instanceId ? 'instance' : 'replication configuration'}`);
     } finally {
@@ -54,12 +62,13 @@ export const DeleteModal: FC<DeleteModalProps> = ({ visible, onClose, configId, 
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
           return (
-            <>
+            <div data-testid="ha-delete-confirmation-modal">
               <p />
-              Are you sure you want to <strong>delete</strong>
-              {instanceId ? ' platform instance' : ' replication configuration'}?
+              Are you sure you want to <strong>delete</strong> this {instanceId ? ' platform instance' : ' replication configuration'}?
+              <br />
+              {isStandby && "You'd need to remove this standby instance from the active instance configuration as well."}
               <p />
-            </>
+            </div>
           );
         }}
       />

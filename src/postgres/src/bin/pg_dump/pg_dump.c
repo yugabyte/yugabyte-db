@@ -433,7 +433,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:n:N:oOp:RsS:t:T:U:vwWxZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:E:f:F:h:j:m:n:N:oOp:RsS:t:T:U:vwWxZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -478,12 +478,12 @@ main(int argc, char **argv)
 				dopt.pghost = pg_strdup(optarg);
 				break;
 
-			case 'm':			/* YB master hosts */
-				dopt.master_hosts = pg_strdup(optarg);
-				break;
-
 			case 'j':			/* number of dump jobs */
 				numWorkers = atoi(optarg);
+				break;
+
+			case 'm':			/* YB master hosts */
+				dopt.master_hosts = pg_strdup(optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -719,7 +719,11 @@ main(int argc, char **argv)
 		dopt.pghost = DefaultHost;
 
 #ifndef DISABLE_YB_EXTENSIONS
-	if (dopt.include_yb_metadata)
+	/*
+	 * While dumping create database statements, need to know whether the
+	 * database is colocated or not. Hence initialize PG gate backend.
+	 */
+	if (dopt.include_yb_metadata || dopt.outputCreateDB)
 	{
 		if (dopt.master_hosts)
 			YBCSetMasterAddresses(dopt.master_hosts);
@@ -1058,6 +1062,7 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
+	printf(_("  -m, --masters=IPS        YugaByte Master hosts IP addresses\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -9441,6 +9446,10 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 						  racl_subquery->data,
 						  initacl_subquery->data,
 						  initracl_subquery->data);
+		destroyPQExpBuffer(acl_subquery);
+		destroyPQExpBuffer(racl_subquery);
+		destroyPQExpBuffer(initacl_subquery);
+		destroyPQExpBuffer(initracl_subquery);
 	}
 	else
 	{
@@ -16653,7 +16662,7 @@ dumpIndexAttach(Archive *fout, IndexAttachInfo *attachinfo)
 					 attachinfo->dobj.name,
 					 attachinfo->dobj.namespace->dobj.name,
 					 NULL,
-					 "",
+					 attachinfo->parentIdx->indextable->rolname,
 					 false, "INDEX ATTACH", SECTION_POST_DATA,
 					 q->data, "", NULL,
 					 NULL, 0,

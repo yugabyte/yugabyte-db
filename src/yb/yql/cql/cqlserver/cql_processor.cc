@@ -85,16 +85,13 @@ DECLARE_bool(ycql_cache_login_info);
 namespace yb {
 namespace cqlserver {
 
-const unordered_map<string, vector<string>> kSupportedOptions = {
-  {CQLMessage::kCQLVersionOption, {"3.0.0" /* minimum */, "3.4.2" /* current */} },
-  {CQLMessage::kCompressionOption, {CQLMessage::kLZ4Compression, CQLMessage::kSnappyCompression} }
-};
-
 constexpr const char* const kCassandraPasswordAuthenticator =
     "org.apache.cassandra.auth.PasswordAuthenticator";
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
+
+using namespace yb::ql; // NOLINT
 
 using std::make_unique;
 using std::shared_ptr;
@@ -113,7 +110,12 @@ using ql::Statement;
 using ql::StatementBatch;
 using ql::ErrorCode;
 using ql::GetErrorCode;
+
+using ql::audit::IsPrepare;
+using ql::audit::ErrorIsFormatted;
+
 using strings::Substitute;
+
 using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
@@ -171,6 +173,7 @@ void CQLProcessor::Shutdown() {
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
+  is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(call_->connection());
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
@@ -205,6 +208,7 @@ void CQLProcessor::Release() {
   stmts_.clear();
   parse_trees_.clear();
   SetCurrentSession(nullptr);
+  is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(nullptr);
   service_impl_->ReturnProcessor(pos_);
 }
@@ -344,13 +348,13 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
     auto pt_result = stmt->GetParseTree();
     if (pt_result.ok()) {
       s = audit_logger_.LogStatement(pt_result->root().get(), req.query(),
-                                     true /* is_prepare */);
+                                     IsPrepare::kTrue);
     } else {
       s = pt_result.status();
     }
   } else {
     WARN_NOT_OK(audit_logger_.LogStatementError(req.query(), s,
-                                                true /* error_is_formatted */),
+                                                ErrorIsFormatted::kTrue),
                 "Failed to log an audit record");
   }
 
@@ -396,7 +400,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   batch.reserve(req.queries().size());
 
   // If no errors happen, batch request started here will be ended by the executor.
-  Status s = audit_logger_.StartBatchRequest(req.queries().size());
+  Status s = audit_logger_.StartBatchRequest(req.queries().size(),
+                                             is_rescheduled_.load(std::memory_order_acquire));
   if (PREDICT_FALSE(!s.ok())) {
     return ProcessError(s);
   }
@@ -455,8 +460,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
         unique_ptr<CQLResponse> response =
           ProcessAuthResult(*salted_hash_result, *can_login_result);
         VLOG(1) << "Used cached authentication";
-        // FIXME: Logged twice, with different ports!
-        // https://github.com/yugabyte/yugabyte-db/issues/6280
         Status s = audit_logger_.LogAuthResponse(*response);
         return response;
       } else {
@@ -649,7 +652,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
                 "" : salted_hash_value.string_value();
             response = ProcessAuthResult(saved_hash, can_login);
           }
-          // FIXME: Logged twice, with different ports!
           Status s = audit_logger_.LogAuthResponse(*response);
           if (!s.ok()) {
             return make_unique<ErrorResponse>(*request_, ErrorResponse::Code::SERVER_ERROR,
@@ -698,9 +700,9 @@ bool CQLProcessor::NeedReschedule() {
 }
 
 void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
+  is_rescheduled_.store(IsRescheduled::kTrue, std::memory_order_release);
   auto messenger = service_impl_->messenger();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
-  audit_logger_.MarkRescheduled();
   messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
 }
 

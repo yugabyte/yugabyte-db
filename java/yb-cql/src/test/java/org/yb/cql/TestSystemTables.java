@@ -50,9 +50,12 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSystemTables extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSystemTables.class);
 
   private static final String DEFAULT_SCHEMA_VERSION = "00000000-0000-0000-0000-000000000000";
   private static final String MURMUR_PARTITIONER = "org.apache.cassandra.dht.Murmur3Partitioner";
@@ -69,9 +72,10 @@ public class TestSystemTables extends BaseCQLTest {
   }
 
   @Override
-  protected int systemQueryCacheMsecs() {
+  protected void resetSettings() {
+    super.resetSettings();
     // Disable the system query cache for spark tests.
-    return 0;
+    systemQueryCacheUpdateMs = 0;
   }
 
   @After
@@ -163,7 +167,7 @@ public class TestSystemTables extends BaseCQLTest {
     }
 
     // Expecting one row per tablet.
-    assertEquals(NUM_TABLET_SERVERS * overridableNumShardsPerTServer(), idx);
+    assertEquals(NUM_TABLET_SERVERS * getNumShardsPerTServer(), idx);
   }
 
   @Test

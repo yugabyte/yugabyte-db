@@ -47,6 +47,7 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/backup.proxy.h"
@@ -366,7 +367,8 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 
     // Send Create Tablet Snapshot request to each tablet leader.
     SendCreateTabletSnapshotRequest(
-        tablet, snapshot_id, HybridTime::kInvalid, TabletSnapshotOperationCallback());
+        tablet, snapshot_id, SnapshotScheduleId::Nil(), HybridTime::kInvalid,
+        TabletSnapshotOperationCallback());
   }
 
   resp->set_snapshot_id(snapshot_id);
@@ -379,19 +381,34 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation) {
   tablet_peer()->Submit(std::move(operation), leader_ready_term());
 }
 
-Status CatalogManager::CreateTransactionAwareSnapshot(
-    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+Result<SysRowEntries> CatalogManager::CollectEntries(
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+    bool add_indexes,
+    bool include_parent_colocated_table,
+    bool succeed_if_create_in_progress) {
   SysRowEntries entries;
-  auto tables = VERIFY_RESULT(CollectTables(req.tables(),
-                                            req.add_indexes(),
-                                            true /* include_parent_colocated_table */));
+  auto tables = VERIFY_RESULT(CollectTables(
+      table_identifiers, add_indexes, include_parent_colocated_table,
+      succeed_if_create_in_progress));
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
     SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr);
   }
 
+  return entries;
+}
+
+server::Clock* CatalogManager::Clock() {
+  return master_->clock();
+}
+
+Status CatalogManager::CreateTransactionAwareSnapshot(
+    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
+      req.tables(), req.add_indexes(), true /* include_parent_colocated_table */, false));
+
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, req.imported(), master_->clock()->MaxGlobalNow(), rpc->GetClientDeadline()));
+      entries, req.imported(), rpc->GetClientDeadline()));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -1328,10 +1345,12 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
 
 void CatalogManager::SendCreateTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-    HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) {
+    const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+    TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+  call->SetSnapshotScheduleId(schedule_id);
   call->SetSnapshotHybridTime(snapshot_hybrid_time);
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -1345,7 +1364,7 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::RESTORE);
+      tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   if (restore_at) {
     call->SetSnapshotHybridTime(restore_at);
   }
@@ -1363,6 +1382,10 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(ScheduleTask(call), "Failed to send delete snapshot request");
+}
+
+Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
+  return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -1535,7 +1558,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 }
 
 void CatalogManager::HandleDeleteTabletSnapshotResponse(
-    SnapshotId snapshot_id, TabletInfo *tablet, bool error) {
+    const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) {
   LOG(INFO) << "Handling Delete Tablet Snapshot Response for tablet "
             << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
 
@@ -1548,7 +1571,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
 
     if (!snapshot) {
-      LOG(WARNING) << "Snapshot not found: " << snapshot_id;
+      LOG(WARNING) << __func__ << " Snapshot not found: " << snapshot_id;
       return;
     }
   }
@@ -1717,9 +1740,9 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
   SysClusterConfigEntryPB cluster_config;
   RETURN_NOT_OK(GetClusterConfig(&cluster_config));
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
-
 
 Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                                 const TSHeartbeatRequestPB* req,
@@ -3315,6 +3338,10 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
 
 void CatalogManager::Started() {
   snapshot_coordinator_.Start();
+}
+
+Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
+  return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
 }
 
 } // namespace enterprise

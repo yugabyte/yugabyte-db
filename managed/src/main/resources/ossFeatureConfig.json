@@ -21,6 +21,7 @@
   "menu": {
     "dashboard": "hidden",
     "config": "disabled",
+    "administration": "disabled",
     "metrics": "disabled"
   },
   "universes": {
