@@ -236,7 +236,7 @@ public class Backup extends Model {
         .findList();
     backupList = backupList.stream()
         .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID) &&
-        universeUUIDs.add( b.getBackupInfo().universeUUID))
+            universeUUIDs.add(b.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
         
     List<Schedule> scheduleList = Schedule.find.query().where()
@@ -246,7 +246,7 @@ public class Backup extends Model {
     scheduleList = scheduleList.stream()
         .filter(s -> s.getTaskParams().path("storageConfigUUID").asText()
         .equals(customerConfigUUID.toString()) &&
-        universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+            universeUUIDs.add(UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
         .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<Universe>();
     for (UUID universeUUID : universeUUIDs) {
