@@ -80,14 +80,9 @@ public class CustomerConfigController extends AuthenticatedController {
     }
     CustomerConfig config = CustomerConfig.get(configUUID);
     JsonNode data = Json.toJson(formData.get("data"));
-    for (Iterator<String> it = data.fieldNames(); it.hasNext(); ) {
-      String key = it.next();
-      if ((key.contains("KEY") || key.contains("SECRET") || key.contains("CREDENTIALS"))
-          && data.get(key).toString().contains("**")){
-        ((ObjectNode) data).put(key, config.data.get(key));
-      }
+    if (maskConfig(config.getData()) != data){
+      config.data = Json.toJson(data);
     }
-    config.data = Json.toJson(data);
     config.configName = formData.get("configName").textValue();
     config.name = formData.get("name").textValue();
     config.update();
