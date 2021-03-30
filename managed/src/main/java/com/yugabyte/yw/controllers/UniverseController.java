@@ -52,6 +52,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -1189,6 +1191,10 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isForceDelete") != null) {
       isForceDelete = Boolean.valueOf(request().getQueryString("isForceDelete"));
     }
+    Boolean isDeleteBackup = false;
+    if (request().getQueryString("isForceDelete") != null) {
+      isDeleteBackup = Boolean.valueOf(request().getQueryString("isDeleteBackup"));
+    }
     LOG.info("Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
       customerUUID, universe.name, universeUUID);
 
@@ -1225,6 +1231,26 @@ public class UniverseController extends AuthenticatedController {
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
 
+    if (isDeleteBackup) {
+      List<Backup> backupList = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
+      for (Backup backup : backupList) {
+        if (backup.state != Backup.BackupState.Completed) {
+          LOG.info("Can not delete {} backup as it is still in progress", backup.backupUUID);
+        } else if (backup.state == Backup.BackupState.Completed) {
+          DeleteBackup.Params deleteTaskParams = new DeleteBackup.Params();
+          deleteTaskParams.customerUUID = customerUUID;
+          deleteTaskParams.backupUUID = backup.backupUUID;
+          UUID deleteTaskUUID = commissioner.submit(TaskType.DeleteBackup, deleteTaskParams);
+          LOG.info("Saved task uuid {} in customer tasks for backup {}.",
+              deleteTaskUUID, backup.backupUUID);
+          CustomerTask.create(customer, 
+            backup.backupUUID,
+            deleteTaskUUID,
+            CustomerTask.TargetType.Backup,
+            CustomerTask.TaskType.Delete, "Backup");
+        }
+      }
+    }
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
     Audit.createAuditEntry(ctx(), request(), taskUUID);
