@@ -17,7 +17,8 @@ bin/install_python_requirements.sh --create_package --use_dynamic_paths
 # Use python3 to create the actual release.
 export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 . "${BASH_SOURCE%/*}"/bin/common.sh
-bin/install_python_requirements.sh
+# Use dynamic paths to shorten shebangs below 64 characters.
+bin/install_python_requirements.sh --use_dynamic_paths
 activate_virtualenv
 bin/install_ansible_requirements.sh --force
 "$yb_devops_home"/yb_release.py "$@"
