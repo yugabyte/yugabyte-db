@@ -14,11 +14,6 @@ object UIRunHook {
 
       var watchProcess: Option[Process] = None
 
-      override def beforeStarted(): Unit = {
-        // install UI dependencies from scratch
-        Process("npm ci", base)!
-      }
-
       override def afterStarted(addr: InetSocketAddress): Unit = {
         // don't run "npm start" directly as it leaves zombie node.js child processes on termination
         watchProcess = Some(
@@ -29,7 +24,7 @@ object UIRunHook {
       }
 
       override def afterStopped(): Unit = {
-        println("Shutting down UI...")
+        println("[Yugabyte sbt log] Shutting down UI...")
         watchProcess foreach( _.destroy() )
         watchProcess = None
       }

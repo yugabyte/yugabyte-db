@@ -1,11 +1,6 @@
 import scala.sys.process.Process
 
 /**
-  * Add UI Run hook to run UI alongside with API.
-  */
-PlayKeys.playRunHooks += UIRunHook(baseDirectory.value / "ui")
-
-/**
   * UI Build Tasks like clean node modules, npm install and npm run build
   */
 
