@@ -98,7 +98,8 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion) &&
     _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode) &&
     _.isEqual(userIntent1.instanceType, userIntent2.instanceType) &&
-    _.isEqual(userIntent1.gflags, userIntent2.gflags)
+    _.isEqual(userIntent1.gflags, userIntent2.gflags) &&
+    _.isEqual(normalizeFlags(userIntent1.instanceTags), normalizeFlags(userIntent2.instanceTags))
   );
 }
 
@@ -200,6 +201,11 @@ export function areUniverseConfigsEqual(config1, config2) {
 }
 
 // TODO: Move this function to NumberUtils.js?
+
+// [{name: "foo", value: "bar"}, {name: "aaa", value: "zzz"}] --> {foo: "bar", aaa: "zzz"}
+const normalizeFlags = (flags) => Array.isArray(flags)
+  ? flags.reduce((result, curr) => ({...result, [curr.name]: curr.value}), {})
+  : flags;
 
 export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value), 10) || 0;
