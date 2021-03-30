@@ -115,7 +115,7 @@ public class CustomerConfig extends Model {
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = new HashSet<>();
     if (this.type==ConfigType.STORAGE){ 
-      universes = Backup.getUniverses(this.configUUID);
+      universes = Backup.getAssociatedUniverses(this.configUUID);
     }
   return Util.getUniverseDetails(universes);
   }

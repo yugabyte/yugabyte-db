@@ -255,7 +255,6 @@ public class Backup extends Model {
       }
       // backup exist but universe does not.We are ignoring such backups.
       catch(Exception e){ 
-        continue;
       }
     }
     return universes;
