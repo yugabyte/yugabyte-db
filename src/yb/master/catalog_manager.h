@@ -1446,6 +1446,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
+  ServerRegistrationPB server_registration_;
+
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
 
