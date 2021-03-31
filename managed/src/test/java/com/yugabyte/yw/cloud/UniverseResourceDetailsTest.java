@@ -82,12 +82,12 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
                                                      int numIterations) {
 
     // Set up instance type
-    InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
+    InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
 
     // Set up PriceComponent
     PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
     instanceDetails.pricePerHour = instancePrice;
-    PriceComponent.upsert(provider.code, region.code, testInstanceType, instanceDetails);
+    PriceComponent.upsert(provider.uuid, region.code, testInstanceType, instanceDetails);
 
     // Set up userIntent
     UserIntent userIntent = getDummyUserIntent(getDummyDeviceInfo(numVolumes, volumeSize), provider,
@@ -105,26 +105,26 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
                                                      PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
-    InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
+    InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
 
     // Set up PriceComponents
     PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
     instanceDetails.pricePerHour = instancePrice;
-    PriceComponent.upsert(provider.code, region.code, testInstanceType, instanceDetails);
+    PriceComponent.upsert(provider.uuid, region.code, testInstanceType, instanceDetails);
     PriceComponent.PriceDetails sizeDetails;
     switch (storageType) {
       case IO1:
         PriceComponent.PriceDetails piopsDetails = new PriceComponent.PriceDetails();
         piopsDetails.pricePerHour = piopsPrice;
-        PriceComponent.upsert(provider.code, region.code, IO1_PIOPS, piopsDetails);
+        PriceComponent.upsert(provider.uuid, region.code, IO1_PIOPS, piopsDetails);
         sizeDetails = new PriceComponent.PriceDetails();
         sizeDetails.pricePerHour = sizePrice;
-        PriceComponent.upsert(provider.code, region.code, IO1_SIZE, sizeDetails);
+        PriceComponent.upsert(provider.uuid, region.code, IO1_SIZE, sizeDetails);
         break;
       case GP2:
         sizeDetails = new PriceComponent.PriceDetails();
         sizeDetails.pricePerHour = sizePrice;
-        PriceComponent.upsert(provider.code, region.code, GP2_SIZE, sizeDetails);
+        PriceComponent.upsert(provider.uuid, region.code, GP2_SIZE, sizeDetails);
         break;
       default:
         break;
@@ -151,16 +151,16 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
                                                      PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
-    InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
+    InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
 
     // Set up PriceComponents
     PriceComponent.PriceDetails sizeDetails;
     sizeDetails = new PriceComponent.PriceDetails();
     sizeDetails.pricePerHour = sizePrice;
-    PriceComponent.upsert(provider.code, region.code, GP2_SIZE, sizeDetails);
+    PriceComponent.upsert(provider.uuid, region.code, GP2_SIZE, sizeDetails);
     PriceComponent.PriceDetails emrDetails = new PriceComponent.PriceDetails();
     emrDetails.pricePerHour = 0.68;
-    PriceComponent.upsert(provider.code, region.code, "c4.large", emrDetails);
+    PriceComponent.upsert(provider.uuid, region.code, "c4.large", emrDetails);
 
     // Set up DeviceInfo
     DeviceInfo deviceInfo = getDummyDeviceInfo(numVolumes, volumeSize);
@@ -183,11 +183,11 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
                                                                PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
-    InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
+    InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
 
     // Set up null PriceComponents
-    PriceComponent.upsert(provider.code, region.code, GP2_SIZE, null);
-    PriceComponent.upsert(provider.code, region.code, "c4.large", null);
+    PriceComponent.upsert(provider.uuid, region.code, GP2_SIZE, null);
+    PriceComponent.upsert(provider.uuid, region.code, "c4.large", null);
 
     // Set up DeviceInfo
     DeviceInfo deviceInfo = getDummyDeviceInfo(numVolumes, volumeSize);

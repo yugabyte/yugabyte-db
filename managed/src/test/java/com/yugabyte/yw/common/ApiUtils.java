@@ -300,7 +300,8 @@ public class ApiUtils {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -311,7 +312,8 @@ public class ApiUtils {
   public static UserIntent getDefaultUserIntentSingleAZ(Provider p) {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
