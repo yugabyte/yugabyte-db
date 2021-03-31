@@ -12,11 +12,16 @@
 //
 package org.yb.util;
 
+import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public final class StringUtil {
 
@@ -26,20 +31,7 @@ public final class StringUtil {
   }
 
   public static String joinLinesForLogging(List<String> lines) {
-    if (lines.isEmpty()) {
-      return "";
-    }
-    StringBuilder sb = new StringBuilder();
-    boolean firstLine = true;
-    for (String line : lines) {
-      if (firstLine) {
-        firstLine = false;
-      } else {
-        sb.append("\n");
-      }
-      sb.append("    " + line);
-    }
-    return sb.toString();
+    return lines.stream().map(s -> "    " + s).collect(Collectors.joining("\n"));
   }
 
   public static boolean isStringTrue(String value, boolean defaultValue) {
@@ -48,9 +40,7 @@ public final class StringUtil {
     value = value.trim().toLowerCase();
     if (value.isEmpty() || value.equals("auto") || value.equals("default"))
       return defaultValue;
-    return value.equals("1") || value.equals("yes") && value.equals("y") &&
-           value.equals("on") || value.equals("enabled") || value.equals("true") ||
-           value.equals("t");
+    return Arrays.asList("1", "yes", "y", "on", "enabled", "true", "t").contains(value);
   }
 
   public static String expandTabs(String line) {
@@ -71,12 +61,7 @@ public final class StringUtil {
   }
 
   public static String expandTabsAndConcatenate(List<String> lines) {
-    StringBuilder sb = new StringBuilder();
-    for (String line : lines) {
-      sb.append(expandTabs(line));
-      sb.append('\n');
-    }
-    return sb.toString();
+    return lines.stream().map(StringUtil::expandTabs).collect(Collectors.joining("\n"));
   }
 
   public static String rtrim(String s) {
@@ -84,19 +69,11 @@ public final class StringUtil {
   }
 
   public static List<String> expandTabsAndRemoveTrailingSpaces(List<String> lines) {
-    List<String> result = new ArrayList<>();
-    for (String line : lines) {
-      result.add(rtrim(expandTabs(line)));
-    }
-    return result;
+    return lines.stream().map(s -> rtrim(expandTabs(s))).collect(Collectors.toList());
   }
 
   public static int getMaxLineLength(List<String> lines) {
-    int maxLen = 0;
-    for (String line : lines) {
-      maxLen = Math.max(maxLen, line.length());
-    }
-    return maxLen;
+    return lines.stream().mapToInt(s -> s.length()).max().orElse(0);
   }
 
   /**
@@ -119,5 +96,16 @@ public final class StringUtil {
     Collections.sort(envVarDump);
     String indentStr = String.join("", Collections.nCopies(indentation, " "));
     return indentStr + String.join("\n" + indentStr, envVarDump);
+  }
+
+  /**
+   * Formats double as a decimal string, leaving up to {@code maxFractionDigits} digits after
+   * decimal separator and truncating the rest.
+   */
+  public static String toDecimalString(double dbl, int maxFractionDigits) {
+    NumberFormat df = DecimalFormat.getInstance();
+    df.setMaximumFractionDigits(maxFractionDigits);
+    df.setRoundingMode(RoundingMode.DOWN);
+    return df.format(dbl);
   }
 }

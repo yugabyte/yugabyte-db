@@ -85,6 +85,14 @@ DEFINE_int32(memory_limit_warn_threshold_percentage, 98,
              "consume before WARNING level messages are periodically logged.");
 TAG_FLAG(memory_limit_warn_threshold_percentage, advanced);
 
+
+DEFINE_int64(server_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
+             "use for the thread cache for tcmalloc across all threads in the tserver/master.");
+DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
+             "use for the thread cache for tcmalloc across all threads in the tserver. "
+             "This is being deprecated and is used to fallback/override the value set "
+             "on the tserver by server_tcmalloc_max_total_thread_cache_bytes." );
+
 #ifdef TCMALLOC_ENABLED
 DEFINE_int32(tcmalloc_max_free_bytes_percentage, 10,
              "Maximum percentage of the RSS that tcmalloc is allowed to use for "
@@ -223,6 +231,31 @@ class MemTracker::TrackerMetrics {
   MetricEntityPtr metric_entity_;
   scoped_refptr<AtomicGauge<int64_t>> metric_;
 };
+
+void MemTracker::SetTCMallocCacheMemory() {
+#ifdef TCMALLOC_ENABLED
+  constexpr const char* const kTcMallocMaxThreadCacheBytes =
+      "tcmalloc.max_total_thread_cache_bytes";
+
+  auto flag_value_to_use =
+      (FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes != -1
+           ? FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes
+           : FLAGS_server_tcmalloc_max_total_thread_cache_bytes);
+  if (flag_value_to_use < 0) {
+    const auto mem_limit = MemTracker::GetRootTracker()->limit();
+    FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
+        std::min(std::max(static_cast<size_t>(1.5 * mem_limit / 100), 256_MB), 2_GB);
+    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes =
+        FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
+  }
+  LOG(INFO) << "Setting tcmalloc max thread cache bytes to: "
+            << FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
+  if (!MallocExtension::instance()->SetNumericProperty(
+          kTcMallocMaxThreadCacheBytes, FLAGS_server_tcmalloc_max_total_thread_cache_bytes)) {
+    LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
+  }
+#endif
+}
 
 void MemTracker::CreateRootTracker() {
   DCHECK_ONLY_NOTNULL(dummy);
