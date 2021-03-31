@@ -56,7 +56,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    ![Add an instance](/images/yp/high-availability/add-instance.png)
+    ![Add an instance](/images/yp/high-availability/add-active-instance.png)
 
 1. Generate a key.
 
@@ -90,7 +90,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    ![Add an instance](/images/yp/high-availability/add-instance.png)
+    ![Add an instance](/images/yp/high-availability/add-standby-instance.png)
 
 ### Set up a Standby Platform
 
@@ -118,7 +118,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     <br/>
 
-    ![Add an instance](/images/yp/high-availability/add-instance.png)
+    ![Add an instance](/images/yp/high-availability/add-standby-instance.png)
 
 1. Copy the shared authentication key you generated on the active platform, and paste it into the Shared authentication key field. Double-check to make sure the keys match.
 
@@ -130,7 +130,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     <br/>
 
-    ![Add an instance](/images/yp/high-availability/add-instance.png)
+    ![Add an instance](/images/yp/high-availability/add-standby-instance.png)
 
 1. On the new standby platform, wait for a replication interval (you set this when you [set up the active instance](#set-up-the-active-platform)), then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
 
