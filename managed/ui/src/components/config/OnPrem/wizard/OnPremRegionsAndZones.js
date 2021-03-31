@@ -83,6 +83,27 @@ class OnPremListRegionsAndZones extends Component {
       </option>,
       <option value="37, -121" key={13}>
         US West
+      </option>,
+      <option value="55, -3" key={14}>
+        EU West - UK
+      </option>,
+      <option value="41, 29" key={15}>
+        EU East - Istanbul
+      </option>,
+      <option value="50.1, 8.7" key={15}>
+        EU Central - Frankfurt
+      </option>,
+      <option value="59.3, 18" key={16}>
+        EU North - Stockholm
+      </option>,
+      <option value="45.5, 9.2" key={17}>
+        EU South - Milan
+      </option>,
+      <option value="26, 50.5" key={18}>
+        Middle East - Bahrain
+      </option>,
+      <option value="-26.2, 28.04" key={19}>
+        South Africa - Johannesburg
       </option>
     ];
     return (
