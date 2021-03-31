@@ -9,6 +9,15 @@ import { Field } from 'redux-form';
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { isEmptyObject } from '../../../utils/ObjectUtils';
+
+/**
+ * This method will handle the validation for current
+ * field.
+ *
+ * @param {any} value Input field value.
+ */
+const required = (value) => (value ? undefined : 'This field is required.');
 
 /**
  * This method is used to handle the edit backup storage
@@ -21,12 +30,12 @@ import YBInfoTip from '../../common/descriptors/YBInfoTip';
  */
 const disableFields = (data, fieldId, configName) => {
   const fieldName = `${configName}_CONFIGURATION_NAME`;
-  if (data.inUse && fieldId !== fieldName) {
+  if (!isEmptyObject(data) && fieldId !== fieldName) {
     return true;
   }
 };
 
-export const EditBackupField = (props) => {
+export const BackupConfigField = (props) => {
   const { configName, data, field } = props;
 
   // This is the tool tip for all the backup configuration names.
@@ -48,6 +57,7 @@ export const EditBackupField = (props) => {
           name={field.id}
           placeHolder={field.placeHolder}
           component={field.component}
+          validate={required}
           isReadOnly={disableFields(data, field.id, configName)}
         />
       </Col>
