@@ -17,6 +17,7 @@ import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
 import './ListBackups.scss';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
@@ -298,7 +299,7 @@ export default class ListBackups extends Component {
       this.setState({ selected: [...this.state.selected, backupUUID].sort() }) :
       this.setState({ selected: this.state.selected.filter((id) => id !== backupUUID) });
 
-    return false;
+    return true;
   };
 
   /**
@@ -310,9 +311,8 @@ export default class ListBackups extends Component {
    * @returns Boolean
    */
   onSelectAll = (isSelected, rows) => {
-    let selected = [...this.state.selected];
     if (isSelected) {
-      rows.forEach((row) => selected.push(row.backupUUID));
+      const selected = [...this.state.selected, ...rows.map(row => row.backupUUID)];
       this.setState({ selected: selected });
     } else {
       this.setState({ selected: [] });
@@ -454,7 +454,7 @@ export default class ListBackups extends Component {
         )}
         {showAlert && (
           <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
-            {taskUUID.length < 2 ? (
+            {isNonEmptyArray(taskUUID) && taskUUID.length < 2 ? (
               <div>
                 {alertType} started successfully. See{' '}
                 <Link to={`/tasks/${taskUUID}`}>task progress</Link>

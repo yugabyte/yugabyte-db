@@ -22,9 +22,7 @@ export default class DeleteBackup extends Component {
       onSubmit,
       onError
     } = this.props;   
-    let payload = [];
-
-    type === "bulkDelete" ? payload = data : payload.push(backupUUID);
+    const payload = type === "bulkDelete" ? data : [backupUUID];
 
     try {
       const response = await deleteBackup(payload);
