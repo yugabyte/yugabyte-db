@@ -1191,9 +1191,9 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isForceDelete") != null) {
       isForceDelete = Boolean.valueOf(request().getQueryString("isForceDelete"));
     }
-    Boolean isDeleteBackup = false;
+    Boolean isDeleteBackups = false;
     if (request().getQueryString("isForceDelete") != null) {
-      isDeleteBackup = Boolean.valueOf(request().getQueryString("isDeleteBackup"));
+      isDeleteBackups = Boolean.valueOf(request().getQueryString("isDeleteBackups"));
     }
     LOG.info("Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
       customerUUID, universe.name, universeUUID);
@@ -1231,7 +1231,7 @@ public class UniverseController extends AuthenticatedController {
 
     LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
 
-    if (isDeleteBackup) {
+    if (isDeleteBackups) {
       List<Backup> backupList = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
       for (Backup backup : backupList) {
         if (backup.state != Backup.BackupState.Completed) {
