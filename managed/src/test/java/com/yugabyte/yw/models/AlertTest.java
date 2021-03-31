@@ -4,6 +4,8 @@ package com.yugabyte.yw.models;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.Alert.TargetType;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -18,6 +20,11 @@ import static org.junit.Assert.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
+
+  private static final String TEST_ALERT_CODE = "TEST_ALERT_1";
+
+  private static final String TEST_ALERT_CODE_2 = "TEST_ALERT_2";
+
   private Customer cust1;
   private Customer cust2;
 
@@ -83,5 +90,40 @@ public class AlertTest extends FakeDBApplication {
         new Object[] { Alert.TargetType.UniverseType, UUID.randomUUID(), Universe.class },
     };
     // @formatter:on
+  }
+
+  @Test
+  public void testExists_ErrCode_Exists() {
+    assertFalse(Alert.exists(TEST_ALERT_CODE));
+    Alert.create(cust1.uuid, TEST_ALERT_CODE, "Warning", "Testing alert 1.");
+    assertTrue(Alert.exists(TEST_ALERT_CODE));
+  }
+
+  @Test
+  public void testExists_ErrCode_DoesntExists() {
+    assertFalse(Alert.exists(TEST_ALERT_CODE));
+    Alert.create(cust1.uuid, TEST_ALERT_CODE_2, "Warning", "Testing alert 2.");
+    assertFalse(Alert.exists(TEST_ALERT_CODE));
+  }
+
+  @Test
+  public void testGetActiveCustomerAlerts() {
+    UUID targetUUID = UUID.randomUUID();
+    Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
+    AlertDefinition definition = AlertDefinition.create(cust1.uuid, universe.universeUUID,
+        "alertDefinition", "query {{ test.parameter }}", true);
+
+    Alert alert1 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 1.");
+    alert1.definitionUUID = definition.uuid;
+    alert1.save();
+
+    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 2.");
+    alert2.state = State.ACTIVE;
+    alert2.definitionUUID = definition.uuid;
+    alert2.save();
+
+    assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.uuid).size());
   }
 }

@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 
-import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -29,6 +28,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @Singleton
 public class QueryAlerts {
@@ -80,26 +84,24 @@ public class QueryAlerts {
   public Set<Alert> processAlertDefinitions(UUID customerUUID) {
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
-      Universe universe = Universe.get(definition.universeUUID);
-      ConfigSubstitutor config = new ConfigSubstitutor(configFactory.forUniverse(universe));
-      String query = config.replace(definition.query);
-      if (!queryHelper.queryDirect(query).isEmpty()) {
-        Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
-        // Create an alert to activate if it doesn't exist already
-        if (existingAlert == null) {
-          Alert.create(
-            customerUUID,
-            definition.universeUUID,
-            Alert.TargetType.UniverseType,
-            "CUSTOMER_ALERT",
-            "Error",
-            String.format("%s for %s is firing", definition.name, universe.name),
-            definition.isActive,
-            definition.uuid
-          );
-        } else {
-          alertsStillActive.add(existingAlert);
+      try {
+        Universe universe = Universe.get(definition.universeUUID);
+        String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
+            .replace(definition.query);
+        if (!queryHelper.queryDirect(query).isEmpty()) {
+          List<Alert> existingAlerts = Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
+          // Create an alert to activate if it doesn't exist already.
+          if (existingAlerts.isEmpty()) {
+            Alert.create(customerUUID, definition.universeUUID, Alert.TargetType.UniverseType,
+                "CUSTOMER_ALERT", "Error",
+                String.format("%s for %s is firing", definition.name, universe.name),
+                definition.isActive, definition.uuid);
+          } else {
+            alertsStillActive.addAll(existingAlerts);
+          }
         }
+      } catch (Exception e) {
+        LOG.error("Error processing alert definition '{}'", definition.name, e);
       }
     });
 
