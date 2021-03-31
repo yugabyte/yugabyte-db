@@ -44,25 +44,25 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)
 
 1. Select the `Active` instance type.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Active instance type](/images/yp/high-availability/instance-type-active.png)
 
 1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Add an instance](/images/yp/high-availability/add-instance.png)
 
 1. Generate a key.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Generate a shared key](/images/yp/high-availability/generate-key.png)
 
 1. Select your desired replication frequency, in minutes.
 
@@ -72,7 +72,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Replication frequency](/images/yp/high-availability/replication-frequency.png)
 
 1. Click "Create".
 
@@ -80,17 +80,17 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    The address for this platform should be the only entry row in the table, similar to the following:
+    The address for this platform should be the only entry row in the table.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Instance list](/images/yp/high-availability/instance-configuration.png)
 
 1. Click "Add Instance" for each standby platform you would like to add to the HA cluster, and enter the standby platform’s IP address or hostname (including the HTTP/HTTPS protocol prefix).
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Add an instance](/images/yp/high-availability/add-instance.png)
 
 ### Set up a Standby Platform
 
@@ -106,37 +106,43 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)
 
 1. Select the `Standby` instance type.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Standby instance type](/images/yp/high-availability/instance-type-standby.png)
 
 1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Add an instance](/images/yp/high-availability/add-instance.png)
 
 1. Copy the shared authentication key you generated on the active platform, and paste it into the Shared authentication key field. Double-check to make sure the keys match.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Shared key field](/images/yp/high-availability/shared-key-field.png)
 
-1. Wait for a replication interval (you set this when you [set up the active instance](#set-up-the-active-platform)), then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
+1. On the active platform, click Add Instance, enter the new standby's IP address or hostname (including the HTTP or HTTPS protocol prefix), and click Continue.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Add an instance](/images/yp/high-availability/add-instance.png)
+
+1. On the new standby platform, wait for a replication interval (you set this when you [set up the active instance](#set-up-the-active-platform)), then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
+
+    <br/>
+
+    ![Instance list](/images/yp/high-availability/instance-configuration.png)
 
     If you click on other tabs, notice that they are greyed out. You can only use those tabs on the active instance.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Tabs are greyed out](/images/yp/high-availability/standby-tabs-unavailable.png)
 
 ### Promote a Standby Platform to Active
 
@@ -144,17 +150,13 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Make active](/images/yp/high-availability/standby-make-active.png)
 
 1. Select the backup you want to restore (we strongly recommend you choose the most recent backup in the vast majority of cases!), and confirm that you want to promote this instance to active.
 
     <br/>
 
     The restore should take only a few seconds, and you'll be logged out when it's finished.
-
-    <br/>
-
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
 
 1. To log back in, use the user credentials that you had configured on the previously active platform.
 
@@ -164,16 +166,18 @@ Once you've set up the active platform, you can set up one or more standby platf
 
 ### Delete a Standby Platform
 
-1. On the standby platform you wish to remove from the high-availability cluster, click the...
+To remove a standby platform from a high-availability cluster, you remove it from the active platform's list, and then delete the configuration from the platform to be removed.
+
+1. On the standby platform you wish to remove from the high-availability cluster, click the Delete Configuration button on the Admin tab, and confirm the deletion.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Delete configuration](/images/yp/high-availability/delete-configuration.png)
 
-1. Next, ...
+1. On the active platform's instance list, click the Delete Instance button for the standby instance to be removed, and confirm the deletion.
 
     <br/>
 
-    ![PLACEHOLDER IMAGE](/images/placeholder-name.png)
+    ![Instance list](/images/yp/high-availability/instance-configuration.png)
 
-1. Finally, ...
+The standby platform is now a standalone instance again.
