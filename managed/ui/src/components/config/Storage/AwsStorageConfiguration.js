@@ -33,11 +33,12 @@ class AwsStorageConfiguration extends Component {
    * @returns true
    */
   disableInputFields = (data, configName, iamRoleEnabled = false) => {
-    if (!isEmptyObject(data) && data.inUse && configName !== 'S3_CONFIGURATION_NAME') {
+    if (!isEmptyObject(data) && configName !== 'S3_CONFIGURATION_NAME') {
       return true;
     }
 
-    if (iamRoleEnabled && (configName === 'AWS_ACCESS_KEY_ID' || 'AWS_SECRET_ACCESS_KEY')) {
+    if (iamRoleEnabled &&
+      (configName === 'AWS_ACCESS_KEY_ID' || configName === 'AWS_SECRET_ACCESS_KEY')) {
       return true;
     }
   };

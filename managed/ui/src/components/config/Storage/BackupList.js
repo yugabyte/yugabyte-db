@@ -81,72 +81,71 @@ export const BackupList = (props) => {
     } = row;
 
     return (
-      <DropdownButton
-        className="backup-config-actions btn btn-default"
-        title="Actions"
-        id="bg-nested-dropdown"
-        pullRight
-      >
-        <MenuItem onClick={() => onEditConfig(row)}>
-          <i className="fa fa-pencil"></i> Edit Configuration
-        </MenuItem>
-        <MenuItem
-          disabled={inUse}
-          onClick={() => {
-            setConfigData(configUUID);
-            showDeleteStorageConfig(name);
-          }}
+      <>
+        <DropdownButton
+          className="backup-config-actions btn btn-default"
+          title="Actions"
+          id="bg-nested-dropdown"
+          pullRight
         >
-          {!inUse && (
-            <>
-              <i className="fa fa-trash"></i> Delete Configuration
-            </>
-          )}
-
-          {inUse && (
-            <YBInfoTip
-              content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-              placement="top"
-            >
-              <span className="disable-delete">
-                <i className="fa fa-ban"></i> Delete Configuration
-              </span>
-            </YBInfoTip>
-          )}
-        </MenuItem>
-
-        {
-          <YBConfirmModal
-            name="delete-storage-config"
-            title="Confirm Delete"
-            onConfirm={() => deleteStorageConfig(configData)}
-            currentModal={'delete' + name + 'StorageConfig'}
-            visibleModal={visibleModal}
-            hideConfirmModal={hideDeleteStorageConfig}
+          <MenuItem onClick={() => onEditConfig(row)}>
+            <i className="fa fa-pencil"></i> Edit Configuration
+          </MenuItem>
+          <MenuItem
+            disabled={inUse}
+            onClick={() => {
+              setConfigData(configUUID);
+              showDeleteStorageConfig(name);
+            }}
           >
-            Are you sure you want to delete {name} Storage Configuration?
-          </YBConfirmModal>
-        }
+            {!inUse && (
+              <>
+                <i className="fa fa-trash"></i> Delete Configuration
+              </>
+            )}
 
-        <MenuItem
-          onClick={() => {
-            setConfigData(configName);
-            setUniverseDetails([...universeDetails]);
-            setIsUniverseVisible(true);
-          }}
-        >
-          <i className="fa fa-eye"></i> Show Universes
-        </MenuItem>
+            {inUse && (
+              <YBInfoTip
+                content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+                placement="top"
+              >
+                <span className="disable-delete">
+                  <i className="fa fa-ban"></i> Delete Configuration
+                </span>
+              </YBInfoTip>
+            )}
+          </MenuItem>
 
-        {
-          <AssociatedUniverse
-            visible={isUniverseVisible}
-            onHide={() => setIsUniverseVisible(false)}
-            associatedUniverses={associatedUniverses}
-            title={`Backup Configuration ${configData}`}
-          />
-        }
-      </DropdownButton>
+          {
+            <YBConfirmModal
+              name="delete-storage-config"
+              title="Confirm Delete"
+              onConfirm={() => deleteStorageConfig(configData)}
+              currentModal={'delete' + name + 'StorageConfig'}
+              visibleModal={visibleModal}
+              hideConfirmModal={hideDeleteStorageConfig}
+            >
+              Are you sure you want to delete {name} Storage Configuration?
+            </YBConfirmModal>
+          }
+
+          <MenuItem
+            onClick={() => {
+              setConfigData(configName);
+              setUniverseDetails([...universeDetails]);
+              setIsUniverseVisible(true);
+            }}
+          >
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </DropdownButton>
+        <AssociatedUniverse
+          visible={isUniverseVisible}
+          onHide={() => setIsUniverseVisible(false)}
+          associatedUniverses={associatedUniverses}
+          title={`Backup Configuration ${configData}`}
+        />
+      </>
     );
   };
 

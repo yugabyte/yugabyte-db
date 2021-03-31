@@ -18,15 +18,15 @@ export const ConfigControls = (props) => {
 
   return (
     <div className="form-action-button-container">
-      {!listView[activeTab] && !editView[activeTab].isEdited && (
+      {!listView[activeTab] && !editView[activeTab]?.isEdited && (
         <YBButton btnText="Save" btnClass="btn btn-orange" btnType="submit" />
       )}
 
-      {editView[activeTab].isEdited && (
+      {editView[activeTab]?.isEdited && (
         <YBButton btnText="Update" btnClass="btn btn-orange" btnType="submit" />
       )}
 
-      {(!listView[activeTab] || editView[activeTab].isEdited) && (
+      {(!listView[activeTab] || editView[activeTab]?.isEdited) && (
         <YBButton btnText="Cancel" btnClass="btn" onClick={showListView} />
       )}
     </div>

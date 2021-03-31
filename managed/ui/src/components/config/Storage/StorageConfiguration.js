@@ -10,8 +10,8 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import { BackupList } from './BackupList';
-import { EditBackupList } from './EditBackupList';
-import { CreateBackup } from './CreateBackup';
+import { EditBackupField } from './EditBackupField';
+import { CreateBackupField } from './CreateBackupField';
 import { storageConfigTypes } from './ConfigType';
 import { ConfigControls } from './ConfigControls';
 import awss3Logo from './images/aws-s3.png';
@@ -360,7 +360,7 @@ class StorageConfiguration extends Component {
           configTemplate.fields.forEach((field) => {
             const value = this.state.editView[activeTab].data;
             configFields.push(
-              <EditBackupList key={field.id} configName={configName} data={value} field={field} />
+              <EditBackupField key={field.id} configName={configName} data={value} field={field} />
             );
           });
           configs.push(this.wrapFields(configFields, configName));
@@ -369,7 +369,7 @@ class StorageConfiguration extends Component {
           const config = storageConfigTypes[configName];
           config.fields.forEach((field) => {
             configFields.push(
-              <CreateBackup key={field.id} configName={configName} field={field} />
+              <CreateBackupField key={field.id} configName={configName} field={field} />
             );
           });
           configs.push(this.wrapFields(configFields, configName));

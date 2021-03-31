@@ -8,6 +8,7 @@
 import { Field } from 'redux-form';
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 /**
  * This method is used to handle the edit backup storage
@@ -25,15 +26,24 @@ const disableFields = (data, fieldId, configName) => {
   }
 };
 
-export const EditBackupList = (props) => {
+export const EditBackupField = (props) => {
   const { configName, data, field } = props;
+
+  // This is the tool tip for all the backup configuration names.
+  const configNameToolTip = field.label === "Configuration Name"
+    ? <Col lg={1} className="config-zone-tooltip">
+      <YBInfoTip
+        title="Configuration Name"
+        content="The backup configuration name is required."
+      />
+    </Col> : "";
 
   return (
     <Row className="config-provider-row" key={configName + field.id}>
       <Col lg={2}>
         <div className="form-item-custom-label">{field.label}</div>
       </Col>
-      <Col lg={10}>
+      <Col lg={9}>
         <Field
           name={field.id}
           placeHolder={field.placeHolder}
@@ -41,6 +51,7 @@ export const EditBackupList = (props) => {
           isReadOnly={disableFields(data, field.id, configName)}
         />
       </Col>
+      {configNameToolTip}
     </Row>
   );
 };
