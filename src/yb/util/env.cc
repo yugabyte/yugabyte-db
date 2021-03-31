@@ -107,4 +107,14 @@ Status ReadFileToString(Env* env, const std::string& fname, faststring* data) {
 EnvWrapper::~EnvWrapper() {
 }
 
+Status DeleteIfExists(const std::string& path, Env* env) {
+  if (env->DirExists(path)) {
+    return env->DeleteRecursively(path);
+  }
+  if (env->FileExists(path)) {
+    return env->DeleteFile(path);
+  }
+  return Status::OK();
+}
+
 }  // namespace yb

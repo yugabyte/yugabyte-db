@@ -53,15 +53,7 @@ Result<std::string> SnapshotOperationState::GetSnapshotDir() const {
     snapshot_id_str = request.snapshot_id();
   }
 
-  return JoinPathSegments(VERIFY_RESULT(TopSnapshotsDir()), snapshot_id_str);
-}
-
-Result<std::string> SnapshotOperationState::TopSnapshotsDir() const {
-  const string top_snapshots_dir = tablet()->metadata()->snapshots_dir();
-  RETURN_NOT_OK_PREPEND(
-      tablet()->metadata()->fs_manager()->CreateDirIfMissingAndSync(top_snapshots_dir),
-      Format("Unable to create snapshots directory $0", top_snapshots_dir));
-  return top_snapshots_dir;
+  return JoinPathSegments(VERIFY_RESULT(tablet()->metadata()->TopSnapshotsDir()), snapshot_id_str);
 }
 
 Status SnapshotOperationState::DoCheckOperationRequirements() {

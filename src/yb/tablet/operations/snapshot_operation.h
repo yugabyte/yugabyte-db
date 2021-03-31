@@ -55,7 +55,6 @@ class SnapshotOperationState :
   bool CheckOperationRequirements();
 
  private:
-  Result<std::string> TopSnapshotsDir() const;
   CHECKED_STATUS DoCheckOperationRequirements();
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);

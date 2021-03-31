@@ -1550,10 +1550,7 @@ Status LogEntryBatch::Serialize() {
   total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 
-  if (!pb_util::AppendToString(entry_batch_pb_, &buffer_)) {
-    return STATUS(IOError, Substitute("unable to serialize the entry batch, contents: $1",
-                                      entry_batch_pb_.DebugString()));
-  }
+  pb_util::AppendToString(entry_batch_pb_, &buffer_);
 
   state_ = kEntrySerialized;
   return Status::OK();

@@ -39,6 +39,8 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
+YB_STRONGLY_TYPED_BOOL(SendMetadata);
+
 // Context class for MasterSnapshotCoordinator.
 class SnapshotCoordinatorContext {
  public:
@@ -54,7 +56,8 @@ class SnapshotCoordinatorContext {
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime restore_at, TabletSnapshotOperationCallback callback) = 0;
+      HybridTime restore_at, SendMetadata send_metadata,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendDeleteTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
@@ -67,6 +70,9 @@ class SnapshotCoordinatorContext {
       bool succeed_if_create_in_progress) = 0;
 
   virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
+  virtual CHECKED_STATUS RestoreSysCatalog(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
+      HybridTime write_time, const SnapshotScheduleFilterPB& filter) = 0;
 
   virtual const Schema& schema() = 0;
 

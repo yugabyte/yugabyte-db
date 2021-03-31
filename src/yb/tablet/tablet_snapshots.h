@@ -63,6 +63,8 @@ class TabletSnapshots : public TabletComponent {
   // Prepares the operation context for a snapshot operation.
   CHECKED_STATUS Prepare(SnapshotOperation* operation);
 
+  Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
+
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
@@ -83,10 +85,13 @@ class TabletSnapshots : public TabletComponent {
   static bool IsTempSnapshotDir(const std::string& dir);
 
  private:
+  struct RestoreMetadata;
+
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
   CHECKED_STATUS RestoreCheckpoint(
-      const std::string& dir, HybridTime restore_at, const docdb::ConsensusFrontier& frontier);
+      const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
+      const docdb::ConsensusFrontier& frontier);
 
   // Applies specified snapshot operation.
   CHECKED_STATUS Apply(SnapshotOperationState* tx_state);

@@ -153,6 +153,11 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   }
+  if (has_metadata_) {
+    req.set_schema_version(schema_version_);
+    *req.mutable_schema() = schema_;
+    *req.mutable_indexes() = indexes_;
+  }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());

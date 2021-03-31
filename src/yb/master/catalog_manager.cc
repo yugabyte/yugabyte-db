@@ -778,9 +778,12 @@ void CatalogManager::LoadSysCatalogDataTask() {
     }
   }
 
-  std::lock_guard<simple_spinlock> l(state_lock_);
-  leader_ready_term_ = term;
-  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    leader_ready_term_ = term;
+    LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  }
+  SysCatalogLoaded(term);
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {

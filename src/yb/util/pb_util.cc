@@ -158,12 +158,12 @@ string InitializationErrorMessage(const char* action,
 
 } // anonymous namespace
 
-bool AppendToString(const MessageLite &msg, faststring *output) {
+void AppendToString(const MessageLite &msg, faststring *output) {
   DCHECK(msg.IsInitialized()) << InitializationErrorMessage("serialize", msg);
-  return AppendPartialToString(msg, output);
+  AppendPartialToString(msg, output);
 }
 
-bool AppendPartialToString(const MessageLite &msg, faststring* output) {
+void AppendPartialToString(const MessageLite &msg, faststring* output) {
   int old_size = output->size();
   int byte_size = msg.ByteSize();
 
@@ -174,12 +174,11 @@ bool AppendPartialToString(const MessageLite &msg, faststring* output) {
   if (end - start != byte_size) {
     ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
   }
-  return true;
 }
 
-bool SerializeToString(const MessageLite &msg, faststring *output) {
+void SerializeToString(const MessageLite &msg, faststring *output) {
   output->clear();
-  return AppendToString(msg, output);
+  AppendToString(msg, output);
 }
 
 bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {

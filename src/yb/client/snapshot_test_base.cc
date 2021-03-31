@@ -145,14 +145,21 @@ Result<TxnSnapshotRestorationId> SnapshotTestBase::StartRestoration(
 Result<bool> SnapshotTestBase::IsRestorationDone(const TxnSnapshotRestorationId& restoration_id) {
   master::ListSnapshotRestorationsRequestPB req;
   master::ListSnapshotRestorationsResponsePB resp;
-
-  rpc::RpcController controller;
-  controller.set_timeout(60s);
   req.set_restoration_id(restoration_id.data(), restoration_id.size());
-  RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
-  LOG(INFO) << "Restoration: " << resp.ShortDebugString();
-  if (resp.has_status()) {
-    return StatusFromPB(resp.status());
+
+  auto deadline = CoarseMonoClock::now() + 60s;
+  for (;;) {
+    rpc::RpcController controller;
+    controller.set_deadline(deadline);
+    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
+    LOG(INFO) << "Restoration: " << resp.ShortDebugString();
+    if (!resp.has_status()) {
+      break;
+    }
+    auto status = StatusFromPB(resp.status());
+    if (!status.IsServiceUnavailable()) {
+      return status;
+    }
   }
   if (resp.restorations().size() != 1) {
     return STATUS_FORMAT(RuntimeError, "Wrong number of restorations, one expected but $0 found",

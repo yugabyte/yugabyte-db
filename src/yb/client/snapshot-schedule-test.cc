@@ -23,6 +23,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
@@ -273,8 +274,12 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
 
   ASSERT_OK(RestoreSnapshot(TryFullyDecodeTxnSnapshotId(snapshots[0].id()), hybrid_time));
 
-  auto new_schema = ASSERT_RESULT(client_->GetYBTableInfo(table_.name())).schema;
-  // TODO ASSERT_EQ(old_schema, new_schema);
+  auto select_result = SelectRow(CreateSession(), 1, kValueColumn);
+  ASSERT_NOK(select_result);
+  ASSERT_TRUE(select_result.status().IsQLError());
+  ASSERT_EQ(ql::QLError(select_result.status()), ql::ErrorCode::WRONG_METADATA_VERSION);
+  ASSERT_OK(table_.Reopen());
+  ASSERT_EQ(old_schema, table_.schema());
   ASSERT_NO_FATALS(VerifyData());
 }
 
