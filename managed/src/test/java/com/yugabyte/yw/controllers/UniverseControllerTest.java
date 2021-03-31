@@ -906,16 +906,16 @@ public class UniverseControllerTest extends WithApplication {
     b.transitionState(Backup.BackupState.Completed);
 
     String url = "/api/customers/" + customer.uuid + "/universes/"
-        + u.universeUUID + "?isForceDelete=true&isDeleteBackup=true";
+        + u.universeUUID + "?isForceDelete=true&isDeleteBackups=true";
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
     List<CustomerTask> th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findList();
-    // There should be 2 tasks. 1 for deleting universe, another for deleting backup.
+    // There should be 2 tasks. 1 for deleting universe, another for deleting the backup.
     assertEquals(2, th.size());
-    assertThat(th.get(1).getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
+    assertThat(th.get(0).getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
     assertAuditEntry(1, customer.uuid);
   }
 
