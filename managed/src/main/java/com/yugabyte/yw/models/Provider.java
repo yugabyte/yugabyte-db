@@ -1,37 +1,27 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-
-import io.ebean.annotation.DbJson;
-import com.google.common.collect.ImmutableSet;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
-
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import javax.persistence.*;
+import java.util.*;
+
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
 @Entity
 public class Provider extends Model {
@@ -70,6 +60,14 @@ public class Provider extends Model {
   @OneToMany(cascade=CascadeType.ALL)
   @JsonBackReference(value="regions")
   public Set<Region> regions;
+
+  @JsonManagedReference
+  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  public Set<InstanceType> instanceTypes;
+
+  @JsonManagedReference
+  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  public Set<PriceComponent> priceComponents;
 
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
