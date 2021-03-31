@@ -84,7 +84,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    ![Instance list](/images/yp/high-availability/instance-configuration.png)
+    ![Instance list](/images/yp/high-availability/instance-configuration-active.png)
 
 1. Click "Add Instance" for each standby platform you would like to add to the HA cluster, and enter the standby platform’s IP address or hostname (including the HTTP/HTTPS protocol prefix).
 
