@@ -31,7 +31,6 @@ import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
-import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -49,8 +48,6 @@ public class Scheduler {
 
   private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
 
-  // Minimum number of scheduled threads.
-  private static final int SCHEDULE_THREADS = 1;
   private final int YB_SCHEDULER_INTERVAL = 2;
   private final int MIN_TO_SEC = 60;
 
@@ -58,8 +55,6 @@ public class Scheduler {
   private final ExecutionContext executionContext;
 
   private final AtomicBoolean running = new AtomicBoolean(false);
-
-  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   private final Commissioner commissioner;
 
@@ -77,7 +72,7 @@ public class Scheduler {
     this.actorSystem.scheduler().schedule(
       Duration.create(0, TimeUnit.MINUTES), // initialDelay
       Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
-      () -> scheduleRunner(),
+      this::scheduleRunner,
       this.executionContext
     );
   }
@@ -155,7 +150,7 @@ public class Scheduler {
             // iteration completely.
             if (lastCompletedTime != null || lastScheduledTime == null) {
               runTask = true;
-            } else if (lastScheduledTime != null) {
+            } else {
               LOG.warn("Previous scheduled task still running, skipping this iteration's task. " +
                 "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
             }
@@ -170,11 +165,10 @@ public class Scheduler {
             this.runMultiTableBackupsTask(schedule);
           }
         }
-        List<Backup> expiredBackups = Backup.getExpiredBackups(schedule.scheduleUUID);
-        for (Backup backup : expiredBackups) {
-          this.runDeleteBackupTask(backup, schedule);
-        }
       }
+      Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
+      expiredBackups.forEach((customer, backups) ->
+        backups.forEach(backup -> this.runDeleteBackupTask(customer, backup)));
     } catch (Exception e) {
       LOG.error("Error Running scheduler thread", e);
     } finally {
@@ -188,7 +182,7 @@ public class Scheduler {
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe = null;
+    Universe universe;
     try {
       universe = Universe.get(taskParams.universeUUID);
     } catch (Exception e) {
@@ -256,28 +250,17 @@ public class Scheduler {
       taskParams.universeUUID, universe.name);
   }
 
-  private void runDeleteBackupTask(Backup backup, Schedule schedule) {
+  private void runDeleteBackupTask(Customer customer, Backup backup) {
+
     if (backup.state != Backup.BackupState.Completed) {
       LOG.warn("Cannot delete backup {} since it is not in completed state.",
         backup.backupUUID);
       return;
     }
-    BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
-    Universe universe = null;
-    try {
-      universe = Universe.get(backupParams.universeUUID);
-    } catch (Exception e) {
-      schedule.stopSchedule();
-      return;
-    }
-    UUID customerUUID = schedule.getCustomerUUID();
-    Customer customer = Customer.get(customerUUID);
-    JsonNode params = schedule.getTaskParams();
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
-    taskParams.customerUUID = customerUUID;
+    taskParams.customerUUID = customer.getUuid();
     taskParams.backupUUID = backup.backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted task to delete backup {}, task uuid = {}.",
       backup.backupUUID, taskUUID);
     CustomerTask.create(customer,
