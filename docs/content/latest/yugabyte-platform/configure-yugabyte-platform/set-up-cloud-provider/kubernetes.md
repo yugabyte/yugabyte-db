@@ -160,7 +160,7 @@ You can create a `kubeconfig` file for earlier created `yugabyte-platform-univer
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
     ```
 
-3. Use this generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform Kuberentes provider configuration.
+3. Use this generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform Kubernetes provider configuration.
 
 ## Configure Kubernetes credentials
 
