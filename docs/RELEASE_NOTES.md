@@ -2,6 +2,34 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## REL0_9_0_STABLE
+
+### Improvements
+
+PG-186: Add support to monitor query execution plan
+
+PG-147: Store top query, instead of parent query.
+
+PG-188: Added a new column to monitor the query state i.e PARSING/PLANNING/ACTIVE/FINISHED.
+
+PG-180: Schema Qualified table/relations names.
+
+Regression Test Suite.
+
+### Bugs Fixed
+
+PG-189: Regression crash in case of PostgreSQL 11.
+
+PG-187: Compilation Error for PostgreSQL 11 and PostgreSQL 12.
+
+PG-186: Add support to monitor query execution plan.
+
+PG-182: Added a new option for the query buffer overflow.
+
+PG-181: Segmentation fault in case of track_utility is ON.
+
+Some Code refactoring.
+
 ## REL0_8_1
 
 [PG-147](https://jira.percona.com/browse/PG-147): Stored Procedure Support add parentid to track caller.

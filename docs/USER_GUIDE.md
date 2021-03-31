@@ -79,6 +79,9 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
  dbid                | oid                      | :heavy_check_mark:  | :heavy_check_mark:
  client_ip           | inet                     | :heavy_check_mark:  | :x:
  queryid             | text                     | :heavy_check_mark:  | :heavy_check_mark:
+ planid              | text                     | :heavy_check_mark:  | :x:
+ query_plan          | text                     | :heavy_check_mark:  | :x:
+ top_query           | text                     | :heavy_check_mark:  | :x:
  query               | text                     | :heavy_check_mark:  | :heavy_check_mark:
  application_name    | text                     | :heavy_check_mark:  | :x:
  relations           | text[]                   | :heavy_check_mark:  | :x:
@@ -98,7 +101,7 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
  max_time            | double precision         | :heavy_check_mark:  | :heavy_check_mark:
  mean_time           | double precision         | :heavy_check_mark:  | :heavy_check_mark:
  stddev_time         | double precision         | :heavy_check_mark:  | :heavy_check_mark:
- rows                | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
+ rows_retrieved      | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
  shared_blks_hit     | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
  shared_blks_read    | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
  shared_blks_dirtied | bigint                   | :heavy_check_mark:  | :heavy_check_mark:
@@ -117,6 +120,8 @@ pg_stat_monitor extension contains a view called pg_stat_monitor, which contains
  wal_records         | bigint           		| :heavy_check_mark:  | :heavy_check_mark:
  wal_fpi             | bigint           		| :heavy_check_mark:  | :heavy_check_mark:
  wal_bytes           | numeric          		| :heavy_check_mark:  | :heavy_check_mark:
+ state_code          | bigint           		| :heavy_check_mark:  | :x:
+ state               | text                     | :heavy_check_mark:  | :x:
 
 
 
@@ -372,17 +377,10 @@ postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_mo
 **`top_queryid`**: Outer layer caller's query id.
 
 ```sql
-CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS
-$$
-BEGIN
-	return (select $1 + $2);
-END; $$ language plpgsql;
-
-
 CREATE OR REPLACE function add2(int, int) RETURNS int as
 $$
 BEGIN
-	return add($1,$2);
+	return (select $1 + $2);
 END;
 $$ language plpgsql;
 
@@ -396,9 +394,8 @@ postgres=# SELECT queryid, top_queryid, query, top_query FROM pg_stat_monitor;
      queryid      |   top_queryid    |                       query.                           |     top_query
 ------------------+------------------+-------------------------------------------------------------------------+-------------------
  3408CA84B2353094 |                  | select add2($1,$2)                                     |
- 2BAB410CC448CE8D | 3408CA84B2353094 | SELECT add($1,$2)                                      | select add2($1,$2)
  762B99349F6C7F31 | 3408CA84B2353094 | SELECT (select $1 + $2)                                | select add2($1,$2)
-(3 rows)
+(2 rows)
 ```
 
 #### Monitor Query Execution Plan.
