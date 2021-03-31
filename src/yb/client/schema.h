@@ -383,6 +383,8 @@ class YBSchema {
 
   uint32_t version() const;
   void set_version(uint32_t version);
+  bool is_compatible_with_previous_version() const;
+  void set_is_compatible_with_previous_version(bool is_compat);
 
   // Get the indexes of the primary key columns within this Schema.
   // In current versions of YB, these will always be contiguous column
@@ -413,7 +415,16 @@ class YBSchema {
 
   std::unique_ptr<Schema> schema_;
   uint32_t version_;
+  bool is_compatible_with_previous_version_ = false;
 };
+
+inline bool operator==(const YBSchema& lhs, const YBSchema& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
+  return out << schema.ToString();
+}
 
 } // namespace client
 } // namespace yb

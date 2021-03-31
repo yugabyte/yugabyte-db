@@ -28,6 +28,8 @@ import org.mockito.MockitoAnnotations;
 import scala.concurrent.ExecutionContext;
 
 import java.io.File;
+import java.net.URL;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -117,10 +119,10 @@ public class PlatformReplicationManagerTest extends TestCase {
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
     return new Object[][] {
-      { "1.2.3.4", "postgres", "password", "localhost", 5432, "/tmp/foo.bar", true },
-      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, "/tmp/foo.bar", true },
-      { "1.2.3.4", "postgres", "password", "localhost", 5432, "/tmp/foo.bar", false },
-      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, "/tmp/foo.bar", false },
+      { "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true },
+      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true },
+      { "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false },
+      { "1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false },
     };
   }
 
@@ -132,24 +134,27 @@ public class PlatformReplicationManagerTest extends TestCase {
     String dbPassword,
     String dbHost,
     int dbPort,
-    String inputPath,
+    File inputPath,
     boolean isCreate
   ) {
-    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
     }
 
     RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
-    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
 
-    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(new ShellResponse());
+    when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+      .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    mockReplicationUtil.shellProcessHandler = shellProcessHandler;
+    doCallRealMethod().when(mockReplicationUtil)
+      .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
+    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
+    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
       actorSystem,
       executionContext,
-      shellProcessHandler,
       mockReplicationUtil
     ));
 
@@ -158,7 +163,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       dbUsername,
       dbHost,
       dbPort,
-      inputPath,
+      inputPath.getAbsolutePath(),
       isCreate,
       "/tmp/foo.bar"
     );
@@ -170,6 +175,74 @@ public class PlatformReplicationManagerTest extends TestCase {
     }
 
     verify(shellProcessHandler, times(1))
-      .run(expectedCommandArgs, expectedEnvVars);
+      .run(expectedCommandArgs, expectedEnvVars, false);
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] parametersToTestGCBackups() {
+    return new Object[][] {
+      { -1 },
+      { 0 },
+      { 1 },
+      { 2 },
+      { 3 },
+      { 4 },
+    };
+  }
+
+  @Parameters(method = "parametersToTestGCBackups")
+  @Test
+  public void testGCBackups(int numToRetain) throws Exception {
+    File testFile1 = File.createTempFile("backup_1", ".tgz");
+    File testFile2 = File.createTempFile("backup_2", ".tgz");
+    File testFile3 = File.createTempFile("backup_3", ".tgz");
+    try {
+      String testAddr = "http://test.com";
+      URL testUrl = new URL(testAddr);
+      Path tmpDir = testFile1.toPath().getParent();
+      RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
+      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+      when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
+      when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
+      when(mockReplicationUtil.getReplicationDirFor(anyString()))
+        .thenReturn(tmpDir);
+      doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
+      doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
+      doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
+      PlatformReplicationManager backupManager = spy(new PlatformReplicationManager(
+        actorSystem,
+        executionContext,
+        mockReplicationUtil
+      ));
+
+      List<File> backups = backupManager.listBackups(testUrl);
+      assertEquals(3, backups.size());
+
+      backupManager.cleanupReceivedBackups(testUrl);
+
+      backups = backupManager.listBackups(testUrl);
+      assertEquals(Math.max(0, Math.min(numToRetain, 3)), backups.size());
+      if (numToRetain == 1) {
+        assertFalse(testFile1.exists());
+        assertFalse(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else if (numToRetain == 2) {
+        assertFalse(testFile1.exists());
+        assertTrue(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else if (numToRetain >= 3) {
+        assertTrue(testFile1.exists());
+        assertTrue(testFile2.exists());
+        assertTrue(testFile3.exists());
+      } else {
+        assertFalse(testFile1.exists());
+        assertFalse(testFile2.exists());
+        assertFalse(testFile3.exists());
+      }
+    } finally {
+      testFile1.delete();
+      testFile2.delete();
+      testFile3.delete();
+    }
   }
 }

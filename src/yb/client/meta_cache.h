@@ -721,6 +721,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   DISALLOW_COPY_AND_ASSIGN(MetaCache);
 };
 
+int64_t TEST_GetLookupSerial();
+
 } // namespace internal
 } // namespace client
 } // namespace yb

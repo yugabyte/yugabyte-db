@@ -114,7 +114,7 @@ class UniverseConnectModal extends Component {
       modal: { showModal, visibleModal },
       universe: { currentUniverse }
     } = this.props;
-
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let content = null;
     if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
       content = <YBLoading />;
@@ -202,11 +202,13 @@ class UniverseConnectModal extends Component {
     }
     return (
       <Fragment>
-        <YBButton
-          btnText={'Connect'}
-          btnClass={'btn btn-orange'}
-          onClick={showOverviewConnectModal}
-        />
+        {!universePaused &&
+          <YBButton
+            btnText={'Connect'}
+            btnClass={'btn btn-orange'}
+            onClick={showOverviewConnectModal}
+          />
+        }
         <YBModal
           title={'Connect'}
           visible={showModal && visibleModal === 'UniverseConnectModal'}

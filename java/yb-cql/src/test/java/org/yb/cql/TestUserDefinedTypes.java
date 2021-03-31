@@ -24,9 +24,12 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestUserDefinedTypes extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestUserDefinedTypes.class);
 
   private void createType(String typeName, String... fields) {
     StringBuilder sb = new StringBuilder();

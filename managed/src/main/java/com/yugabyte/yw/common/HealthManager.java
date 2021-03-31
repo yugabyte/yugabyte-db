@@ -41,6 +41,7 @@ public class HealthManager extends DevopsBase {
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
+    public boolean enableYSQLAuth = false;
   }
 
   public ShellResponse runCommand(
@@ -63,6 +64,10 @@ public class HealthManager extends DevopsBase {
     if (potentialStartTimeMs > 0) {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
+    }
+
+    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
+      commandArgs.add("--check_clock");
     }
 
     // Start with a copy of the cloud config env vars.

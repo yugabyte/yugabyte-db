@@ -46,6 +46,8 @@ using std::shared_ptr;
 using namespace std::placeholders;
 
 using audit::AuditLogger;
+using audit::IsPrepare;
+using audit::ErrorIsFormatted;
 using client::YBColumnSpec;
 using client::YBOperation;
 using client::YBqlOpPtr;
@@ -183,11 +185,11 @@ Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters&
   auto root_node = parse_tree.root().get();
   RETURN_NOT_OK(PreExecTreeNode(root_node));
   RETURN_NOT_OK(audit_logger_.LogStatement(root_node, exec_context_->stmt(),
-                                           false /* is_prepare */));
+                                           IsPrepare::kFalse));
   Status s = ExecTreeNode(root_node);
   if (!s.ok()) {
     RETURN_NOT_OK(audit_logger_.LogStatementError(root_node, exec_context_->stmt(), s,
-                                                  false /* error_is_formatted */));
+                                                  ErrorIsFormatted::kFalse));
   }
   return ProcessStatementStatus(parse_tree, s);
 }
@@ -823,12 +825,27 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // If there is an index to select from, execute it.
   if (tnode->child_select()) {
+    LOG_IF(DFATAL, result_) << "Expecting result is not yet initialized";
     const PTSelectStmt* child_select = tnode->child_select().get();
     TnodeContext* child_context = tnode_context->AddChildTnode(child_select);
     RETURN_NOT_OK(ExecPTNode(child_select, child_context));
     // If the index covers the SELECT query fully, we are done. Otherwise, continue to prepare
     // the SELECT from the table using the primary key to be returned from the index select.
     if (child_select->covers_fully()) {
+      return Status::OK();
+    }
+    // If the child uncovered index select has set result_ already it must have been able
+    // to guarantee an empty result (i.e. if WHERE clause guarantees no rows could match)
+    // so we can just return.
+    if (result_) {
+      LOG_IF(DFATAL, result_->type() != ExecutedResult::Type::ROWS)
+          << "Expecting result type is ROWS=" << static_cast<int>(ExecutedResult::Type::ROWS)
+          << ", got result type=" << static_cast<int>(result_->type());
+      auto rows_result = std::static_pointer_cast<RowsResult>(result_);
+      RSTATUS_DCHECK(rows_result->paging_state().empty(),
+                     Corruption, "Expecting result_ to be empty with empty paging state");
+      RSTATUS_DCHECK(rows_result->rows_data() == string(4, '\0'), // Encoded row_count == 0.
+                     Corruption, "Expecting result_ to be empty with result row_count equals 0");
       return Status::OK();
     }
   }
@@ -2251,7 +2268,10 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
-    return STATUS(TryAgain, resp.error_message());
+    auto s = STATUS(TryAgain, resp.error_message());
+    RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, exec_context_->stmt(), s,
+                                                  ErrorIsFormatted::kFalse));
+    return s;
   }
 
   // If we got an error we need to manually produce a result in the op.
@@ -2281,7 +2301,10 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   const ErrorCode errcode = QLStatusToErrorCode(resp.status());
-  return exec_context->Error(stmt, resp.error_message().c_str(), errcode);
+  auto s = exec_context->Error(stmt, resp.error_message().c_str(), errcode);
+  RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, exec_context_->stmt(), s,
+                                                ErrorIsFormatted::kTrue));
+  return s;
 }
 
 Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context) {

@@ -38,6 +38,7 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class Operation;
 class SnapshotCoordinator;
 class SnapshotOperationState;
 class SplitOperationState;
@@ -52,6 +53,8 @@ class TransactionParticipant;
 class TransactionParticipantContext;
 class UpdateTxnOperationState;
 class WriteOperationState;
+
+struct CreateSnapshotData;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);

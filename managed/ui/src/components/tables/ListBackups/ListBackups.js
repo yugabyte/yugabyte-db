@@ -3,19 +3,19 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router';
+import Toggle from 'react-toggle';
 import { DropdownButton, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isAvailable } from '../../../utils/LayoutUtils';
+import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
-
 import './ListBackups.scss';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
@@ -40,7 +40,8 @@ export default class ListBackups extends Component {
     showModal: false,
     showAlert: false,
     taskUUID: null,
-    alertType: null
+    alertType: null,
+    showDeletedBackups: false
   };
 
   static defaultProps = {
@@ -126,26 +127,27 @@ export default class ListBackups extends Component {
     if (direction === 'asc') {
       return (
         <span className="order">
-          <i className="fa fa-caret-up orange-icon"></i>
+          <i className="fa fa-caret-up orange-icon" />
         </span>
       );
     }
     if (direction === 'desc') {
       return (
         <span className="order">
-          <i className="fa fa-caret-down orange-icon"></i>
+          <i className="fa fa-caret-down orange-icon" />
         </span>
       );
     }
     return (
       <span className="order">
-        <i className="fa fa-caret-down orange-icon"></i>
-        <i className="fa fa-caret-up orange-icon"></i>
+        <i className="fa fa-caret-down orange-icon" />
+        <i className="fa fa-caret-up orange-icon" />
       </span>
     );
   };
 
   showMultiTableInfo = (row) => {
+    const { currentCustomer } = this.props;
     let displayTableData = [{ ...row }];
     if (Array.isArray(row.backupList) && row.backupList.length) {
       return (
@@ -175,14 +177,16 @@ export default class ListBackups extends Component {
           >
             Table Name
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="storageLocation"
-            dataFormat={this.copyStorageLocation}
-            dataSort
-            dataAlign="left"
-          >
-            Storage Location
-          </TableHeaderColumn>
+          {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+            <TableHeaderColumn
+              dataField="storageLocation"
+              dataFormat={this.copyStorageLocation}
+              dataSort
+              dataAlign="left"
+            >
+              Storage Location
+            </TableHeaderColumn>
+          )}
         </BootstrapTable>
       );
     } else if (row.tableUUIDList && row.tableUUIDList.length) {
@@ -234,13 +238,15 @@ export default class ListBackups extends Component {
         >
           Table Name
         </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="storageLocation"
-          dataFormat={this.copyStorageLocation}
-          dataAlign="left"
-        >
-          Storage Location
-        </TableHeaderColumn>
+        {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+          <TableHeaderColumn
+            dataField="storageLocation"
+            dataFormat={this.copyStorageLocation}
+            dataAlign="left"
+          >
+            Storage Location
+          </TableHeaderColumn>
+        )}
       </BootstrapTable>
     );
   };
@@ -248,9 +254,9 @@ export default class ListBackups extends Component {
   expandColumnComponent = ({ isExpandableRow, isExpanded }) => {
     if (isExpandableRow) {
       return isExpanded ? (
-        <i className="fa fa-chevron-down"></i>
+        <i className="fa fa-chevron-down" />
       ) : (
-        <i className="fa fa-chevron-right"></i>
+        <i className="fa fa-chevron-right" />
       );
     } else {
       return <span>&nbsp;</span>;
@@ -285,17 +291,28 @@ export default class ListBackups extends Component {
       universeTableTypes,
       title
     } = this.props;
-    const { showModal, taskUUID, showAlert, alertType, selectedRowList } = this.state;
+    const {
+      showModal,
+      taskUUID,
+      showAlert,
+      alertType,
+      selectedRowList,
+      showDeletedBackups
+    } = this.state;
     if (
       getPromiseState(universeBackupList).isLoading() ||
       getPromiseState(universeBackupList).isInit()
     ) {
       return <YBLoadingCircleIcon size="medium" />;
     }
+    const universePaused = currentUniverse?.universeDetails?.universePaused;
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
-        if (backupInfo.actionType === 'CREATE') {
+        if (
+          (backupInfo.actionType === 'CREATE' &&  backupInfo.status !== 'Deleted') ||
+          (showDeletedBackups && backupInfo.status === 'Deleted')
+        ) {
           backupInfo.backupUUID = b.backupUUID;
           backupInfo.status = b.state;
           backupInfo.createTime = b.createTime;
@@ -355,19 +372,20 @@ export default class ListBackups extends Component {
       if (row.backupList && row.backupList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-globe" aria-hidden="true"></i> {item===YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
+            <i className="fa fa-globe" aria-hidden="true" />{' '}
+            {item === YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
           </div>
         );
       } else if (row.tableUUIDList && row.tableUUIDList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-table"></i> Multi-Table backup
+            <i className="fa fa-table" /> Multi-Table backup
           </div>
         );
       } else if (row.tableUUID) {
         return (
           <div className="backup-type">
-            <i className="fa fa-file"></i> Table backup
+            <i className="fa fa-file" /> Table backup
           </div>
         );
       } else if (row.keyspace != null) {
@@ -375,7 +393,7 @@ export default class ListBackups extends Component {
           row.backupType === YSQL_TABLE_TYPE ? 'Namespace backup' : 'Keyspace backup';
         return (
           <div className="backup-type">
-            <i className="fa fa-database"></i> {backupTableType}
+            <i className="fa fa-database" /> {backupTableType}
           </div>
         );
       }
@@ -407,24 +425,38 @@ export default class ListBackups extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    <TableAction
-                      disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
-                      className="table-action"
-                      btnClass="btn-orange"
-                      actionType="create-backup"
-                      isMenuItem={false}
-                      onSubmit={(data) => this.handleModalSubmit('Backup', data)}
-                      onError={() => this.handleModalSubmit('Backup')}
-                    />
-                    <TableAction
-                      disabled={currentUniverse.universeDetails.backupInProgress}
-                      className="table-action"
-                      btnClass="btn-default"
-                      actionType="restore-backup"
-                      isMenuItem={false}
-                      onSubmit={(data) => this.handleModalSubmit('Restore', data)}
-                      onError={() => this.handleModalSubmit('Restore')}
-                    />
+                    {!universePaused &&
+                      <>
+                        <TableAction
+                          disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
+                          className="table-action"
+                          btnClass="btn-orange"
+                          actionType="create-backup"
+                          isMenuItem={false}
+                          onSubmit={(data) => this.handleModalSubmit('Backup', data)}
+                          onError={() => this.handleModalSubmit('Backup')}
+                        />
+                        <TableAction
+                          disabled={currentUniverse.universeDetails.backupInProgress}
+                          className="table-action"
+                          btnClass="btn-default"
+                          actionType="restore-backup"
+                          isMenuItem={false}
+                          onSubmit={(data) => this.handleModalSubmit('Restore', data)}
+                          onError={() => this.handleModalSubmit('Restore')}
+                        />
+                        <div className="chk-show-deleted-backups">
+                          <label>Show deleted backups</label>
+                          <Toggle
+                            checked={showDeletedBackups}
+                            label="Show deleted backups"
+                            onChange={(event) => {
+                              this.setState({ showDeletedBackups: event.target.checked });
+                            }}
+                          />
+                        </div>
+                      </>
+                    }
                   </div>
                 )}
               </div>
@@ -496,17 +528,19 @@ export default class ListBackups extends Component {
               >
                 Status
               </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField={'actions'}
-                columnClassName={'no-border yb-actions-cell'}
-                className={'no-border yb-actions-cell'}
-                dataFormat={formatActionButtons}
-                headerAlign="center"
-                dataAlign="center"
-                expandable={false}
-              >
-                Actions
-              </TableHeaderColumn>
+              {!universePaused &&
+                <TableHeaderColumn
+                  dataField={'actions'}
+                  columnClassName={'no-border yb-actions-cell'}
+                  className={'no-border yb-actions-cell'}
+                  dataFormat={formatActionButtons}
+                  headerAlign="center"
+                  dataAlign="center"
+                  expandable={false}
+                >
+                  Actions
+                </TableHeaderColumn>
+              }
             </BootstrapTable>
           }
         />

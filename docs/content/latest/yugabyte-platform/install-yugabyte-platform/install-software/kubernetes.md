@@ -39,14 +39,14 @@ showAsideToc: true
 
 ## Prerequisites
 
-Before you install Yugabyte Platform on a Kubernetes cluster, make sure you:
+Before you install Yugabyte Platform on a Kubernetes cluster, perform the following:
 
 - Create a yugabyte-helm service account.
 - Create a `kubeconfig` file for configuring access to the Kubernetes cluster.
 
 ### Create a yugabyte-helm service account
 
-1. Run the following `kubectl` command to apply the YAML file.
+Run the following `kubectl` command to apply the YAML file:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
@@ -59,9 +59,9 @@ serviceaccount "yugabyte-helm" created
 clusterrolebinding "yugabyte-helm" created
 ```
 
-## Create a `kubeconfig` file for a Kubernetes cluster
+## Create a `kubeconfig` File for a Kubernetes Cluster
 
-To create a `kubeconfig` file for a yugabyte-helm service account:
+You can create a `kubeconfig` file for a yugabyte-helm service account as follows:
 
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
@@ -74,42 +74,44 @@ To create a `kubeconfig` file for a yugabyte-helm service account:
     ```sh
     python generate_kubeconfig.py -s yugabyte-helm
     ```
-
-The following output should appear:
-
-```
-Generated the kubeconfig file: /tmp/yugabyte-helm.conf
-```
-
+    
+    The following output should appear:
+    
+    ```
+    Generated the kubeconfig file: /tmp/yugabyte-helm.conf
+    ```
+    
 3. Upload the generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform provider configuration.
 
-## Install Yugabyte Platform on a Kubernetes cluster
+## Install Yugabyte Platform on a Kubernetes Cluster
 
-1. Create a namespace using the `kubectl create namespace` command:
+You install Yugabyte Platform on a Kubernetes cluster as follows:
+
+1. Create a namespace by executing the following `kubectl create namespace` command:
 
     ```sh
     kubectl create namespace yb-platform
     ```
 
-2. Apply the Yugabyte Platform secret (obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
+2. Apply the Yugabyte Platform secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
 
     ```sh
     $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
 
-    You should see output that the secret was created, like this:
+    Expect the following output notifying you that the secret was created:
 
     ```
     secret/yugabyte-k8s-pull-secret created
     ```
 
-3. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
+3. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/):
 
     ```sh
     $ helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
-    A message should appear, similar to this:
+    A message similar to the following should appear:
 
     ```
     "yugabytedb" has been added to your repositories
@@ -121,7 +123,7 @@ Generated the kubeconfig file: /tmp/yugabyte-helm.conf
     $ helm search repo yugabytedb/yugaware -l
     ```
 
-    The latest Helm Chart version and App version will be displayed.
+    The latest Helm Chart version and App version will be displayed:
 
     ```
     NAME               	CHART VERSION	APP VERSION	DESRIPTION
@@ -130,15 +132,21 @@ Generated the kubeconfig file: /tmp/yugabyte-helm.conf
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
-```sh
-helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait
-```
+    ```sh
+    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait
+    ```
 
-A message is output that the deployment succeeded.
+5. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
-## Delete the Helm installation of Yugabyte Platform
+    ```sh
+    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    ```
 
-To delete the Helm install, run the following `helm del` command:
+A message output will notify you whether or not the deployment is successful.
+
+## Delete the Helm Installation of Yugabyte Platform
+
+To delete the Helm installation, run the following `helm del` command:
 
 ```sh
 helm del --purge yw-test -n yb-platform

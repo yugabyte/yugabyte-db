@@ -173,9 +173,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   };
 
  public:
-  // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
-  using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
-
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
@@ -293,6 +290,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the information about the specified table.
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp);
+  CHECKED_STATUS GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                        GetTableSchemaResponsePB* resp,
+                                        bool get_fully_applied_indexes = false);
 
   // Get the information about the specified colocated databsae.
   CHECKED_STATUS GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
@@ -686,7 +686,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                            scoped_refptr<TableInfo>* table_info);
 
-  Result<TableDescription> DescribeTable(const TableIdentifierPB& table_identifier);
+  Result<TableDescription> DescribeTable(
+      const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
@@ -739,7 +740,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table = false);
+      bool include_parent_colocated_table = false,
+      bool succeed_if_create_in_progress = false);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1020,7 +1022,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // This must be called after persisting the tablet state as
   // CREATING to ensure coherent state after Master failover.
-  void SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
+  CHECKED_STATUS SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
 
   // Send the "alter table request" to all tablets of the specified table.
   //
@@ -1075,11 +1077,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  void DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
+  CHECKED_STATUS DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
 
-  // Marks tablet as deleted and triggers requests to the tablet servers to delete them.
-  void DeleteTabletAndSendRequests(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& deletion_msg);
+  // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
+  CHECKED_STATUS DeleteTabletListAndSendRequests(
+      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1225,6 +1227,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS Load(const std::string& title, const int64_t term);
 
   virtual void Started() {}
+
+  // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
+  // the cluster config affinity specification.
+  CHECKED_STATUS SysCatalogRespectLeaderAffinity();
+
+  virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+    return SnapshotSchedulesToTabletsMap();
+  }
 
   // ----------------------------------------------------------------------------------------------
   // Private member fields

@@ -691,6 +691,7 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
     max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_.hybrid_time());
   }
   VLOG(4) << "Fetched key " << SubDocKey::DebugSliceToString(result.key)
+          << ", regular: " << IsEntryRegular()
           << ", with time: " << result.write_time
           << ", while read bounds are: " << read_time_;
   return result;

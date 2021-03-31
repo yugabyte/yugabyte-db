@@ -437,6 +437,15 @@ static const struct config_enum_entry password_encryption_options[] = {
 	{NULL, 0, false}
 };
 
+const struct config_enum_entry ssl_protocol_versions_info[] = {
+	{"", PG_TLS_ANY, false},
+	{"TLSv1", PG_TLS1_VERSION, false},
+	{"TLSv1.1", PG_TLS1_1_VERSION, false},
+	{"TLSv1.2", PG_TLS1_2_VERSION, false},
+	{"TLSv1.3", PG_TLS1_3_VERSION, false},
+	{NULL, 0, false}
+};
+
 static struct config_enum_entry shared_memory_options[] = {
 #ifndef WIN32
 	{ "sysv", SHMEM_TYPE_SYSV, false},
@@ -4325,6 +4334,30 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&Password_encryption,
 		PASSWORD_TYPE_MD5, password_encryption_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ssl_min_protocol_version", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Sets the minimum SSL/TLS protocol version to use."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&ssl_min_protocol_version,
+		PG_TLS1_VERSION,
+		ssl_protocol_versions_info + 1 /* don't allow PG_TLS_ANY */,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ssl_max_protocol_version", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Sets the maximum SSL/TLS protocol version to use."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&ssl_max_protocol_version,
+		PG_TLS_ANY,
+		ssl_protocol_versions_info,
 		NULL, NULL, NULL
 	},
 
@@ -9882,6 +9915,8 @@ ProcessGUCArray(ArrayType *array,
 		char	   *s;
 		char	   *name;
 		char	   *value;
+		char	   *namecopy;
+		char	   *valuecopy;
 
 		d = array_ref(array, 1, &i,
 					  -1 /* varlenarray */ ,
@@ -9906,13 +9941,18 @@ ProcessGUCArray(ArrayType *array,
 			continue;
 		}
 
-		(void) set_config_option(name, value,
+		/* free malloc'd strings immediately to avoid leak upon error */
+		namecopy = pstrdup(name);
+		free(name);
+		valuecopy = pstrdup(value);
+		free(value);
+
+		(void) set_config_option(namecopy, valuecopy,
 								 context, source,
 								 action, true, 0, false);
 
-		free(name);
-		if (value)
-			free(value);
+		pfree(namecopy);
+		pfree(valuecopy);
 		pfree(s);
 	}
 }
@@ -10344,34 +10384,50 @@ static bool
 call_string_check_hook(struct config_string *conf, char **newval, void **extra,
 					   GucSource source, int elevel)
 {
+	volatile bool result = true;
+
 	/* Quick success if no hook */
 	if (!conf->check_hook)
 		return true;
 
-	/* Reset variables that might be set by hook */
-	GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
-	GUC_check_errmsg_string = NULL;
-	GUC_check_errdetail_string = NULL;
-	GUC_check_errhint_string = NULL;
-
-	if (!conf->check_hook(newval, extra, source))
+	/*
+	 * If elevel is ERROR, or if the check_hook itself throws an elog
+	 * (undesirable, but not always avoidable), make sure we don't leak the
+	 * already-malloc'd newval string.
+	 */
+	PG_TRY();
 	{
-		ereport(elevel,
-				(errcode(GUC_check_errcode_value),
-				 GUC_check_errmsg_string ?
-				 errmsg_internal("%s", GUC_check_errmsg_string) :
-				 errmsg("invalid value for parameter \"%s\": \"%s\"",
-						conf->gen.name, *newval ? *newval : ""),
-				 GUC_check_errdetail_string ?
-				 errdetail_internal("%s", GUC_check_errdetail_string) : 0,
-				 GUC_check_errhint_string ?
-				 errhint("%s", GUC_check_errhint_string) : 0));
-		/* Flush any strings created in ErrorContext */
-		FlushErrorState();
-		return false;
-	}
+		/* Reset variables that might be set by hook */
+		GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
+		GUC_check_errmsg_string = NULL;
+		GUC_check_errdetail_string = NULL;
+		GUC_check_errhint_string = NULL;
 
-	return true;
+		if (!conf->check_hook(newval, extra, source))
+		{
+			ereport(elevel,
+					(errcode(GUC_check_errcode_value),
+					 GUC_check_errmsg_string ?
+					 errmsg_internal("%s", GUC_check_errmsg_string) :
+					 errmsg("invalid value for parameter \"%s\": \"%s\"",
+							conf->gen.name, *newval ? *newval : ""),
+					 GUC_check_errdetail_string ?
+					 errdetail_internal("%s", GUC_check_errdetail_string) : 0,
+					 GUC_check_errhint_string ?
+					 errhint("%s", GUC_check_errhint_string) : 0));
+			/* Flush any strings created in ErrorContext */
+			FlushErrorState();
+			result = false;
+		}
+	}
+	PG_CATCH();
+	{
+		free(*newval);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return result;
 }
 
 static bool

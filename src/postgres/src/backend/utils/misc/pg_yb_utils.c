@@ -384,6 +384,12 @@ FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
 	RelationClose(rel);
 }
 
+static const char*
+GetDebugQueryString()
+{
+	return debug_query_string;
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -407,6 +413,7 @@ YBInitPostgresBackend(
 		YBCPgCallbacks callbacks;
 		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
+		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -847,7 +854,7 @@ YBIncrementDdlNestingLevel()
 {
 	if (ddl_nesting_level == 0)
 	{
-		YBCPgEnterSeparateDdlTxnMode();
+		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	ddl_nesting_level++;
 }
@@ -866,7 +873,7 @@ YBDecrementDdlNestingLevel(bool success,
 			increment_done = YBCIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
 		}
 
-		YBCPgExitSeparateDdlTxnMode(success);
+		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(success));
 
 		/*
 		 * Optimization to avoid redundant cache refresh on the current session

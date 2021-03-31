@@ -80,7 +80,6 @@ public class LogPrinter {
       return;
     }
     synchronized (errorListeners) {
-      errorListener.associateWithLogPrinter(this);
       this.errorListeners.add(errorListener);
     }
   }
@@ -140,9 +139,9 @@ public class LogPrinter {
           }
         } catch (InterruptedException iex) {
           // This probably means we're stopping, OK to ignore.
-          LOG.info(withPrefix(iex.getMessage()), iex.getStackTrace());
+          LOG.info(withPrefix(iex.getMessage()), iex);
         } catch (Throwable t) {
-          LOG.warn(withPrefix(t.getMessage()), t.getStackTrace());
+          LOG.warn(withPrefix(t.getMessage()), t);
         }
         if (LOG_PRINTER_DEBUG) {
           LOG.info(withPrefix("Finished"));

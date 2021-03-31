@@ -181,11 +181,10 @@ public class MiniYBCluster implements AutoCloseable {
     startCluster(
         clusterParameters.numMasters, clusterParameters.numTservers, masterArgs, tserverArgs,
         commonTServerArgs, tserverEnvVars);
-    startSyncClient();
   }
 
-  public void startSyncClient() throws Exception {
-    startSyncClient(true);
+  public void startSyncClientAndWaitForMasterLeader() throws Exception {
+    startSyncClient(/* waitForMasterLeader */ true);
   }
 
   public void startSyncClient(boolean waitForMasterLeader) throws Exception {
@@ -451,6 +450,8 @@ public class MiniYBCluster implements AutoCloseable {
     }
     LOG.info("Starting {} masters...", numMasters);
     startMasters(numMasters, baseDirPath, masterArgs);
+
+    startSyncClientAndWaitForMasterLeader();
 
     LOG.info("Starting {} tablet servers...", numTservers);
     startTabletServers(numTservers, perTServerArgs, commonTServerArgs, tserverEnvVars);
@@ -865,12 +866,13 @@ public class MiniYBCluster implements AutoCloseable {
       master = restart(master);
       masterProcesses.put(master.getHostAndPort(), master);
     }
+
+    startSyncClient(waitForMasterLeader);
+
     for (MiniYBDaemon tserver : tservers) {
       tserver = restart(tserver);
       tserverProcesses.put(tserver.getHostAndPort(), tserver);
     }
-
-    startSyncClient(waitForMasterLeader);
 
     LOG.info("Restarted mini cluster");
   }

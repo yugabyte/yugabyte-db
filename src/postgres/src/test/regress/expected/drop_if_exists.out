@@ -301,3 +301,13 @@ DROP TYPE IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP VIEW IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
+-- This test checks both the functionality of 'if exists' and the syntax
+-- of the drop database command.
+drop database test_database_exists (force);
+ERROR:  database "test_database_exists" does not exist
+drop database test_database_exists with (force);
+ERROR:  database "test_database_exists" does not exist
+drop database if exists test_database_exists (force);
+NOTICE:  database "test_database_exists" does not exist, skipping
+drop database if exists test_database_exists with (force);
+NOTICE:  database "test_database_exists" does not exist, skipping

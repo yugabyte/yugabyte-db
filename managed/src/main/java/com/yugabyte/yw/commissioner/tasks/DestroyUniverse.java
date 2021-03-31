@@ -19,9 +19,13 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
+import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+
+import play.api.Play;
+
 import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
@@ -46,9 +50,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe = null;
       if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
+        universe = forceLockUniverseForUpdate(-1, true);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockUniverseForUpdate(-1 , true);
       }
 
       // Cleanup the kms_history table
@@ -88,6 +92,10 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Run all the tasks.
       subTaskGroupQueue.run();
+
+      AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
+      alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
+
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {

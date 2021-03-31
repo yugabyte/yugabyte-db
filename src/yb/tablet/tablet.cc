@@ -188,12 +188,18 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, 500,
+DEFINE_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
+
+DEFINE_bool(yql_allow_compatible_schema_versions, true,
+            "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
+            "of the server's schema, but is determined to be compatible with the current version.");
+TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
+TAG_FLAG(yql_allow_compatible_schema_versions, runtime);
 
 DEFINE_bool(disable_alter_vs_write_mutual_exclusion, false,
              "A safety switch to disable the changes from D8710 which makes a schema "
@@ -440,7 +446,8 @@ Tablet::Tablet(const TabletInitData& data)
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
-      retention_policy_(std::make_shared<TabletRetentionPolicy>(clock_, metadata_.get())) {
+      retention_policy_(std::make_shared<TabletRetentionPolicy>(
+          clock_, data.allowed_history_cutoff_provider, metadata_.get())) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -1055,7 +1062,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       deadline, read_time, &pending_op_counter_);
-  RETURN_NOT_OK(result->Init());
+  RETURN_NOT_OK(result->Init(table_type_));
   return std::move(result);
 }
 
@@ -1327,6 +1334,22 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
+template <typename Request>
+bool IsSchemaVersionCompatible(uint32_t current_version, const Request& request) {
+  if (request.schema_version() == current_version) {
+    return true;
+  }
+
+  if (request.is_compatible_with_previous_version() &&
+      request.schema_version() == current_version + 1) {
+    DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? " " : "Not ")
+             << " Accepting request that is ahead of us by 1 version " << yb::ToString(request);
+    return FLAGS_yql_allow_compatible_schema_versions;
+  }
+
+  return false;
+}
+
 //--------------------------------------------------------------------------------------------------
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
@@ -1339,14 +1362,15 @@ Status Tablet::HandleQLReadRequest(
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
-  if (metadata()->schema_version() != ql_read_request.schema_version()) {
+  if (!IsSchemaVersionCompatible(metadata()->schema_version(), ql_read_request)) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-    result->response.set_error_message(
-        Format("schema version mismatch for table $0: expected $1, got $2",
-               metadata()->table_id(),
-               metadata()->schema_version(),
-               ql_read_request.schema_version()));
+    result->response.set_error_message(Format(
+        "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+        metadata()->table_id(),
+        metadata()->schema_version(),
+        ql_read_request.schema_version(),
+        ql_read_request.is_compatible_with_previous_version()));
     return Status::OK();
   }
 
@@ -1428,17 +1452,19 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
     QLResponsePB* resp = operation->response()->add_ql_response_batch();
-    if (table_info->schema_version != req->schema_version()) {
-      DVLOG(3) << " On " << table_info->table_name
+    if (!IsSchemaVersionCompatible(table_info->schema_version, *req)) {
+      DVLOG(1) << " On " << table_info->table_name
                << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
                << table_info->schema_version << " vs req's : " << req->schema_version()
-               << " for " << yb::ToString(req);
+               << " is req compatible with prev version: "
+               << req->is_compatible_with_previous_version() << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(
-          Format("schema version mismatch for table $0: expected $1, got $2",
-                 table_info->table_id,
-                 table_info->schema_version,
-                 req->schema_version()));
+      resp->set_error_message(Format(
+          "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+          table_info->table_id,
+          table_info->schema_version,
+          req->schema_version(),
+          req->is_compatible_with_previous_version()));
     } else {
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
@@ -2225,11 +2251,24 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
       b2a_hex(partition_key));
   VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
-  // Connect and execute.
+  // Connect.
   pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
   if (!conn) {
     return STATUS(IllegalState, "backfill failed to connect to DB");
   }
+  if (PQstatus(conn.get()) == CONNECTION_BAD) {
+    std::string msg(PQerrorMessage(conn.get()));
+
+    // Avoid double newline (postgres adds a newline after the error message).
+    if (msg.back() == '\n') {
+      msg.resize(msg.size() - 1);
+    }
+    LOG(WARNING) << "libpq connection \"" << conn_str
+                 << "\" failed: " << msg;
+    return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", msg);
+  }
+
+  // Execute.
   pgwrapper::PGResultPtr res(PQexec(conn.get(), query_str.c_str()));
   if (!res) {
     std::string msg(PQerrorMessage(conn.get()));
@@ -2240,10 +2279,9 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
     }
     LOG(WARNING) << "libpq query \"" << query_str
                  << "\" was not sent: " << msg;
-    return STATUS(IllegalState, "backfill query couldn't be sent");
+    return STATUS_FORMAT(IllegalState, "backfill query couldn't be sent: $0", msg);
   }
   ExecStatusType status = PQresultStatus(res.get());
-
   // TODO(jason): more properly handle bad statuses
   // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
   if (status != PGRES_COMMAND_OK) {
@@ -2258,6 +2296,7 @@ Result<std::string> Tablet::BackfillIndexesForYsql(
                  << ": " << msg;
     return STATUS(IllegalState, msg);
   }
+
   // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
   // response message by libpq or manual DocDB inspection?
   return "";
@@ -2320,7 +2359,16 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
 
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
-  const yb::CoarseDuration kMargin = FLAGS_backfill_index_timeout_grace_margin_ms * 1ms;
+  auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+  if (grace_margin_ms < 0) {
+    const auto rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+    const auto batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
+    // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
+    // By default, we will set it to twice the minimum value + 1s.
+    grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+    YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+  }
+  const yb::CoarseDuration kMargin = grace_margin_ms * 1ms;
   constexpr auto kProgressInterval = 1000;
   int num_rows_processed = 0;
   string resume_from;

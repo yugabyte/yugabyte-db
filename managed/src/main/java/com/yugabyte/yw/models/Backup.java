@@ -169,7 +169,6 @@ public class Backup extends Model {
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
       List<Backup> backupList = find.query().where()
         .eq("customer_uuid", customerUUID)
-        .ne("state", BackupState.Deleted)
         .orderBy("create_time desc")
         .findList();
       return backupList.stream()
