@@ -882,7 +882,7 @@ public class Universe extends Model {
     Universe.saveDetails(universeUUID, ignoreUniverse -> {
     });
   }
-  
+
   public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
     return Customer.get(customerUUID).getUniverses().stream()
         .filter(s -> s.getUniverseDetails().rootCA != null
