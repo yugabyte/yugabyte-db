@@ -243,12 +243,12 @@ public class BackupTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetUniverse() {
+  public void testAssociatedUniverses() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
     b.setTaskUUID(UUID.randomUUID());
-    Set<Universe> universes = Backup.getUniverses(s3StorageConfig.configUUID);
-    assertNotEquals(1, universes.size());
+    Set<Universe> universes = Backup.getAssociatedUniverses(s3StorageConfig.configUUID);
+    assertEquals(1, universes.size());
   }
 }

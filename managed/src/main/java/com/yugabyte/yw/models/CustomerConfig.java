@@ -19,6 +19,7 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 @Entity
@@ -111,22 +113,11 @@ public class CustomerConfig extends Model {
   }
 
   public ArrayNode getUniverseDetails() {
-    ArrayNode details = Json.newArray();
-    if (this.type==ConfigType.STORAGE){
-      // TODO this would go to the util.java after KMS PR get merged. 
-      for (Universe universe : Backup.getUniverses(this.configUUID)) {
-        ObjectNode universePayload = Json.newObject();
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universePayload.put("name", universe.name);
-        universePayload.put("updateInProgress", universeDetails.updateInProgress);
-        universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
-        universePayload.put("uuid", universe.universeUUID.toString());
-        universePayload.put("creationDate", universe.creationDate.getTime());
-        universePayload.put("universePaused", universeDetails.universePaused);
-        details.add(universePayload);
-      }
+    Set<Universe> universes = new HashSet<>();
+    if (this.type==ConfigType.STORAGE){ 
+      universes = Backup.getAssociatedUniverses(this.configUUID);
     }
-  return details;
+  return Util.getUniverseDetails(universes);
   }
 
   @Override
