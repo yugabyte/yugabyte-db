@@ -38,7 +38,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 * Platform VMs are all able to connect to each other over the port that the Platform UI/API is normally reachable over (80/443, for example).
 * All platforms are running the same version of Yugabyte Platform software (it is good practice to upgrade all platforms in the HA cluster at close to the same time).
 
-### Set Up the Active Platform
+### Set up the Active Platform
 
 1. Click the "Admin" tab at the bottom of the left-side navigation panel.
 
@@ -92,7 +92,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     ![Add an instance](/images/yp/high-availability/add-standby-instance.png)
 
-### Set up a Standby Platform
+### Set up Standby Platforms
 
 Once you've set up the active platform, you can set up one or more standby platforms.
 
@@ -164,7 +164,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     Once you're logged in, you should see that all of the data has been restored into the platform including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
-### Delete a Standby Platform
+### Remove a Standby Platform
 
 To remove a standby platform from a high-availability cluster, you remove it from the active platform's list, and then delete the configuration from the platform to be removed.
 
