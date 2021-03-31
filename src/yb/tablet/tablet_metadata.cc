@@ -841,6 +841,13 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   return metadata;
 }
 
+Result<std::string> RaftGroupMetadata::TopSnapshotsDir() const {
+  auto result = snapshots_dir();
+  RETURN_NOT_OK_PREPEND(
+      fs_manager()->CreateDirIfMissingAndSync(result),
+      Format("Unable to create snapshots directory $0", result));
+  return result;
+}
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with
