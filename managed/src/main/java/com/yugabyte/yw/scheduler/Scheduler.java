@@ -280,11 +280,6 @@ public class Scheduler {
     taskParams.customerUUID = customerUUID;
     taskParams.backupUUID = backup.backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    if (isScheduled) {
-      Schedule schedule = Schedule.get(backup.getScheduleUUID());
-      JsonNode params = schedule.getTaskParams();
-      ScheduleTask.create(taskUUID, backup.getScheduleUUID());
-    }
     LOG.info("Submitted task to delete backup {}, task uuid = {}.",
       backup.backupUUID, taskUUID);
     CustomerTask.create(customer,
