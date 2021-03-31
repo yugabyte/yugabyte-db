@@ -91,7 +91,7 @@ public class GCPInitializer extends AbstractInitializer {
         priceDetails.effectiveDate = now;
         priceDetails.description = instanceTypeToDetailsMap.get("description").asText();
 
-        PriceComponent.upsert(provider.code, regionCode, instanceTypeCode, priceDetails);
+        PriceComponent.upsert(provider.uuid, regionCode, instanceTypeCode, priceDetails);
       }
     }
   }
@@ -139,7 +139,7 @@ public class GCPInitializer extends AbstractInitializer {
         }
 
         // Store instanceType and corresponding priceComponents in the db.
-        InstanceType.upsert(provider.code,
+        InstanceType.upsert(provider.uuid,
                             instanceTypeCode,
                             instanceTypeToDetailsMap.get("numCores").asInt(),
                             instanceTypeToDetailsMap.get("memSizeGb").asDouble(),

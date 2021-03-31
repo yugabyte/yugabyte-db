@@ -407,7 +407,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     metaData.put("ybImage", "yb-image-1");
     metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
 
-    InstanceType.createWithMetadata(p, "region-1", metaData);
+    InstanceType.createWithMetadata(p.uuid, "region-1", metaData);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     assertOk(result);

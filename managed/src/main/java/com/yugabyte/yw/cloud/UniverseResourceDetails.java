@@ -91,7 +91,7 @@ public class UniverseResourceDetails {
       }
       Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
 
-      PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
+      PriceComponent instancePrice = PriceComponent.get(provider.uuid, region.code,
               userIntent.instanceType);
       if (instancePrice == null) {
         continue;
@@ -108,15 +108,15 @@ public class UniverseResourceDetails {
         PriceComponent sizePrice;
         switch (userIntent.deviceInfo.storageType) {
           case IO1:
-            PriceComponent piopsPrice = PriceComponent.get(provider.code, region.code, IO1_PIOPS);
-            sizePrice = PriceComponent.get(provider.code, region.code, IO1_SIZE);
+            PriceComponent piopsPrice = PriceComponent.get(provider.uuid, region.code, IO1_PIOPS);
+            sizePrice = PriceComponent.get(provider.uuid, region.code, IO1_SIZE);
             if (piopsPrice != null && sizePrice != null) {
               hourlyEBSPrice += (numVolumes * (diskIops * piopsPrice.priceDetails.pricePerHour));
               hourlyEBSPrice += (numVolumes * (volumeSize * sizePrice.priceDetails.pricePerHour));
             }
             break;
           case GP2:
-            sizePrice = PriceComponent.get(provider.code, region.code, GP2_SIZE);
+            sizePrice = PriceComponent.get(provider.uuid, region.code, GP2_SIZE);
             if (sizePrice != null) {
               hourlyEBSPrice += (numVolumes * volumeSize * sizePrice.priceDetails.pricePerHour);
             }
@@ -156,7 +156,7 @@ public class UniverseResourceDetails {
         details.addVolumeCount(userIntent.deviceInfo.numVolumes);
         details.addVolumeSizeGB(userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         details.addAz(node.cloudInfo.az);
-        InstanceType instanceType = InstanceType.get(userIntent.providerType,
+        InstanceType instanceType = InstanceType.get(UUID.fromString(userIntent.provider),
                 node.cloudInfo.instance_type);
         if (instanceType == null) {
           LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +

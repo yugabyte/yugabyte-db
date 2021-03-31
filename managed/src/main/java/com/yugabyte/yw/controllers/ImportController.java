@@ -725,7 +725,7 @@ public class ImportController extends AuthenticatedController {
     userIntent.ybSoftwareVersion = (String) configHelper.getConfig(
       ConfigHelper.ConfigType.SoftwareVersion).get("version");
 
-    InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
+    InstanceType.upsert(provider.uuid, importForm.instanceType,
       0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
 
     // Placement info for imports default to the current cluster.

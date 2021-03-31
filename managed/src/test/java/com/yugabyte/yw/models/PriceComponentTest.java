@@ -36,8 +36,8 @@ public class PriceComponentTest extends FakeDBApplication {
   @Test
   public void testCreate() {
     PriceComponent.PriceDetails details = getValidPriceDetails();
-    PriceComponent.upsert(testProvider.code, testRegion.code, "foo", details);
-    PriceComponent component = PriceComponent.get(testProvider.code, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
+    PriceComponent component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
 
     assertNotNull(component);
     assertEquals("aws", component.getProviderCode());
@@ -53,8 +53,8 @@ public class PriceComponentTest extends FakeDBApplication {
   @Test
   public void testEdit() {
     PriceComponent.PriceDetails details = getValidPriceDetails();
-    PriceComponent.upsert(testProvider.code, testRegion.code, "foo", details);
-    PriceComponent component = PriceComponent.get(testProvider.code, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
+    PriceComponent component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
 
     assertNotNull(component);
     assertEquals("aws", component.getProviderCode());
@@ -68,8 +68,8 @@ public class PriceComponentTest extends FakeDBApplication {
 
     String nextEffectiveDate = "2017-02-22T00:00:00Z";
     details.effectiveDate = nextEffectiveDate;
-    PriceComponent.upsert(testProvider.code, testRegion.code, "foo", details);
-    component = PriceComponent.get(testProvider.code, testRegion.code, "foo");
+    PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
+    component = PriceComponent.get(testProvider.uuid, testRegion.code, "foo");
     assertNotNull(component);
     assertEquals(details.effectiveDate, nextEffectiveDate);
   }

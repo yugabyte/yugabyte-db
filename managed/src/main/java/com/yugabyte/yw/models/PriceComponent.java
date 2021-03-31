@@ -1,16 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import io.ebean.Finder;
+import io.ebean.Model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
+import javax.persistence.*;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 public class PriceComponent extends Model {
@@ -20,8 +21,43 @@ public class PriceComponent extends Model {
   @Constraints.Required
   private PriceComponentKey idKey;
 
+  // ManyToOne for provider is kept outside of PriceComponentKey
+  // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
+  // insertable and updatable are set to false as actual updates
+  // are taken care by providerUuid parameter in PriceComponentKey
+  @JsonBackReference
+  @ManyToOne(optional = false)
+  @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
+  private Provider provider;
+
+  public Provider getProvider() {
+    if (this.provider == null) {
+      setProviderUuid(this.idKey.providerUuid);
+    }
+    return this.provider;
+  }
+
+  public void setProvider(Provider aProvider) {
+    provider = aProvider;
+    idKey.providerUuid = aProvider.uuid;
+  }
+
+  public UUID getProviderUuid() {
+    return this.idKey.providerUuid;
+  }
+
+  public void setProviderUuid(UUID providerUuid) {
+    Provider provider = Provider.get(providerUuid);
+    if (provider != null) {
+      setProvider(provider);
+    } else {
+      LOG.error("No provider found for the given id: {}", providerUuid);
+    }
+  }
+
   public String getProviderCode() {
-    return this.idKey.providerCode;
+    Provider provider = getProvider();
+    return provider != null ? provider.code : null;
   }
 
   public String getRegionCode() {
@@ -48,13 +84,13 @@ public class PriceComponent extends Model {
   /**
    * Get a single specified pricing component for a given provider and region.
    *
-   * @param providerCode The cloud provider that the pricing component is in.
+   * @param providerUuid The cloud provider that the pricing component is in.
    * @param regionCode The region that the pricing component is in.
    * @param componentCode The pricing component's code.
    * @return The uniquely matching pricing component.
    */
-  public static PriceComponent get(String providerCode, String regionCode, String componentCode) {
-    PriceComponentKey pcKey = PriceComponentKey.create(providerCode, regionCode, componentCode);
+  public static PriceComponent get(UUID providerUuid, String regionCode, String componentCode) {
+    PriceComponentKey pcKey = PriceComponentKey.create(providerUuid, regionCode, componentCode);
     PriceComponent pc = PriceComponent.find.byId(pcKey);
     if (pc != null) {
       pc.priceDetails = new PriceDetails();
@@ -73,7 +109,7 @@ public class PriceComponent extends Model {
    */
   public static List<PriceComponent> findByProvider(Provider provider) {
     return PriceComponent.find.query().where()
-        .eq("provider_code", provider.code)
+        .eq("provider_uuid", provider.uuid)
         .findList();
   }
 
@@ -86,7 +122,7 @@ public class PriceComponent extends Model {
    */
   public static List<PriceComponent> findByRegion(Provider provider, Region region) {
     return PriceComponent.find.query().where()
-        .eq("provider_code", provider.code)
+        .eq("provider_uuid", provider.uuid)
         .eq("region_code", region.code)
         .findList();
   }
@@ -94,19 +130,19 @@ public class PriceComponent extends Model {
   /**
    * Create or update a pricing component.
    *
-   * @param providerCode Cloud provider that the pricing component belongs to.
+   * @param providerUuid Cloud provider that the pricing component belongs to.
    * @param regionCode Region in the cloud provider that the pricing component belongs to.
    * @param componentCode The identifying code for the pricing component. Must be unique within
    *                      the region.
    * @param priceDetails The pricing details of the component.
    * @return The newly created/updated pricing component.
    */
-  public static void upsert(String providerCode, String regionCode, String componentCode,
+  public static void upsert(UUID providerUuid, String regionCode, String componentCode,
                             PriceDetails priceDetails) {
-    PriceComponent component = PriceComponent.get(providerCode, regionCode, componentCode);
+    PriceComponent component = PriceComponent.get(providerUuid, regionCode, componentCode);
     if (component == null) {
       component = new PriceComponent();
-      component.idKey = PriceComponentKey.create(providerCode, regionCode, componentCode);
+      component.idKey = PriceComponentKey.create(providerUuid, regionCode, componentCode);
     }
     PriceDetails details = priceDetails == null ? new PriceDetails() : priceDetails;
     component.setPriceDetails(details);

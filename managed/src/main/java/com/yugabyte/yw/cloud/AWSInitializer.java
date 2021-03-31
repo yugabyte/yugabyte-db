@@ -237,7 +237,7 @@ public class AWSInitializer extends AbstractInitializer {
     priceDetails.effectiveDate = product.get("effectiveDate").textValue();
 
     // Save to db
-    PriceComponent.upsert(provider.code, region.code, componentCode, priceDetails);
+    PriceComponent.upsert(provider.uuid, region.code, componentCode, priceDetails);
   }
 
   /**
@@ -357,7 +357,7 @@ public class AWSInitializer extends AbstractInitializer {
 
     // Save to db
     if (Double.parseDouble(pricePerUnit) != 0.0) {
-      PriceComponent.upsert(provider.code, region.code, instanceCode, priceDetails);
+      PriceComponent.upsert(provider.uuid, region.code, instanceCode, priceDetails);
     }
   }
 
@@ -476,8 +476,7 @@ public class AWSInitializer extends AbstractInitializer {
   private void storeInstanceTypeInfoToDB() {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
-    Common.CloudType provider = Common.CloudType.aws;
-    InstanceType.resetInstanceTypeDetailsForProvider(provider);
+    InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
     String instanceTypeCode = null;
 
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
@@ -539,12 +538,12 @@ public class AWSInitializer extends AbstractInitializer {
       }
 
       if (enableVerboseLogging) {
-        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", provider.name(),
+        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", provider.code,
                  instanceTypeCode, numCores, memSizeGB, volumeCount, volumeSizeGB, volumeType);
       }
 
       // Create the instance type model. If one already exists, overwrite it.
-      InstanceType instanceType = InstanceType.get(provider.name(), instanceTypeCode);
+      InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
       if (instanceType == null) {
         instanceType = new InstanceType();
       }
@@ -559,10 +558,11 @@ public class AWSInitializer extends AbstractInitializer {
         details.tenancy = PublicCloudConstants.Tenancy.Shared;
       }
       // Update the object.
-      InstanceType.upsert(provider.name(), instanceTypeCode, numCores, memSizeGB, details);
+      InstanceType.upsert(provider.uuid, instanceTypeCode, numCores, memSizeGB, details);
       if (enableVerboseLogging) {
-        instanceType = InstanceType.get(provider.name(), instanceTypeCode);
-        LOG.debug("Saving {} ({} cores, {}GB) with details {}", instanceType.idKey.toString(),
+        instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
+        LOG.debug("Saving {}:{} ({} cores, {}GB) with details {}",
+          instanceType.getProviderUuid(), instanceType.getInstanceTypeCode(),
           instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
       }
     }

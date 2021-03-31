@@ -857,7 +857,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     for (String ip : ImmutableList.of("1.2.3.4", "2.3.4.5", "3.4.5.6")) {
       NodeInstanceFormData.NodeInstanceData node = new NodeInstanceFormData.NodeInstanceData();
       node.ip = ip;
@@ -890,7 +891,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     for (String ip : ImmutableList.of("1.2.3.4", "2.3.4.5", "3.4.5.6", "9.6.5.4")) {
       NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();

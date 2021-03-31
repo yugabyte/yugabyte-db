@@ -438,7 +438,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // address ReadReplica clusters as well.
     UniverseDefinitionTaskParams.UserIntent userIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent;
-    InstanceType instanceType = InstanceType.get(userIntent.providerType, userIntent.instanceType);
+    InstanceType instanceType = InstanceType.get(
+      UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
       LOG.error("Unable to fetch InstanceType for {}, {}",
           userIntent.providerType, userIntent.instanceType);

@@ -1,28 +1,27 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-
-import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
-
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import io.ebean.Ebean;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.SqlUpdate;
+import io.ebean.annotation.EnumValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import io.ebean.annotation.EnumValue;
-
 import play.data.validation.Constraints;
 import play.libs.Json;
+
+import javax.persistence.*;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Entity
 public class InstanceType extends Model {
@@ -51,9 +50,52 @@ public class InstanceType extends Model {
   @Constraints.Required
   public InstanceTypeKey idKey;
 
-  public String getProviderCode() { return this.idKey.providerCode; }
+  // ManyToOne for provider is kept outside of InstanceTypeKey
+  // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
+  // insertable and updatable are set to false as actual updates
+  // are taken care by providerUuid parameter in InstanceTypeKey
+  @JsonBackReference
+  @ManyToOne(optional = false)
+  @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
+  private Provider provider;
 
-  public String getInstanceTypeCode() { return this.idKey.instanceTypeCode; }
+  public Provider getProvider() {
+    if (this.provider == null) {
+      setProviderUuid(this.idKey.providerUuid);
+    }
+    return this.provider;
+  }
+
+  public void setProvider(Provider aProvider) {
+    provider = aProvider;
+    idKey.providerUuid = aProvider.uuid;
+  }
+
+  public UUID getProviderUuid() {
+    return this.idKey.providerUuid;
+  }
+
+  public void setProviderUuid(UUID providerUuid) {
+    Provider provider = Provider.get(providerUuid);
+    if (provider != null) {
+      setProvider(provider);
+    } else {
+      LOG.error("No provider found for the given id: {}", providerUuid);
+    }
+  }
+
+  public String getProviderCode() {
+    Provider provider = getProvider();
+    return provider != null ? provider.code : null;
+  }
+
+  public String getInstanceTypeCode() {
+    return this.idKey.instanceTypeCode;
+  }
+
+  public void setInstanceTypeCode(String code) {
+    idKey.instanceTypeCode = code;
+  }
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
@@ -76,12 +118,8 @@ public class InstanceType extends Model {
   private static final Finder<InstanceTypeKey, InstanceType> find =
     new Finder<InstanceTypeKey, InstanceType>(InstanceType.class) {};
 
-  public static InstanceType get(Common.CloudType providerCode, String instanceTypeCode) {
-    return InstanceType.get(providerCode.toString(), instanceTypeCode);
-  }
-
-  public static InstanceType get(String providerCode, String instanceTypeCode) {
-    InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerCode));
+  public static InstanceType get(UUID providerUuid, String instanceTypeCode) {
+    InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerUuid));
     if (instanceType == null) {
       return instanceType;
     }
@@ -99,23 +137,23 @@ public class InstanceType extends Model {
     return instanceType;
   }
 
-  public static InstanceType upsert(String providerCode,
+  public static InstanceType upsert(UUID providerUuid,
                                     String instanceTypeCode,
                                     Integer numCores,
                                     Double memSize,
                                     InstanceTypeDetails instanceTypeDetails) {
-    return upsert(providerCode, instanceTypeCode, (double) numCores, memSize, instanceTypeDetails);
+    return upsert(providerUuid, instanceTypeCode, (double) numCores, memSize, instanceTypeDetails);
   }
 
-  public static InstanceType upsert(String providerCode,
+  public static InstanceType upsert(UUID providerUuid,
                                     String instanceTypeCode,
                                     Double numCores,
                                     Double memSize,
                                     InstanceTypeDetails instanceTypeDetails) {
-    InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
+    InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
     if (instanceType == null) {
       instanceType = new InstanceType();
-      instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerCode);
+      instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerUuid);
     }
     instanceType.memSizeGB = memSize;
     instanceType.numCores = numCores;
@@ -126,10 +164,10 @@ public class InstanceType extends Model {
     // Update the JSON field - this does not seem to be updated by the save above.
     String updateQuery = "UPDATE instance_type " +
       "SET instance_type_details_json = :instanceTypeDetails " +
-      "WHERE provider_code = :providerCode AND instance_type_code = :instanceTypeCode";
+      "WHERE provider_uuid = :providerUuid AND instance_type_code = :instanceTypeCode";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
     update.setParameter("instanceTypeDetails", instanceType.instanceTypeDetailsJson);
-    update.setParameter("providerCode", providerCode);
+    update.setParameter("providerUuid", providerUuid);
     update.setParameter("instanceTypeCode", instanceTypeCode);
     int modifiedCount = Ebean.execute(update);
     // Check if the save was not successful.
@@ -146,9 +184,11 @@ public class InstanceType extends Model {
   /**
    * Reset the 'instance_type_details_json' of all rows belonging to a specific provider in this table.
    */
-  public static void resetInstanceTypeDetailsForProvider(Common.CloudType providerCode) {
-    String updateQuery = "UPDATE instance_type SET instance_type_details_json = '' WHERE provider_code = :providerCode";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery).setParameter("providerCode", providerCode.name());
+  public static void resetInstanceTypeDetailsForProvider(UUID providerUuid) {
+    String updateQuery = "UPDATE instance_type " +
+      "SET instance_type_details_json = '' WHERE provider_uuid = :providerUuid";
+    SqlUpdate update = Ebean.createSqlUpdate(updateQuery)
+      .setParameter("providerUuid", providerUuid);
     int modifiedCount = Ebean.execute(update);
     LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
     if (modifiedCount == 0) {
@@ -196,20 +236,20 @@ public class InstanceType extends Model {
    */
   public static List<InstanceType> findByProvider(Provider provider, Config config) {
     List<InstanceType> entries = InstanceType.find.query().where()
-      .eq("provider_code", provider.code)
+      .eq("provider_uuid", provider.uuid)
       .eq("active", true)
       .findList();
     if (provider.code.equals("aws")) {
       return populateDefaultsIfEmpty(entries, config);
     } else {
-      return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
+      return entries.stream().map(entry -> InstanceType.get(entry.getProviderUuid(),
         entry.getInstanceTypeCode())).collect(Collectors.toList());
     }
   }
 
-  public static InstanceType createWithMetadata(Provider provider, String instanceTypeCode,
+  public static InstanceType createWithMetadata(UUID providerUuid, String instanceTypeCode,
                                                 JsonNode metadata) {
-    return upsert(provider.code,
+    return upsert(providerUuid,
         instanceTypeCode,
         Integer.parseInt(metadata.get("numCores").toString()),
         Double.parseDouble(metadata.get("memSizeGB").toString()),

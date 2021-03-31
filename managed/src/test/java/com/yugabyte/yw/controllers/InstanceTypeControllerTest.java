@@ -112,7 +112,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       instanceDetails.setDefaultMountPaths();
       String code = "c3.i" + i;
       instanceTypes.put(code,
-        InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails));
+        InstanceType.upsert(awsProvider.uuid, code, 2, 10.5, instanceDetails));
     }
     return instanceTypes;
   }
@@ -261,7 +261,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
-    idKey.put("providerCode", "aws");
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("volumeCount", 1);
     instanceTypeJson.put("numCores", 3);
@@ -292,7 +291,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
-    idKey.put("providerCode", "aws");
     instanceTypeJson.set("idKey", idKey);
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("numCores", 3);
@@ -318,7 +316,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     volumeDetails.mountPath = "/tmp/path/";
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(onPremProvider.code, "test-i1", 3, 5.0, details);
+    InstanceType it = InstanceType.upsert(onPremProvider.uuid, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(onPremProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
@@ -340,7 +338,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     details.volumeDetailsList.add(volumeDetails);
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0, details);
+    InstanceType it = InstanceType.upsert(awsProvider.uuid, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
@@ -377,10 +375,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0,
+    InstanceType it = InstanceType.upsert(awsProvider.uuid, "test-i1", 3, 5.0,
       new InstanceType.InstanceTypeDetails());
     JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
-    it = InstanceType.get(awsProvider.code, it.getInstanceTypeCode());
+    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
     assertAuditEntry(1, customer.uuid);
