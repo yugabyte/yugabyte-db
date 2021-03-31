@@ -197,7 +197,8 @@ public class Backup extends Model {
       .eq("state", BackupState.Completed)
       .findList(); 
     return backupList.stream().filter(
-        backup -> Universe.getAllUuids().contains(backup.getBackupInfo().universeUUID))
+        backup -> Universe.getAllUUIDs(Customer.get(this.customerUUID))
+        .contains(backup.getBackupInfo().universeUUID))
         .collect(Collectors.toList());
   }
 
