@@ -13,12 +13,17 @@ export default class DeleteUniverse extends Component {
     super(props);
     this.state = {
       isForceDelete: false,
+      isDeleteBackups: false,
       universeName: false
     };
   }
 
   toggleForceDelete = () => {
     this.setState({ isForceDelete: !this.state.isForceDelete });
+  };
+
+  toggleDeleteBackups = () => {
+    this.setState({ isDeleteBackups: !this.state.isDeleteBackups });
   };
 
   onChangeUniverseName = (value) => {
@@ -62,7 +67,7 @@ export default class DeleteUniverse extends Component {
     } = this.props;
     this.props.onHide();
     if (type === 'primary') {
-      this.props.submitDeleteUniverse(data.universeUUID, this.state.isForceDelete);
+      this.props.submitDeleteUniverse(data.universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
     } else {
       const cluster = getReadOnlyCluster(data.universeDetails.clusters);
       if (isEmptyObject(cluster)) return;
@@ -104,11 +109,18 @@ export default class DeleteUniverse extends Component {
         onFormSubmit={this.confirmDelete}
         error={error}
         footerAccessory={
-          <YBCheckBox
-            label={'Ignore Errors and Force Delete'}
-            className="footer-accessory"
-            input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }}
-          />
+          <div className="force-delete">
+            <YBCheckBox
+              label={'Ignore Errors and Force Delete'}
+              className="footer-accessory"
+              input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }}
+            />
+            <YBCheckBox
+              label="Delete Backups"
+              className="footer-accessory"
+              input={{ checked: this.state.isDeleteBackups, onChange: this.toggleDeleteBackups }}
+            />
+          </div>
         }
         asyncValidating={this.state.universeName !== name}
       >
