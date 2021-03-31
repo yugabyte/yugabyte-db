@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
 
 import junitparams.JUnitParamsRunner;
@@ -16,6 +17,7 @@ import org.junit.runner.RunWith;
 import java.util.*;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
@@ -134,5 +136,26 @@ public class AlertTest extends FakeDBApplication {
     assertEquals(2, list.size());
     assertEquals(alert2, list.get(0));
     assertEquals(alert1, list.get(1));
+  }
+
+  @Test
+  public void testGetActiveCustomerAlerts() {
+    UUID targetUUID = UUID.randomUUID();
+    Universe universe = ModelFactory.createUniverse(cust1.getCustomerId());
+    AlertDefinition definition = AlertDefinition.create(cust1.uuid, universe.universeUUID,
+        "alertDefinition", "query {{ test.parameter }}", true);
+
+    Alert alert1 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 1.");
+    alert1.definitionUUID = definition.uuid;
+    alert1.save();
+
+    Alert alert2 = Alert.create(cust1.uuid, targetUUID, TargetType.UniverseType, TEST_ALERT_CODE,
+        "Warning", "Testing alert 2.");
+    alert2.state = State.ACTIVE;
+    alert2.definitionUUID = definition.uuid;
+    alert2.save();
+
+    assertEquals(2, Alert.getActiveCustomerAlerts(cust1.uuid, definition.uuid).size());
   }
 }

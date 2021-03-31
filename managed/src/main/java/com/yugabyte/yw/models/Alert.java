@@ -171,12 +171,12 @@ public class Alert extends Model {
                                .eq("target_uuid", targetUUID).findCount() != 0;
   }
 
-  public static Alert getActiveCustomerAlert(UUID customerUUID, UUID definitionUUID) {
+  public static List<Alert> getActiveCustomerAlerts(UUID customerUUID, UUID definitionUUID) {
     return find.query().where()
       .eq("customer_uuid", customerUUID)
-      .eq("state", State.ACTIVE)
+      .in("state", State.CREATED, State.ACTIVE)
       .eq("definition_uuid", definitionUUID)
-      .findOne();
+      .findList();
   }
 
   public static List<Alert> list(UUID customerUUID) {

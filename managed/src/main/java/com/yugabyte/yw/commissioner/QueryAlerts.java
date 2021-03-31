@@ -11,6 +11,8 @@
 package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
+import io.jsonwebtoken.lang.Collections;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -25,6 +27,7 @@ import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -85,15 +88,15 @@ public class QueryAlerts {
         String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
             .replace(definition.query);
         if (!queryHelper.queryDirect(query).isEmpty()) {
-          Alert existingAlert = Alert.getActiveCustomerAlert(customerUUID, definition.uuid);
-          // Create an alert to activate if it doesn't exist already
-          if (existingAlert == null) {
+          List<Alert> existingAlerts = Alert.getActiveCustomerAlerts(customerUUID, definition.uuid);
+          // Create an alert to activate if it doesn't exist already.
+          if (Collections.isEmpty(existingAlerts)) {
             Alert.create(customerUUID, definition.universeUUID, Alert.TargetType.UniverseType,
                 "CUSTOMER_ALERT", "Error",
                 String.format("%s for %s is firing", definition.name, universe.name),
                 definition.isActive, definition.uuid);
           } else {
-            alertsStillActive.add(existingAlert);
+            alertsStillActive.addAll(existingAlerts);
           }
         }
       } catch (Exception e) {
