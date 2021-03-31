@@ -65,7 +65,7 @@ To configure NFS as the backup target, follow these steps:
 
 ## Google Cloud Storage (GCS)
 
-To configure NFS as the backup target, follow these steps:
+To configure GCS as the backup target, follow these steps:
 
 1. Click **Configs** on the left panel.
 2. Click the **Backup** tab.
@@ -76,11 +76,55 @@ To configure NFS as the backup target, follow these steps:
 
 ## Microsoft Azure
 
-To configure NFS as the backup target, follow these steps:
+To configure Azure as the backup target, follow these steps:
 
-1. Click **Configs** on the left panel.
-2. Click the **Backup** tab.
-3. Click **Azure** and enter values for **Container URL** and **SAS Token**.
-4. Click **Save**.
+1. Create a storage account in Azure as follows:
 
-![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
+    <br/>
+
+    * Navigate to Portal > Storage Account and click Add (+).
+    * Fill in the mandatory fields: resource group, storage account name, and location.
+
+    <br/>
+
+    ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
+
+1. Create a blob container as follows:
+
+    <br/>
+
+    * Open the storage account, which is “storagetestazure” in this section's screenshots.
+    * Navigate to Blob Service > Container > + Container and click Create.
+
+    <br/>
+
+    ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
+
+1. Get the container URL by navigating to container > Properties.
+
+    <br/>
+
+    ![Azure container properties](/images/yp/cloud-provider-configuration-backup-azure-container-properties.png)
+
+1. Generate an SAS Token as follows:
+
+    <br/>
+
+    * Navigate to the container > Shared access Signature.
+    * Select “Object” under “Allowed Resource Types”.
+    * Click “Generate SAS and connection string”, and copy the SAS token. Note that the token should start with `?sv=`.
+
+    <br/>
+
+    ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
+
+1. On your Yugabyte Platform instance, provide the container URL and SAS token for creating a backup:
+
+    <br/>
+
+    * Click **Configs** on the left panel.
+    * Click the **Backup** tab.
+    * Click **Azure** and enter values for **Container URL** and **SAS Token**.
+    * Click **Save**.
+
+    ![Azure Backup](/images/yp/cloud-provider-configuration-backup-azure.png)
