@@ -74,10 +74,8 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (NULL)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (1)");
 
-      // Note:
-      // PG error in this case is 'column "id" contains null values'
       runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)",
-          "Missing/null value for primary key column");
+          "column \"id\" contains null values");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1),
@@ -97,6 +95,33 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, new Integer[] { 1, 2, 3 }, "qwe"),
           new Row(2, new Integer[] { 3, 4 }, "zxcv")));
+    }
+  }
+
+  @Test
+  public void columnTypesUnsupported() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TYPE typeid AS (i int)");
+      stmt.executeUpdate("CREATE TABLE nopk (id typeid, v int)");
+
+      String msg = "PRIMARY KEY containing column of type 'user_defined_type' not yet supported";
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)", msg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id HASH, v)", msg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (v HASH, id)", msg);
+    }
+  }
+
+  @Test
+  public void missing() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+
+      String msg = "column \"missme\" named in key does not exist";
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (missme)", msg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id HASH, missme)", msg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (missme HASH, id)", msg);
     }
   }
 

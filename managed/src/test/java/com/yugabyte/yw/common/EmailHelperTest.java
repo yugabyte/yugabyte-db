@@ -61,7 +61,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int EMAIL_SMTP_PORT = 25;
 
-  private static final int EMAIL_SMTP_PORT_SSL = 587;
+  private static final int EMAIL_SMTP_PORT_SSL = 465;
 
   @Rule
   public MockitoRule rule = MockitoJUnit.rule();
