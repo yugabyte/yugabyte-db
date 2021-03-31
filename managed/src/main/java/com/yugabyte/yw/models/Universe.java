@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 
 import java.util.ArrayList;
@@ -265,9 +266,21 @@ public class Universe extends Model {
    * Fetch ONLY the universeUUID field for all universes.
    * WARNING: Returns partially filled Universe objects!!
    * @return list of UUIDs of all universes
+   * @deprecated Because goes across tenant boundary in multitenant setup.
    */
+  @Deprecated
   public static List<Universe> getAllUuids() {
     return find.query().select("universeUUID").findList();
+  }
+
+  /**
+   * Get all the universe UUIDs for a given customer
+   *
+   * @return list of universe UUIDs.
+   */
+  public static Set<UUID> getAllUUIDs(Customer customer) {
+    return ImmutableSet.copyOf(
+      find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
   /**
