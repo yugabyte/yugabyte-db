@@ -166,42 +166,37 @@ public class BackupsController extends AuthenticatedController {
   }
 
   public Result delete(UUID customerUUID) {
-    List<UUID> validBackups = new ArrayList<UUID>();
-    List<String> taskUUIDList = new ArrayList<String>();
-    ObjectNode formData = (ObjectNode) request().body().asJson();
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
+    ObjectNode formData = (ObjectNode) request().body().asJson(); 
+    List<String> taskUUIDList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {
-      Backup backup = Backup.get(customerUUID, UUID.fromString(backupUUID.asText()));
+      UUID uuid = UUID.fromString(backupUUID.asText());
+      Backup backup = Backup.get(customerUUID, uuid);
       if (backup == null) {
           LOG.info("Can not delete {} backup as it is not present in the database.",
               backupUUID.asText());
       }
       else {
-        validBackups.add( UUID.fromString(backupUUID.asText()));
+        if (backup.state != Backup.BackupState.Completed) {
+          LOG.info("Can not delete {} backup as it is still in progress", uuid);
+        } else {
+          DeleteBackup.Params taskParams = new DeleteBackup.Params();
+          taskParams.customerUUID = customerUUID;
+          taskParams.backupUUID = uuid;
+          UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
+          LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
+          CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
+             CustomerTask.TaskType.Delete,"Backup");
+          taskUUIDList.add(taskUUID.toString());
+          Audit.createAuditEntry(ctx(), request(), taskUUID);
+        }
       }
     }
     ObjectNode resultNode = Json.newObject();
-    for (UUID uuid : validBackups) {
-      Backup backup = Backup.get(customerUUID, uuid);
-      
-      if (backup.state != Backup.BackupState.Completed) {
-        LOG.info("Can not delete {} backup as it is already in progress", uuid);
-      } else {
-        DeleteBackup.Params taskParams = new DeleteBackup.Params();
-        taskParams.customerUUID = customerUUID;
-        taskParams.backupUUID = uuid;
-        UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-        LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
-        CustomerTask.create(customer, uuid, taskUUID, CustomerTask.TargetType.Backup,
-            CustomerTask.TaskType.Delete, "Backup");
-        taskUUIDList.add(taskUUID.toString());
-        Audit.createAuditEntry(ctx(), request(), taskUUID);
-      }
-    }
     ArrayNode arrayNode = resultNode.putArray("taskUUID");
     for (String item : taskUUIDList) {
       arrayNode.add(item);
