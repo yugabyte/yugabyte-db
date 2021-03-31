@@ -32,13 +32,14 @@ The following table lists the most important YSQL features which you would find 
 | YSQL Feature | Description |
 | :----------- | :---------- |
 | <span style="font-size:16px">[Basics](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
-| <span style="font-size:16px">[Data types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
+| <span style="font-size:16px">[Data Types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
 | <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
-| <span style="font-size:16px">[Triggers](triggers/)</span> | Triggers (on data modification) and event triggers (on schema changes) |
+| <span style="font-size:16px">[Triggers](triggers/)</span>    | Triggers (on data modification) and event triggers (on schema changes) |
+| <span style="font-size:16px">[Table Partitioning](partitions/)</span> | Declarative table partitioning and constraint exclusion      |
+| <span style="font-size:16px">[Expressions and Operators](expressions-operators/)</span> | Basic operators and boolean, numeric, date expressions       |
+| <span style="font-size:16px">[Query Performance](query-1-performance/)</span> | Query optimization via execution plans |
 | <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for stored procedures |
-| <span style="font-size:16px">[Triggers](triggers/)</span> | Triggers (on data modification) and event triggers (on schema changes) |
-| <span style="font-size:16px">[Table Partitions](partitions)</span> | List, range and hash partitioning of tables               |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
