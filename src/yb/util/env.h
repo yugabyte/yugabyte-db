@@ -823,6 +823,8 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
+CHECKED_STATUS DeleteIfExists(const std::string& path, Env* env);
+
 }  // namespace yb
 
 #endif // YB_UTIL_ENV_H

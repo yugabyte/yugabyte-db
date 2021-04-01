@@ -16,6 +16,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -38,6 +39,8 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
+YB_STRONGLY_TYPED_BOOL(SendMetadata);
+
 // Context class for MasterSnapshotCoordinator.
 class SnapshotCoordinatorContext {
  public:
@@ -48,11 +51,13 @@ class SnapshotCoordinatorContext {
 
   virtual void SendCreateTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
+      const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendRestoreTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime restore_at, TabletSnapshotOperationCallback callback) = 0;
+      HybridTime restore_at, SendMetadata send_metadata,
+      TabletSnapshotOperationCallback callback) = 0;
 
   virtual void SendDeleteTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
@@ -61,7 +66,13 @@ class SnapshotCoordinatorContext {
   virtual Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table) = 0;
+      bool include_parent_colocated_table,
+      bool succeed_if_create_in_progress) = 0;
+
+  virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
+  virtual CHECKED_STATUS RestoreSysCatalog(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
+      HybridTime write_time, const SnapshotScheduleFilterPB& filter) = 0;
 
   virtual const Schema& schema() = 0;
 

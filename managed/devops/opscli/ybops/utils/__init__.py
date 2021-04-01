@@ -58,6 +58,8 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+# Sudo password for remote host.
+YB_SUDO_PASS = os.environ.get("YB_SUDO_PASS")
 
 # TTL in seconds for how long DNS records will be cached.
 DNS_RECORD_SET_TTL = 5
@@ -455,9 +457,9 @@ def format_rsa_key(key, public_key):
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
     if public_key:
-        return key.publickey().exportKey("OpenSSH").decode('utf-8')
+        return str(key.publickey().exportKey("OpenSSH"))
     else:
-        return key.exportKey("PEM").decode('utf-8')
+        return str(key.exportKey("PEM"))
 
 
 def validated_key_file(key_file):
@@ -609,7 +611,7 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
 
         _, stdout, stderr = ssh_client.exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
-        stdout = stdout.read().decode('utf-8')
+        stdout = stdout.read()
         return len(stderr.readlines()) == 0 and all(c in stdout for c in cronjobs)
     except (paramiko.ssh_exception.NoValidConnectionsError,
             paramiko.ssh_exception.AuthenticationException,

@@ -132,6 +132,8 @@ message KvStoreInfoPB {
   // We don't split not yet fully compacted post-split tablets as of 2020-06-23, since
   // detecting effective middle key and tablet size for such tablets is not yet implemented.
   optional bool has_been_fully_compacted = 8;
+
+  repeated bytes snapshot_schedules = 9;
 }
 
 // The super-block keeps track of the Raft group.

@@ -55,7 +55,7 @@ To insert table rows, execute the following:
 
 ```sql
 yugabyte=# INSERT INTO employees (k1, k2, v1, v2) 
-  VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 To check the query plan for simple select, execute the following:
@@ -77,7 +77,7 @@ To check the execution plan for select with a complex condition that requires fi
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM employees 
-  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
 The following output displays the cost estimate based on the filtered result:
@@ -95,29 +95,28 @@ By enabling the `ANALYZE` option and wrapping it to preserve data integrity, you
 ```sql
 BEGIN;
 yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees 
-  WHERE k1 = 2 and floor(k2 + 1.5) = v1;
+WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ROLLBACK;
 ```
 
 In addition to the cost estimates from the query planner, `EXPLAIN ANALYZE` displays the server output produced during the statement execution, as shown in the following example:
 
 ```sql
-yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a 
-  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
-                                 QUERY PLAN
--------------------------------------------------------------------------
- Hash Left Join (cost=112.50..390.00 rows=5000 width=8) 
-                (actual time=3.939..6.195 rows=100 loops=1)
-   Hash Cond: (a.a = b.a)
-   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4) 
-                               (actual time=0.568..2.798 rows=100 loops=1)
-   ->  Hash  (cost=100.00..100.00 rows=1000 width=4) 
-             (actual time=3.363..3.363 rows=100 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 12kB
-         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4) 
-                               (actual time=0.458..3.339 rows=100 loops=1)
- Planning Time: 0.939 ms
- Execution Time: 7.089 ms
+yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a LEFT JOIN LATERAL 
+(SELECT * FROM employees b WHERE a = b) c ON TRUE;
+```
+
+```
+QUERY PLAN
+-----------------------------------------------------------------------------------------
+Nested Loop Left Join  (cost=0.00..15202.50 rows=5000 width=88) (actual time=2.853..2.885 rows=3 loops=1)
+   Join Filter: (a.* = b.*)
+   Rows Removed by Join Filter: 6
+   ->  Seq Scan on employees_k a  (cost=0.00..100.00 rows=1000 width=112) (actual time=1.747..1.749 rows=3 loops=1)
+   ->  Materialize  (cost=0.00..105.00 rows=1000 width=112) (actual time=0.155..0.157 rows=3 loops=3)
+         ->  Seq Scan on employees_k b  (cost=0.00..100.00 rows=1000 width=112) (actual time=0.450..0.454 rows=3 loops=1)
+ Planning Time: 0.072 ms
+ Execution Time: 2.938 ms
 (8 rows)
 ```
 
@@ -126,14 +125,18 @@ The server output from the preceding example includes the number of rescans (loo
 `EXPLAIN`, on the other hand,  does not provide this additional information, as shown in the following examples:
 
 ```sql
-yugabyte=# EXPLAIN SELECT * FROM employees a 
-  LEFT JOIN LATERAL (SELECT * FROM employees b WHERE a.a = b.a) c ON TRUE;
-                              QUERY PLAN
+yugabyte=# EXPLAIN SELECT * FROM employees_k a LEFT JOIN LATERAL 
+(SELECT * FROM employees_k b WHERE a = b) c ON TRUE;
+```
+
+```
+QUERY PLAN
 ----------------------------------------------------------------------
- Hash Left Join (cost=112.50..390.00 rows=5000 width=8)
-   Hash Cond: (a.a = b.a)
-   ->  Seq Scan on employees a (cost=0.00..100.00 rows=1000 width=4)
-   ->  Hash (cost=100.00..100.00 rows=1000 width=4)
-         ->  Seq Scan on employees b (cost=0.00..100.00 rows=1000 width=4)
+Nested Loop Left Join  (cost=0.00..15202.50 rows=5000 width=88)
+   Join Filter: (a.* = b.*)
+   ->  Seq Scan on employees_k a  (cost=0.00..100.00 rows=1000 width=112)
+   ->  Materialize  (cost=0.00..105.00 rows=1000 width=112)
+         ->  Seq Scan on employees_k b  (cost=0.00..100.00 rows=1000 width=112)
 (5 rows)
 ```
+

@@ -154,5 +154,16 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="extensions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Extensions</div>
+      </div>
+      <div class="body">
+        Take advantage of powerful pre-bundled extensions.
+      </div>
+    </a>
+  </div>
 
 </div>

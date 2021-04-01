@@ -12,10 +12,31 @@
       padding: 0;
     }
 
+    // tooltip
+    .yb-info-tip {
+      margin-left: 12px;
+      font-size: 1.2em; // copy rule from forms.scss
+    }
+
+    .btn-group-radio .btn {
+      font-weight: 400;
+    }
+
     .standard-error {
       position: absolute;
       bottom: -20px;
     }
+  }
+
+  &__alert {
+    font-weight: 500;
+    opacity: 1;
+    transition: opacity 400ms;
+  }
+
+  &__label {
+    display: flex;
+    justify-content: space-between;
   }
 
   &__input {
@@ -29,7 +50,6 @@
   &__key-input {
     display: inline-flex;
     position: relative;
-    margin-right: 12px;
 
     input {
       padding-right: 62px;
@@ -44,6 +64,7 @@
 
   &__generate-key-btn {
     min-width: 125px;
+    margin-left: 12px;
   }
 
   .radio-label {

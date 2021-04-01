@@ -43,6 +43,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
@@ -125,16 +127,18 @@ struct TableInfo {
 struct KvStoreInfo {
   explicit KvStoreInfo(const KvStoreId& kv_store_id_) : kv_store_id(kv_store_id_) {}
 
-  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_)
+  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_,
+              const std::vector<SnapshotScheduleId>& snapshot_schedules_)
       : kv_store_id(kv_store_id_),
-        rocksdb_dir(rocksdb_dir_) {}
+        rocksdb_dir(rocksdb_dir_),
+        snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id);
+  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id);
 
   CHECKED_STATUS LoadTablesFromPB(
-      google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id);
+      const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
-  void ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const;
+  void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
 
   KvStoreId kv_store_id;
 
@@ -155,6 +159,18 @@ struct KvStoreInfo {
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
   std::unordered_map<TableId, TableInfoPtr> tables;
+
+  std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
+};
+
+struct RaftGroupMetadataData {
+  FsManager* fs_manager;
+  TableInfoPtr table_info;
+  RaftGroupId raft_group_id;
+  Partition partition;
+  TabletDataState tablet_data_state;
+  bool colocated = false;
+  std::vector<SnapshotScheduleId> snapshot_schedules;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -168,46 +184,19 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // data_root_dir and wal_root_dir dictates which disk this Raft group will
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
-  static CHECKED_STATUS CreateNew(FsManager* fs_manager,
-                                  const std::string& table_id,
-                                  const RaftGroupId& raft_group_id,
-                                  const std::string& namespace_name,
-                                  const std::string& table_name,
-                                  const TableType table_type,
-                                  const Schema& schema,
-                                  const IndexMap& index_map,
-                                  const PartitionSchema& partition_schema,
-                                  const Partition& partition,
-                                  const boost::optional<IndexInfo>& index_info,
-                                  const uint32_t schema_version,
-                                  const TabletDataState& initial_tablet_data_state,
-                                  RaftGroupMetadataPtr* metadata,
-                                  const std::string& data_root_dir = std::string(),
-                                  const std::string& wal_root_dir = std::string(),
-                                  const bool colocated = false);
+  static Result<RaftGroupMetadataPtr> CreateNew(
+      const RaftGroupMetadataData& data, const std::string& data_root_dir = std::string(),
+      const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
-                             const RaftGroupId& raft_group_id,
-                             RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> Load(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   // Try to load an existing Raft group. If it does not exist, create it.
   // If it already existed, verifies that the schema of the Raft group matches the
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate Raft groups directly.
-  static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
-                                     const std::string& table_id,
-                                     const RaftGroupId& raft_group_id,
-                                     const std::string& namespace_name,
-                                     const std::string& table_name,
-                                     const TableType table_type,
-                                     const Schema& schema,
-                                     const PartitionSchema& partition_schema,
-                                     const Partition& partition,
-                                     const boost::optional<IndexInfo>& index_info,
-                                     const TabletDataState& initial_tablet_data_state,
-                                     RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> LoadOrCreate(const RaftGroupMetadataData& data);
 
   Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
@@ -319,13 +308,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition schema of the Raft group's tables.
-  const std::shared_ptr<PartitionSchema> partition_schema() const {
+  std::shared_ptr<PartitionSchema> partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info = primary_table_info();
     return std::shared_ptr<PartitionSchema>(table_info, &table_info->partition_schema);
   }
 
-  const std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
+  std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
       const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info =
@@ -333,14 +322,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
   }
 
-  std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
   std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
 
-  std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
-  std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
+  const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
+  const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
-  std::string wal_dir() const { return wal_dir_; }
+  const std::string& wal_dir() const { return wal_dir_; }
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);
@@ -364,6 +353,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.insert(schedule_id).second;
+  }
+
+  std::vector<SnapshotScheduleId> SnapshotSchedules() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return std::vector<SnapshotScheduleId>(
+        kv_store_.snapshot_schedules.begin(), kv_store_.snapshot_schedules.end());
   }
 
   // Returns the data root dir for this Raft group, for example:
@@ -471,6 +471,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   bool colocated() const { return colocated_; }
 
+  Result<std::string> TopSnapshotsDir() const;
+
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
 
@@ -484,25 +486,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   ~RaftGroupMetadata();
 
   // Constructor for creating a new Raft group.
-  //
-  // TODO: get rid of this many-arg constructor in favor of just passing in a
-  // SuperBlock, which already contains all of these fields.
-  RaftGroupMetadata(FsManager* fs_manager,
-                    TableId table_id,
-                    RaftGroupId raft_group_id,
-                    std::string namespace_name,
-                    std::string table_name,
-                    TableType table_type,
-                    const std::string rocksdb_dir,
-                    const std::string wal_dir,
-                    const Schema& schema,
-                    const IndexMap& index_map,
-                    PartitionSchema partition_schema,
-                    Partition partition,
-                    const boost::optional<IndexInfo>& index_info,
-                    const uint32_t schema_version,
-                    const TabletDataState& tablet_data_state,
-                    const bool colocated = false);
+  explicit RaftGroupMetadata(
+      const RaftGroupMetadataData& data, const std::string& data_dir,
+      const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);

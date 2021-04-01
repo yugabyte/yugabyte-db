@@ -807,9 +807,7 @@ Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_head
   // Then Length-prefixed header.
   PutFixed32(&buf, new_header.ByteSize());
   // Then Serialize the PB.
-  if (!pb_util::AppendToString(new_header, &buf)) {
-    return STATUS(Corruption, "unable to encode header");
-  }
+  pb_util::AppendToString(new_header, &buf);
   RETURN_NOT_OK(writable_file()->Append(Slice(buf)));
 
   header_.CopyFrom(new_header);
@@ -829,9 +827,7 @@ Status WritableLogSegment::WriteFooterAndClose(const LogSegmentFooterPB& footer)
 
   faststring buf;
 
-  if (!pb_util::AppendToString(footer, &buf)) {
-    return STATUS(Corruption, "unable to encode header");
-  }
+  pb_util::AppendToString(footer, &buf);
 
   buf.append(kLogSegmentFooterMagicString);
   PutFixed32(&buf, footer.ByteSize());

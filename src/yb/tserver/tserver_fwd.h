@@ -20,13 +20,15 @@ namespace tserver {
 class GetTabletStatusRequestPB;
 class GetTabletStatusResponsePB;
 class LocalTabletServer;
-class TabletServer;
+class TSTabletManager;
 class TabletPeerLookupIf;
+class TabletServer;
+class TabletServerAdminServiceProxy;
+class TabletServerBackupServiceProxy;
 class TabletServerOptions;
 class TabletServerServiceProxy;
 class TabletSnapshotOpRequestPB;
 class TabletSnapshotOpResponsePB;
-class TSTabletManager;
 
 } // namespace tserver
 } // namespace yb
