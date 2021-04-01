@@ -60,7 +60,7 @@ showAsideToc: true
 
 </ul>
 
-This page details how to configure Kubernetes provider for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider.
+This page details how to configure the Kubernetes provider for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider.
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
@@ -68,12 +68,12 @@ This page details how to configure Kubernetes provider for YugabyteDB universes 
 
 ### Kubernetes
 
-If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. The Yugabyte Platform will use those credentials to automatically provision and de-provision the pods that run Yugabyte.
+If you plan to run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. The Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run Yugabyte.
 
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 - Create a `yugabyte-platform-universe-management` service account.
-- Create a `kubeconfig` file of the earlier created service account to configure access to the Kubernetes cluster.
+- Create a `kubeconfig` file of the earlier-created service account to configure access to the Kubernetes cluster.
 
 ### Service account creation
 
@@ -81,13 +81,13 @@ This is the ServiceAccount whose secret can be used to generate a kubeconfig.
 
 **Notes**
 
-- It should not be deleted once it is being used by the platform.
-- `kube-system` namespace in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
+- It should not be deleted once it is in use by the platform.
+- `namespace` in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n kube-system
+kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n <namespace>
 ```
 
 The following output should appear:
@@ -100,14 +100,16 @@ The next step is to grant access to this ServiceAccount using ClusterRoles/Roles
 Follow any one of the following steps depending on your requirements.
 
 **Notes**
-- Make sure you replace the [namespace] from the commands with the correct namespace of the earlier created ServiceAccount.
+- Make sure you replace the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
 
 **Global Admin**
 
 Grants broad cluster level admin access.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml -n <namespace>
+curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | kubectl apply -n <namespace> -f -
 ```
 
 **Global Restricted**
@@ -115,32 +117,38 @@ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/p
 Grants access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster. Contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml -n <namespace>
+curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | kubectl apply -n <namespace> -f -
 ```
 
 **Namespace Admin**
 
 Grants namespace level admin access.
 
-If you have multiple target namespaces, then you will have to apply the YAML in all the target namespaces.
+If you have multiple target namespaces, then you have to apply the YAML in all of them.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml -n <namespace>
+curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | kubectl apply -n <namespace> -f -
 ```
 
 **Namespace Restricted**
 
 Grants access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace only. Contains Roles and RoleBindings for the required set of permissions.
 
-*Example:* You want to allow platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces). In this case you will apply in both the target namespaces.
+*Example:* If your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml -n <namespace>
+curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
+  | kubectl apply -n <namespace> -f -
 ```
 
 ### Create a `kubeconfig` File for a Kubernetes Cluster
 
-You can create a `kubeconfig` file for earlier created `yugabyte-platform-universe-management` service account as follows:
+You can create a `kubeconfig` file for previously created `yugabyte-platform-universe-management` service account as follows:
 
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
@@ -256,7 +264,7 @@ networkAnnotation:
   annotation2: 'bar'
 ```
 
-- Overrides to add custom resource allocation for YB master & tserver pods
+- Overrides to add custom resource allocation for YB master & tserver pods & it overrides the instance types selected in the YB universe creation flow.
 
 ```yml
 resource:
