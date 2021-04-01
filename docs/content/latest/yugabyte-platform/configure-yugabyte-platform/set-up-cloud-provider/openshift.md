@@ -80,6 +80,7 @@ To create a ServiceAccount in the yb-platform project, execute the following com
 oc apply \
   -n yb-platform \
   -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml
+  
 # output
 serviceaccount/yugabyte-platform-universe-management created
 ```
@@ -90,6 +91,7 @@ The next step is to grant access to this ServiceAccount using Roles and RoleBind
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
  | sed "s/namespace: <SA_NAMESPACE>/namespace: yb-platform/g" \
  | oc apply -n yb-platform -f -
+ 
 # output
 role.rbac.authorization.k8s.io/yugabyte-helm-operations created
 role.rbac.authorization.k8s.io/yugabyte-management created
@@ -109,6 +111,7 @@ To generate the kubeconfig file, execute the following:
 python generate_kubeconfig.py \
  --service_account yugabyte-platform-universe-management \
  --namespace yb-platform
+ 
 # output
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
@@ -126,15 +129,14 @@ You can create a provider as follows:
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
   - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-- Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. 
-
+  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. 
 ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
   - In the **Namespace** field, enter yb-platform.
 
-![img](https://lh5.googleusercontent.com/gQ-fTRZnDTp4kCqNaKo8KUgVA2mJeCCjaHiqzdCOcG4350yxgDGZojMWhsfdvcpLJbOio8sL8K932wmDM6_S8fIkL9wfKAo-b3340Yvc1Dy4FJ61o2Ec93DptkB_Ski1XqaU3UrT)
+![Add Region](/images/ee/openshift-add-region.png)
 
 - Click **Add Region**.
 - Click **Save**. 
@@ -154,32 +156,33 @@ You can create a universe using the provider as follows:
   - In the **Regions** field, enter US East.
   - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).
 
-![img](https://lh3.googleusercontent.com/E8EwHd0olx_ZmmpRN-vpem8TAvqqU_gPQGyuMJH9yDxKS89cswTURFASkAE0fDKWMCfImUknxbyN7z87SzaOJJE_PO6Wo4aKw7UHIdXy7oCxPgTmv2XvRMvAIvbRQygS0gz3oXNz)
+![Create Universe](/images/ee/openshift-create-uni.png)
 
 - Click **Create**. 
 
 The following illustration shows the universe creation progress:
 
-![img](https://lh3.googleusercontent.com/wmVq3lUnqseriSgXcw-gwqNRct4CxUSZ0NnGwgVJ5UG-7GU8Ja4kKHGUZ428BmYOZvcemMLlod_9PBWQAFaj99bOybyW_XEc40X6mZL9fZKi6IQ9q7-Cr52XTfzjmw0ppGTN8b9Z)
+![Universes](/images/ee/openshift-universes.png)
 
 If you click universe-1 and then navigate to **Tasks**, you should see a page similar to the one shown in the following illustration:
 
-![img](https://lh3.googleusercontent.com/UFeWUHRm7Amxek1U8yxqeV3z4RiUll05Vo9VowiCImlELaCabHyaDFFT81XYbbBXUMoDAK8g13q9FP4ZbwOSAoCzsqGV83zqF9Jkcw_3pb4U4WxgC7MOiULbCpAArxIqSHMrDDIC)
+![Task Progress](/images/ee/openshift-uni-task-progress.png)
 
 Upon successful creation of the universe, the **Overview** tab of universe-1 should look similar to the following:
 
-![img](https://lh5.googleusercontent.com/TpdExY6idrjH64UXfXKsY9RRwPaLU5OWfNHD_VZxrzRDWAXmG_dftROfNyxRX7TNWr7BgWxrsuZXOa4N_4KP9RHt4c9AgleCGSmziKudtIbqzrJAqOu7YL0oa9MpfdCmBvNE7rPL)
+![Universe 1](/images/ee/openshift-universe1.png)
 
 ## Troubleshooting the Universe Creation
 
 If the universe creation remains in Pending state for more than 2-3 minutes, open the OCP web console, navigate to **Workloads > Pods** and check if any of the pods are in pending state, as shown in the following illustration:
 
-![img](https://lh5.googleusercontent.com/jHJnEpQ6baGDDuppWND7O6z2SZM4dOPkIFekGa556xUffhOjEFdkM3EUvL2BEQXponEkEjYOwIFmPKu3z35-d903Vhz0D2i_6MyZEXstkrHN1jpgQQFgFy675cNwyzhonpGf65l9)
+![Pods](/images/ee/openshift-pods.png)
 
 Alternatively, you can execute the following command to check status of the pods:
 
 ```shell
 oc get pods -n yb-platform -l chart=yugabyte
+
 # output
 NAME          READY STATUS  RESTARTS AGE
 yb-master-0   2/2   Running  0     5m58s
@@ -197,12 +200,13 @@ If any of the pods are in pending state, perform the following:
 - Click **Desired Count** and increase the count by 1 or 2, as shown in the following illustration.
 - Click **Save**.
 
-![img](https://lh3.googleusercontent.com/N7ZHbdmANOWytA4Byyxd5P93Kq51t9QSI9Nr0xSK1YPlBTJOHpbKuz6NDwYlmV2v02ZE_k8F2Xx85KFWQx8mAldYb9TUT01M7Gf3jJMVmlbQdK6_9apgyCr7s8_XF3iWEvVFl0OO)
+![Edit Machine Count](/images/ee/openshift-open-macine.png)
 
 Alternatively, you can scale the MachineSets by executing the following command as admin user:
 
 ```shell
 oc scale machineset ocp-dev4-l5ffp-worker-a --replicas=2 -n openshift-machine-api
+
 # output
 machineset.machine.openshift.io/ocp-dev4-l5ffp-worker-a scaled
 ```
