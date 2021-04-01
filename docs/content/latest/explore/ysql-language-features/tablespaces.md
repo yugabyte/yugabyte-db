@@ -91,6 +91,8 @@ If you create a table that uses `us_west_1a_tablespace`, each tablet of the tabl
 
 You can associate new tables and indexes with a corresponding tablespace. This defines the replication factor of the table or index. It also defines how the replicas of the table or index are to be spread across cloud, regions, and zones.
 
+A table and an index can be created in separate tablespaces.
+
 ### How to Use a Multi-Zone Tablespace
 
 Using the multi-zone tablespaces defined in [How to Create a Multi-Zone Tablespace](how-to-create-a-multi-zone-tablespace), you can apply the YSQL's `TABLESPACE` option to `CREATE TABLE` and `CREATE INDEX` statements, as follows:
@@ -111,6 +113,8 @@ TABLESPACE us_east_tablespace;
 ```
 
 The preceding statements ensure that data in the `employees` and `employee_no_idx` tables is present based on the placement policies specified for `us_west_tablespace` and `us_east_tablespace` respectively.
+
+By default, indexes are placed according to the cluster configuration.
 
 ### How to Use a Single-Zone Tablespace
 
