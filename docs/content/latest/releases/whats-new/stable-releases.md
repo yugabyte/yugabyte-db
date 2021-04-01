@@ -21,6 +21,39 @@ Included here are the release notes for all releases in the v2.4 stable release 
 
 {{< /note >}}
 
+## v2.4.1.1 - March 30, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.1.1-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.1.1-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.1.1-b4
+```
+
+### Bug Fixes
+
+#### Core Database
+
+* [7145](https://github.com/yugabyte/yugabyte-db/issues/7145) Fix wrong propagated safe time
+
+#### Yugabyte Platform
+
+* [7385](https://github.com/yugabyte/yugabyte-db/issues/7385) Platform: Missing package for s3cmd dependency for airgapped GCP VMs
+
 ## v2.4.1 - Feb 10, 2021
 
 ### Downloads
