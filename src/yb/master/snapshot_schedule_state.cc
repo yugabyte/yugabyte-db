@@ -68,6 +68,7 @@ void SnapshotScheduleState::PrepareOperations(
     .schedule_id = id_,
     .filter = options_.filter(),
     .snapshot_id = creating_snapshot_id_,
+    .previous_snapshot_hybrid_time = last_snapshot_time,
   });
 }
 

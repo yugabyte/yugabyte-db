@@ -68,6 +68,8 @@ message TabletSnapshotOpRequestPB {
   uint32 schema_version = 12;
   SchemaPB schema = 13;
   repeated IndexInfoPB indexes = 14;
+
+  fixed64 previous_snapshot_hybrid_time = 15;
 }
 
 message TabletSnapshotOpResponsePB {

@@ -29,6 +29,7 @@ struct SnapshotScheduleOperation {
   SnapshotScheduleId schedule_id;
   SnapshotScheduleFilterPB filter;
   TxnSnapshotId snapshot_id;
+  HybridTime previous_snapshot_hybrid_time;
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
