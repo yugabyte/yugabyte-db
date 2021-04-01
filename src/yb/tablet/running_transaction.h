@@ -55,7 +55,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   }
 
   MUST_USE_RESULT bool UpdateStatus(
-      TransactionStatus transaction_status, HybridTime time_of_status);
+      TransactionStatus transaction_status, HybridTime time_of_status,
+      HybridTime coordinator_safe_time);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
