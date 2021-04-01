@@ -176,7 +176,7 @@ PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID/create_backup   c
 PUT     /customers/:cUUID/universes/:uniUUID/multi_table_backup                com.yugabyte.yw.controllers.TablesController.createMultiTableBackup(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/backups                           com.yugabyte.yw.controllers.BackupsController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/backups/restore                   com.yugabyte.yw.controllers.BackupsController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-DELETE  /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID, backupUUID: java.util.UUID)
+DELETE  /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID)
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
