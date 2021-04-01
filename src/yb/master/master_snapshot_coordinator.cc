@@ -127,7 +127,7 @@ class MasterSnapshotCoordinator::Impl {
       const SysRowEntries& entries, bool imported, CoarseTimePoint deadline) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = VERIFY_RESULT(SubmitCreate(
-        entries, imported, SnapshotScheduleId::Nil(), TxnSnapshotId::Nil(),
+        entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, TxnSnapshotId::Nil(),
         std::make_unique<tablet::WeakSynchronizerOperationCompletionCallback>(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
@@ -672,7 +672,8 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS ExecuteScheduleOperation(const SnapshotScheduleOperation& operation) {
     auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
     RETURN_NOT_OK(SubmitCreate(
-        entries, false, operation.schedule_id, operation.snapshot_id,
+        entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
+        operation.snapshot_id,
         tablet::MakeFunctorOperationCompletionCallback(
             [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id](
                 const Status& status) {
@@ -698,7 +699,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<TxnSnapshotId> SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
-      TxnSnapshotId snapshot_id,
+      HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id,
       std::unique_ptr<tablet::OperationCompletionCallback> completion_clbk) {
     auto operation_state = std::make_unique<tablet::SnapshotOperationState>(/* tablet= */ nullptr);
     auto request = operation_state->AllocateRequest();
@@ -720,6 +721,9 @@ class MasterSnapshotCoordinator::Impl {
     request->set_imported(imported);
     if (schedule_id) {
       request->set_schedule_id(schedule_id.data(), schedule_id.size());
+    }
+    if (previous_snapshot_hybrid_time) {
+      request->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time.ToUint64());
     }
 
     request->mutable_extra_data()->PackFrom(entries);
