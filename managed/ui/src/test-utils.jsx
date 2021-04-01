@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { createStore } from 'redux';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Provider } from 'react-redux';
-import rootReducer from '../../../reducers';
+import rootReducer from './reducers';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,16 +14,20 @@ const queryClient = new QueryClient({
   }
 });
 
-const ConnectedComponent = ({ children }) => {
-  let store = createStore(rootReducer, {});
-  return (
+const customRender = (ui, options) => {
+  const { storeState = {}, ...renderOptions } = options || {};
+  const store = createStore(rootReducer, storeState);
+
+  const Wrapper = ({ children }) => (
     <Provider store={store}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
     </Provider>
   );
-};
 
-const customRender = (ui, options) => render(ui, { wrapper: ConnectedComponent, ...options });
+  return render(ui, { wrapper: Wrapper, ...renderOptions });
+};
 
 // re-export everything
 export * from '@testing-library/react';

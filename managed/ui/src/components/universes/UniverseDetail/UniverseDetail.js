@@ -122,9 +122,20 @@ class UniverseDetail extends Component {
     browserHistory.push(location);
   };
 
+  isCurrentUniverseDeleteTask = (uuid) => {
+    return this.props.tasks.customerTaskList
+      .filter((task) => task.targetUUID == uuid && task.type === 'Delete');
+  };
+
   getUniverseInfo = () => {
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
-    this.props.getUniverseInfo(universeUUID);
+    let currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
+    if (currentUniverseTasks.length>0) {
+      browserHistory.push('/');
+    }
+    else {
+       this.props.getUniverseInfo(universeUUID);
+    }    
   };
 
   showUpgradeMarker = () => {

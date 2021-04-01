@@ -68,13 +68,15 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
           formik.current = formikProps;
 
           return (
-            <Field
-              label="Enter IP Address / Hostname for standby platform instance"
-              name="instanceAddress"
-              placeholder="http://"
-              type="text"
-              component={YBFormInput}
-            />
+            <div data-testid="ha-add-standby-instance-modal">
+              <Field
+                label="Enter IP Address / Hostname for standby platform instance"
+                name="instanceAddress"
+                placeholder="http://"
+                type="text"
+                component={YBFormInput}
+              />
+            </div>
           );
         }}
       />
