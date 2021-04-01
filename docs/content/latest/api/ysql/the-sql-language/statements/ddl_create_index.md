@@ -205,7 +205,7 @@ If it still doesn't work, here are some troubleshooting steps:
 - **Did you get a "duplicate key value" error?**
   Then, you have a unique constraint violation.
 
-**To prioritize keeping other transactions alive** during the index backfill, bump up
+**To prioritize keeping other transactions alive** during the index backfill, bump up the following:
 
 - master flag `index_backfill_wait_for_old_txns_ms`
 - YSQL GUC variable `yb_index_state_flags_update_delay`
