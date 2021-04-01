@@ -144,6 +144,11 @@ METRIC_DEFINE_counter(tablet, pgsql_consistent_prefix_read_rows,
                       yb::MetricUnit::kRequests,
                       "Number of pgsql rows read as part of a consistent prefix request");
 
+METRIC_DEFINE_counter(tablet, tablet_data_corruptions,
+  "Tablet Data Corruption Detections",
+  yb::MetricUnit::kUnits,
+  "Number of times this tablet was flagged for corrupted data");
+
 using strings::Substitute;
 
 namespace yb {
@@ -164,6 +169,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(restart_read_requests),
     MINIT(consistent_prefix_read_requests),
     MINIT(pgsql_consistent_prefix_read_rows),
+    MINIT(tablet_data_corruptions),
     MINIT(rows_inserted) {
 }
 #undef MINIT
