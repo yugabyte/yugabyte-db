@@ -139,12 +139,6 @@ export const BackupList = (props) => {
             <i className="fa fa-eye"></i> Show Universes
           </MenuItem>
         </DropdownButton>
-        <AssociatedUniverse
-          visible={isUniverseVisible}
-          onHide={() => setIsUniverseVisible(false)}
-          associatedUniverses={associatedUniverses}
-          title={`Backup Configuration ${configData}`}
-        />
       </>
     );
   };
@@ -188,6 +182,12 @@ export const BackupList = (props) => {
               Actions
             </TableHeaderColumn>
           </BootstrapTable>
+          <AssociatedUniverse
+            visible={isUniverseVisible}
+            onHide={() => setIsUniverseVisible(false)}
+            associatedUniverses={associatedUniverses}
+            title={`Backup Configuration ${configData}`}
+          />
         </>
       }
       noBackground
