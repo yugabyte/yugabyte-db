@@ -332,8 +332,8 @@ CREATE INDEX ON temptest USING hash (v2);
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "temptest_pkey" PRIMARY KEY, btree (k)
-    "temptest_v1_idx" UNIQUE, btree (v1)
+    "temptest_pkey" PRIMARY KEY, btree (k ASC)
+    "temptest_v1_idx" UNIQUE, btree (v1 ASC)
     "temptest_v2_idx" hash (v2)
 
 INSERT INTO temptest VALUES (1, 2, 3), (4, 5, 6);

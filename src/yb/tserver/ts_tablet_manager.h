@@ -165,19 +165,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   //
   // If another tablet already exists with this ID, logs a DFATAL
   // and returns a bad Status.
-  CHECKED_STATUS CreateNewTablet(
-      const string& table_id,
+  Result<tablet::TabletPeerPtr> CreateNewTablet(
+      const tablet::TableInfoPtr& table_info,
       const string& tablet_id,
       const Partition& partition,
-      const string& namespace_name,
-      const string& table_name,
-      TableType table_type,
-      const Schema& schema,
-      const PartitionSchema& partition_schema,
-      const boost::optional<IndexInfo>& index_info,
       consensus::RaftConfigPB config,
-      std::shared_ptr<tablet::TabletPeer>* tablet_peer,
-      const bool colocated = false);
+      const bool colocated = false,
+      const std::vector<SnapshotScheduleId>& snapshot_schedules = {});
 
   CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state, log::Log* raft_log) override;
 

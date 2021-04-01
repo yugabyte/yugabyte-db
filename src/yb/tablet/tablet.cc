@@ -3069,14 +3069,22 @@ void Tablet::StartDocWriteOperation(
 }
 
 Result<HybridTime> Tablet::DoGetSafeTime(
-    tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
-  if (!require_lease) {
+    RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
+  if (require_lease == RequireLease::kFalse) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
-  if (require_lease && ht_lease_provider_) {
+  if (ht_lease_provider_) {
     // This will block until a leader lease reaches the given value or a timeout occurs.
-    ht_lease = VERIFY_RESULT(ht_lease_provider_(min_allowed, deadline));
+    auto ht_lease_result = ht_lease_provider_(min_allowed, deadline);
+    if (!ht_lease_result.ok()) {
+      if (require_lease == RequireLease::kFallbackToFollower &&
+          ht_lease_result.status().IsIllegalState()) {
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+      }
+      return ht_lease_result.status();
+    }
+    ht_lease = *ht_lease_result;
     if (min_allowed > ht_lease.time) {
       return STATUS_FORMAT(
           InternalError, "Read request hybrid time after current time: $0, lease: $1",

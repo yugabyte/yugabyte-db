@@ -80,7 +80,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       case TabletServerErrorPB::INVALID_SNAPSHOT:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
                      << tablet_->ToString() << ": " << status;
-        if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE) {
+        if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
           LOG(WARNING) << "No further retry for RESTORE snapshot operation: " << status;
           TransitionToCompleteState();
         }
@@ -112,7 +112,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
           tablet_.get(), resp_.has_error());
       return;
     }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE: {
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
       master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
@@ -132,6 +132,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     }
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
@@ -151,6 +152,11 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   }
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
+  }
+  if (has_metadata_) {
+    req.set_schema_version(schema_version_);
+    *req.mutable_schema() = schema_;
+    *req.mutable_indexes() = indexes_;
   }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 

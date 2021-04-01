@@ -300,7 +300,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
   do {
-    CatalogManager::ScopedLeaderSharedLock l(catalog_manager_.get());
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_.get());
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       return Status::OK();
     }
@@ -443,7 +443,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       s = s.CloneAndPrepend(
         Format("Unable to get registration information for peer ($0) id ($1)",
               addrs, peer.permanent_uuid()));
-      LOG(WARNING) << "ListMasters: " << s;
+      YB_LOG_EVERY_N_SECS(WARNING, 5) << "ListMasters: " << s;
       StatusToPB(s, peer_entry.mutable_error());
       peer_entry.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
       peer_entry.mutable_instance_id()->set_instance_seqno(0);

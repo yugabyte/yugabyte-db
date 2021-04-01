@@ -2,7 +2,6 @@
 
 package controllers;
 
-import play.api.mvc.Action;
 import play.api.mvc.AnyContent;
 import play.mvc.Controller;
 import play.mvc.Result;

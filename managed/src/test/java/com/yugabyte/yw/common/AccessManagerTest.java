@@ -404,13 +404,13 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testInvalidKeysBasePath() {
-    when(appConfig.getString("yb.storage.path")).thenReturn("/foo");
+    when(appConfig.getString("yb.storage.path")).thenReturn("/sys/foo");
     Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
-    try {
+    RuntimeException re = assertThrows(RuntimeException.class, () -> {
       runCommand(defaultRegion.uuid, "add-key", false);
-    } catch (RuntimeException re) {
-      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exist.")));
-    }
+    });
+    assertThat(re.getMessage(), allOf(notNullValue(),
+      equalTo("Key path /sys/foo/keys doesn't exist.")));
   }
 
   @Test

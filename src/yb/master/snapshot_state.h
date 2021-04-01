@@ -21,6 +21,8 @@
 
 #include "yb/master/state_with_tablets.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
@@ -60,6 +62,10 @@ class SnapshotState : public StateWithTablets {
     return snapshot_hybrid_time_;
   }
 
+  HybridTime previous_snapshot_hybrid_time() const {
+    return previous_snapshot_hybrid_time_;
+  }
+
   const SnapshotScheduleId& schedule_id() const {
     return schedule_id_;
   }
@@ -67,6 +73,9 @@ class SnapshotState : public StateWithTablets {
   int version() const {
     return version_;
   }
+
+  Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
+      const tablet::SnapshotOperationState& state) const;
 
   std::string ToString() const;
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);
@@ -84,6 +93,7 @@ class SnapshotState : public StateWithTablets {
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
+  HybridTime previous_snapshot_hybrid_time_;
   SysRowEntries entries_;
   // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
   // schedule id. Otherwise it will be nil.

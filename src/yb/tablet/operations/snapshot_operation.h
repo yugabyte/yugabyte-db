@@ -50,11 +50,13 @@ class SnapshotOperationState :
 
   // Returns the snapshot directory, based on the tablet's top directory for all snapshots, and any
   // overrides for the snapshot directory this operation might have.
-  std::string GetSnapshotDir(const std::string& top_snapshots_dir) const;
+  Result<std::string> GetSnapshotDir() const;
 
   bool CheckOperationRequirements();
 
  private:
+  CHECKED_STATUS DoCheckOperationRequirements();
+
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
 };
 
