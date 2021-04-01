@@ -1177,6 +1177,7 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
     LOG_WITH_PREFIX(INFO) << "Reset our ht lease: " << HybridTime::FromMicros(existing_ht_lease);
     majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
                                                    std::memory_order_release);
+    cond_.notify_all();
   }
 }
 
@@ -1324,17 +1325,25 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     return result;
   }
 
-  // Slow path
-  UniqueLock l(update_lock_);
-  auto predicate = [this, &result, min_allowed] {
-    result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
-    return result >= min_allowed;
-  };
-  if (deadline == CoarseTimePoint::max()) {
-    cond_.wait(l, predicate);
-  } else if (!cond_.wait_until(l, deadline, predicate)) {
-    return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+  if (result != PhysicalComponentLease::NoneValue()) {
+    // Slow path
+    UniqueLock l(update_lock_);
+    auto predicate = [this, &result, min_allowed] {
+      result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+      return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
+    };
+    if (deadline == CoarseTimePoint::max()) {
+      cond_.wait(l, predicate);
+    } else if (!cond_.wait_until(l, deadline, predicate)) {
+      return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+    }
   }
+
+  if (result == PhysicalComponentLease::NoneValue()) {
+    static const Status kNotLeaderStatus = STATUS(IllegalState, "Not a leader");
+    return kNotLeaderStatus;
+  }
+
   return result;
 }
 

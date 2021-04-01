@@ -154,6 +154,8 @@ message GetTransactionStatusResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
 
+  // For backward compatibility we use multiple repeated fields instead of one field
+  // with custom message.
   repeated TransactionStatus status = 2;
   // For description of status_hybrid_time see comment in TransactionStatusResult.
   repeated fixed64 status_hybrid_time = 3;
@@ -161,6 +163,10 @@ message GetTransactionStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 4;
 
   repeated int64 num_replicated_batches = 5;
+
+  // Size could be less than status size. In this case appropriates values should be interpreted
+  // as invalid hybrid time.
+  repeated fixed64 coordinator_safe_time = 6;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
@@ -194,6 +200,8 @@ message AbortTransactionResponsePB {
   optional fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 coordinator_safe_time = 5;
 }
 
 message TakeTransactionRequestPB {

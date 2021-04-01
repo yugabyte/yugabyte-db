@@ -139,6 +139,8 @@ class TransactionStatusManager {
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;
 
+  virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
+
  private:
   friend class RequestScope;
 

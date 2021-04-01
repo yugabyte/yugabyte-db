@@ -70,6 +70,7 @@ class TransactionCoordinatorContext {
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
   virtual int64_t LeaderTerm() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+  virtual Result<HybridTime> LeaderSafeTime() const = 0;
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.

@@ -91,7 +91,7 @@ void AppendStrongWrite(KeyBytes* out) {
 // For locally committed transactions returns commit time if committed at specified time or
 // HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalid.
 HybridTime TransactionStatusCache::GetLocalCommitTime(const TransactionId& transaction_id) {
-  const HybridTime local_commit_time = txn_status_manager_->LocalCommitTime(transaction_id);
+  auto local_commit_time = txn_context_opt_->txn_status_manager.LocalCommitTime(transaction_id);
   return local_commit_time.is_valid()
       ? local_commit_time <= read_time_.global_limit ? local_commit_time : HybridTime::kMin
       : local_commit_time;
@@ -134,7 +134,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     auto callback = [txn_status_promise](Result<TransactionStatusResult> result) {
       txn_status_promise->set_value(std::move(result));
     };
-    txn_status_manager_->RequestStatusAt(
+    txn_context_opt_->txn_status_manager.RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
               &kRequestReason,
               TransactionLoadFlags{TransactionLoadFlag::kCleanup},
@@ -181,6 +181,14 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
   // GetLocalCommitTime, in this case coordinator does not know transaction and will respond
   // with ABORTED status. So we recheck whether it was committed locally.
   if (txn_status.status == TransactionStatus::ABORTED) {
+    if (txn_status.status_time && txn_status.status_time != HybridTime::kMax) {
+      // It is possible that this node not yet received APPLY, so it is possible that
+      // we would not have local commit time even for committed transaction.
+      // Waiting for safe time to be sure that we APPLY was processed if present.
+      // See https://github.com/YugaByte/yugabyte-db/issues/7729 for details.
+      RETURN_NOT_OK(txn_context_opt_->txn_status_manager.WaitForSafeTime(
+          txn_status.status_time, deadline_));
+    }
     local_commit_time = GetLocalCommitTime(transaction_id);
     return local_commit_time.is_valid() ? local_commit_time : HybridTime::kMin;
   } else {
@@ -325,8 +333,7 @@ IntentAwareIterator::IntentAwareIterator(
           read_time_.local_limit > read_time_.read ? Slice(encoded_read_time_local_limit_)
                                                    : Slice(encoded_read_time_read_)),
       txn_op_context_(txn_op_context),
-      transaction_status_cache_(
-          txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time, deadline) {
+      transaction_status_cache_(txn_op_context_, read_time, deadline) {
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
           << ", txn_op_context: " << txn_op_context_;
 

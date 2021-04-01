@@ -942,6 +942,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
           << ", context: " << context.ToString();
+  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
+      << __func__ << " missing propagated hybrid time for "
+      << TransactionStatus_Name(req->state().status());
   UpdateClock(*req, server_->Clock());
 
   LeaderTabletPeer tablet;
@@ -1056,20 +1059,31 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   tablet.peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
       tablet.leader_term,
-      [resp, context_ptr, clock](Result<TransactionStatusResult> result) {
+      [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
+        Status status;
         if (result.ok()) {
-          resp->set_status(result->status);
-          if (result->status_time.is_valid()) {
-            resp->set_status_hybrid_time(result->status_time.ToUint64());
+          auto leader_safe_time = peer->LeaderSafeTime();
+          if (leader_safe_time.ok()) {
+            resp->set_status(result->status);
+            if (result->status_time.is_valid()) {
+              resp->set_status_hybrid_time(result->status_time.ToUint64());
+            }
+            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitTime
+            // for details.
+            resp->set_coordinator_safe_time(leader_safe_time->ToUint64());
+            context_ptr->RespondSuccess();
+            return;
           }
-          context_ptr->RespondSuccess();
+
+          status = leader_safe_time.status();
         } else {
-          SetupErrorAndRespond(resp->mutable_error(),
-                               result.status(),
-                               TabletServerErrorPB::UNKNOWN_ERROR,
-                               context_ptr.get());
+          status = result.status();
         }
+        SetupErrorAndRespond(resp->mutable_error(),
+                             status,
+                             TabletServerErrorPB::UNKNOWN_ERROR,
+                             context_ptr.get());
       });
 }
 

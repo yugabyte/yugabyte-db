@@ -231,13 +231,17 @@ void RunningTransaction::StatusReceived(
 }
 
 bool RunningTransaction::UpdateStatus(
-    TransactionStatus transaction_status, HybridTime time_of_status) {
+    TransactionStatus transaction_status, HybridTime time_of_status,
+    HybridTime coordinator_safe_time) {
   // Check for local_commit_time_ is not required for correctness, but useful for optimization.
   // So we could avoid unnecessary actions.
   if (local_commit_time_) {
     return false;
   }
 
+  if (transaction_status == TransactionStatus::ABORTED && coordinator_safe_time) {
+    time_of_status = coordinator_safe_time;
+  }
   last_known_status_hybrid_time_ = time_of_status;
 
   if (transaction_status == last_known_status_) {
@@ -281,20 +285,27 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     if (response.status_hybrid_time().size() == 1) {
       time_of_status = HybridTime(response.status_hybrid_time()[0]);
     } else {
-      LOG(DFATAL) << "Wrong number of status hybrid time entries, exactly one entry expected: "
-                  << response.ShortDebugString();
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status hybrid time entries, exactly one entry expected: "
+          << response.ShortDebugString();
       time_of_status = HybridTime::kMin;
     }
 
     if (response.status().size() == 1) {
       transaction_status = response.status(0);
     } else {
-      LOG(DFATAL) << "Wrong number of status entries, exactly one entry expected: "
-                  << response.ShortDebugString();
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status entries, exactly one entry expected: "
+          << response.ShortDebugString();
       transaction_status = TransactionStatus::PENDING;
     }
 
-    if (UpdateStatus(transaction_status, time_of_status)) {
+    LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
+        << "Wrong number of coordinator safe time entries, at most one expected: "
+        << response.ShortDebugString();
+    auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
+        ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
+    if (UpdateStatus(transaction_status, time_of_status, coordinator_safe_time)) {
       context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
     }
 
@@ -398,12 +409,9 @@ void RunningTransaction::AbortReceived(const Status& status,
     // kMax status_time means that this status is not yet replicated and could be rejected.
     // So we could use it as reply to Abort, but cannot store it as transaction status.
     if (result.ok() && result->status_time != HybridTime::kMax) {
-      last_known_status_hybrid_time_ = result->status_time;
-      if (last_known_status_ != result->status) {
-        last_known_status_ = result->status;
-        if (result->status == TransactionStatus::ABORTED) {
-          context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
-        }
+      auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
+      if (UpdateStatus(result->status, result->status_time, coordinator_safe_time)) {
+        context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
       }
     }
   }

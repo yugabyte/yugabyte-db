@@ -43,10 +43,10 @@ YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
 // Thread safety is not required, because IntentAwareIterator is used in a single thread only.
 class TransactionStatusCache {
  public:
-  TransactionStatusCache(TransactionStatusManager* txn_status_manager,
+  TransactionStatusCache(const TransactionOperationContextOpt& txn_context_opt,
                          const ReadHybridTime& read_time,
                          CoarseTimePoint deadline)
-      : txn_status_manager_(txn_status_manager), read_time_(read_time), deadline_(deadline) {}
+      : txn_context_opt_(txn_context_opt), read_time_(read_time), deadline_(deadline) {}
 
   // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
   // otherwise.
@@ -56,7 +56,7 @@ class TransactionStatusCache {
   HybridTime GetLocalCommitTime(const TransactionId& transaction_id);
   Result<HybridTime> DoGetCommitTime(const TransactionId& transaction_id);
 
-  TransactionStatusManager* txn_status_manager_;
+  const TransactionOperationContextOpt& txn_context_opt_;
   ReadHybridTime read_time_;
   CoarseTimePoint deadline_;
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
