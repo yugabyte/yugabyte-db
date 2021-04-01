@@ -156,7 +156,7 @@ networkAnnotation:
 
 ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
 
-## Appendix VMware Tanzu Application Service
+## Appendix Using VMware Tanzu Application Service
 
 VMware Tanzu Application Service is no longer actively supported and the following information is considered legacy.
 
