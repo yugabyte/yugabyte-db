@@ -20,7 +20,6 @@ analyze:
       options:
         cmd: |
           set -euo pipefail -x
-          cd java
           mvn --batch-mode dependency:tree
     - name: Yugabyte Platform
       type: mvn
@@ -29,7 +28,6 @@ analyze:
       options:
         cmd: |
           set -euo pipefail -x
-          cd managed
           mvn --batch-mode dependency:tree -f "$(
             USE_MAVEN_LOCAL=true sbt -Dsbt.log.noformat=true make-pom | perl -n -e '/^\[info\] Wrote (.*[.]pom)$/ && print $1'
           )"
