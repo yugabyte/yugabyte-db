@@ -1,5 +1,5 @@
 ---
-title: Enable High Availability features
+title: Enable High Availability (BETA) features
 headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable Yugabyte Platform's high-availability features
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte’s distributed architecture enables your database clusters (called universes) to have extremely high availability. And as the central source of database orchestration, monitoring, alerting, and more, Yugabyte Platform brings its own distributed architecture to the table in the form of the High Availability feature. 
+Yugabyte’s distributed architecture enables your database clusters (called universes) to have extremely high availability. And as the central source of database orchestration, monitoring, alerting, and more, Yugabyte Platform brings its own distributed architecture to the table in the form of the High Availability feature (beta).
 
 Platform's high availability feature is an active-standby model for multiple platforms in a cluster with asynchronous replication. Your platform data is replicated across multiple VMs, ensuring that you can recover smoothly and quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
@@ -52,7 +52,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     ![Active instance type](/images/yp/high-availability/instance-type-active.png)
 
-1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
+1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix, and port if you're not using the default of 80 or 443).
 
     <br/>
 
@@ -68,7 +68,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     <br/>
 
-    In most cases, you don't need to replicate very often. Yugabyte recommends... **DANIEL, WHAT IS THE REC HERE?**
+    In most cases, you don't need to replicate very often. A replication interval of 5-10 minutes is generally . (For testing purposes, a 1-minute interval is more convenient; set to longer when you're done testing.)
 
     <br/>
 
@@ -86,11 +86,7 @@ When you promote a standby platform to active, Yugabyte Platform restores your s
 
     ![Instance list](/images/yp/high-availability/instance-configuration-active.png)
 
-1. Click "Add Instance" for each standby platform you would like to add to the HA cluster, and enter the standby platform’s IP address or hostname (including the HTTP/HTTPS protocol prefix).
-
-    <br/>
-
-    ![Add an instance](/images/yp/high-availability/add-standby-instance.png)
+Your active instance is now configured. Next, continue to [set up one or more standby platforms](#set-up-standby-platforms).
 
 ### Set up Standby Platforms
 
@@ -114,7 +110,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     ![Standby instance type](/images/yp/high-availability/instance-type-standby.png)
 
-1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix).
+1. Enter this platform’s IP address or hostname (including the HTTP or HTTPS protocol prefix, and port if you're not using the default of 80 or 443).
 
     <br/>
 
@@ -126,7 +122,7 @@ Once you've set up the active platform, you can set up one or more standby platf
 
     ![Shared key field](/images/yp/high-availability/shared-key-field.png)
 
-1. On the active platform, click Add Instance, enter the new standby's IP address or hostname (including the HTTP or HTTPS protocol prefix), and click Continue.
+1. On the active platform, click Add Instance, enter the new standby's IP address or hostname (including the HTTP or HTTPS protocol prefix, and port if you're not using the default of 80 or 443), and click Continue.
 
     <br/>
 
@@ -143,6 +139,8 @@ Once you've set up the active platform, you can set up one or more standby platf
     <br/>
 
     ![Tabs are greyed out](/images/yp/high-availability/standby-tabs-unavailable.png)
+
+Your standby instances are now set up. The next section details how to [promote a standby platform instance to active](#promote-a-standby-platform-to-active), and the final section explains how to [delete a standby instance](#remove-a-standby-platform).
 
 ### Promote a Standby Platform to Active
 
@@ -181,3 +179,30 @@ To remove a standby platform from a high-availability cluster, you remove it fro
     ![Instance list](/images/yp/high-availability/instance-configuration.png)
 
 The standby platform is now a standalone instance again.
+
+{{< tip title="Reset the Platform state" >}}
+
+After you've returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. Yugabyte strongly recommends wiping out the state information before using it in standalone mode. To do this:
+
+1. Start a YSQL shell:
+
+    ```sh
+    $ bin/ysqlsh
+    ```
+
+1. Make sure you're connected to the `yugabyte` database:
+
+    ```sql
+    \c yugabyte;
+    ```
+
+1. Drop the `yugaware` database, and re-create it:
+
+    ```sql
+    yugabyte=# DROP DATABASE IF EXISTS yugaware;
+    yugabyte=# CREATE DATABASE yugaware;
+    ```
+
+The high-availability feature is in active development, and this requirement will be removed in a future version.
+
+{{</ tip >}}
