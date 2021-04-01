@@ -9,16 +9,18 @@ import {
   fetchCustomerConfigs,
   fetchCustomerConfigsResponse,
   deleteCustomerConfig,
-  deleteCustomerConfigResponse
+  deleteCustomerConfigResponse,
+  editCustomerConfig
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
-const mapStateToProps = (state) => {
+const mapStateToProps = (state) => {  
   return {
     addConfig: state.customer.addConfig,
     customerConfigs: state.customer.configs,
     visibleModal: state.modal.visibleModal,
-    deleteConfig: state.customer.deleteConfig
+    deleteConfig: state.customer.deleteConfig,
+    initialValues: state.customer.editConfig
   };
 };
 
@@ -28,6 +30,10 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
         return dispatch(addCustomerConfigResponse(response.payload));
       });
+    },
+
+    editBackupConfig: (initialValues) => {
+      return dispatch(editCustomerConfig(initialValues));
     },
 
     deleteCustomerConfig: (configUUID) => {
@@ -53,7 +59,8 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 const storageConfigForm = reduxForm({
-  form: 'storageConfigForm'
+  form: 'storageConfigForm',
+  enableReinitialize: true
 });
 
 export default connect(

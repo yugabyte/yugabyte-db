@@ -6,7 +6,7 @@ import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field, SubmissionError } from 'redux-form';
+import { Field, SubmissionError, change } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -18,8 +18,10 @@ import azureLogo from './images/azure_logo.svg';
 import {
   isNonEmptyObject,
   isEmptyObject,
-  isDefinedNotNull
+  isDefinedNotNull,
+  isNonEmptyArray
 } from '../../../utils/ObjectUtils';
+import { Formik } from 'formik';
 
 const storageConfigTypes = {
   NFS: {
@@ -58,7 +60,7 @@ const storageConfigTypes = {
       {
         id: 'AZURE_STORAGE_SAS_TOKEN',
         label: 'SAS Token',
-        placeholder: 'SAS Token'
+        placeHolder: 'SAS Token'
       }
     ]
   }
@@ -183,12 +185,69 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  /**
+   * This method will help to disable the backup storage
+   * location field.
+   * 
+   * @param {string} fieldKey Input Field Id.
+   * @returns Boolean.
+   */
+  disableInputFields = (fieldKey) => {
+    return fieldKey === "BACKUP_LOCATION" ? true : false
+  };
+
+  /**
+   * This method will help us to setup the initial value props
+   * to the redux form.
+   * 
+   * @param {string} activeTab Current Tab.
+   * @param {Array<object>} configs Backup config Data.
+   */
+  editBackupConfig = (activeTab, configs) => {
+    const data = !isNonEmptyArray(configs) &&
+      configs.data.filter((config) => config.name === activeTab.toUpperCase());
+    const initialVal = data.map((obj) => {
+      switch (activeTab) {
+        case "nfs":
+          return {
+            type: "Update",
+            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION
+          };
+
+        case "gcs":
+          return {
+            type: "Update",
+            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
+            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
+          };
+
+        case "az":
+          return {
+            type: "Update",
+            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
+            AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
+          };
+
+        default:
+          return {
+            type: "Update",
+            IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID,
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY
+          }
+      }
+    });
+
+    this.props.editBackupConfig(initialVal[0]);
+  };
+
   render() {
     const {
       handleSubmit,
       submitting,
       addConfig: { loading },
-      customerConfigs
+      customerConfigs,
+      initialValues
     } = this.props;
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
@@ -203,7 +262,8 @@ class StorageConfiguration extends Component {
           eventKey={'s3'}
           title={getTabTitle('S3')}
           key={'s3-tab'}
-          unmountOnExit={true}>
+          unmountOnExit={true}
+          onSelect={this.editBackupConfig(this.props.activeTab, customerConfigs)}>
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
@@ -239,8 +299,8 @@ class StorageConfiguration extends Component {
                   <Field
                     name={field.id}
                     placeHolder={field.placeHolder}
-                    input={{ value: value, disabled: isDefinedNotNull(value) }}
                     component={YBTextInputWithLabel}
+                    isReadOnly={this.disableInputFields(field.id)}
                   />
                 </Col>
               </Row>
@@ -313,26 +373,36 @@ class StorageConfiguration extends Component {
 
       return (
         <div className="provider-config-container">
-          <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
-            <YBTabsPanel
-              defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
-              activeTab={activeTab}
-              id="storage-config-tab-panel"
-              className="config-tabs"
-              routePrefix="/config/backup/"
-            >
-              {configs}
-            </YBTabsPanel>
+          <Formik initialValues={initialValues}>
+            <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
+              <YBTabsPanel
+                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+                activeTab={activeTab}
+                id="storage-config-tab-panel"
+                className="config-tabs"
+                routePrefix="/config/backup/"
+              >
+                {configs}
+              </YBTabsPanel>
 
-            <div className="form-action-button-container">
-              <YBButton
-                btnText={'Save'}
-                btnClass={'btn btn-orange'}
-                disabled={submitting || loading || isNonEmptyObject(config)}
-                btnType="submit"
-              />
-            </div>
-          </form>
+              <div className="form-action-button-container">
+                {!isNonEmptyObject(config) ?
+                  <YBButton
+                    btnText={'Save'}
+                    btnClass={'btn btn-orange'}
+                    disabled={submitting || loading}
+                    btnType="submit"
+                  /> :
+                  <YBButton
+                    btnText='Update'
+                    btnClass={'btn btn-orange'}
+                    disabled={submitting || loading}
+                    btnType="submit"
+                  />
+                }
+              </div>
+            </form>
+          </Formik>
         </div>
       );
     }
