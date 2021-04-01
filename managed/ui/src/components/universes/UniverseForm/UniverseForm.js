@@ -393,7 +393,7 @@ class UniverseForm extends Component {
             return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
           })
           .map((masterFlag) => {
-            return { name: masterFlag.name, value: masterFlag.value };
+            return { name: masterFlag.name, value: masterFlag.value.trim() };
           });
         clusterIntent.tserverGFlags = formValues.primary.tserverGFlags
           .filter((tserverFlag) => {
