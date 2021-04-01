@@ -4,12 +4,14 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
@@ -18,6 +20,8 @@ import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
 
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
@@ -81,6 +85,14 @@ public class BackupsControllerTest extends FakeDBApplication {
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid +
       "/universes/" + universeUUID + "/backups/restore";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result deleteBackup(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "DELETE";
+    String url = "/api/customers/" + defaultCustomer.uuid +
+      "/backups";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
@@ -240,5 +252,28 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
     assertEquals(413, result.status());
     verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testDeleteBackup() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ArrayNode arrayNode = resultNode.putArray("backupUUID");
+    for (String item : backupUUIDList) {
+      arrayNode.add(item);
+    }
+    Result result = deleteBackup(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 }
