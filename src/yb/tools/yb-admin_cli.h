@@ -37,6 +37,8 @@
 #include <vector>
 #include <string>
 
+#include <rapidjson/document.h>
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
@@ -64,14 +66,17 @@ class ClusterAdminCli {
   static const Status kInvalidArguments;
 
  protected:
-  typedef std::function<Status(const CLIArguments&)> CommandFn;
+  typedef std::function<Status(const CLIArguments&)> Action;
+  typedef std::function<Result<rapidjson::Document>(const CLIArguments&)> JsonAction;
+
   struct Command {
     std::string name_;
     std::string usage_arguments_;
-    CommandFn fn_;
+    Action action_;
   };
 
-  void Register(std::string&& cmd_name, std::string&& cmd_args, CommandFn&& cmd_fn);
+  void Register(std::string&& cmd_name, std::string&& cmd_args, Action&& action);
+  void RegisterJson(std::string&& cmd_name, std::string&& cmd_args, JsonAction&& action);
   void SetUsage(const std::string& prog_name);
 
   virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);

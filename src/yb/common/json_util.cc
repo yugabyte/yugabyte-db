@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <rapidjson/prettywriter.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
@@ -175,6 +176,13 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
 std::string WriteRapidJsonToString(const rapidjson::Document& document) {
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  document.Accept(writer);
+  return std::string(buffer.GetString());
+}
+
+std::string PrettyWriteRapidJsonToString(const rapidjson::Document& document) {
+  rapidjson::StringBuffer buffer;
+  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
   document.Accept(writer);
   return std::string(buffer.GetString());
 }

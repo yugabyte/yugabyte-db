@@ -45,6 +45,7 @@ SnapshotState::SnapshotState(
     const tserver::TabletSnapshotOpRequestPB& request)
     : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
       id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
+      previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
@@ -56,6 +57,7 @@ SnapshotState::SnapshotState(
     const SysSnapshotEntryPB& entry)
     : StateWithTablets(context, entry.state()),
       id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
+      previous_snapshot_hybrid_time_(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
       version_(entry.version()) {
   InitTablets(entry.tablet_snapshots());
@@ -64,9 +66,10 @@ SnapshotState::SnapshotState(
 
 std::string SnapshotState::ToString() const {
   return Format(
-      "{ id: $0 snapshot_hybrid_time: $1 schedule_id: $2 version: $3 initial_state: $4 "
-          "tablets: $5 }",
-      id_, snapshot_hybrid_time_, schedule_id_, version_, InitialStateName(), tablets());
+      "{ id: $0 snapshot_hybrid_time: $1 schedule_id: $2 previous_snapshot_hybrid_time: $3 "
+          "version: $4 initial_state: $5 tablets: $6 }",
+      id_, snapshot_hybrid_time_, schedule_id_, previous_snapshot_hybrid_time_, version_,
+      InitialStateName(), tablets());
 }
 
 Status SnapshotState::ToPB(SnapshotInfoPB* out) {
@@ -77,6 +80,9 @@ Status SnapshotState::ToPB(SnapshotInfoPB* out) {
 Status SnapshotState::ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client) {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
+  if (previous_snapshot_hybrid_time_) {
+    out->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time_.ToUint64());
+  }
 
   TabletsToPB(out->mutable_tablet_snapshots());
 

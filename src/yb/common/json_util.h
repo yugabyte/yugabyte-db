@@ -35,6 +35,7 @@ inline CHECKED_STATUS ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
 
 std::string WriteRapidJsonToString(const rapidjson::Document& document);
 std::string WriteRapidJsonToString(const rapidjson::Value& value);
+std::string PrettyWriteRapidJsonToString(const rapidjson::Document& document);
 
 } // namespace common
 } // namespace yb
