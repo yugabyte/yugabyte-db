@@ -165,14 +165,41 @@ SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)$$) AS (a agtype);
 SELECT * FROM cypher('cypher_delete', $$MATCH (n) DELETE n CREATE (n)-[:e]->(:v) RETURN n$$) AS (a agtype);
 
 --Cleanup
-SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
 
 --Test 20 Undefined Reference:
 SELECT * FROM cypher('cypher_delete', $$MATCH (n) DELETE m RETURN n$$) AS (a agtype);
+
+--Test 21 Prepared Statements
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+
+PREPARE d AS SELECT * FROM cypher('cypher_delete', $$MATCH (v) DELETE (v) RETURN v$$) AS (a agtype);
+EXECUTE d;
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+EXECUTE d;
+
+--Test 22 pl/pgsql Functions
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+
+CREATE FUNCTION delete_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_delete', $$MATCH (v) DELETE (v) RETURN v$$) AS (a agtype);
+END
+$BODY$;
+
+SELECT delete_test();
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+SELECT delete_test();
 --
 -- Clean up
 --
-
+DROP FUNCTION delete_test;
 SELECT drop_graph('cypher_delete', true);
 
 --

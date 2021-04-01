@@ -129,15 +129,14 @@ static void handle_cypher_delete_clause(PlannerInfo *root, RelOptInfo *rel,
 {
     TargetEntry *te;
     FuncExpr *fe;
-    Const *c;
     List *custom_private;
     CustomPath *cp;
 
     // Add the pattern to the CustomPath
     te = (TargetEntry *)llast(rte->subquery->targetList);
     fe = (FuncExpr *)te->expr;
-    c = linitial(fe->args);
-    custom_private = list_make1(DatumGetPointer(c->constvalue));
+    // pass the const that holds the data structure to the path.
+    custom_private = fe->args;
 
     cp = create_cypher_delete_path(root, rel, custom_private);
 
@@ -158,15 +157,14 @@ static void handle_cypher_create_clause(PlannerInfo *root, RelOptInfo *rel,
 {
     TargetEntry *te;
     FuncExpr *fe;
-    Const *c;
     List *custom_private;
     CustomPath *cp;
 
     // Add the pattern to the CustomPath
     te = (TargetEntry *)llast(rte->subquery->targetList);
     fe = (FuncExpr *)te->expr;
-    c = linitial(fe->args);
-    custom_private = list_make1(DatumGetPointer(c->constvalue));
+    // pass the const that holds the data structure to the path.
+    custom_private = fe->args;
 
     cp = create_cypher_create_path(root, rel, custom_private);
 
@@ -184,15 +182,14 @@ static void handle_cypher_set_clause(PlannerInfo *root, RelOptInfo *rel,
 {
     TargetEntry *te;
     FuncExpr *fe;
-    Const *c;
     List *custom_private;
     CustomPath *cp;
 
     // Add the pattern to the CustomPath
     te = (TargetEntry *)llast(rte->subquery->targetList);
     fe = (FuncExpr *)te->expr;
-    c = linitial(fe->args);
-    custom_private = list_make1(DatumGetPointer(c->constvalue));
+    // pass the const that holds the data structure to the path.
+    custom_private = fe->args;
 
     cp = create_cypher_set_path(root, rel, custom_private);
 

@@ -316,10 +316,18 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
     cypher_create_custom_scan_state *cypher_css =
         palloc0(sizeof(cypher_create_custom_scan_state));
     cypher_create_target_nodes *target_nodes;
+    char *serialized_data;
+    Const *c;
 
     cypher_css->cs = cscan;
 
-    target_nodes = linitial(cscan->custom_private);
+    // get the serialized data structure from the Const and deserialize it.
+    c = linitial(cscan->custom_private);
+    serialized_data = (char *)c->constvalue;
+    target_nodes = stringToNode(serialized_data);
+
+    Assert(is_ag_node(target_nodes, cypher_create_target_nodes));
+
     cypher_css->path_values = NIL;
     cypher_css->pattern = target_nodes->paths;
     cypher_css->tuple_info = NIL;

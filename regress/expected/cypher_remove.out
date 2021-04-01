@@ -241,6 +241,128 @@ SELECT * FROM cypher('cypher_remove', $$MATCH (n) RETURN n$$) AS (a agtype);
  {"id": 3377699720527873, "label": "test_7", "properties": {}}::vertex
 (15 rows)
 
+-- prepared statements
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+PREPARE p_1 AS SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i RETURN n $$) AS (a agtype);
+EXECUTE p_1;
+                                         a                                          
+------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "test_1", "properties": {"a": 0, "j": 5}}::vertex
+ {"id": 1125899906842625, "label": "test_2", "properties": {}}::vertex
+ {"id": 1125899906842626, "label": "test_2", "properties": {"a": 0}}::vertex
+ {"id": 1125899906842627, "label": "test_2", "properties": {}}::vertex
+ {"id": 1407374883553282, "label": "test_3", "properties": {}}::vertex
+ {"id": 1407374883553281, "label": "test_3", "properties": {}}::vertex
+ {"id": 1970324836974593, "label": "test_4", "properties": {}}::vertex
+ {"id": 1970324836974594, "label": "test_4", "properties": {}}::vertex
+ {"id": 2533274790395905, "label": "test_5", "properties": {"k": 3}}::vertex
+ {"id": 2814749767106561, "label": "test_6", "properties": {"j": 5}}::vertex
+ {"id": 3377699720527873, "label": "test_7", "properties": {}}::vertex
+(16 rows)
+
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+EXECUTE p_1;
+                                         a                                          
+------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "test_1", "properties": {"a": 0, "j": 5}}::vertex
+ {"id": 1125899906842625, "label": "test_2", "properties": {}}::vertex
+ {"id": 1125899906842626, "label": "test_2", "properties": {"a": 0}}::vertex
+ {"id": 1125899906842627, "label": "test_2", "properties": {}}::vertex
+ {"id": 1407374883553282, "label": "test_3", "properties": {}}::vertex
+ {"id": 1407374883553281, "label": "test_3", "properties": {}}::vertex
+ {"id": 1970324836974593, "label": "test_4", "properties": {}}::vertex
+ {"id": 1970324836974594, "label": "test_4", "properties": {}}::vertex
+ {"id": 2533274790395905, "label": "test_5", "properties": {"k": 3}}::vertex
+ {"id": 2814749767106561, "label": "test_6", "properties": {"j": 5}}::vertex
+ {"id": 3377699720527873, "label": "test_7", "properties": {}}::vertex
+(17 rows)
+
+-- pl/pgsql
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+CREATE FUNCTION remove_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i RETURN n$$) AS (a agtype);
+END
+$BODY$;
+SELECT remove_test();
+                                    remove_test                                     
+------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "test_1", "properties": {"a": 0, "j": 5}}::vertex
+ {"id": 1125899906842625, "label": "test_2", "properties": {}}::vertex
+ {"id": 1125899906842626, "label": "test_2", "properties": {"a": 0}}::vertex
+ {"id": 1125899906842627, "label": "test_2", "properties": {}}::vertex
+ {"id": 1407374883553282, "label": "test_3", "properties": {}}::vertex
+ {"id": 1407374883553281, "label": "test_3", "properties": {}}::vertex
+ {"id": 1970324836974593, "label": "test_4", "properties": {}}::vertex
+ {"id": 1970324836974594, "label": "test_4", "properties": {}}::vertex
+ {"id": 2533274790395905, "label": "test_5", "properties": {"k": 3}}::vertex
+ {"id": 2814749767106561, "label": "test_6", "properties": {"j": 5}}::vertex
+ {"id": 3377699720527873, "label": "test_7", "properties": {}}::vertex
+(18 rows)
+
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT remove_test();
+                                    remove_test                                     
+------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "test_1", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "test_1", "properties": {"a": 0, "j": 5}}::vertex
+ {"id": 1125899906842625, "label": "test_2", "properties": {}}::vertex
+ {"id": 1125899906842626, "label": "test_2", "properties": {"a": 0}}::vertex
+ {"id": 1125899906842627, "label": "test_2", "properties": {}}::vertex
+ {"id": 1407374883553282, "label": "test_3", "properties": {}}::vertex
+ {"id": 1407374883553281, "label": "test_3", "properties": {}}::vertex
+ {"id": 1970324836974593, "label": "test_4", "properties": {}}::vertex
+ {"id": 1970324836974594, "label": "test_4", "properties": {}}::vertex
+ {"id": 2533274790395905, "label": "test_5", "properties": {"k": 3}}::vertex
+ {"id": 2814749767106561, "label": "test_6", "properties": {"j": 5}}::vertex
+ {"id": 3377699720527873, "label": "test_7", "properties": {}}::vertex
+(19 rows)
+
 --Errors
 SELECT * FROM cypher('cypher_remove', $$REMOVE n.i$$) AS (a agtype);
 ERROR:  REMOVE cannot be the first clause in a Cypher query
@@ -261,6 +383,7 @@ LINE 1: SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i...
 --
 -- Clean up
 --
+DROP FUNCTION remove_test;
 SELECT drop_graph('cypher_remove', true);
 NOTICE:  drop cascades to 12 other objects
 DETAIL:  drop cascades to table cypher_remove._ag_label_vertex

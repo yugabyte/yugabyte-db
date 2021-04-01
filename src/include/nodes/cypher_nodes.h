@@ -204,6 +204,7 @@ typedef struct cypher_string_match
 
 typedef struct cypher_create_target_nodes
 {
+    ExtensibleNode extensible;
     List *paths;
     uint32 flags;
     Oid graph_oid;
@@ -211,6 +212,7 @@ typedef struct cypher_create_target_nodes
 
 typedef struct cypher_create_path
 {
+    ExtensibleNode extensible;
     List *target_nodes;
     AttrNumber tuple_position;
 } cypher_create_path;
@@ -225,22 +227,23 @@ typedef struct cypher_create_path
 #define CYPHER_CLAUSE_HAS_PREVIOUS_CLAUSE(flags) \
     (flags & CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE)
 
- typedef struct cypher_target_node
- {
-     char type;
-     uint32 flags;
-     cypher_rel_dir dir;
-     int id_var_no;
-     int prop_var_no;
-     List *targetList;
-     TargetEntry *te;
-     List *expr_states;
-     ResultRelInfo *resultRelInfo;
-     TupleTableSlot *elemTupleSlot;
-     Oid relid;
-     char *label_name;
-     char *variable_name;
-     AttrNumber tuple_position;
+typedef struct cypher_target_node
+{
+    ExtensibleNode extensible;
+    char type;
+    uint32 flags;
+    cypher_rel_dir dir;
+    int id_var_no;
+    int prop_var_no;
+    List *targetList;
+    TargetEntry *te;
+    List *expr_states;
+    ResultRelInfo *resultRelInfo;
+    TupleTableSlot *elemTupleSlot;
+    Oid relid;
+    char *label_name;
+    char *variable_name;
+    AttrNumber tuple_position;
 } cypher_target_node;
 
 #define CYPHER_TARGET_NODE_FLAG_NONE 0x0000
@@ -280,6 +283,7 @@ typedef struct cypher_create_path
 /* Data Structures that contain information about a vertices and edges the need to be updated */
 typedef struct cypher_update_information
 {
+    ExtensibleNode extensible;
     List *set_items;
     int flags;
     AttrNumber tuple_position;
@@ -289,6 +293,7 @@ typedef struct cypher_update_information
 
 typedef struct cypher_update_item
 {
+    ExtensibleNode extensible;
     AttrNumber prop_position;
     AttrNumber entity_position;
     char *var_name;
@@ -299,6 +304,7 @@ typedef struct cypher_update_item
 
 typedef struct cypher_delete_information
 {
+    ExtensibleNode extensible;
     List *delete_items;
     int flags;
     char *graph_name;
@@ -308,6 +314,7 @@ typedef struct cypher_delete_information
 
 typedef struct cypher_delete_item
 {
+    ExtensibleNode extensible;
     Value *entity_position;
     char *var_name;
 } cypher_delete_item;
@@ -320,37 +327,5 @@ typedef struct cypher_typecast
     char *typecast;
     int location;
 } cypher_typecast;
-
-/* clauses */
-void out_cypher_return(StringInfo str, const ExtensibleNode *node);
-void out_cypher_with(StringInfo str, const ExtensibleNode *node);
-void out_cypher_match(StringInfo str, const ExtensibleNode *node);
-void out_cypher_create(StringInfo str, const ExtensibleNode *node);
-void out_cypher_set(StringInfo str, const ExtensibleNode *node);
-void out_cypher_set_item(StringInfo str, const ExtensibleNode *node);
-void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
-
-/* pattern */
-void out_cypher_path(StringInfo str, const ExtensibleNode *node);
-void out_cypher_node(StringInfo str, const ExtensibleNode *node);
-void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
-
-/* expression */
-void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
-void out_cypher_param(StringInfo str, const ExtensibleNode *node);
-void out_cypher_map(StringInfo str, const ExtensibleNode *node);
-void out_cypher_list(StringInfo str, const ExtensibleNode *node);
-
-/* string match */
-void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
-
-/* typecast */
-void out_cypher_typecast(StringInfo str, const ExtensibleNode *node);
-
-/* integer constant */
-void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
-
-/* sub pattern */
-void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node);
 
 #endif

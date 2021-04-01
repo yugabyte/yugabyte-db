@@ -473,10 +473,18 @@ Node *create_cypher_set_plan_state(CustomScan *cscan)
     cypher_set_custom_scan_state *cypher_css =
         palloc0(sizeof(cypher_set_custom_scan_state));
     cypher_update_information *set_list;
+    char *serialized_data;
+    Const *c;
 
     cypher_css->cs = cscan;
 
-    set_list = linitial(cscan->custom_private);
+    // get the serialized data structure from the Const and deserialize it.
+    c = linitial(cscan->custom_private);
+    serialized_data = (char *)c->constvalue;
+    set_list = stringToNode(serialized_data);
+
+    Assert(is_ag_node(set_list, cypher_update_information));
+
     cypher_css->set_list = set_list;
     cypher_css->flags = set_list->flags;
 

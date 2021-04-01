@@ -226,10 +226,18 @@ Node *create_cypher_delete_plan_state(CustomScan *cscan)
     cypher_delete_custom_scan_state *cypher_css =
         palloc0(sizeof(cypher_delete_custom_scan_state));
     cypher_delete_information *delete_data;
+    char *serialized_data;
+    Const *c;
 
     cypher_css->cs = cscan;
 
-    delete_data = linitial(cscan->custom_private);
+    // get the serialized data structure from the Const and deserialize it.
+    c = linitial(cscan->custom_private);
+    serialized_data = (char *)c->constvalue;
+    delete_data = stringToNode(serialized_data);
+
+    Assert(is_ag_node(delete_data, cypher_delete_information));
+
     cypher_css->delete_data = delete_data;
     cypher_css->flags = delete_data->flags;
 

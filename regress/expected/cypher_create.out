@@ -440,6 +440,55 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
  {"id": 1970324836974595, "label": "n_other_node", "properties": {}}::vertex
 (46 rows)
 
+-- prepared statements
+PREPARE p_1 AS SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: 'value'}) RETURN v$$) AS (a agtype);
+EXECUTE p_1;
+                                            a                                            
+-----------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "new_vertex", "properties": {"key": "value"}}::vertex
+(1 row)
+
+EXECUTE p_1;
+                                            a                                            
+-----------------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "new_vertex", "properties": {"key": "value"}}::vertex
+(1 row)
+
+PREPARE p_2 AS SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: $var_name}) RETURN v$$, $1) AS (a agtype);
+EXECUTE p_2('{"var_name": "Hello Prepared Statements"}');
+                                                      a                                                      
+-------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "new_vertex", "properties": {"key": "Hello Prepared Statements"}}::vertex
+(1 row)
+
+EXECUTE p_2('{"var_name": "Hello Prepared Statements 2"}');
+                                                       a                                                       
+---------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395908, "label": "new_vertex", "properties": {"key": "Hello Prepared Statements 2"}}::vertex
+(1 row)
+
+-- pl/pgsql
+CREATE FUNCTION create_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: 'value'}) RETURN v$$) AS (a agtype);
+END
+$BODY$;
+SELECT create_test();
+                                       create_test                                       
+-----------------------------------------------------------------------------------------
+ {"id": 2533274790395909, "label": "new_vertex", "properties": {"key": "value"}}::vertex
+(1 row)
+
+SELECT create_test();
+                                       create_test                                       
+-----------------------------------------------------------------------------------------
+ {"id": 2533274790395910, "label": "new_vertex", "properties": {"key": "value"}}::vertex
+(1 row)
+
 --
 -- Errors
 --
@@ -502,9 +551,12 @@ ERROR:  column definition list for CREATE clause must contain a single agtype at
 LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
--- intial and last vertex point to the middle vertex
+--
+-- Clean up
+--
+DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 8 other objects
+NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -513,9 +565,13 @@ drop cascades to table cypher_create.n_var
 drop cascades to table cypher_create.e_var
 drop cascades to table cypher_create.n_other_node
 drop cascades to table cypher_create.b_var
+drop cascades to table cypher_create.new_vertex
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
+--
+-- End
+--

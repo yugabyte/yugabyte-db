@@ -56,7 +56,17 @@ typedef enum ag_node_tag
     // integer constant
     cypher_integer_const_t,
     // sub patterns
-    cypher_sub_pattern_t
+    cypher_sub_pattern_t,
+    // create data structures
+    cypher_create_target_nodes_t,
+    cypher_create_path_t,
+    cypher_target_node_t,
+    // set/remove data structures
+    cypher_update_information_t,
+    cypher_update_item_t,
+    // delete data structures
+    cypher_delete_information_t,
+    cypher_delete_item_t
 } ag_node_tag;
 
 void register_ag_nodes(void);

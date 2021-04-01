@@ -185,6 +185,29 @@ SELECT name, kind FROM ag_label ORDER BY name;
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
 
+-- prepared statements
+PREPARE p_1 AS SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: 'value'}) RETURN v$$) AS (a agtype);
+EXECUTE p_1;
+EXECUTE p_1;
+
+PREPARE p_2 AS SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: $var_name}) RETURN v$$, $1) AS (a agtype);
+EXECUTE p_2('{"var_name": "Hello Prepared Statements"}');
+EXECUTE p_2('{"var_name": "Hello Prepared Statements 2"}');
+
+-- pl/pgsql
+CREATE FUNCTION create_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_create', $$CREATE (v:new_vertex {key: 'value'}) RETURN v$$) AS (a agtype);
+END
+$BODY$;
+
+SELECT create_test();
+SELECT create_test();
+
 --
 -- Errors
 --
@@ -230,5 +253,12 @@ $$) as t(b agtype);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype, b int);
 
--- intial and last vertex point to the middle vertex
+--
+-- Clean up
+--
+DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
+
+--
+-- End
+--

@@ -99,7 +99,30 @@ SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
 SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i RETURN n$$) AS (a agtype);
 SELECT * FROM cypher('cypher_remove', $$MATCH (n) RETURN n$$) AS (a agtype);
 
+-- prepared statements
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+PREPARE p_1 AS SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i RETURN n $$) AS (a agtype);
+EXECUTE p_1;
 
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+EXECUTE p_1;
+-- pl/pgsql
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+
+CREATE FUNCTION remove_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i RETURN n$$) AS (a agtype);
+END
+$BODY$;
+
+SELECT remove_test();
+
+SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
+SELECT remove_test();
 --Errors
 SELECT * FROM cypher('cypher_remove', $$REMOVE n.i$$) AS (a agtype);
 
@@ -111,6 +134,7 @@ SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i = 3, n.j = 5 $$) AS
 --
 -- Clean up
 --
+DROP FUNCTION remove_test;
 SELECT drop_graph('cypher_remove', true);
 
 --

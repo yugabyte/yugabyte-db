@@ -324,10 +324,11 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
     Expr *func_expr;
     RangeTblEntry *rte;
     int rtindex;
+    StringInfo str = makeStringInfo();
 
     cypher_delete_information *delete_data;
 
-    delete_data = palloc0(sizeof(cypher_delete_information));
+    delete_data = make_ag_node(cypher_delete_information);
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -358,8 +359,20 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
     if (!clause->next)
         delete_data->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
 
-    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
-                              PointerGetDatum(delete_data), false, true);
+    /*
+     * Serialize the cypher_delete_information data structure. In certain
+     * cases (Prepared Statements and PL/pgsql), the MemoryContext that
+     * it is stored in will be destroyed. We need to get it into a format
+     * that Postgres' can copy between MemoryContexts. Just making it into
+     * an ExtensibleNode does not work, because there are certain parts of
+     * Postgres that cannot handle an ExtensibleNode in a function call.
+     * So we serialize the data structure and place it into a Const node
+     * that can handle these situations AND be copied correctly.
+     */
+    outNode(str, delete_data);
+
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, str->len,
+                              PointerGetDatum(str->data), false, false);
 
     func_expr = (Expr *)makeFuncExpr(func_set_oid, AGTYPEOID,
                                      list_make1(pattern_const), InvalidOid,
@@ -394,7 +407,7 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
         Value *val, *pos;
         int resno;
 
-        cypher_delete_item *item = palloc(sizeof(cypher_delete_item));
+        cypher_delete_item *item = make_ag_node(cypher_delete_item);
 
         if (!IsA(expr, ColumnRef))
             ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
@@ -439,6 +452,7 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
     Const *pattern_const;
     Expr *func_expr;
     char *clause_name;
+    StringInfo str = makeStringInfo();
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -490,8 +504,20 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
     if (!clause->next)
         set_items_target_list->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
 
-    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
-                              PointerGetDatum(set_items_target_list), false, true);
+    /*
+     * Serialize the cypher_update_information data structure. In certain
+     * cases (Prepared Statements and PL/pgsql), the MemoryContext that
+     * it is stored in will be destroyed. We need to get it into a format
+     * that Postgres' can copy between MemoryContexts. Just making it into
+     * an ExtensibleNode does not work, because there are certain parts of
+     * Postgres that cannot handle an ExtensibleNode in a function call.
+     * So we serialize the data structure and place it into a Const node
+     * that can handle these situations AND be copied correctly.
+     */
+    outNode(str, set_items_target_list);
+
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, str->len,
+                              PointerGetDatum(str->data), false, false);
 
     func_expr = (Expr *)makeFuncExpr(func_set_oid, AGTYPEOID,
                                      list_make1(pattern_const), InvalidOid,
@@ -513,7 +539,7 @@ cypher_update_information *transform_cypher_remove_item_list(
 {
     ParseState *pstate = (ParseState *)cpstate;
     ListCell *li;
-    cypher_update_information *info = palloc0(sizeof(cypher_update_information));
+    cypher_update_information *info = make_ag_node(cypher_update_information);
 
     info->set_items = NIL;
     info->flags = 0;
@@ -527,7 +553,7 @@ cypher_update_information *transform_cypher_remove_item_list(
         char *variable_name, *property_name;
         Value *property_node, *variable_node;
 
-        item = palloc0(sizeof(cypher_update_item));
+        item = make_ag_node(cypher_update_item);
 
         if (!is_ag_node(lfirst(li), cypher_set_item))
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -596,7 +622,7 @@ cypher_update_information *transform_cypher_set_item_list(
 {
     ParseState *pstate = (ParseState *)cpstate;
     ListCell *li;
-    cypher_update_information *info = palloc0(sizeof(cypher_update_information));
+    cypher_update_information *info = make_ag_node(cypher_update_information);
 
     info->set_items = NIL;
     info->flags = 0;
@@ -611,7 +637,7 @@ cypher_update_information *transform_cypher_set_item_list(
         char *variable_name, *property_name;
         Value *property_node, *variable_node;
 
-        item = palloc0(sizeof(cypher_update_item));
+        item = make_ag_node(cypher_update_item);
 
         if (!is_ag_node(lfirst(li), cypher_set_item))
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2390,8 +2416,9 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     Oid func_create_oid;
     Query *query;
     TargetEntry *tle;
+    StringInfo str = makeStringInfo();
 
-    target_nodes = palloc(sizeof(cypher_create_target_nodes));
+    target_nodes = make_ag_node(cypher_create_target_nodes);
     target_nodes->flags = CYPHER_CLAUSE_FLAG_NONE;
     target_nodes->graph_oid = cpstate->graph_oid;
 
@@ -2433,8 +2460,20 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
         target_nodes->flags |= CYPHER_CLAUSE_FLAG_TERMINAL;
     }
 
-    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, 1,
-                              PointerGetDatum(target_nodes), false, true);
+    /*
+     * Serialize the cypher_create_target_nodes data structure. In certain
+     * cases (Prepared Statements and PL/pgsql), the MemoryContext that
+     * it is stored in will be destroyed. We need to get it into a format
+     * that Postgres' can copy between MemoryContexts. Just making it into
+     * an ExtensibleNode does not work, because there are certain parts of
+     * Postgres that cannot handle an ExtensibleNode in a function call.
+     * So we serialize the data structure and place it into a Const node
+     * that can handle these situations AND be copied correctly.
+     */
+    outNode(str, target_nodes);
+
+    pattern_const = makeConst(INTERNALOID, -1, InvalidOid, str->len,
+                              PointerGetDatum(str->data), false, false);
 
     /*
      * Create the FuncExpr Node.
@@ -2483,7 +2522,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
     ParseState *pstate = (ParseState *)cpstate;
     ListCell *lc;
     List *transformed_path = NIL;
-    cypher_create_path *ccp = palloc(sizeof(cypher_create_path));
+    cypher_create_path *ccp = make_ag_node(cypher_create_path);
     bool in_path = path->var_name != NULL;
 
     foreach (lc, path->path)
@@ -2564,7 +2603,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
                              cypher_relationship *edge)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    cypher_target_node *rel = make_ag_node(cypher_target_node);
     List *targetList = NIL;
     Expr *id, *props;
     Relation label_relation;
@@ -2766,7 +2805,7 @@ static cypher_target_node *transform_create_cypher_existing_node(
     cypher_node *node)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    cypher_target_node *rel = make_ag_node(cypher_target_node);
     char *alias;
     int resno;
     RangeTblEntry *rte = find_rte(cpstate, PREV_CYPHER_CLAUSE_ALIAS);
@@ -2840,7 +2879,7 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
                                  List **target_list, cypher_node *node)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    cypher_target_node *rel = make_ag_node(cypher_target_node);
     Node *id;
     Relation label_relation;
     RangeVar *rv;

@@ -28,7 +28,9 @@ OBJS = src/backend/age.o \
        src/backend/executor/cypher_set.o \
        src/backend/executor/cypher_utils.o \
        src/backend/nodes/ag_nodes.o \
-       src/backend/nodes/outfuncs.o \
+       src/backend/nodes/cypher_copyfuncs.o \
+       src/backend/nodes/cypher_outfuncs.o \
+       src/backend/nodes/cypher_readfuncs.o \
        src/backend/optimizer/cypher_createplan.o \
        src/backend/optimizer/cypher_pathnode.o \
        src/backend/optimizer/cypher_paths.o \

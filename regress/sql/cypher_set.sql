@@ -96,6 +96,31 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n)-[]->(n) SET n.y = 99 RETURN n$$) 
 
 SELECT * FROM cypher('cypher_set', $$MATCH (n) MATCH (n)-[]->(m) SET n.t = 150 RETURN n$$) AS (a agtype);
 
+-- prepared statements
+PREPARE p_1 AS SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3 RETURN n $$) AS (a agtype);
+EXECUTE p_1;
+
+EXECUTE p_1;
+
+PREPARE p_2 AS SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = $var_name RETURN n $$, $1) AS (a agtype);
+EXECUTE p_2('{"var_name": 4}');
+
+EXECUTE p_2('{"var_name": 6}');
+
+CREATE FUNCTION set_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 7 RETURN n $$) AS (a agtype);
+END
+$BODY$;
+
+SELECT set_test();
+
+SELECT set_test();
+
 --Errors
 SELECT * FROM cypher('cypher_set', $$SET n.i = NULL$$) AS (a agtype);
 
@@ -106,7 +131,7 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 $$) AS (a ag
 --
 -- Clean up
 --
-
+DROP FUNCTION set_test;
 SELECT drop_graph('cypher_set', true);
 
 --

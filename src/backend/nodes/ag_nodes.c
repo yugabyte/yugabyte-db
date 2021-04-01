@@ -22,12 +22,12 @@
 #include "nodes/extensible.h"
 
 #include "nodes/ag_nodes.h"
+#include "nodes/cypher_copyfuncs.h"
+#include "nodes/cypher_outfuncs.h"
+#include "nodes/cypher_readfuncs.h"
 #include "nodes/cypher_nodes.h"
 
-static void copy_ag_node(ExtensibleNode *newnode,
-                         const ExtensibleNode *oldnode);
 static bool equal_ag_node(const ExtensibleNode *a, const ExtensibleNode *b);
-static void read_ag_node(ExtensibleNode *node);
 
 // This list must match ag_node_tag.
 const char *node_names[] = {
@@ -49,9 +49,21 @@ const char *node_names[] = {
     "cypher_string_match",
     "cypher_typecast",
     "cypher_integer_const",
-    "cypher_sub_pattern"
+    "cypher_sub_pattern",
+    "cypher_create_target_nodes",
+    "cypher_create_path",
+    "cypher_target_node",
+    "cypher_update_information",
+    "cypher_update_item",
+    "cypher_delete_information",
+    "cypher_delete_item"
 };
 
+/*
+ * Each node defined with this will have
+ * an out function defined, but copy, equal,
+ * and read will throw errors.
+ */
 #define DEFINE_NODE_METHODS(type) \
     { \
         CppAsString(type), \
@@ -60,6 +72,21 @@ const char *node_names[] = {
         equal_ag_node, \
         CppConcat(out_, type), \
         read_ag_node \
+    }
+
+/*
+ *  Each node defined with this will have a
+ *  copy, read, and write function defined.
+ *  Equal will still throw an error.
+ */
+#define DEFINE_NODE_METHODS_EXTENDED(type) \
+    { \
+        CppAsString(type), \
+        sizeof(type), \
+        CppConcat(copy_, type), \
+        equal_ag_node, \
+        CppConcat(out_, type), \
+        CppConcat(read_, type) \
     }
 
 // This list must match ag_node_tag.
@@ -81,23 +108,19 @@ const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_string_match),
     DEFINE_NODE_METHODS(cypher_typecast),
     DEFINE_NODE_METHODS(cypher_integer_const),
-    DEFINE_NODE_METHODS(cypher_sub_pattern)
+    DEFINE_NODE_METHODS(cypher_sub_pattern),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_create_target_nodes),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_create_path),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_target_node),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_update_information),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_update_item),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_delete_information),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_delete_item)
 };
-
-static void copy_ag_node(ExtensibleNode *newnode,
-                         const ExtensibleNode *oldnode)
-{
-    ereport(ERROR, (errmsg("unexpected copyObject() over ag_node")));
-}
 
 static bool equal_ag_node(const ExtensibleNode *a, const ExtensibleNode *b)
 {
     ereport(ERROR, (errmsg("unexpected equal() over ag_node's")));
-}
-
-static void read_ag_node(ExtensibleNode *node)
-{
-    ereport(ERROR, (errmsg("unexpected parseNodeString() for ag_node")));
 }
 
 void register_ag_nodes(void)
