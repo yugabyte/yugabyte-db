@@ -566,6 +566,7 @@ class TransactionParticipant::Impl
     if (data.leader_term != OpId::kUnknownTerm) {
       tserver::UpdateTransactionRequestPB req;
       req.set_tablet_id(data.status_tablet);
+      req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
       auto& state = *req.mutable_state();
       state.set_transaction_id(data.transaction_id.data(), data.transaction_id.size());
       state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
@@ -908,6 +909,10 @@ class TransactionParticipant::Impl
                                      : STATUS(TimedOut, "TimedOut while aborting old transactions");
   }
 
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    return participant_context_.WaitForSafeTime(safe_time, deadline);
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1225,7 +1230,8 @@ class TransactionParticipant::Impl
     min_running_notifier->Satisfied();
   }
 
-  void TransactionsStatus(const std::vector<TransactionStatusInfo>& status_infos) {
+  void TransactionsStatus(
+      const std::vector<TransactionStatusInfo>& status_infos) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     HybridTime now = participant_context_.Now();
@@ -1234,7 +1240,7 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
-      if ((**it).UpdateStatus(info.status, info.status_ht)) {
+      if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
         EnqueueRemoveUnlocked(info.transaction_id, &min_running_notifier);
       } else {
         transactions_.modify(it, [now](const auto& txn) {
@@ -1377,8 +1383,8 @@ class TransactionParticipant::Impl
 
   TransactionStatusResolver& AddStatusResolver() override EXCLUDES(status_resolvers_mutex_) {
     std::lock_guard<std::mutex> lock(status_resolvers_mutex_);
-    status_resolvers_.emplace_back(&
-        participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
+    status_resolvers_.emplace_back(
+        &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
         std::bind(&Impl::TransactionsStatus, this, _1));
     return status_resolvers_.back();
   }
@@ -1614,6 +1620,11 @@ std::string TransactionParticipant::DumpTransactions() const {
 
 Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
   return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+}
+
+Result<HybridTime> TransactionParticipant::WaitForSafeTime(
+    HybridTime safe_time, CoarseTimePoint deadline) {
+  return impl_->WaitForSafeTime(safe_time, deadline);
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

@@ -888,13 +888,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     PostponedLeaderActions postponed_leader_actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
+      HybridTime leader_safe_time;
       postponed_leader_actions_.leader_term = leader_term;
       for (const auto& transaction_id : transaction_ids) {
         auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
 
         auto it = managed_transactions_.find(id);
         std::vector<ExpectedTabletBatches> expected_tablet_batches;
-        auto txn_status_with_ht = it != managed_transactions_.end()
+        bool known_txn = it != managed_transactions_.end();
+        auto txn_status_with_ht = known_txn
             ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
             : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
         VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht;
@@ -903,6 +905,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
               id, txn_status_with_ht.status_time, expected_tablet_batches,
               /* abort_if_not_replicated = */ false, &lock));
+        }
+        if (!known_txn) {
+          if (!leader_safe_time) {
+            leader_safe_time = VERIFY_RESULT(context_.LeaderSafeTime());
+          }
+          // Please note that for known transactions we send 0, that means invalid hybrid time.
+          // We would wait for safe time only for case when transaction is unknown to coordinator.
+          // Since it is only case when transaction could be actually committed.
+          response->mutable_coordinator_safe_time()->Resize(response->status().size(), 0);
+          response->add_coordinator_safe_time(leader_safe_time.ToUint64());
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
@@ -1213,11 +1225,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   > ManagedTransactions;
 
   void SendUpdateTransactionRequest(
-      const NotifyApplyingData& action, const CoarseTimePoint& deadline) {
+      const NotifyApplyingData& action, HybridTime now,
+      const CoarseTimePoint& deadline) {
     VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
 
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(action.tablet);
+    req.set_propagated_hybrid_time(now.ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(action.transaction.data(), action.transaction.size());
     state.set_status(TransactionStatus::APPLYING);
@@ -1274,7 +1288,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                 NotifyApplyingData new_action = action;
                 for (const auto& split_child_tablet_id : split_child_tablet_ids) {
                   new_action.tablet = split_child_tablet_id;
-                  SendUpdateTransactionRequest(new_action, new_deadline);
+                  SendUpdateTransactionRequest(new_action, context_.clock().Now(), new_deadline);
                 }
               }
             }
@@ -1293,9 +1307,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
 
     if (!actions->notify_applying.empty()) {
+      auto now = context_.clock().Now();
       auto deadline = TransactionRpcDeadline();
       for (const auto& action : actions->notify_applying) {
-        SendUpdateTransactionRequest(action, deadline);
+        SendUpdateTransactionRequest(action, now, deadline);
       }
     }
 

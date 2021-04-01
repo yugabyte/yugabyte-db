@@ -106,6 +106,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return HybridTime::kMax;
   }
 
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "WaitForSafeTime not implemented");
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

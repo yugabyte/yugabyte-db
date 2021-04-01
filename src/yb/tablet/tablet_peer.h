@@ -210,6 +210,7 @@ class TabletPeer : public consensus::ConsensusContext,
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   void GetLastReplicatedData(RemoveIntentsData* data) override;
 
@@ -333,6 +334,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   int64_t LeaderTerm() const override;
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
+  Result<HybridTime> LeaderSafeTime() const override;
 
   HybridTime HtLeaseExpiration() const override;
 

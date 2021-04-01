@@ -123,6 +123,8 @@ class TransactionParticipantContext {
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
 
+  virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
+
   std::string LogPrefix() const;
 
   HybridTime Now();
@@ -216,6 +218,8 @@ class TransactionParticipant : public TransactionStatusManager {
   TransactionParticipantContext* context() const;
 
   HybridTime MinRunningHybridTime() const override;
+
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   // When minimal start hybrid time of running transaction will be at least `ht` applier
   // method `MinRunningHybridTimeSatisfied` will be invoked.
