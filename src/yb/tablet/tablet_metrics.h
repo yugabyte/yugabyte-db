@@ -68,6 +68,7 @@ struct TabletMetrics {
   scoped_refptr<Counter> restart_read_requests;
   scoped_refptr<Counter> consistent_prefix_read_requests;
   scoped_refptr<Counter> pgsql_consistent_prefix_read_rows;
+  scoped_refptr<Counter> tablet_data_corruptions;
 
   scoped_refptr<Counter> rows_inserted;
 };

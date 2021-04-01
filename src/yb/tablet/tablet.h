@@ -659,6 +659,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS TriggerPostSplitCompactionIfNeeded(
     std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction);
 
+  // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
+  CHECKED_STATUS VerifyDataIntegrity();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -722,6 +725,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
 
   void TriggerPostSplitCompactionSync();
+
+  // Opens read-only rocksdb at the specified directory and checks for any file corruption.
+  CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
 
   const Schema key_schema_;
 
@@ -902,6 +908,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+
+  std::unique_ptr<ThreadPoolToken> data_integrity_token_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

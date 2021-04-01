@@ -195,6 +195,13 @@ DEFINE_int32(flush_background_task_interval_msec, 0,
              "This defaults to 0, which means disable the background task "
              "And only use callbacks on memstore allocations. ");
 
+DEFINE_int32(verify_tablet_data_interval_sec, 0,
+             "The tick interval time for the tablet data integrity verification background task. "
+             "This defaults to 0, which means disable the background task.");
+
+DEFINE_bool(skip_tablet_data_verification, false,
+            "Skip checking tablet data for corruption.");
+
 DEFINE_int64(global_memstore_size_percentage, 10,
              "Percentage of total available memory to use for the global memstore. "
              "Default is 10. See also memstore_size_mb and "
@@ -352,6 +359,24 @@ void TSTabletManager::MaybeFlushTablet() {
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
       for (auto listener : TEST_listeners) {
         listener->StartedFlush(tablet_to_flush->tablet_id());
+      }
+    }
+  }
+}
+
+void TSTabletManager::VerifyTabletData() {
+  LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
+  for (const TabletPeerPtr& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING) {
+      if (PREDICT_FALSE(FLAGS_skip_tablet_data_verification)) {
+        LOG_WITH_PREFIX(INFO)
+            << Format("Skipped tablet data verification check on $0", peer->tablet_id());
+      } else {
+        Status s = peer->tablet()->VerifyDataIntegrity();
+        if (!s.ok()) {
+          LOG(WARNING) << "Tablet data integrity verification failed on " << peer->tablet_id()
+                       << ": " << s;
+        }
       }
     }
   }
@@ -523,6 +548,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   }
 
   // Add memory monitor and background thread for flushing
+  // TODO(zhaoalex): replace task with Poller
   if (should_count_memory) {
     background_task_.reset(new BackgroundTask(
       std::function<void()>([this](){ MaybeFlushTablet(); }),
@@ -646,6 +672,9 @@ Status TSTabletManager::Init() {
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
 
+  verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
+
   return Status::OK();
 }
 
@@ -688,6 +717,14 @@ Status TSTabletManager::Start() {
   } else {
     LOG(INFO)
         << "Split tablets cleanup is disabled by cleanup_split_tablets_interval_sec flag set to 0";
+  }
+  if (FLAGS_verify_tablet_data_interval_sec > 0) {
+    verify_tablet_data_poller_->Start(
+        &server_->messenger()->scheduler(), FLAGS_verify_tablet_data_interval_sec * 1s);
+    LOG(INFO) << "Tablet data verification task started...";
+  } else {
+    LOG(INFO)
+        << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
   }
 
   return Status::OK();
@@ -1576,6 +1613,8 @@ void TSTabletManager::StartShutdown() {
   }
 
   tablets_cleaner_->Shutdown();
+
+  verify_tablet_data_poller_->Shutdown();
 
   async_client_init_->Shutdown();
 

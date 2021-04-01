@@ -323,6 +323,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
 
+  // Background task that verifies the data on each tablet for consistency.
+  void VerifyTabletData();
+
   client::YBClient& client();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
@@ -566,6 +569,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for scheduling flushes
   std::unique_ptr<BackgroundTask> background_task_;
+
+  // Used for verifying tablet data integrity.
+  std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
 
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
