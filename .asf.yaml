@@ -14,7 +14,7 @@ github:
     - graphdb
     - multi-model-dbms
     - agensgraph
-    - age database
+    - age-database
   features:
     wiki: true
     issues: true
