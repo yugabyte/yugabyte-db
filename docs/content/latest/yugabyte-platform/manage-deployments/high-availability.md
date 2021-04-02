@@ -145,42 +145,23 @@ Once you've set up the active platform, you can set up one or more standby platf
 
 To remove a standby platform from a high-availability cluster, you remove it from the active platform's list, and then delete the configuration from the platform to be removed.
 
-1. **On the standby platform** you wish to remove from the high-availability cluster, click the Delete Configuration button on the Admin tab, and confirm the deletion.
-
-    <br/>
-
-    ![Delete configuration](/images/yp/high-availability/delete-configuration.png)
-
 1. **On the active platform**'s instance list, click the Delete Instance button for the standby instance to be removed, and confirm the deletion.
 
     <br/>
 
     ![Delete instance](/images/yp/high-availability/delete-instance.png)
 
+1. **On the standby platform** you wish to remove from the high-availability cluster, click the Delete Configuration button on the Admin tab, and confirm the deletion.
+
+    <br/>
+
+    ![Delete configuration](/images/yp/high-availability/delete-configuration.png)
+
 The standby platform is now a standalone instance again.
 
 {{< tip title="Reset the Platform state" >}}
 
-After you've returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. Yugabyte strongly recommends wiping out the state information before using it in standalone mode. To do this:
-
-1. Start a YSQL shell:
-
-    ```sh
-    $ bin/ysqlsh
-    ```
-
-1. Make sure you're connected to the `yugabyte` database:
-
-    ```sql
-    \c yugabyte;
-    ```
-
-1. Drop the `yugaware` database, and re-create it:
-
-    ```sql
-    yugabyte=# DROP DATABASE IF EXISTS yugaware;
-    yugabyte=# CREATE DATABASE yugaware;
-    ```
+After you've returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. Yugabyte strongly recommends wiping out the state information before using it in standalone mode. [Contact Yugabyte support](https://support.yugabyte.com/) for help resetting the state of a standby platform that you've removed from a high-availability cluster.
 
 **Note**: The high-availability feature is in active development, and this requirement will be removed in a future version.
 
