@@ -19,10 +19,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Backup;
@@ -413,14 +413,13 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 
@@ -483,14 +482,13 @@ public class TablesController extends AuthenticatedController {
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
     BackupTableParams taskParams = formData.get();
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 

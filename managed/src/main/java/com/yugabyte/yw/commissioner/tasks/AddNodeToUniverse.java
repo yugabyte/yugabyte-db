@@ -87,6 +87,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      preTaskActions();
+
       Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
       Collection<NodeDetails> node = Collections.singletonList(currentNode);
 

@@ -54,9 +54,10 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       log.info(
-          "Start Node with name {} from universe {}",
+          "Start Node with name {} from universe {} ({})",
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().universeUUID,
+          universe.name);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -72,6 +73,8 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+
+      preTaskActions();
 
       // Update node state to Starting
       createSetNodeStateTask(currentNode, NodeState.Starting)

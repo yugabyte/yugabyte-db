@@ -7,7 +7,6 @@
  *
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -43,6 +42,9 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().universeUUID);
+
+      preTaskActions();
+
       deleteNodeFromUniverseTask(taskParams().nodeName)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
       // Set Universe Update Success to true, if delete node succeeds for now.

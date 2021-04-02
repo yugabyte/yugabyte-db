@@ -69,6 +69,8 @@ public class DestroyUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      preTaskActions();
+
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);

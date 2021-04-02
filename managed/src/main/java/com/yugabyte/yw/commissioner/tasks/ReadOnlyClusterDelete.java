@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import io.jsonwebtoken.lang.Collections;
+import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -57,9 +59,20 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         universe = lockUniverseForUpdate(params().expectedUniverseVersion);
       }
 
-      Cluster cluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      if (Collections.isEmpty(roClusters)) {
+        String msg =
+            "Unable to delete RO cluster from universe \""
+                + universe.name
+                + "\" as it doesn't have any RO clusters.";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
+      preTaskActions();
 
       // Delete all the read-only cluster nodes.
+      Cluster cluster = roClusters.get(0);
       createDestroyServerTasks(
               universe.getNodesInCluster(cluster.uuid),
               params().isForceDelete,

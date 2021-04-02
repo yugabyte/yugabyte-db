@@ -319,6 +319,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       verifyParams(universe, primIntent);
       taskParams().ybPrevSoftwareVersion = primIntent.ybSoftwareVersion;
 
+      preTaskActions();
+
       // Get the nodes that need to be upgraded.
       // Left element is master and right element is tserver.
       ImmutablePair<List<NodeDetails>, List<NodeDetails>> nodes =

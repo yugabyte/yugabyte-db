@@ -68,6 +68,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
         }
       }
 
+      preTaskActions();
+
       switch (taskParams().taskType) {
         case Software:
           log.info(

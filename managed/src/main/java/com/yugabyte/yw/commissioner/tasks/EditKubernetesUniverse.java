@@ -58,6 +58,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
       Provider provider =
           Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 

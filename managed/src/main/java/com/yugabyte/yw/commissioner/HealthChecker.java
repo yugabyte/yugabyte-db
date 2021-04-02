@@ -57,9 +57,12 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -594,6 +597,10 @@ public class HealthChecker {
               try {
                 LOG.info("Running health check for universe: {}", universeName);
                 checkSingleUniverse(params);
+              } catch (CancellationException | CompletionException e) {
+                LOG.info(
+                    "Health check for universe {} cancelled due to another task started",
+                    universeName);
               } catch (Exception e) {
                 LOG.error("Error running health check for universe: {}", universeName, e);
                 setHealthCheckFailedMetric(
@@ -628,6 +635,12 @@ public class HealthChecker {
     return silenceEmails ? null : String.join(",", destinations);
   }
 
+  private static boolean isUniverseBusyByTask(UniverseDefinitionTaskParams details) {
+    return details.updateInProgress
+        && details.updatingTask != TaskType.BackupTable
+        && details.updatingTask != TaskType.MultiTableBackup;
+  }
+
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
@@ -641,9 +654,7 @@ public class HealthChecker {
       LOG.warn("Skipping universe " + params.universe.name + " as it is in the paused state...");
       return;
     }
-    if (details.updateInProgress
-        && details.updatingTask != TaskType.BackupTable
-        && details.updatingTask != TaskType.MultiTableBackup) {
+    if (isUniverseBusyByTask(details)) {
       LOG.warn("Skipping universe " + params.universe.name + " due to task in progress...");
       return;
     }
@@ -810,6 +821,12 @@ public class HealthChecker {
           runtimeConfigFactory.forUniverse(params.universe).getBoolean("yb.health.logOutput");
     }
 
+    // Exit without calling script if the universe is in the "updating" state.
+    // Doing the check before the Python script is executed.
+    if (!canHealthCheckUniverse(params.universe.universeUUID)) {
+      return;
+    }
+
     // Call devops and process response.
     ShellResponse response =
         healthManager.runCommand(
@@ -817,6 +834,13 @@ public class HealthChecker {
             new ArrayList<>(clusterMetadata.values()),
             potentialStartTime,
             shouldLogOutput);
+
+    // Checking the interruption necessity after the Python script finished.
+    // It is not needed to analyze results if the universe has the "update in
+    // progress" state.
+    if (!canHealthCheckUniverse(params.universe.universeUUID)) {
+      return;
+    }
 
     long durationMs = System.currentTimeMillis() - startMs;
     boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
@@ -945,5 +969,25 @@ public class HealthChecker {
       default:
         return null;
     }
+  }
+
+  @VisibleForTesting
+  static boolean canHealthCheckUniverse(UUID universeUUID) {
+    Optional<Universe> u = Universe.maybeGet(universeUUID);
+    UniverseDefinitionTaskParams universeDetails =
+        u.isPresent() ? u.get().getUniverseDetails() : null;
+    if (universeDetails == null) {
+      LOG.warn(
+          "Cancelling universe "
+              + universeUUID
+              + " health-check, the universe not found or empty universe details.");
+      return false;
+    }
+
+    if (isUniverseBusyByTask(universeDetails)) {
+      LOG.warn("Cancelling universe " + u.get().name + " health-check, some task is in progress.");
+      return false;
+    }
+    return true;
   }
 }

@@ -43,6 +43,8 @@ public class SetUniverseKey extends UniverseTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Manage encryption at rest
       SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
       if (manageEncryptionKeyTask != null) {

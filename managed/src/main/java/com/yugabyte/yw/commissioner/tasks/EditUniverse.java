@@ -66,6 +66,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Set all the node names.
       setNodeNames(UniverseOpType.EDIT, universe);
 

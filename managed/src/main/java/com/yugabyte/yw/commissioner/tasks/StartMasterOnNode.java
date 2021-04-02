@@ -104,6 +104,8 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           universe.universeUUID,
           universe.name);
 
+      preTaskActions();
+
       // Update node state to Starting Master.
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
