@@ -263,6 +263,8 @@ public class EmailHelperTest extends FakeDBApplication {
   public void testSmtpDataToProperties_UsernameIsNull() {
     SmtpData smtpData = EmailFixtures.createSmtpData();
     smtpData.smtpUsername = null;
-    emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    assertFalse(props.contains("mail.smtp.user"));
+    assertFalse(props.contains("mail.smtp.auth"));
   }
 }

@@ -107,30 +107,35 @@ public class EmailHelper {
    */
   @VisibleForTesting
   Properties smtpDataToProperties(Customer customer, SmtpData smtpData) {
-    Properties prop = new Properties();
+    Properties props = new Properties();
     try {
       Config runtimeConfig = configFactory.forCustomer(customer);
 
       // According to official Java documentation all the parameters should be added
       // as String.
       if (smtpData.smtpUsername != null) {
-        prop.put("mail.smtp.user", smtpData.smtpUsername);
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.user", smtpData.smtpUsername);
+      } else {
+        props.put("mail.smtp.auth", "false");
       }
-      prop.put("mail.smtp.auth", "true");
-      prop.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      props.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
       String smtpServer = StringUtils.isEmpty(smtpData.smtpServer)
           ? runtimeConfig.getString("yb.health.default_smtp_server")
           : smtpData.smtpServer;
-      prop.put("mail.smtp.host", smtpServer);
-      prop.put("mail.smtp.port",
+      props.put("mail.smtp.host", smtpServer);
+      props.put("mail.smtp.port",
           String.valueOf(
               smtpData.smtpPort == -1
                   ? (smtpData.useSSL ? runtimeConfig.getInt("yb.health.default_smtp_port_ssl")
                       : runtimeConfig.getInt("yb.health.default_smtp_port"))
                   : smtpData.smtpPort));
-      prop.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
+      props.put("mail.smtp.ssl.enable", String.valueOf(smtpData.useSSL));
       if (smtpData.useSSL) {
-        prop.put("mail.smtp.ssl.trust", smtpServer);
+        props.put("mail.smtp.ssl.trust", smtpServer);
+      }
+      if (runtimeConfig.getBoolean("yb.health.debug_email")) {
+        props.put("mail.debug", "true");
       }
     } catch (Exception e) {
       LOG.error("Error while converting smtpData to Properties", e);
@@ -141,7 +146,7 @@ public class EmailHelper {
       throw new IllegalArgumentException(
           "SmtpData is not correctly filled: emailFrom can't be empty.");
     }
-    return prop;
+    return props;
   }
 
   /**
