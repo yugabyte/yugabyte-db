@@ -115,6 +115,11 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
+DEFINE_int32(compression_type, 1,
+             "compression_type. "
+             "If -1 and max_background_compactions is specified - use max_background_compactions. "
+             "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -415,8 +420,24 @@ void InitRocksDBOptions(
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
 
+  rocksdb::CompressionType compressionType = rocksdb::kSnappyCompression;
+  switch(FLAGS_compression_type){
+        case 0  :
+            compressionType = rocksdb::kNoCompression;
+            break;
+        case 1  :
+            compressionType = rocksdb::kSnappyCompression;
+            break;
+        case 2  :
+            compressionType = rocksdb::kLZ4Compression;
+            break;
+        default :
+            compressionType = rocksdb::kSnappyCompression;
+  }
   options->compression = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
-      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+                           ? compressionType : rocksdb::kNoCompression;
+
+  LOG(INFO) << "CompressionType Selected: " << compressionType;
 
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
