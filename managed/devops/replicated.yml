@@ -89,7 +89,7 @@ components:
         ports:
           - private_port: "9090"
             public_port: "9090"
-        entrypoint: [ "/bin/sh", "-c", "cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
+        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
