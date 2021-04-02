@@ -78,24 +78,18 @@ public class ResumeUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      Universe.UniverseUpdater updater =
-          new Universe.UniverseUpdater() {
-            @Override
-            public void run(Universe universe) {
-              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              universeDetails.universePaused = false;
-              universe.setUniverseDetails(universeDetails);
-            }
-          };
-      saveUniverseDetails(updater);
+      saveUniverseDetails(
+          u -> {
+            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+            universeDetails.universePaused = false;
+            u.setUniverseDetails(universeDetails);
+          });
 
-      unlockUniverseForUpdate();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }
