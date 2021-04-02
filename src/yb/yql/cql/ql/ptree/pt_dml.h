@@ -58,6 +58,9 @@ inline ostream& operator<< (ostream& out, const QLOperator& ql_op) {
     case QL_OP_NOT_IN:
       out << "NOT IN";
       break;
+    case QL_OP_NOT_EQUAL:
+      out << "!=";
+      break;
     default:
       out << "";
       break;

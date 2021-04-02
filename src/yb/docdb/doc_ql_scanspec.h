@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_DOC_QL_SCANSPEC_H
 #define YB_DOCDB_DOC_QL_SCANSPEC_H
 
+#include <functional>
+
 #include "yb/rocksdb/options.h"
 
 #include "yb/common/ql_scanspec.h"
@@ -36,9 +38,15 @@ class DocQLScanSpec : public common::QLScanSpec {
   // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
   // will not include any static column for the start key. If the static columns are needed, a
   // separate scan spec can be used to read just those static columns.
+  //
+  // Note: std::reference_wrapper is used instead of raw lvalue reference to prevent
+  // temporary objects usage. The following code wont compile:
+  //
+  // DocQLScanSpec spec(...{} /* hashed_components */,...);
+
   DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
       boost::optional<int32_t> max_hash_code,
-      const std::vector<PrimitiveValue>& hashed_components,
+      std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
       const QLConditionPB* req, const QLConditionPB* if_req,
       rocksdb::QueryId query_id, bool is_forward_scan = true,
       bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
@@ -124,6 +132,8 @@ class DocQLScanSpec : public common::QLScanSpec {
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };
 
 }  // namespace docdb

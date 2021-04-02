@@ -46,6 +46,8 @@ using std::shared_ptr;
 using namespace std::placeholders;
 
 using audit::AuditLogger;
+using audit::IsPrepare;
+using audit::ErrorIsFormatted;
 using client::YBColumnSpec;
 using client::YBOperation;
 using client::YBqlOpPtr;
@@ -183,11 +185,11 @@ Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters&
   auto root_node = parse_tree.root().get();
   RETURN_NOT_OK(PreExecTreeNode(root_node));
   RETURN_NOT_OK(audit_logger_.LogStatement(root_node, exec_context_->stmt(),
-                                           false /* is_prepare */));
+                                           IsPrepare::kFalse));
   Status s = ExecTreeNode(root_node);
   if (!s.ok()) {
     RETURN_NOT_OK(audit_logger_.LogStatementError(root_node, exec_context_->stmt(), s,
-                                                  false /* error_is_formatted */));
+                                                  ErrorIsFormatted::kFalse));
   }
   return ProcessStatementStatus(parse_tree, s);
 }
@@ -1874,7 +1876,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     }
 
     // If the transaction is ready to commit, apply child transaction results if any.
-    if (exec_context_->HasTransaction() && !exec_context_->HasPendingOperations()) {
+    if (exec_context_->HasTransaction() && !tnode_context->HasPendingOperations()) {
       const QLResponsePB& response = op->response();
       if (response.has_child_transaction_result()) {
         const auto& result = response.child_transaction_result();
@@ -2266,7 +2268,10 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   if (resp.status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
-    return STATUS(TryAgain, resp.error_message());
+    auto s = STATUS(TryAgain, resp.error_message());
+    RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, exec_context_->stmt(), s,
+                                                  ErrorIsFormatted::kFalse));
+    return s;
   }
 
   // If we got an error we need to manually produce a result in the op.
@@ -2296,7 +2301,10 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   const ErrorCode errcode = QLStatusToErrorCode(resp.status());
-  return exec_context->Error(stmt, resp.error_message().c_str(), errcode);
+  auto s = exec_context->Error(stmt, resp.error_message().c_str(), errcode);
+  RETURN_NOT_OK(audit_logger_.LogStatementError(stmt, exec_context_->stmt(), s,
+                                                ErrorIsFormatted::kTrue));
+  return s;
 }
 
 Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context) {

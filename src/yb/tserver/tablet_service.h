@@ -248,6 +248,8 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
  private:
   TabletServer* server_;
 
+  CHECKED_STATUS DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is
   // limited.

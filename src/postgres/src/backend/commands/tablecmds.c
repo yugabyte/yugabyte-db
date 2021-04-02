@@ -367,7 +367,9 @@ static void ATController(AlterTableStmt *parsetree,
 			 Relation rel, List *cmds, bool recurse, LOCKMODE lockmode);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing, LOCKMODE lockmode);
-static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode);
+static void ATRewriteCatalogs(List **wqueue,
+							  LOCKMODE lockmode,
+							  YBCPgStatement *rollbackHandle);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
@@ -3208,8 +3210,10 @@ RenameConstraint(RenameStmt *stmt)
 ObjectAddress
 RenameRelation(RenameStmt *stmt)
 {
-	Oid			relid;
+	Oid           relid;
 	ObjectAddress address;
+	Relation      rel;
+	bool          needs_yb_rename;
 
 	/*
 	 * Grab an exclusive lock on the target table, index, sequence, view,
@@ -3234,10 +3238,16 @@ RenameRelation(RenameStmt *stmt)
 
 	RenameRelationInternal(relid, stmt->newname, false);
 
+	/* YB rename is not needed for a primary key dummy index. */
+	rel             = RelationIdGetRelation(relid);
+	needs_yb_rename = IsYBRelation(rel) &&
+	                  !(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary);
+	RelationClose(rel);
+
 	/* Do the work */
-	if (IsYugaByteEnabled())
+	if (needs_yb_rename)
 	{
-      YBCRename(stmt, relid);
+		YBCRename(stmt, relid);
 	}
 
 	ObjectAddressSet(address, RelationRelationId, relid);
@@ -3762,10 +3772,29 @@ ATController(AlterTableStmt *parsetree,
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue, lockmode);
+	YBCPgStatement rollbackHandle = NULL;
+	/*
+	 * ATRewriteCatalogs also executes changes to DocDB.
+	 * If Phase 3 fails, rollbackHandle will specify how to rollback the
+	 * changes done to DocDB.
+	*/
+	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandle);
 
 	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(parsetree, &wqueue, lockmode);
+	PG_TRY();
+	{
+		ATRewriteTables(parsetree, &wqueue, lockmode);
+	}
+	PG_CATCH();
+	{
+		/* Rollback the DocDB changes. */
+		if (rollbackHandle)
+		{
+			YBCExecAlterTable(rollbackHandle, RelationGetRelid(rel));
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 }
 
 /*
@@ -4082,7 +4111,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
+ATRewriteCatalogs(List **wqueue,
+				  LOCKMODE lockmode,
+				  YBCPgStatement *rollbackHandle)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4098,7 +4129,10 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 	 */
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
-	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds, AT_NUM_PASSES, main_relid);
+	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds,
+														AT_NUM_PASSES,
+														main_relid,
+														rollbackHandle);
 
 	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
@@ -7461,8 +7495,9 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
  * a primary key to an existing table.
  * As a workaround, we create a new table with the desired schema and replace
  * the old table with it.
+ * Returns an address of the new primary key (dummy) index.
  */
-static void
+static ObjectAddress
 YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 {
 	CreateStmt*  create_stmt;
@@ -7481,7 +7516,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	HeapTuple    tuple;
 
 	MemoryContext oldcxt, per_tup_cxt;
-	ObjectAddress address;
+	ObjectAddress result = InvalidObjectAddress, address;
 
 	YBCPgTableDesc       yb_table_desc;
 	YBCPgTableProperties yb_table_props;
@@ -7504,11 +7539,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	if ((*mutable_rel)->rd_partkey != NULL || (*mutable_rel)->rd_rel->relispartition)
 		elog(ERROR, "adding primary key to a partitioned table "
-		            "is not yet implemented");
-
-	/* TODO: Implement this after tablespaces are implemented in #1153 */
-	if ((*mutable_rel)->rd_rel->reltablespace)
-		elog(ERROR, "adding primary key to a table with a tablespace "
 		            "is not yet implemented");
 
 	if ((*mutable_rel)->rd_rel->relhasrules)
@@ -7708,6 +7738,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	                          NULL /* snapshot */,
 	                          1 /* nkeys */,
 	                          &key);
+	bool has_dummy_pk = false; /* Sanity check that dummy PK index is already defined. */
 	List* checks_list = NIL;
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
@@ -7781,9 +7812,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				break;
 			}
 			case CONSTRAINT_PRIMARY:
-				/* We are defining a primary key right now, so there would be two. */
-				elog(ERROR, "multiple primary keys for table \"%s\" are not allowed",
-				            orig_table_name);
+				has_dummy_pk = true;
 				break;
 			case CONSTRAINT_UNIQUE:
 				/* UNIQUE constraints are indexes and will be copied as such. */
@@ -7805,6 +7834,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		}
 	}
 	systable_endscan(scan);
+	if (!has_dummy_pk)
+		elog(ERROR, "expected dummy primary key index to be defined");
 	/* We don't close pg_constraint just yet. */
 	AddRelationNewConstraints(new_rel,
 	                          NULL /* newColDefaults - they are already in place */,
@@ -7842,7 +7873,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	List* idx_list = RelationGetIndexList(*mutable_rel);
 	foreach(cell, idx_list)
 	{
-		Relation idx_rel  = index_open(lfirst_oid(cell), AccessExclusiveLock);
+		ObjectAddress idx_addr;
+		Relation      idx_rel = index_open(lfirst_oid(cell), AccessExclusiveLock);
 
 		IndexStmt* idx_stmt =
 		    generateClonedIndexStmt(NULL /* heapRel, we provide an oid instead */,
@@ -7870,19 +7902,24 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);
-		DefineIndex(new_relid,
-		            idx_stmt,
-		            InvalidOid, /* no predefined OID */
-		            InvalidOid, /* no parent index */
-		            InvalidOid, /* no parent constraint */
-		            false, /* is_alter_table */
-		            false, /* check_rights */
-		            false, /* check_not_in_use */
-		            false, /* skip_build */
-		            true /* quiet */);
+		idx_addr = DefineIndex(new_relid,
+		                       idx_stmt,
+		                       InvalidOid, /* no predefined OID */
+		                       InvalidOid, /* no parent index */
+		                       InvalidOid, /* no parent constraint */
+		                       false, /* is_alter_table */
+		                       false, /* check_rights */
+		                       false, /* check_not_in_use */
+		                       false, /* skip_build */
+		                       true /* quiet */);
+
+		if (idx_rel->rd_index->indisprimary)
+			result = idx_addr;
+
 		index_close(idx_rel,  AccessExclusiveLock);
 	}
 	list_free(idx_list);
+	Assert(OidIsValid(result.objectId));
 
 	/*
 	 * PHASE 6
@@ -8037,6 +8074,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	/* Re-target old relation to point to the new one. */
 	*mutable_rel = new_rel;
+
+	return result;
 }
 
 /*
@@ -8072,16 +8111,12 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	/* suppress notices when rebuilding existing index */
 	quiet = is_rebuild;
 
-	if (IsYBRelation(*mutable_rel) && stmt->primary)
-	{
-		YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
-
-		/*
-		 * Now we proceed with creating PG-side dummy primary key index, as we
-		 * usually do for CREATE TABLE with PRIMARY KEY defined.
-		 */
-	}
-
+	/*
+	 * YB note:
+	 * For a PRIMARY KEY index creation, this will create a dummy index.
+	 * We're doing this before YBCloneRelationSetPrimaryKey for it to run
+	 * all necessary checks - columns existence and types, absence of nulls, etc.
+	 */
 	address = DefineIndex(RelationGetRelid(*mutable_rel),
 						  stmt,
 						  InvalidOid,	/* no predefined OID */
@@ -8092,6 +8127,12 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
+
+	if (IsYBRelation(*mutable_rel) && stmt->primary)
+	{
+		/* Table will be re-created, along with the dummy PK index. */
+		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+	}
 
 	/*
 	 * If TryReuseIndex() stashed a relfilenode for us, we used it for the new

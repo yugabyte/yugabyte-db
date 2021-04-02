@@ -83,6 +83,8 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   restoration_state.cc
+  snapshot_coordinator_context.cc
+  snapshot_schedule_state.cc
   snapshot_state.cc
   state_with_tablets.cc
   sys_catalog.cc

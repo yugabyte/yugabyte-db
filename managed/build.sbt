@@ -2,6 +2,18 @@ import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 
+import scala.sys.process.Process
+
+// ------------------------------------------------------------------------------------------------
+// Constants
+// ------------------------------------------------------------------------------------------------
+
+// This is used to decide whether to clean/build the py2 or py3 venvs.
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"))
+
+// Use this to enable debug logging in this script.
+lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
+
 // ------------------------------------------------------------------------------------------------
 // Functions
 // ------------------------------------------------------------------------------------------------
@@ -14,9 +26,6 @@ def strToBool(s: String): Boolean = {
   val normalizedStr = normalizeEnvVarValue(s)
   normalizedStr != null && (normalizedStr.toLowerCase() == "true" || normalizedStr == "1")
 }
-
-// Use this to enable debug logging in this script.
-val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
 
 def ybLog(s: String): Unit = {
   println("[Yugabyte sbt log] " + s)
@@ -56,6 +65,45 @@ def validateResolver(
   resolver
 }
 
+def clean_ui(baseDirectory: File): Int = {
+  ybLog("Cleaning UI...")
+  Process("rm -rf node_modules", baseDirectory / "ui")!
+}
+
+def build_ui(baseDirectory: File): Int = {
+  ybLog("Building UI...")
+  Process("npm ci", baseDirectory / "ui")!
+}
+
+def get_venv_dir(): String = {
+  if (USE_PYTHON3) "venv" else "python_virtual_env"
+}
+
+def clean_venv(baseDirectory: File): Int = {
+  ybLog("Cleaning virtual env...")
+  val venvDir: String = get_venv_dir()
+  Process("rm -rf " + venvDir, baseDirectory / "devops")!
+}
+
+def build_venv(baseDirectory: File): Int = {
+  ybLog("Building virtual env...")
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+}
+
+// ------------------------------------------------------------------------------------------------
+// Task Keys
+// ------------------------------------------------------------------------------------------------
+
+lazy val cleanPlatform = taskKey[Int]("Clean Yugabyte Platform")
+
+lazy val compilePlatform = taskKey[Int]("Compile Yugabyte Platform")
+
+lazy val runPlatformTask = taskKey[Unit]("Run Yugabyte Platform helper task")
+
+lazy val runPlatform = inputKey[Unit]("Run Yugabyte Platform with UI")
+
+lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
+
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
@@ -66,8 +114,9 @@ lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
 
-scalaVersion := "2.11.7"
-version := (sys.process.Process("cat version.txt").lines_!.head)
+scalaVersion := "2.12.10"
+version := (sys.process.Process("cat version.txt").lineStream_!.head)
+Global / onChangedBuildSource := ReloadOnSourceChanges
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -110,7 +159,10 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
-  "org.apache.velocity" % "velocity-tools" % "2.0"
+  "org.apache.velocity" % "velocity-tools" % "2.0",
+  "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "commons-io" % "commons-io" % "2.8.0",
+  "commons-codec" % "commons-codec" % "1.15"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -186,6 +238,34 @@ externalResolvers := {
   validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
 }
 
+(Compile / compilePlatform) := {
+  (Compile / compile).value
+  build_venv(baseDirectory.value)
+  build_ui(baseDirectory.value)
+}
+
+cleanPlatform := {
+  clean.value
+  clean_venv(baseDirectory.value)
+  clean_ui(baseDirectory.value)
+}
+
+runPlatformTask := {
+  (Compile / run).toTask("").value
+}
+
+/**
+ * Add UI Run hook to run UI alongside with API.
+ */
+runPlatform := {
+  val curState = state.value
+  val newState = Project.extract(curState).appendWithoutSession(
+    Vector(PlayKeys.playRunHooks += UIRunHook(baseDirectory.value / "ui")),
+    curState
+  )
+  Project.extract(newState).runTask(runPlatformTask, newState)
+}
+
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
@@ -203,9 +283,8 @@ topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
-playMonitoredFiles := { if (autoReload) playMonitoredFiles.value else Seq() }
+playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
 
-lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
 consoleSetting := {
   object PlayConsoleInteractionModeNew extends PlayInteractionMode {
@@ -225,7 +304,7 @@ consoleSetting := {
               consoleReader.clearScreen(); waitEOF()
             case 10 | 13 =>
               println(); waitEOF()
-            case x => waitEOF()
+            case _ => waitEOF()
           }
         }
         doWithoutEcho(waitEOF())

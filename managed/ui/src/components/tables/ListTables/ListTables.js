@@ -15,7 +15,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
-import { isDisabled } from '../../../utils/LayoutUtils';
+import { isDisabled, isHidden, isNotHidden } from '../../../utils/LayoutUtils';
 
 class TableTitle extends Component {
   render() {
@@ -41,17 +41,19 @@ class TableTitle extends Component {
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
           </div>
         </div>
-        <div className="pull-right">
-          <div className="backup-action-btn-group">
-            <UniverseAction
-              className="table-action"
-              universe={currentUniverse}
-              actionType="toggle-backup"
-              btnClass={'btn-orange'}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.backup')}
-            />
+        {!isHidden(currentCustomer.data.features, 'universes.backup') && 
+          <div className="pull-right">
+            <div className="backup-action-btn-group">
+              <UniverseAction
+                className="table-action"
+                universe={currentUniverse}
+                actionType="toggle-backup"
+                btnClass={'btn-orange'}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.backup')}
+              />
+            </div>
           </div>
-        </div>
+        }
       </div>
     );
   }
@@ -308,7 +310,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
           Write
         </TableHeaderColumn>
-        {!universePaused &&
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}
@@ -317,7 +319,7 @@ class ListTableGrid extends Component {
           >
             Actions
           </TableHeaderColumn>
-        }
+        )}
       </BootstrapTable>
     );
     return <Fragment>{tableListDisplay}</Fragment>;
