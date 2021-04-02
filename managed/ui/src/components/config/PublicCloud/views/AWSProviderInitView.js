@@ -496,7 +496,7 @@ class AWSProviderInitView extends Component {
       awsProviderConfig['AWS_SECRET_ACCESS_KEY'] = formValues.secretKey;
     }
     if (isDefinedNotNull(formValues.hostedZoneId)) {
-      awsProviderConfig['AWS_HOSTED_ZONE_ID'] = formValues.hostedZoneId;
+      awsProviderConfig['HOSTED_ZONE_ID'] = formValues.hostedZoneId;
     }
     const regionFormVals = {};
     if (this.isHostInAWS()) {
