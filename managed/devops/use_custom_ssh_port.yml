@@ -11,6 +11,15 @@
   become: yes
   become_method: sudo
   pre_tasks:
+    # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
+    - name: Fix google-cloud yum repo settings for GCP VM
+      become: yes
+      become_method: sudo
+      replace:
+        dest: "/etc/yum.repos.d/google-cloud.repo"
+        regexp: 'repo_gpgcheck=1'
+        replace: 'repo_gpgcheck=0'
+      when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
     # Ensure Python 2.x is installed.
     # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
     - name: 'install python 2.x'
