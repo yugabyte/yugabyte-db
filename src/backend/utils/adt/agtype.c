@@ -2192,7 +2192,7 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
 {
     agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
     agtype_value agtv;
-    int8 result = 0x0;
+    int64 result = 0x0;
     agtype *arg_agt;
 
     /* get the agtype equivalence of any convertable input type */

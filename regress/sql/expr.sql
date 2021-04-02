@@ -2097,6 +2097,14 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN u.i, v.i$$) AS (
 SELECT * FROM cypher('opt_forms', $$MATCH (u) CREATE (u)-[:edge]->() RETURN *$$) AS (results agtype);
 SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 agtype, col2 agtype);
 
+-- Added typecasts ::pg_bigint and ::pg_float8
+SELECT * from cypher('expr', $$
+RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_bigint)))
+$$) as (result agtype);
+SELECT * from cypher('expr', $$
+RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_float8)))
+$$) as (result agtype);
+
 -- VLE
 SELECT create_graph('VLE');
 -- should fail

@@ -46,6 +46,16 @@
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 
+/* names of typecast functions */
+#define FUNC_AGTYPE_TYPECAST_EDGE "agtype_typecast_edge"
+#define FUNC_AGTYPE_TYPECAST_PATH "agtype_typecast_path"
+#define FUNC_AGTYPE_TYPECAST_VERTEX "agtype_typecast_vertex"
+#define FUNC_AGTYPE_TYPECAST_NUMERIC "agtype_typecast_numeric"
+#define FUNC_AGTYPE_TYPECAST_FLOAT "agtype_typecast_float"
+#define FUNC_AGTYPE_TYPECAST_INT "agtype_typecast_int"
+#define FUNC_AGTYPE_TYPECAST_PG_FLOAT8 "agtype_to_float8"
+#define FUNC_AGTYPE_TYPECAST_PG_BIGINT "agtype_to_int8"
+
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);
 static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac);
@@ -637,46 +647,49 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
 static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                        cypher_typecast *ctypecast)
 {
-    Node *expr;
-    FuncExpr *func_expr;
-    List *func_args = NIL;
-    Oid func_agtype_typecast_operator_oid = InvalidOid;
+    List *fname;
+    FuncCall *fnode;
 
     /* verify input parameter */
     Assert (cpstate != NULL);
     Assert (ctypecast != NULL);
 
-    /* get the oid of the requested typecast function */
+    /* create the qualified function name, schema first */
+    fname = list_make1(makeString("ag_catalog"));
+
+    /* append the name of the requested typecast function */
     if (pg_strcasecmp(ctypecast->typecast, "edge") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_edge", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_EDGE));
     }
     else if (pg_strcasecmp(ctypecast->typecast, "path") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_path", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PATH));
     }
     else if (pg_strcasecmp(ctypecast->typecast, "vertex") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_vertex", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_VERTEX));
     }
     else if (pg_strcasecmp(ctypecast->typecast, "numeric") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_numeric", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_NUMERIC));
     }
     else if (pg_strcasecmp(ctypecast->typecast, "float") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_float", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_FLOAT));
     }
     else if (pg_strcasecmp(ctypecast->typecast, "int") == 0 ||
              pg_strcasecmp(ctypecast->typecast, "integer") == 0)
     {
-        func_agtype_typecast_operator_oid =
-            get_ag_func_oid("agtype_typecast_int", 1, ANYOID);
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_INT));
+    }
+    else if (pg_strcasecmp(ctypecast->typecast, "pg_float8") == 0)
+    {
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_FLOAT8));
+    }
+    else if (pg_strcasecmp(ctypecast->typecast, "pg_bigint") == 0)
+    {
+        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_BIGINT));
     }
     /* if none was found, error out */
     else
@@ -686,17 +699,12 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                  ctypecast->typecast)));
     }
 
-    /* transform the expression to be typecast */
-    expr = transform_cypher_expr_recurse(cpstate, ctypecast->expr);
+    /* make a function call node */
+    fnode = makeFuncCall(fname, list_make1(ctypecast->expr),
+                         ctypecast->location);
 
-    /* append the expression and build the function node */
-    func_args = lappend(func_args, expr);
-    func_expr = makeFuncExpr(func_agtype_typecast_operator_oid, AGTYPEOID,
-                             func_args, InvalidOid, InvalidOid,
-                             COERCE_EXPLICIT_CALL);
-    func_expr->location = ctypecast->location;
-
-    return (Node *)func_expr;
+    /* return the transformed function */
+    return transform_FuncCall(cpstate, fnode);
 }
 
 /*

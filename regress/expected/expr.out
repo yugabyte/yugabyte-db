@@ -5097,6 +5097,23 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 ag
  {"id": 281474976710657, "label": "", "properties": {"i": 1}}::vertex | {"id": 281474976710659, "label": "", "properties": {"i": 3}}::vertex
 (2 rows)
 
+-- Added typecasts ::pg_bigint and ::pg_float8
+SELECT * from cypher('expr', $$
+RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_bigint)))
+$$) as (result agtype);
+ result 
+--------
+ 2.0
+(1 row)
+
+SELECT * from cypher('expr', $$
+RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_float8)))
+$$) as (result agtype);
+ result 
+--------
+ 2.0
+(1 row)
+
 -- VLE
 SELECT create_graph('VLE');
 NOTICE:  graph "VLE" has been created
