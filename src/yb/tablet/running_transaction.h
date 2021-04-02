@@ -25,6 +25,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/bitmap.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace tablet {
@@ -100,7 +101,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Sets apply state for this transaction.
   // If data is not null, then apply intents task will be initiated if was not previously started.
   void SetApplyData(const docdb::ApplyTransactionState& apply_state,
-                    const TransactionApplyData* data = nullptr);
+                    const TransactionApplyData* data = nullptr,
+                    ScopedRWOperation* operation = nullptr);
 
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
@@ -159,6 +161,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionApplyData apply_data_;
   docdb::ApplyTransactionState apply_state_;
+  ScopedRWOperation apply_operation_;
   ApplyIntentsTask apply_intents_task_;
 
   // Time of the next check whether this transaction has been aborted.
