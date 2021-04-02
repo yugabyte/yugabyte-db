@@ -80,6 +80,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
+      preTaskActions();
+
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 

@@ -4,7 +4,9 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -405,14 +407,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testCheckCustomer_InvalidUniverseNullDetails() {
     Universe u = setupUniverse("test");
     // Set the details to null.
-    Universe.saveDetails(
-        u.universeUUID,
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe univ) {
-            univ.setUniverseDetails(null);
-          };
-        });
+    Universe.saveDetails(u.universeUUID, univ -> univ.setUniverseDetails(null));
     setupAlertingData(null, false, false);
     // Add a reference to this on the customer anyway.
     validateNoDevopsCall();
@@ -424,13 +419,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     // Set updateInProgress to true.
     Universe.saveDetails(
         u.universeUUID,
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe univ) {
-            UniverseDefinitionTaskParams details = univ.getUniverseDetails();
-            details.updateInProgress = true;
-            univ.setUniverseDetails(details);
-          };
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);
     validateNoDevopsCall();
@@ -465,21 +457,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     // Setup an invalid provider.
     Universe.saveDetails(
         u.universeUUID,
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe univ) {
-            UniverseDefinitionTaskParams details = univ.getUniverseDetails();
-            UniverseDefinitionTaskParams.UserIntent userIntent =
-                details.getPrimaryCluster().userIntent;
-            userIntent.provider = UUID.randomUUID().toString();
-            univ.setUniverseDetails(details);
-          };
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          UniverseDefinitionTaskParams.UserIntent userIntent =
+              details.getPrimaryCluster().userIntent;
+          userIntent.provider = UUID.randomUUID().toString();
+          univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);
     validateNoDevopsCall();
   }
 
-  @Test
   public void testCheckCustomer_InvalidUniverseNoAccessKey() {
     setupUniverse("test");
     setupAlertingData(null, false, false);
@@ -591,6 +579,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testInvalidUniverseFailureMetric() throws MessagingException {
     Universe u = setupUniverse("test");
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+
     // Imitate error while sending the email.
     doThrow(new MessagingException("TestException"))
         .when(mockEmailHelper)
@@ -728,5 +717,29 @@ public class HealthCheckerTest extends FakeDBApplication {
         String.format(
             "Can't run health check for the universe due to missing IP address for node %s.",
             nd.nodeName));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_MissingUniverse() {
+    assertFalse(HealthChecker.canHealthCheckUniverse(UUID.randomUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_ExistingUniverseUnlocked() {
+    Universe u = setupUniverse("univ1");
+    assertTrue(HealthChecker.canHealthCheckUniverse(u.universeUUID));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_ExistingUniverseLocked() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.universeUUID,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          univ.setUniverseDetails(details);
+        });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.universeUUID));
   }
 }
