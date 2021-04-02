@@ -14,8 +14,7 @@ const initialValues = {
   AZURE_CLIENT_SECRET: '',
   AZURE_TENANT_ID: '',
   AZURE_SUBSCRIPTION_ID: '',
-  AZURE_RG: '',
-  HOSTED_ZONE_ID: ''
+  AZURE_RG: ''
 };
 
 const validationSchema = Yup.object().shape({

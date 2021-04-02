@@ -57,8 +57,7 @@ class ProviderResultView extends Component {
     const payload = {};
     payload.uuid = currentProvider.uuid;
     payload.code = currentProvider.code;
-    payload.hostedZoneId =
-      currentProvider.code === 'aws' ? currentProvider.config.AWS_HOSTED_ZONE_ID : '';
+    payload.hostedZoneId = currentProvider.config?.HOSTED_ZONE_ID || '';
     payload.accountName = providerInfo.find((a) => a.name === 'Name').data;
     payload.sshKey = providerInfo.find((a) => a.name === 'SSH Key').data;
     return payload;

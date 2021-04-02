@@ -249,6 +249,8 @@ class AzureListDnsEntryMethod(AbstractDnsMethod):
             }))
         except Exception as e:
             print(json.dumps({'error': repr(e)}))
+
+
 class AzureTagsMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(AzureTagsMethod, self).__init__(base_command, "tags")

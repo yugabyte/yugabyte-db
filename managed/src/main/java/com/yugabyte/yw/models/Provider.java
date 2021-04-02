@@ -192,8 +192,8 @@ public class Provider extends Model {
     return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
-  public String getAwsHostedZoneName() {
-    return getConfig().get("AWS_HOSTED_ZONE_NAME");
+  public String getHostedZoneName() {
+    return getConfig().getOrDefault("HOSTED_ZONE_NAME", getConfig().get("AWS_HOSTED_ZONE_NAME"));
   }
 
   /**
@@ -209,7 +209,7 @@ public class Provider extends Model {
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
     Map<String, String> currentProviderConfig = getConfig();
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
-    currentProviderConfig.put("AWS_HOSTED_ZONE_NAME", hostedZoneName);
+    currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
     this.save();
   }
