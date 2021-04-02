@@ -34,6 +34,7 @@ import {
   UPDATE_PROFILE_SUCCESS,
   UPDATE_PROFILE_FAILURE,
   ADD_CUSTOMER_CONFIG,
+  EDIT_CUSTOMER_CONFIG,
   ADD_CUSTOMER_CONFIG_RESPONSE,
   FETCH_CUSTOMER_CONFIGS,
   FETCH_CUSTOMER_CONFIGS_RESPONSE,
@@ -94,6 +95,7 @@ const INITIAL_STATE = {
   yugawareVersion: getInitialState({}),
   profile: getInitialState({}),
   addConfig: getInitialState({}),
+  editConfig: getInitialState({}),
   configs: getInitialState([]),
   deleteConfig: getInitialState({}),
   deleteSchedule: getInitialState({}),
@@ -221,6 +223,11 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'yugawareVersion', action);
     case ADD_CUSTOMER_CONFIG:
       return setLoadingState(state, 'addConfig', {});
+    case EDIT_CUSTOMER_CONFIG:
+      return {
+        ...state,
+        editConfig: action.payload
+      }
     case ADD_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'addConfig', action);
     case FETCH_CUSTOMER_CONFIGS:

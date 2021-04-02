@@ -30,34 +30,21 @@ class AwsStorageConfiguration extends Component {
     const { iamRoleEnabled } = this.state;
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
-    const allowKeyEdits = !isEmptyObject(s3Config) || iamRoleEnabled;
+
     return (
       <Row className="config-section-header" key={'s3'}>
-        <Col lg={9}>
+        <Col lg={8}>
           <Row className="config-provider-row" key={'s3-iam-instance-profile'}>
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
             </Col>
             <Col lg={9}>
-              {!isEmptyObject(s3Config) ? (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  input={{
-                    name: 'IAM_INSTANCE_PROFILE',
-                    value: config['IAM_INSTANCE_PROFILE']
-                  }}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                  isReadOnly
-                />
-              ) : (
-                <Field
-                  name="IAM_INSTANCE_PROFILE"
-                  component={YBToggle}
-                  onToggle={this.iamInstanceToggle}
-                  subLabel="Whether to use instance's IAM role for S3 backup."
-                />
-              )}
+              <Field
+                name="IAM_INSTANCE_PROFILE"
+                component={YBToggle}
+                onToggle={this.iamInstanceToggle}
+                subLabel="Whether to use instance's IAM role for S3 backup."
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-aws-access-key-id'}>
@@ -65,24 +52,13 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Key</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
-                <Field
-                  name="AWS_ACCESS_KEY_ID"
-                  placeHolder="AWS Access Key"
-                  input={{
-                    value: config['AWS_ACCESS_KEY_ID'] || '',
-                    disabled: allowKeyEdits
-                  }}
-                  component={YBTextInputWithLabel}
-                />
-              ) : (
-                <Field
-                  name="AWS_ACCESS_KEY_ID"
-                  placeHolder="AWS Access Key"
-                  component={YBTextInputWithLabel}
-                  validate={required}
-                />
-              )}
+              <Field
+                name="AWS_ACCESS_KEY_ID"
+                placeHolder="AWS Access Key"
+                component={YBTextInputWithLabel}
+                validate={required}
+                isReadOnly={iamRoleEnabled}
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-aws-secret-access-key'}>
@@ -90,24 +66,13 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
             <Col lg={9}>
-              {allowKeyEdits ? (
-                <Field
-                  name="AWS_SECRET_ACCESS_KEY"
-                  placeHolder="AWS Access Secret"
-                  input={{
-                    value: config['AWS_SECRET_ACCESS_KEY'] || '',
-                    disabled: allowKeyEdits
-                  }}
-                  component={YBTextInputWithLabel}
-                />
-              ) : (
-                <Field
-                  name="AWS_SECRET_ACCESS_KEY"
-                  placeHolder="AWS Access Secret"
-                  component={YBTextInputWithLabel}
-                  validate={required}
-                />
-              )}
+              <Field
+                name="AWS_SECRET_ACCESS_KEY"
+                placeHolder="AWS Access Secret"
+                component={YBTextInputWithLabel}
+                validate={required}
+                isReadOnly={iamRoleEnabled}
+              />
             </Col>
           </Row>
           <Row className="config-provider-row" key={'s3-backup-location'}>
@@ -167,7 +132,7 @@ class AwsStorageConfiguration extends Component {
           </Row>
         </Col>
         {!isEmptyObject(s3Config) && (
-          <Col lg={3}>
+          <Col lg={4}>
             <div className="action-bar">
               {s3Config.inUse && (
                 <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
