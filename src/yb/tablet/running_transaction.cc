@@ -432,7 +432,8 @@ Status MakeAbortedStatus(const TransactionId& id) {
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
-                                      const TransactionApplyData* data) {
+                                      const TransactionApplyData* data,
+                                      ScopedRWOperation* operation) {
   apply_state_ = apply_state;
   bool active = apply_state_.active();
 
@@ -443,7 +444,7 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
     LOG_IF_WITH_PREFIX(DFATAL, local_commit_time_ != data->commit_ht)
         << "Commit time does not match: " << local_commit_time_ << " vs " << data->commit_ht;
 
-    if (apply_intents_task_.Prepare(shared_from_this())) {
+    if (apply_intents_task_.Prepare(shared_from_this(), operation)) {
       context_.participant_context_.StrandEnqueue(&apply_intents_task_);
     } else {
       LOG_WITH_PREFIX(DFATAL) << "Unable to prepare apply intents task";

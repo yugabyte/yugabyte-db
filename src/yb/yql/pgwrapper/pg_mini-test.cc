@@ -1326,6 +1326,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
   TestBigInsert(/* restart= */ true);
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithDropTable)) {
+  constexpr int kNumRows = 10000;
+  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+}
+
 void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());

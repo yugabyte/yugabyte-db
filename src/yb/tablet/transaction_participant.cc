@@ -536,7 +536,7 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();
 
-      UpdateAppliedTransaction(data, apply_state);
+      UpdateAppliedTransaction(data, apply_state, &operation);
     }
 
     NotifyApplied(data);
@@ -545,7 +545,8 @@ class TransactionParticipant::Impl
 
   void UpdateAppliedTransaction(
        const TransactionApplyData& data,
-       const docdb::ApplyTransactionState& apply_state) NO_THREAD_SAFETY_ANALYSIS {
+       const docdb::ApplyTransactionState& apply_state,
+       ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents or not.
@@ -555,7 +556,7 @@ class TransactionParticipant::Impl
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, "applied"s, &min_running_notifier);
       } else {
-        lock_and_iterator.transaction().SetApplyData(apply_state, &data);
+        lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
       }
     }
   }
@@ -945,13 +946,35 @@ class TransactionParticipant::Impl
 
   void LoadFinished(const ApplyStatesMap& pending_applies) override {
     start_latch_.Wait();
-    if (closing_.load(std::memory_order_acquire)) {
-      LOG_WITH_PREFIX(INFO) << __func__ << ": closing, not starting transaction status resolution";
-      return;
+    std::vector<ScopedRWOperation> operations;
+    operations.reserve(pending_applies.size());
+    for (;;) {
+      if (closing_.load(std::memory_order_acquire)) {
+        LOG_WITH_PREFIX(INFO)
+            << __func__ << ": closing, not starting transaction status resolution";
+        return;
+      }
+      while (operations.size() < pending_applies.size()) {
+        ScopedRWOperation operation(pending_op_counter_);
+        if (!operation.ok()) {
+          break;
+        }
+        operations.push_back(std::move(operation));
+      }
+      if (operations.size() == pending_applies.size()) {
+        break;
+      }
+      operations.clear();
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+          << __func__ << ": unable to start scoped RW operation";
+      std::this_thread::sleep_for(10ms);
     }
 
-    {
+    if (!pending_applies.empty()) {
+      LOG_WITH_PREFIX(INFO)
+          << __func__ << ": starting " << pending_applies.size() << " pending applies";
       std::lock_guard<std::mutex> lock(mutex_);
+      size_t idx = 0;
       for (const auto& p : pending_applies) {
         auto it = transactions_.find(p.first);
         if (it == transactions_.end()) {
@@ -962,7 +985,8 @@ class TransactionParticipant::Impl
         TransactionApplyData apply_data;
         apply_data.transaction_id = p.first;
         apply_data.commit_ht = p.second.commit_ht;
-        (**it).SetApplyData(p.second.state, &apply_data);
+        (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
+        ++idx;
       }
     }
 
