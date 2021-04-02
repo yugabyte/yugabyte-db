@@ -149,7 +149,7 @@ public class CloudProviderController extends AuthenticatedController {
 
       int providersCount = Provider.getByCode(provider.code).size();
       // Instance type has been shared across providers.
-      // We can’t delete instance types if multiple providers exist with the same provider code.
+      // We can't delete instance types if multiple providers exist with the same provider code.
       if (providersCount == 1) {
         InstanceType.deleteInstanceTypesForProvider(provider, config);
       }
@@ -192,7 +192,7 @@ public class CloudProviderController extends AuthenticatedController {
         String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
@@ -208,7 +208,7 @@ public class CloudProviderController extends AuthenticatedController {
             }
             break;
           case "azu":
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
