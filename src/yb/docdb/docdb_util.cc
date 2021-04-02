@@ -191,8 +191,8 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
   }
 
-  regular_db_options_.statistics = rocksdb::CreateDBStatistics();
-  intents_db_options_.statistics = rocksdb::CreateDBStatistics();
+  regular_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ false);
+  intents_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ true);
   RETURN_NOT_OK(ReinitDBOptions());
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();

@@ -148,7 +148,6 @@ set(ROCKSDB_SRCS
     utilities/merge_operators/uint64add.cc
     utilities/options/options_util.cc
     utilities/redis/redis_lists.cc
-    utilities/spatialdb/spatial_db.cc
     utilities/table_properties_collectors/compact_on_deletion_collector.cc
     utilities/transactions/optimistic_transaction_impl.cc
     utilities/transactions/optimistic_transaction_db_impl.cc
@@ -297,7 +296,6 @@ ADD_YB_TEST(utilities/geodb/geodb_test)
 ADD_YB_TEST(utilities/merge_operators/string_append/stringappend_test)
 ADD_YB_TEST(utilities/options/options_util_test)
 ADD_YB_TEST(utilities/redis/redis_lists_test)
-ADD_YB_TEST(utilities/spatialdb/spatial_db_test)
 ADD_YB_TEST(utilities/table_properties_collectors/compact_on_deletion_collector_test)
 ADD_YB_TEST(utilities/transactions/optimistic_transaction_test)
 ADD_YB_TEST(utilities/ttl/ttl_test)

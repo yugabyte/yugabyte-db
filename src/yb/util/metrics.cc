@@ -725,7 +725,8 @@ CHECKED_STATUS StringGauge::WriteForPrometheus(
 //
 // This implementation is optimized by using a striped counter. See LongAdder for details.
 
-scoped_refptr<Counter> CounterPrototype::Instantiate(const scoped_refptr<MetricEntity>& entity) {
+scoped_refptr<Counter> CounterPrototype::Instantiate(
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateCounter(this);
 }
 
@@ -776,7 +777,7 @@ CHECKED_STATUS Counter::WriteForPrometheus(
 //
 
 scoped_refptr<MillisLag> MillisLagPrototype::Instantiate(
-    const scoped_refptr<MetricEntity>& entity) {
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateMillisLag(this);
 }
 
@@ -855,7 +856,7 @@ HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
 }
 
 scoped_refptr<Histogram> HistogramPrototype::Instantiate(
-    const scoped_refptr<MetricEntity>& entity) {
+    const scoped_refptr<MetricEntity>& entity) const {
   return entity->FindOrCreateHistogram(this);
 }
 
