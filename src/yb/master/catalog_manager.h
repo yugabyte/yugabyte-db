@@ -173,9 +173,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   };
 
  public:
-  // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
-  using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
-
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
@@ -689,7 +686,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                            scoped_refptr<TableInfo>* table_info);
 
-  Result<TableDescription> DescribeTable(const TableIdentifierPB& table_identifier);
+  Result<TableDescription> DescribeTable(
+      const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
@@ -742,7 +740,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
-      bool include_parent_colocated_table = false);
+      bool include_parent_colocated_table = false,
+      bool succeed_if_create_in_progress = false);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1023,7 +1022,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // This must be called after persisting the tablet state as
   // CREATING to ensure coherent state after Master failover.
-  void SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
+  CHECKED_STATUS SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
 
   // Send the "alter table request" to all tablets of the specified table.
   //
@@ -1229,9 +1228,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual void Started() {}
 
+  virtual void SysCatalogLoaded(int64_t term) {}
+
   // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
+
+  virtual Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap() {
+    return SnapshotSchedulesToTabletsMap();
+  }
 
   // ----------------------------------------------------------------------------------------------
   // Private member fields
@@ -1442,6 +1447,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  ServerRegistrationPB server_registration_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

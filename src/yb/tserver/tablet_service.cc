@@ -942,6 +942,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
           << ", context: " << context.ToString();
+  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
+      << __func__ << " missing propagated hybrid time for "
+      << TransactionStatus_Name(req->state().status());
   UpdateClock(*req, server_->Clock());
 
   LeaderTabletPeer tablet;
@@ -1056,20 +1059,31 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   tablet.peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
       tablet.leader_term,
-      [resp, context_ptr, clock](Result<TransactionStatusResult> result) {
+      [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
+        Status status;
         if (result.ok()) {
-          resp->set_status(result->status);
-          if (result->status_time.is_valid()) {
-            resp->set_status_hybrid_time(result->status_time.ToUint64());
+          auto leader_safe_time = peer->LeaderSafeTime();
+          if (leader_safe_time.ok()) {
+            resp->set_status(result->status);
+            if (result->status_time.is_valid()) {
+              resp->set_status_hybrid_time(result->status_time.ToUint64());
+            }
+            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitTime
+            // for details.
+            resp->set_coordinator_safe_time(leader_safe_time->ToUint64());
+            context_ptr->RespondSuccess();
+            return;
           }
-          context_ptr->RespondSuccess();
+
+          status = leader_safe_time.status();
         } else {
-          SetupErrorAndRespond(resp->mutable_error(),
-                               result.status(),
-                               TabletServerErrorPB::UNKNOWN_ERROR,
-                               context_ptr.get());
+          status = result.status();
         }
+        SetupErrorAndRespond(resp->mutable_error(),
+                             status,
+                             TabletServerErrorPB::UNKNOWN_ERROR,
+                             context_ptr.get());
       });
 }
 
@@ -1099,35 +1113,41 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
                                           CreateTabletResponsePB* resp,
                                           rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
+    return;
+  }
+  auto status = DoCreateTablet(req, resp);
+  if (!status.ok()) {
+    auto code = TabletServerError(status).value();
+    if (!code) {
+      code = TabletServerErrorPB::UNKNOWN_ERROR;
+    }
+    SetupErrorAndRespond(resp->mutable_error(), status, code, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
+                                              CreateTabletResponsePB* resp) {
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms > 0 &&
                     req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE)) {
     std::this_thread::sleep_for(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms * 1ms);
   }
 
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
-    return;
-  }
   DVLOG(3) << "Received CreateTablet RPC: " << yb::ToString(*req);
   TRACE_EVENT1("tserver", "CreateTablet",
                "tablet_id", req->tablet_id());
 
   Schema schema;
-  Status s = SchemaFromPB(req->schema(), &schema);
-  DCHECK(schema.has_column_ids());
-  if (!s.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         STATUS(InvalidArgument, "Invalid Schema."),
-                         TabletServerErrorPB::INVALID_SCHEMA, &context);
-    return;
-  }
-
   PartitionSchema partition_schema;
-  s = PartitionSchema::FromPB(req->partition_schema(), schema, &partition_schema);
-  if (!s.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         STATUS(InvalidArgument, "Invalid PartitionSchema."),
-                         TabletServerErrorPB::INVALID_SCHEMA, &context);
-    return;
+  auto status = SchemaFromPB(req->schema(), &schema);
+  if (status.ok()) {
+    DCHECK(schema.has_column_ids());
+    status = PartitionSchema::FromPB(req->partition_schema(), schema, &partition_schema);
+  }
+  if (!status.ok()) {
+    return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SCHEMA));
   }
 
   Partition partition;
@@ -1139,22 +1159,25 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
             << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
-  s = server_->tablet_manager()->CreateNewTablet(
-      req->table_id(), req->tablet_id(), partition, req->namespace_name(), req->table_name(),
-      req->table_type(), schema, partition_schema,
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      req->table_id(), req->namespace_name(), req->table_name(), req->table_type(), schema,
+      IndexMap(),
       req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
-      req->config(), /* tablet_peer */ nullptr, req->colocated());
-  if (PREDICT_FALSE(!s.ok())) {
-    TabletServerErrorPB::Code code;
-    if (s.IsAlreadyPresent()) {
-      code = TabletServerErrorPB::TABLET_ALREADY_EXISTS;
-    } else {
-      code = TabletServerErrorPB::UNKNOWN_ERROR;
-    }
-    SetupErrorAndRespond(resp->mutable_error(), s, code, &context);
-    return;
+      0 /* schema_version */, partition_schema);
+  std::vector<SnapshotScheduleId> snapshot_schedules;
+  snapshot_schedules.reserve(req->snapshot_schedules().size());
+  for (const auto& id : req->snapshot_schedules()) {
+    snapshot_schedules.push_back(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(id)));
   }
-  context.RespondSuccess();
+  status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
+      table_info, req->tablet_id(), partition, req->config(), req->colocated(),
+      snapshot_schedules));
+  if (PREDICT_FALSE(!status.ok())) {
+    return status.IsAlreadyPresent()
+        ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
+        : status;
+  }
+  return Status::OK();
 }
 
 void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,

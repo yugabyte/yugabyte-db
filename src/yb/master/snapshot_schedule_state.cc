@@ -16,6 +16,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"
@@ -67,6 +68,7 @@ void SnapshotScheduleState::PrepareOperations(
     .schedule_id = id_,
     .filter = options_.filter(),
     .snapshot_id = creating_snapshot_id_,
+    .previous_snapshot_hybrid_time = last_snapshot_time,
   });
 }
 

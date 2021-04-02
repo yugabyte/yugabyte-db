@@ -12,11 +12,19 @@
 //
 
 #include "yb/client/snapshot_test_base.h"
+#include "yb/client/table_alterer.h"
 
+#include "yb/client/session.h"
+
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -183,6 +191,55 @@ TEST_F(SnapshotScheduleTest, GC) {
   }
 }
 
+TEST_F(SnapshotScheduleTest, Index) {
+  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+
+  CreateIndex(Transactional::kTrue, 1, false);
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  constexpr int kTransaction = 0;
+  constexpr auto op_type = WriteOpType::INSERT;
+
+  auto session = CreateSession();
+  for (size_t r = 0; r != kNumRows; ++r) {
+    ASSERT_OK(kv_table_test::WriteRow(
+        &index_, session, KeyForTransactionAndIndex(kTransaction, r),
+        ValueForTransactionAndIndex(kTransaction, r, op_type), op_type));
+  }
+
+  LOG(INFO) << "Index columns: " << AsString(index_.AllColumnNames());
+  for (size_t r = 0; r != kNumRows; ++r) {
+    const auto key = KeyForTransactionAndIndex(kTransaction, r);
+    const auto fetched = ASSERT_RESULT(kv_table_test::SelectRow(
+        &index_, session, key, kValueColumn));
+    ASSERT_EQ(key, fetched);
+  }
+
+  auto peers = ListTabletPeers(cluster_.get(), [index_id = index_->id()](const auto& peer) {
+    return peer->tablet_metadata()->table_id() == index_id;
+  });
+
+  ASSERT_OK(WaitFor([this, peers, hybrid_time]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    if (snapshots.size() == 2) {
+      return true;
+    }
+
+    for (const auto& peer : peers) {
+      SCOPED_TRACE(Format(
+          "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
+          peer->tablet_metadata()->table_name()));
+      auto tablet = peer->tablet();
+      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      SCHECK_LE(history_cutoff, hybrid_time, IllegalState, "Too big history cutoff");
+    }
+
+    return false;
+  }, kSnapshotInterval, "Second snapshot"));
+}
+
 TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(CreateSchedule());
@@ -193,6 +250,37 @@ TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_EQ(schedules.size(), 1);
   ASSERT_EQ(schedules[0].snapshots().size(), 1);
   ASSERT_EQ(schedules[0].snapshots()[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
+}
+
+TEST_F(SnapshotScheduleTest, RestoreSchema) {
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(CreateSchedule());
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  auto old_schema = table_.schema();
+  auto alterer = client_->NewTableAlterer(table_.name());
+  auto* column = alterer->AddColumn("new_column");
+  column->Type(DataType::INT32);
+  ASSERT_OK(alterer->Alter());
+  ASSERT_OK(table_.Reopen());
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+  ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
+  ASSERT_OK(WaitScheduleSnapshot(schedule_id));
+
+  auto schedules = ASSERT_RESULT(ListSchedules());
+  ASSERT_EQ(schedules.size(), 1);
+  const auto& snapshots = schedules[0].snapshots();
+  ASSERT_EQ(snapshots.size(), 1);
+  ASSERT_EQ(snapshots[0].entry().state(), master::SysSnapshotEntryPB::COMPLETE);
+
+  ASSERT_OK(RestoreSnapshot(TryFullyDecodeTxnSnapshotId(snapshots[0].id()), hybrid_time));
+
+  auto select_result = SelectRow(CreateSession(), 1, kValueColumn);
+  ASSERT_NOK(select_result);
+  ASSERT_TRUE(select_result.status().IsQLError());
+  ASSERT_EQ(ql::QLError(select_result.status()), ql::ErrorCode::WRONG_METADATA_VERSION);
+  ASSERT_OK(table_.Reopen());
+  ASSERT_EQ(old_schema, table_.schema());
+  ASSERT_NO_FATALS(VerifyData());
 }
 
 } // namespace client

@@ -207,17 +207,13 @@ export function resetProviderList() {
   };
 }
 
-export function createProvider(type, name, config, regionFormVals = null) {
+export function createProvider(type, name, config) {
   const customerUUID = localStorage.getItem('customerId');
   const provider = PROVIDER_TYPES.find((providerType) => providerType.code === type);
   const formValues = {
     code: provider.code,
     name: name,
     config: config,
-  };
-  if (regionFormVals) {
-    const region = Object.keys(regionFormVals?.perRegionMetadata)[0] || '';
-    formValues['region'] = region;
   }
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {

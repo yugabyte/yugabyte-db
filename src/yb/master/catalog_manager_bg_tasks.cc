@@ -31,6 +31,7 @@
 
 #include <memory>
 
+#include "yb/master/master_service_base.h"
 #include "yb/util/logging.h"
 #include "yb/util/mutex.h"
 
@@ -106,7 +107,7 @@ void CatalogManagerBgTasks::Shutdown() {
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     // Perform assignment processing.
-    ScopedLeaderSharedLock l(catalog_manager_);
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
     if (!l.catalog_status().ok()) {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();
