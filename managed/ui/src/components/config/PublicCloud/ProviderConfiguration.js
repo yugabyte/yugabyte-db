@@ -181,22 +181,16 @@ class ProviderConfiguration extends Component {
         { name: 'Provider UUID', data: currentProvider.uuid },
         { name: 'SSH Key', data: keyPairName }
       ];
-      if (
-        currentProvider.code === 'aws' &&
-        isNonEmptyString(currentProvider.config.AWS_HOSTED_ZONE_ID)
-      ) {
+      if (isNonEmptyString(currentProvider.config?.HOSTED_ZONE_ID)) {
         providerInfo.push({
           name: 'Hosted Zone ID',
-          data: currentProvider.config.AWS_HOSTED_ZONE_ID
+          data: currentProvider.config.HOSTED_ZONE_ID
         });
       }
-      if (
-        currentProvider.code === 'aws' &&
-        isNonEmptyString(currentProvider.config.AWS_HOSTED_ZONE_NAME)
-      ) {
+      if (isNonEmptyString(currentProvider.config?.HOSTED_ZONE_NAME)) {
         providerInfo.push({
           name: 'Hosted Zone Name',
-          data: currentProvider.config.AWS_HOSTED_ZONE_NAME
+          data: currentProvider.config.HOSTED_ZONE_NAME
         });
       }
       if (isNonEmptyObject(hostInfo)) {

@@ -119,7 +119,7 @@ public class Universe extends Model {
     if (p == null) {
       return null;
     }
-    String dnsSuffix = p.getAwsHostedZoneName();
+    String dnsSuffix = p.getHostedZoneName();
     if (dnsSuffix == null) {
       return null;
     }
