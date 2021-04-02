@@ -1,5 +1,7 @@
 -- Testing pg_hint_plan
 -- Initialization of tables for pg_hint_plan test
+-- This test is derived from the init test in
+-- <https://github.com/ossc-db/pg_hint_plan/>.
 SET search_path TO public;
 
 CREATE EXTENSION pg_hint_plan;
@@ -131,19 +133,18 @@ CREATE VIEW v4 AS SELECT v_2.t1_id, t_3.id FROM v2 v_2, t3 t_3 WHERE v_2.t1_id =
 
 /* Fix auto-tunable parameters */
 ALTER SYSTEM SET effective_cache_size TO 16384;
-ERROR:  ALTER SYSTEM not supported yet
-LINE 6: ALTER SYSTEM SET effective_cache_size TO 16384;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT pg_reload_conf();
 SET effective_cache_size TO 16384;
 
+-- YB: modify view to avoid yb_ settings.
 CREATE VIEW settings AS
 SELECT name, setting, category
   FROM pg_settings
  WHERE category LIKE 'Query Tuning%'
+   AND name NOT LIKE 'yb_%'
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
 
-ANALYZE;
+-- TODO(jason): uncomment when closing issue #1420.
+-- ANALYZE;

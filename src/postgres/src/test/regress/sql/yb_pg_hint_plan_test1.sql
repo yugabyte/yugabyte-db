@@ -1,3 +1,5 @@
+-- This test is derived from the pg_hint_plan test in
+-- <https://github.com/ossc-db/pg_hint_plan/>.
 SET search_path TO public;
 SET client_min_messages TO log;
 \set SHOW_CONTEXT always
