@@ -84,5 +84,10 @@ regions:
     image: centos-7-v20210217
     project: centos-cloud
     zones: ['a', 'b', 'c']
+  us-west2:
+    cidr_prefix: "10.215"
+    image: centos-7-v20210217
+    project: centos-cloud
+    zones: [ 'a', 'b', 'c' ]
 
 credential_vars: ['GOOGLE_APPLICATION_CREDENTIALS', 'GCE_PROJECT']
