@@ -1746,10 +1746,10 @@ public class UniverseController extends AuthenticatedController {
       JsonNode resultNode = queryHelper.liveQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
-      LOG.error("Universe does not have a private IP or DNS", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
+      LOG.warn("Universe does not have a private IP or DNS.");
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to fetch live queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe", t);
+      LOG.error("Error retrieving queries for universe");
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
@@ -1768,10 +1768,10 @@ public class UniverseController extends AuthenticatedController {
       JsonNode resultNode = queryHelper.slowQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
-      LOG.error("Universe does not have a private IP or DNS", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
+      LOG.warn("Universe does not have a private IP or DNS.");
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to fetch slow queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe", t);
+      LOG.error("Error retrieving queries for universe");
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
