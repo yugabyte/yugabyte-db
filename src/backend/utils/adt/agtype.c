@@ -151,7 +151,7 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
                                        bool *is_null,
                                        enum agtype_value_type *ag_type);
 static agtype_value *string_to_agtype_value(char *s);
-static agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
+agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                                  int variadic_offset,
                                                  int expected_nargs);
 PG_FUNCTION_INFO_V1(agtype_in);
@@ -7370,7 +7370,7 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name, agt
  * If the datum cannot be converted, the function will error out in
  * extract_variadic_args.
  */
-static agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
+agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                                  int variadic_offset,
                                                  int expected_nargs)
 {

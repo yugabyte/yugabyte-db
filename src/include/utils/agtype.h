@@ -464,6 +464,8 @@ bool is_decimal_needed(char *numstr);
 int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 agtype_value *alter_property_value(agtype_value *properties, char *var_name, agtype *new_v, bool remove_property);
 
+agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo, int variadic_offset, int expected_nargs);
+
 Datum make_vertex(Datum id, Datum label, Datum properties);
 Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
                    Datum properties);

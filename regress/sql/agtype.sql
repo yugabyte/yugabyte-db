@@ -145,6 +145,30 @@ SELECT agtype_pow('2.0', '-1.0::numeric');
 SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 
 --
+-- Test overloaded agtype bigint mathematical operator functions
+-- +, -, *, /, and %
+--
+
+SELECT agtype_bigint_add('1', -1);
+SELECT agtype_bigint_add('1.0', -1);
+SELECT agtype_bigint_add('1::numeric', 1);
+SELECT agtype_bigint_add('1.0::numeric', 1);
+
+SELECT agtype_bigint_sub('1', -1);
+SELECT agtype_bigint_sub('1.0', -1);
+SELECT agtype_bigint_sub('1::numeric', 1);
+SELECT agtype_bigint_sub('1.0::numeric', 1);
+
+SELECT agtype_bigint_mul('-2', 3);
+SELECT agtype_bigint_mul('2.0', -3);
+SELECT agtype_bigint_mul('-2::numeric', 3);
+SELECT agtype_bigint_mul('-2.0::numeric', 3);
+
+SELECT agtype_bigint_div('-4', 3);
+SELECT agtype_bigint_div('4.0', -3);
+SELECT agtype_bigint_div('-4::numeric', 3);
+SELECT agtype_bigint_div('-4.0::numeric', 3);
+--
 -- Should fail with divide by zero
 --
 SELECT agtype_div('1', '0');
@@ -156,6 +180,11 @@ SELECT agtype_div('1.0', '0::numeric');
 SELECT agtype_div('1::numeric', '0');
 SELECT agtype_div('1::numeric', '0.0');
 SELECT agtype_div('1::numeric', '0::numeric');
+
+SELECT agtype_bigint_div('1', 0);
+SELECT agtype_bigint_div('1.0', 0);
+SELECT agtype_bigint_div('-1::numeric', 0);
+SELECT agtype_bigint_div('-1.0::numeric', 0);
 
 --
 -- Should get Infinity
@@ -187,6 +216,45 @@ SELECT '3'::agtype + '3.14'::agtype;
 SELECT '3'::agtype + '3.14::numeric'::agtype;
 SELECT '3.14'::agtype + '3.14::numeric'::agtype;
 SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
+
+--
+-- Test overloaded bigint operators +, -, *, /, %
+--
+
+SELECT '3'::agtype + 3;
+SELECT '3.14'::agtype + 3;
+SELECT '3.14::numeric'::agtype + 3;
+SELECT 3 + '3'::agtype;
+SELECT 3 + '3.14'::agtype;
+SELECT 3 + '3.14::numeric'::agtype;
+
+SELECT '3'::agtype - 3;
+SELECT '3.14'::agtype - 3;
+SELECT '3.14::numeric'::agtype - 3;
+SELECT 3 - '3'::agtype;
+SELECT 3 - '3.14'::agtype;
+SELECT 3 - '3.14::numeric'::agtype;
+
+SELECT '3'::agtype * 3;
+SELECT '3.14'::agtype * 3;
+SELECT '3.14::numeric'::agtype * 3;
+SELECT 3 * '3'::agtype;
+SELECT 3 * '3.14'::agtype;
+SELECT 3 * '3.14::numeric'::agtype;
+
+SELECT '3'::agtype / 3;
+SELECT '3.14'::agtype / 3;
+SELECT '3.14::numeric'::agtype / 3;
+SELECT 3 / '3'::agtype;
+SELECT 3 / '3.14'::agtype;
+SELECT 3 / '3.14::numeric'::agtype;
+
+SELECT '3'::agtype % 3;
+SELECT '3.14'::agtype % 3;
+SELECT '3.14::numeric'::agtype % 3;
+SELECT 3 % '3'::agtype;
+SELECT 3 % '3.14'::agtype;
+SELECT 3 % '3.14::numeric'::agtype;
 
 --
 -- Test orderability of comparison operators =, <>, <, >, <=, >=

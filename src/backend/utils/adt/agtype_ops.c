@@ -172,7 +172,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
 
     /*
      * One or both values is a string OR one is a string and the other is
-     * either an integer, float, or numeric. If so, concatinate them.
+     * either an integer, float, or numeric. If so, concatenate them.
      */
     if ((agtv_lhs->type == AGTV_STRING || agtv_rhs->type == AGTV_STRING) &&
         (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT ||
@@ -233,6 +233,24 @@ Datum agtype_add(PG_FUNCTION_ARGS)
                         errmsg("Invalid input parameter types for agtype_add")));
 
     AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(agtype_bigint_add);
+
+/* agtype addition between bigint and agtype */
+Datum agtype_bigint_add(PG_FUNCTION_ARGS)
+{
+    agtype *lhs;
+    agtype *rhs;
+    Datum result;
+
+    lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    result = DirectFunctionCall2(agtype_add, AGTYPE_P_GET_DATUM(lhs),
+                                             AGTYPE_P_GET_DATUM(rhs));
+
+    AG_RETURN_AGTYPE_P(DATUM_GET_AGTYPE_P(result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_sub);
@@ -300,6 +318,24 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
                         errmsg("Invalid input parameter types for agtype_sub")));
 
     AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(agtype_bigint_sub);
+
+/* agtype subtraction between bigint and agtype */
+Datum agtype_bigint_sub(PG_FUNCTION_ARGS)
+{
+    agtype *lhs;
+    agtype *rhs;
+    Datum result;
+
+    lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    result = DirectFunctionCall2(agtype_sub, AGTYPE_P_GET_DATUM(lhs),
+                                             AGTYPE_P_GET_DATUM(rhs));
+
+    AG_RETURN_AGTYPE_P(DATUM_GET_AGTYPE_P(result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_neg);
@@ -417,6 +453,24 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
     AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
+PG_FUNCTION_INFO_V1(agtype_bigint_mul);
+
+/* agtype multiplication between bigint and agtype */
+Datum agtype_bigint_mul(PG_FUNCTION_ARGS)
+{
+    agtype *lhs;
+    agtype *rhs;
+    Datum result;
+
+    lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    result = DirectFunctionCall2(agtype_mul, AGTYPE_P_GET_DATUM(lhs),
+                                             AGTYPE_P_GET_DATUM(rhs));
+
+    AG_RETURN_AGTYPE_P(DATUM_GET_AGTYPE_P(result));
+}
+
 PG_FUNCTION_INFO_V1(agtype_div);
 
 /*
@@ -512,6 +566,24 @@ Datum agtype_div(PG_FUNCTION_ARGS)
      AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
+PG_FUNCTION_INFO_V1(agtype_bigint_div);
+
+/* agtype division between bigint and agtype */
+Datum agtype_bigint_div(PG_FUNCTION_ARGS)
+{
+    agtype *lhs;
+    agtype *rhs;
+    Datum result;
+
+    lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    result = DirectFunctionCall2(agtype_div, AGTYPE_P_GET_DATUM(lhs),
+                                             AGTYPE_P_GET_DATUM(rhs));
+
+    AG_RETURN_AGTYPE_P(DATUM_GET_AGTYPE_P(result));
+}
+
 PG_FUNCTION_INFO_V1(agtype_mod);
 
 /*
@@ -577,6 +649,24 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
                         errmsg("Invalid input parameter types for agtype_mod")));
 
     AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(agtype_bigint_mod);
+
+/* agtype modulo between bigint and agtype */
+Datum agtype_bigint_mod(PG_FUNCTION_ARGS)
+{
+    agtype *lhs;
+    agtype *rhs;
+    Datum result;
+
+    lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
+    rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    result = DirectFunctionCall2(agtype_mod, AGTYPE_P_GET_DATUM(lhs),
+                                             AGTYPE_P_GET_DATUM(rhs));
+
+    AG_RETURN_AGTYPE_P(DATUM_GET_AGTYPE_P(result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_pow);

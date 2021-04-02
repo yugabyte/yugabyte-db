@@ -394,6 +394,106 @@ SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 (1 row)
 
 --
+-- Test overloaded agtype bigint mathematical operator functions
+-- +, -, *, /, and %
+--
+SELECT agtype_bigint_add('1', -1);
+ agtype_bigint_add 
+-------------------
+ 0
+(1 row)
+
+SELECT agtype_bigint_add('1.0', -1);
+ agtype_bigint_add 
+-------------------
+ 0.0
+(1 row)
+
+SELECT agtype_bigint_add('1::numeric', 1);
+ agtype_bigint_add 
+-------------------
+ 2::numeric
+(1 row)
+
+SELECT agtype_bigint_add('1.0::numeric', 1);
+ agtype_bigint_add 
+-------------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_bigint_sub('1', -1);
+ agtype_bigint_sub 
+-------------------
+ 2
+(1 row)
+
+SELECT agtype_bigint_sub('1.0', -1);
+ agtype_bigint_sub 
+-------------------
+ 2.0
+(1 row)
+
+SELECT agtype_bigint_sub('1::numeric', 1);
+ agtype_bigint_sub 
+-------------------
+ 0::numeric
+(1 row)
+
+SELECT agtype_bigint_sub('1.0::numeric', 1);
+ agtype_bigint_sub 
+-------------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_bigint_mul('-2', 3);
+ agtype_bigint_mul 
+-------------------
+ -6
+(1 row)
+
+SELECT agtype_bigint_mul('2.0', -3);
+ agtype_bigint_mul 
+-------------------
+ -6.0
+(1 row)
+
+SELECT agtype_bigint_mul('-2::numeric', 3);
+ agtype_bigint_mul 
+-------------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_bigint_mul('-2.0::numeric', 3);
+ agtype_bigint_mul 
+-------------------
+ -6.0::numeric
+(1 row)
+
+SELECT agtype_bigint_div('-4', 3);
+ agtype_bigint_div 
+-------------------
+ -1
+(1 row)
+
+SELECT agtype_bigint_div('4.0', -3);
+ agtype_bigint_div 
+-------------------
+ -1.33333333333333
+(1 row)
+
+SELECT agtype_bigint_div('-4::numeric', 3);
+      agtype_bigint_div       
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_bigint_div('-4.0::numeric', 3);
+      agtype_bigint_div       
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+--
 -- Should fail with divide by zero
 --
 SELECT agtype_div('1', '0');
@@ -413,6 +513,14 @@ ERROR:  division by zero
 SELECT agtype_div('1::numeric', '0.0');
 ERROR:  division by zero
 SELECT agtype_div('1::numeric', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_bigint_div('1', 0);
+ERROR:  division by zero
+SELECT agtype_bigint_div('1.0', 0);
+ERROR:  division by zero
+SELECT agtype_bigint_div('-1::numeric', 0);
+ERROR:  division by zero
+SELECT agtype_bigint_div('-1.0::numeric', 0);
 ERROR:  division by zero
 --
 -- Should get Infinity
@@ -515,6 +623,189 @@ SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
    ?column?    
 ---------------
  6.28::numeric
+(1 row)
+
+--
+-- Test overloaded bigint operators +, -, *, /, %
+--
+SELECT '3'::agtype + 3;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT '3.14'::agtype + 3;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype + 3;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT 3 + '3'::agtype;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT 3 + '3.14'::agtype;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT 3 + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT '3'::agtype - 3;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT '3.14'::agtype - 3;
+ ?column? 
+----------
+ 0.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype - 3;
+   ?column?    
+---------------
+ 0.14::numeric
+(1 row)
+
+SELECT 3 - '3'::agtype;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 3 - '3.14'::agtype;
+ ?column? 
+----------
+ -0.14
+(1 row)
+
+SELECT 3 - '3.14::numeric'::agtype;
+    ?column?    
+----------------
+ -0.14::numeric
+(1 row)
+
+SELECT '3'::agtype * 3;
+ ?column? 
+----------
+ 9
+(1 row)
+
+SELECT '3.14'::agtype * 3;
+ ?column? 
+----------
+ 9.42
+(1 row)
+
+SELECT '3.14::numeric'::agtype * 3;
+   ?column?    
+---------------
+ 9.42::numeric
+(1 row)
+
+SELECT 3 * '3'::agtype;
+ ?column? 
+----------
+ 9
+(1 row)
+
+SELECT 3 * '3.14'::agtype;
+ ?column? 
+----------
+ 9.42
+(1 row)
+
+SELECT 3 * '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 9.42::numeric
+(1 row)
+
+SELECT '3'::agtype / 3;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '3.14'::agtype / 3;
+     ?column?     
+------------------
+ 1.04666666666667
+(1 row)
+
+SELECT '3.14::numeric'::agtype / 3;
+            ?column?             
+---------------------------------
+ 1.04666666666666666667::numeric
+(1 row)
+
+SELECT 3 / '3'::agtype;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT 3 / '3.14'::agtype;
+     ?column?      
+-------------------
+ 0.955414012738854
+(1 row)
+
+SELECT 3 / '3.14::numeric'::agtype;
+            ?column?             
+---------------------------------
+ 0.95541401273885350318::numeric
+(1 row)
+
+SELECT '3'::agtype % 3;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT '3.14'::agtype % 3;
+ ?column? 
+----------
+ 0.14
+(1 row)
+
+SELECT '3.14::numeric'::agtype % 3;
+   ?column?    
+---------------
+ 0.14::numeric
+(1 row)
+
+SELECT 3 % '3'::agtype;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 3 % '3.14'::agtype;
+ ?column? 
+----------
+ 3.0
+(1 row)
+
+SELECT 3 % '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 3.00::numeric
 (1 row)
 
 --
