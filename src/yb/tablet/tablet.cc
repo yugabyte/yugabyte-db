@@ -286,115 +286,6 @@ using docdb::StorageDbType;
 
 namespace {
 
-void EmitRocksDbMetricsAsJson(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    JsonWriter* writer,
-    const MetricJsonOptions& opts) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return;
-  }
-  // Emit all the ticker (gauge) metrics.
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    uint64_t value = regulardb_statistics->getTickerCount(entry.first);
-    writer->String("value");
-    writer->Uint64(value);
-    // Finish the metric object.
-    writer->EndObject();
-    if (export_intentdb_metrics) {
-      // Start the metric object.
-      writer->StartObject();
-      // Write the name.
-      writer->String("name");
-      writer->String(Format("intentsdb_$0", entry.second));
-      // Write the value.
-      uint64_t value = intentsdb_statistics->getTickerCount(entry.first);
-      writer->String("value");
-      writer->Uint64(value);
-      // Finish the metric object.
-      writer->EndObject();
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    // Start the metric object.
-    writer->StartObject();
-    // Write the name.
-    writer->String("name");
-    writer->String(entry.second);
-    // Write the value.
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-    writer->String("total_count");
-    writer->Double(histogram_data.count);
-    writer->String("min");
-    writer->Double(histogram_data.min);
-    writer->String("mean");
-    writer->Double(histogram_data.average);
-    writer->String("median");
-    writer->Double(histogram_data.median);
-    writer->String("std_dev");
-    writer->Double(histogram_data.standard_deviation);
-    writer->String("percentile_95");
-    writer->Double(histogram_data.percentile95);
-    writer->String("percentile_99");
-    writer->Double(histogram_data.percentile99);
-    writer->String("max");
-    writer->Double(histogram_data.max);
-    writer->String("total_sum");
-    writer->Double(histogram_data.sum);
-    // Finish the metric object.
-    writer->EndObject();
-  }
-}
-
-CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
-    std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-    std::shared_ptr<rocksdb::Statistics> intentsdb_statistics,
-    PrometheusWriter* writer,
-    const MetricEntity::AttributeMap& attrs) {
-  // Make sure the class member 'regulardb_statistics_' exists, as this is the stats object
-  // maintained by RocksDB for this tablet.
-  if (regulardb_statistics == nullptr) {
-    return Status::OK();
-  }
-  const bool export_intentdb_metrics =
-      intentsdb_statistics && GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics);
-  // Emit all the ticker (gauge) metrics.
-  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first)));
-    if (export_intentdb_metrics) {
-      RETURN_NOT_OK(writer->WriteSingleEntry(
-          attrs, Format("intentsdb_$0", entry.second),
-          intentsdb_statistics->getTickerCount(entry.first)));
-    }
-  }
-  // Emit all the histogram metrics.
-  rocksdb::HistogramData histogram_data;
-  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
-    regulardb_statistics->histogramData(entry.first, &histogram_data);
-
-    auto copy_of_attr = attrs;
-    const std::string hist_name = entry.second;
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", histogram_data.sum));
-    RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", histogram_data.count));
-  }
-  return Status::OK();
-}
-
 docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata& metadata) {
   return docdb::PartialRangeKeyIntents(metadata.table_type() == TableType::PGSQL_TABLE_TYPE);
 }
@@ -464,35 +355,12 @@ Tablet::Tablet(const TabletInitData& data)
     tablet_metrics_entity_ =
         METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
-    regulardb_statistics_ = rocksdb::CreateDBStatistics();
-    intentsdb_statistics_ = rocksdb::CreateDBStatistics();
-    auto regulardb_statistics = regulardb_statistics_;
-    auto intentsdb_statistics = intentsdb_statistics_;
-    tablet_metrics_entity_->AddExternalJsonMetricsCb(
-        [regulardb_statistics, intentsdb_statistics](
-            JsonWriter* jw, const MetricJsonOptions& opts) {
-          // Assume all rocksdb statistics are at "info" level.
-          if (MetricLevel::kInfo < opts.level) {
-            return;
-          }
-
-          EmitRocksDbMetricsAsJson(regulardb_statistics, intentsdb_statistics, jw, opts);
-        });
-
-    tablet_metrics_entity_->AddExternalPrometheusMetricsCb(
-        [regulardb_statistics, intentsdb_statistics, attrs](
-            PrometheusWriter* pw, const MetricPrometheusOptions& opts) {
-          // Assume all rocksdb statistics are at "info" level.
-          if (MetricLevel::kInfo < opts.level) {
-            return;
-          }
-
-          auto s =
-              EmitRocksDbMetricsAsPrometheus(regulardb_statistics, intentsdb_statistics, pw, attrs);
-          if (!s.ok()) {
-            YB_LOG_EVERY_N(WARNING, 100) << "Failed to get Prometheus metrics: " << s.ToString();
-          }
-        });
+    regulardb_statistics_ =
+        rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
+    intentsdb_statistics_ =
+        (GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics)
+             ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
+             : rocksdb::CreateDBStatistics(table_metrics_entity_, nullptr, true));
 
     metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 

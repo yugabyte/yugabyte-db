@@ -1266,7 +1266,7 @@ class CounterPrototype : public MetricPrototype {
   explicit CounterPrototype(const MetricPrototype::CtorArgs& args)
     : MetricPrototype(args) {
   }
-  scoped_refptr<Counter> Instantiate(const scoped_refptr<MetricEntity>& entity);
+  scoped_refptr<Counter> Instantiate(const scoped_refptr<MetricEntity>& entity) const;
 
   virtual MetricType::Type type() const override { return MetricType::kCounter; }
 
@@ -1307,7 +1307,7 @@ class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
   }
-  scoped_refptr<MillisLag> Instantiate(const scoped_refptr<MetricEntity>& entity);
+  scoped_refptr<MillisLag> Instantiate(const scoped_refptr<MetricEntity>& entity) const;
 
   virtual MetricType::Type type() const override { return MetricType::kLag; }
 
@@ -1391,7 +1391,7 @@ class HistogramPrototype : public MetricPrototype {
   HistogramPrototype(const MetricPrototype::CtorArgs& args,
                      uint64_t max_trackable_value, int num_sig_digits,
                      ExportPercentiles export_percentiles = ExportPercentiles::kFalse);
-  scoped_refptr<Histogram> Instantiate(const scoped_refptr<MetricEntity>& entity);
+  scoped_refptr<Histogram> Instantiate(const scoped_refptr<MetricEntity>& entity) const;
 
   uint64_t max_trackable_value() const { return max_trackable_value_; }
   int num_sig_digits() const { return num_sig_digits_; }

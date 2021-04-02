@@ -41,6 +41,7 @@ DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_bool(TEST_combine_batcher_errors);
+DECLARE_bool(TEST_export_intentdb_metrics);
 
 namespace yb {
 namespace client {
@@ -102,6 +103,7 @@ void TransactionTestBase<MiniClusterType>::SetUp() {
   FLAGS_transaction_status_tablet_log_segment_size_bytes = log_segment_size_bytes();
   FLAGS_log_min_seconds_to_retain = 5;
   FLAGS_intents_flush_max_delay_ms = 250;
+  FLAGS_TEST_export_intentdb_metrics = true;
 
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
