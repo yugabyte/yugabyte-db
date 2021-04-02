@@ -129,6 +129,7 @@ Note the following:
 
 - The primary key for a table should always contain partition key. In the current release of YugabyteDB, it is recommended to set the primary key directly on partitions.
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
+- A partition table does not inherit tablespaces from its parent. A partition table by default is placed according to cluster configuration.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 
 ## Partition Pruning
