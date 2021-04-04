@@ -38,6 +38,7 @@ docker/yugaware/*.yml
 
 ui/.env
 ui/public/map/
+ui/coverage/
 
 .session.vim*
 

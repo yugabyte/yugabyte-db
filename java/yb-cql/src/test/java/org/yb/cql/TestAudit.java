@@ -90,13 +90,6 @@ public class TestAudit extends BaseCQLTest {
     auditRecords.discard();
   }
 
-  @After
-  public void dropRoles() throws Exception {
-    for (String role : Arrays.asList("user1", "user2", "user3")) {
-      session.execute("DROP ROLE IF EXISTS " + role);
-    }
-  }
-
   @Test
   public void auth() throws Exception {
     try (Cluster cluster = getCluster("user1", "123");

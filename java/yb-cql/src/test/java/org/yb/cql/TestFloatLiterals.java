@@ -17,6 +17,37 @@ import org.junit.runner.RunWith;
 @RunWith(value=YBTestRunner.class)
 public class TestFloatLiterals extends BaseCQLTest {
 
+  float float_infinity_positive = createFloat(0, 0b11111111, 0);
+  float float_infinity_negative = createFloat(1, 0b11111111, 0);
+  float float_nan_0 = createFloat(0, 0b11111111, 1);
+  float float_nan_1 = createFloat(1, 0b11111111, 1);
+  float float_nan_2 = createFloat(0, 0b11111111, 0b10);
+  float float_zero_positive = createFloat(0, 0, 0);
+  float float_zero_negative = createFloat(1, 0, 0);
+  float float_sub_normal = createFloat(0, 0, 1);
+
+  double double_infinity_positive = createDouble(0, 0b11111111111, 0);
+  double double_infinity_negative = createDouble(1, 0b11111111111, 0);
+  double double_nan_0 = createDouble(0, 0b011111111111, 1);
+  double double_nan_1 = createDouble(0, 0b111111111111, 1);
+  double double_nan_2 = createDouble(0, 0b011111111111, 0b10);
+  double double_zero_positive = createDouble(0, 0, 0);
+  double double_zero_negative = createDouble(1, 0, 0);
+  double double_sub_normal = createDouble(0, 0, 1);
+
+  float[] float_all_literals = { float_infinity_positive, float_infinity_negative, float_nan_0,
+      float_nan_1, float_nan_2, float_zero_positive, float_zero_negative, float_sub_normal };
+  double[] double_all_literals = { double_infinity_positive, double_infinity_negative, double_nan_0,
+      double_nan_1, double_nan_2, double_zero_positive, double_zero_negative, double_sub_normal };
+
+  private float createFloat(int sign, int exp, int fraction) {
+    return Float.intBitsToFloat((sign << 31) | (exp << 23) | fraction);
+  }
+
+  private double createDouble(long sign, long exp, long fraction) {
+    return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
+  }
+
   @Test
   public void testPartitionKeyLiteralsFloat() throws Exception {
     session.execute("create table t (h float, v int, primary key (h, v));");

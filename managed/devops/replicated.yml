@@ -264,7 +264,6 @@ components:
             trigger: container-start
             data: ""
             subscriptions: []
-        volumes_from: [yugaware]
         customer_files: []
         config_files:
           - filename: /opt/certs/server.key

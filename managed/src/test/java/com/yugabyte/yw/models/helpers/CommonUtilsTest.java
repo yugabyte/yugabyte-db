@@ -15,13 +15,7 @@ public class CommonUtilsTest {
 
   @Test
   public void maskConfigWithSensitiveData() {
-    ObjectNode config = Json.newObject();
-    config.put("SOME_KEY", "SENSITIVE_DATA");
-    config.put("KEY_DATA", "SENSITIVE_DATA");
-    config.put("MY_KEY_DATA", "SENSITIVE_DATA");
-    config.put("SOME_SECRET", "SENSITIVE_DATA");
-    config.put("SECRET_DATA", "SENSITIVE_DATA");
-    config.put("MY_SECRET_DATA", "SENSITIVE_DATA");
+    ObjectNode config = prepareConfig();
     JsonNode maskedData = CommonUtils.maskConfig(config);
     assertValue(maskedData, "SOME_KEY", "SE**********TA");
     assertValue(maskedData, "KEY_DATA", "SE**********TA");
@@ -29,6 +23,21 @@ public class CommonUtilsTest {
     assertValue(maskedData, "SOME_SECRET", "SE**********TA");
     assertValue(maskedData, "SECRET_DATA", "SE**********TA");
     assertValue(maskedData, "MY_SECRET_DATA", "SE**********TA");
+    assertValue(maskedData, "MY_PASSWORD", "********");
+    assertValue(maskedData, "DATA", "VALUE");
+  }
+
+  private ObjectNode prepareConfig() {
+    ObjectNode config = Json.newObject();
+    config.put("SOME_KEY", "SENSITIVE_DATA");
+    config.put("KEY_DATA", "SENSITIVE_DATA");
+    config.put("MY_KEY_DATA", "SENSITIVE_DATA");
+    config.put("SOME_SECRET", "SENSITIVE_DATA");
+    config.put("SECRET_DATA", "SENSITIVE_DATA");
+    config.put("MY_SECRET_DATA", "SENSITIVE_DATA");
+    config.put("MY_PASSWORD", "SENSITIVE_DATA"); // Strong sensitive, complete masking.
+    config.put("DATA", "VALUE");
+    return config;
   }
 
   @Test
@@ -59,7 +68,31 @@ public class CommonUtilsTest {
     dataNode.put("foo", "fail");
     ObjectNode testNode = dataNode.putObject("test");
     testNode.put("foo", "success");
-    JsonNode result = CommonUtils.getNodeProperty((JsonNode) rootNode, propertyPath);
+    JsonNode result = CommonUtils.getNodeProperty(rootNode, propertyPath);
     assertEquals(result.asText(), "success");
+  }
+
+  @Test
+  public void testUnmaskConfig() {
+    ObjectNode config = prepareConfig();
+    JsonNode maskedData = CommonUtils.maskConfig(config);
+
+    // 1. No changes.
+    JsonNode unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+    assertEquals(config, unmaskedData);
+
+    // 2. Two fields changed.
+    ((ObjectNode) maskedData).put("MY_KEY_DATA", "SENSITIVE_DATA_2");
+    ((ObjectNode) maskedData).put("MY_PASSWORD", "SENSITIVE_DATA_2");
+    unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+
+    assertValue(unmaskedData, "SOME_KEY", "SENSITIVE_DATA");
+    assertValue(unmaskedData, "KEY_DATA", "SENSITIVE_DATA");
+    assertValue(unmaskedData, "SOME_SECRET", "SENSITIVE_DATA");
+    assertValue(unmaskedData, "SECRET_DATA", "SENSITIVE_DATA");
+    assertValue(unmaskedData, "MY_SECRET_DATA", "SENSITIVE_DATA");
+    assertValue(unmaskedData, "DATA", "VALUE");
+    assertValue(unmaskedData, "MY_KEY_DATA", "SENSITIVE_DATA_2");
+    assertValue(unmaskedData, "MY_PASSWORD", "SENSITIVE_DATA_2");
   }
 }
