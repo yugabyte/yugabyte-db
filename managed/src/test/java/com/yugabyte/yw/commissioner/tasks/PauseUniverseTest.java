@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.YBClient;
@@ -40,7 +39,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.*;
 
 
@@ -54,7 +52,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   private YBClient mockClient;
   private Universe defaultUniverse;
   private String nodePrefix = "demo-universe";
-  private Map<String, String> config = new HashMap<String, String>();
+  private Map<String, String> config = new HashMap<>();
 
   @Before
   public void setUp() {
@@ -103,8 +101,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
     for (TaskType taskType: PAUSE_UNIVERSE_TASKS) {
-      JsonNode expectedResults =
-      PAUSE_UNIVERSE_EXPECTED_RESULTS.get(position);
+      JsonNode expectedResults = PAUSE_UNIVERSE_EXPECTED_RESULTS.get(position);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails = tasks.stream()
