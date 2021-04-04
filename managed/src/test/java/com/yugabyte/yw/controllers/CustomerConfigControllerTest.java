@@ -169,4 +169,42 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
+
+  @Test
+  public void testEditInUseStorageConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(),
+                                              configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    backup.delete();
+    result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    assertEquals(data, CustomerConfig.get(configUUID).data);
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertBadRequest(result, "Invalid configUUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
 }
