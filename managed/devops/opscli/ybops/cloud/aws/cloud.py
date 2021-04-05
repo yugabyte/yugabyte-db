@@ -44,6 +44,9 @@ class AwsCloud(AbstractCloud):
     INSTANCE_IDENTITY_API = "http://169.254.169.254/2016-09-02/dynamic/instance-identity/document"
     NETWORK_METADATA_API = os.path.join(INSTANCE_METADATA_API, "network/interfaces/macs/")
     METADATA_API_TIMEOUT_SECONDS = 3
+    RETRY_COUNT = 30
+    WAIT_SECONDS = 10
+
 
     def __init__(self):
         super(AwsCloud, self).__init__("aws")
@@ -393,8 +396,8 @@ class AwsCloud(AbstractCloud):
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
             retry_count = 0
-            while retry_count < 30:
-                time.sleep(10)
+            while retry_count < self.RETRY_COUNT:
+                time.sleep(self.WAIT_SECONDS)
                 retry_count = retry_count + 1
                 result = sock.connect_ex((args["private_ip"], ssh_port))
                 if result == 0:
