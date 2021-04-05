@@ -1164,26 +1164,6 @@ public class UniverseController extends AuthenticatedController {
     if (request().getQueryString("isForceDelete") != null) {
       isDeleteBackups = Boolean.parseBoolean(request().getQueryString("isDeleteBackups"));
     }
-    if (isDeleteBackups) {
-      List<Backup> backupList = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
-      for (Backup backup : backupList) {
-        if (backup.state == Backup.BackupState.InProgress) {
-          LOG.info("Can not delete {} backup as it is still in progress", backup.backupUUID);
-        } else if (backup.state == Backup.BackupState.Completed) {
-          DeleteBackup.Params deleteTaskParams = new DeleteBackup.Params();
-          deleteTaskParams.customerUUID = customerUUID;
-          deleteTaskParams.backupUUID = backup.backupUUID;
-          UUID deleteTaskUUID = commissioner.submit(TaskType.DeleteBackup, deleteTaskParams);
-          LOG.info("Saved task uuid {} in customer tasks for backup {}.",
-              deleteTaskUUID, backup.backupUUID);
-          CustomerTask.create(customer, 
-            backup.backupUUID,
-            deleteTaskUUID,
-            CustomerTask.TargetType.Backup,
-            CustomerTask.TaskType.Delete, "Backup");
-        }
-      }
-    }
     
     LOG.info("Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
       customerUUID, universe.name, universeUUID);
@@ -1195,6 +1175,7 @@ public class UniverseController extends AuthenticatedController {
     taskParams.expectedUniverseVersion = -1;
     taskParams.customerUUID = customerUUID;
     taskParams.isForceDelete = isForceDelete;
+    taskParams.isDeleteBackups = isDeleteBackups;
     // Submit the task to destroy the universe.
     TaskType taskType = TaskType.DestroyUniverse;
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();

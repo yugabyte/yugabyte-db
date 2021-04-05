@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,19 +24,26 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup;
 
 import play.api.Play;
+import play.libs.Json;
 
+import java.util.List;
 import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
+  private TableManager tableManager;
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
+    public Boolean isDeleteBackups;
   }
 
   public Params params() {
@@ -45,6 +55,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      tableManager = Play.current().injector().instanceOf(TableManager.class);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -53,6 +64,56 @@ public class DestroyUniverse extends UniverseTaskBase {
         universe = forceLockUniverseForUpdate(-1, true);
       } else {
         universe = lockUniverseForUpdate(-1 , true);
+      }
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList = Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+        for (Backup backup : backupList) {
+          try {
+            backup = Backup.get(params().customerUUID, backup.backupUUID);
+            if (backup.state != Backup.BackupState.Completed) {
+              LOG.error("Cannot delete backup in any other state other than completed.");
+              throw new RuntimeException("Backup cannot be deleted");
+            }
+            backup.transitionState(Backup.BackupState.Deleted);
+            BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
+            if (backupParams.backupList != null) {
+              for (BackupTableParams childBackupParams : backupParams.backupList) {
+                childBackupParams.actionType = BackupTableParams.ActionType.DELETE;
+                ShellResponse response = tableManager.deleteBackup(childBackupParams);
+                JsonNode jsonNode = Json.parse(response.message);
+                if (response.code != 0 || jsonNode.has("error")) {
+                  // Revert state to completed since it couldn't get deleted.
+                  backup.transitionState(Backup.BackupState.Completed);
+                  LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
+                            childBackupParams.storageLocation, response.code, jsonNode.has("error"));
+                  throw new RuntimeException(response.message);
+                } else {
+                  LOG.info("[" + getName() + "] STDOUT: " + response.message);
+                }
+              }
+            } else {
+              backupParams.actionType = BackupTableParams.ActionType.DELETE;
+              ShellResponse response = tableManager.deleteBackup(backupParams);
+              JsonNode jsonNode = Json.parse(response.message);
+              if (response.code != 0 || jsonNode.has("error")) {
+                // Revert state to completed since it couldn't get deleted.
+                backup.transitionState(Backup.BackupState.Completed);
+                LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
+                          backupParams.storageLocation, response.code, jsonNode.has("error"));
+                throw new RuntimeException(response.message);
+              } else {
+                LOG.info("[" + getName() + "] STDOUT: " + response.message);
+              }
+            }
+          } catch (Exception e) {
+            LOG.error("Errored out with: " + e);
+            if (backup != null) {
+              // Revert state to completed since it couldn't get deleted.
+              backup.transitionState(Backup.BackupState.Completed);
+            }
+          }
+        }
       }
 
       // Cleanup the kms_history table
