@@ -113,6 +113,8 @@ bool		IsUnderPostmaster = false;
 bool		IsBinaryUpgrade = false;
 bool		IsBackgroundWorker = false;
 
+bool		IsYsqlUpgrade = false;
+
 bool		ExitOnAnyError = false;
 
 int			DateStyle = USE_ISO_DATES;

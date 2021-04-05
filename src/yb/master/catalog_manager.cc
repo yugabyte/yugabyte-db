@@ -2364,9 +2364,9 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
 
 }  // namespace
 
-Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
-                                           CreateTableResponsePB* resp) {
-  LOG(INFO) << "CreatePgsqlSysTable: " << req->name();
+Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
+                                          CreateTableResponsePB* resp) {
+  LOG(INFO) << "CreateYsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
@@ -2413,12 +2413,37 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
+    // Verify that the table does not exist, or has been deleted.
+    table = FindPtrOrNull(*table_ids_map_, req->table_id());
+    if (table != nullptr && !table->is_deleted()) {
+      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+          "YSQL table '$0.$1' (ID: $2) already exists", ns->name(), table->name(), table->id());
+      LOG(WARNING) << "Found table: " << table->ToStringWithState()
+                   << ". Failed creating YSQL system table with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
+      // Technically, client already knows table ID, but we set it anyway for unified handling of
+      // AlreadyPresent errors. See comment in CreateTable()
+      resp->set_table_id(table->id());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+    }
+
     RETURN_NOT_OK(CreateTableInMemory(
         *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
 
     sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
   }
+
+  // Tables with a transaction should be rolled back if the transaction does not get committed.
+  // Store this on the table persistent state until the transaction has been a verified success.
+  TransactionMetadata txn;
+  if (req->has_transaction() && FLAGS_enable_transactional_ddl_gc) {
+    table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
+        CopyFrom(req->transaction());
+    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+  }
+
   {
     auto tablet_lock = sys_catalog_tablet->LockForWrite();
     tablet_lock.mutable_data()->pb.add_table_ids(table->id());
@@ -2445,6 +2470,16 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
 
   // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
+
+  // Verify Transaction gets committed, which occurs after table create finishes.
+  if (req->has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+    LOG(INFO) << "Enqueuing table for Transaction Verification: " << req->name();
+    std::function<Status(bool)> when_done =
+        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
+    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_, txn, when_done)),
+                "Could not submit VerifyTransaction to thread pool");
+  }
 
   tserver::ChangeMetadataRequestPB change_req;
   change_req.set_tablet_id(kSysCatalogTabletId);
@@ -2575,7 +2610,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->pb));
     }
 
-    auto s = CreatePgsqlSysTable(&table_req, &table_resp);
+    auto s = CreateYsqlSysTable(&table_req, &table_resp);
     if (!s.ok()) {
       return s.CloneAndPrepend(Substitute(
           "Failure when creating PGSQL System Tables: $0", table_resp.error().ShortDebugString()));
@@ -2622,7 +2657,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (is_pg_catalog_table) {
-    return CreatePgsqlSysTable(orig_req, resp);
+    return CreateYsqlSysTable(orig_req, resp);
   }
 
   Status s;
@@ -4165,7 +4200,11 @@ Status CatalogManager::DeleteTableInternal(
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
+  unordered_set<TableId> sys_table_ids;
   for (auto& table : tables) {
+    if (IsSystemTable(*table.info)) {
+      sys_table_ids.insert(table.info->id());
+    }
     table.write_lock.Commit();
   }
 
@@ -4197,6 +4236,25 @@ Status CatalogManager::DeleteTableInternal(
   string canonical_resource = get_canonical_table(req->table().namespace_().name(),
                                                   req->table().table_name());
   RETURN_NOT_OK(permissions_manager_->RemoveAllPermissionsForResource(canonical_resource, resp));
+
+  // Remove the system tables from system catalog.
+  if (!sys_table_ids.empty()) {
+    // We do not expect system tables deletion during initial snapshot forming.
+    DCHECK(!initial_snapshot_writer_);
+
+    TRACE("Sending system table delete RPCs");
+    for (auto& table_id : sys_table_ids) {
+      // "sys_catalog_->DeleteYsqlSystemTable(table_id)" won't work here
+      // as it only acts on the leader.
+      tserver::ChangeMetadataRequestPB change_req;
+      change_req.set_tablet_id(kSysCatalogTabletId);
+      change_req.set_remove_table_id(table_id);
+      RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+          &change_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+    }
+  } else {
+    TRACE("No system tables to delete");
+  }
 
   LOG(INFO) << "Successfully initiated deletion of "
             << (req->is_index_table() ? "index" : "table") << " with "

@@ -555,6 +555,10 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
   }
+  if (!req.has_table()) {
+    *create_in_progress = false;
+    return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
+  }
 
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(

@@ -295,6 +295,10 @@ bool TableInfo::is_running() const {
   return LockForRead()->is_running();
 }
 
+bool TableInfo::is_deleted() const {
+  return LockForRead()->is_deleted();
+}
+
 string TableInfo::ToString() const {
   return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }

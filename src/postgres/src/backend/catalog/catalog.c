@@ -49,6 +49,9 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "access/htup_details.h"
+#include "utils/syscache.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -266,6 +269,29 @@ IsSharedRelation(Oid relationId)
 		relationId == PgShseclabelToastTable ||
 		relationId == PgShseclabelToastIndex)
 		return true;
+
+	/* In test mode, there might be shared relations other than predefined ones. */
+	if (yb_test_system_catalogs_creation)
+	{
+		/* To avoid cycle */
+		if (relationId == RelationRelationId)
+			return false;
+
+		Relation  pg_class = heap_open(RelationRelationId, AccessShareLock);
+		HeapTuple tuple    = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relationId));
+
+		bool result = HeapTupleIsValid(tuple)
+			? ((Form_pg_class) GETSTRUCT(tuple))->relisshared
+			: false;
+
+		heap_close(pg_class, AccessShareLock);
+
+		if (HeapTupleIsValid(tuple))
+			heap_freetuple(tuple);
+
+		return result;
+	}
+
 	return false;
 }
 
@@ -585,8 +611,8 @@ IsTableOidUnused(Oid table_oid,
 
 /*
  * GetTableOidFromRelOptions
- *		Scans through relOptions for any 'table_oid' options, and checks if
- *		that oid is available. If so, return that oid, else return InvalidOid.
+ *		Scans through relOptions for any 'table_oid' options, and ensures
+ *		that oid is available. Returns that oid, or InvalidOid if unspecified.
  */
 Oid
 GetTableOidFromRelOptions(List *relOptions,
@@ -616,10 +642,51 @@ GetTableOidFromRelOptions(List *relOptions,
 				if (is_oid_free)
 					return table_oid;
 				else
-					elog(ERROR, "Oid %d is in use.", table_oid);
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("table OID %d is in use", table_oid)));
 
 				/* Only process the first table_oid. */
 				break;
+			}
+		}
+	}
+
+	return InvalidOid;
+}
+
+/*
+ * GetRowTypeOidFromRelOptions
+ *		Scans through relOptions for any 'row_type_oid' options, and ensures
+ *		that oid is available. Returns that oid, or InvalidOid if unspecified.
+ */
+Oid
+GetRowTypeOidFromRelOptions(List *relOptions)
+{
+	ListCell  *opt_cell;
+	Oid       row_type_oid;
+	Relation  pg_type_desc;
+	HeapTuple tuple;
+
+	foreach(opt_cell, relOptions)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+		if (strcmp(def->defname, "row_type_oid") == 0)
+		{
+			row_type_oid = strtol(defGetString(def), NULL, 10);
+			if (OidIsValid(row_type_oid))
+			{
+				pg_type_desc = heap_open(TypeRelationId, AccessExclusiveLock);
+
+				tuple = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(row_type_oid));
+				if (HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("type OID %d is in use", row_type_oid)));
+
+				heap_close(pg_type_desc, AccessExclusiveLock);
+
+				return row_type_oid;
 			}
 		}
 	}

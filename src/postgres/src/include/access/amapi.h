@@ -86,7 +86,8 @@ typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  Datum ybctid,
 									  Relation heapRelation,
 									  IndexUniqueCheck checkUnique,
-									  struct IndexInfo *indexInfo);
+									  struct IndexInfo *indexInfo,
+									  bool shared_insert);
 
 /* delete this tuple for YugaByte-based index */
 typedef void (*yb_amdelete_function) (Relation indexRelation,

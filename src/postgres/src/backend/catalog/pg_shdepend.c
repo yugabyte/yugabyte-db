@@ -785,7 +785,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 		HeapTuple	newtup;
 
 		newtup = heap_modify_tuple(tup, sdepDesc, values, nulls, replace);
-		CatalogTupleInsertWithInfo(sdepRel, newtup, indstate);
+		CatalogTupleInsertWithInfo(sdepRel, newtup, indstate, false /* yb_shared_insert */);
 
 		heap_freetuple(newtup);
 	}

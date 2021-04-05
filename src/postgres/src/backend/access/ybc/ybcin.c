@@ -187,15 +187,40 @@ ybcinbuildempty(Relation index)
 
 bool
 ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
-			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo)
+			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo, bool sharedInsert)
 {
 	if (!index->rd_index->indisprimary)
-		YBCExecuteInsertIndex(index,
-							  values,
-							  isnull,
-							  ybctid,
-							  false /* is_backfill */,
-							  NULL /* read_time */);
+	{
+		if (sharedInsert)
+		{
+			if (!IsYsqlUpgrade)
+				elog(ERROR, "shared insert cannot be done outside of YSQL upgrade");
+
+			YB_FOR_EACH_DB(pg_db_tuple)
+			{
+				Oid dboid = HeapTupleGetOid(pg_db_tuple);
+				/*
+				 * Since this is a catalog index, we assume it exists in all databases.
+				 * YB doesn't use PG locks so it's okay not to take them.
+				 */
+				YBCExecuteInsertIndexForDb(dboid,
+										   index,
+										   values,
+										   isnull,
+										   ybctid,
+										   false /* is_backfill */,
+										   NULL /* read_time */);
+			}
+			YB_FOR_EACH_DB_END;
+		}
+		else
+			YBCExecuteInsertIndex(index,
+								  values,
+								  isnull,
+								  ybctid,
+								  false /* is_backfill */,
+								  NULL /* read_time */);
+	}
 
 	return index->rd_index->indisunique ? true : false;
 }

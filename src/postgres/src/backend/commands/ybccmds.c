@@ -34,6 +34,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/ybctype.h"
@@ -121,14 +122,6 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 									end_oid));
 }
 
-bool
-YBCIsDatabaseColocated(Oid dboid)
-{
-	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dboid, &colocated));
-	return colocated;
-}
-
 /* ------------------------------------------------------------------------- */
 /*  Tablegroup Functions. */
 void
@@ -185,13 +178,53 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								  const bool colocated,
 								  Oid tablegroupId)
 {
-	/* Add all key columns first with respect to compound key order */
-	ListCell *cell;
-	if (primary_key != NULL)
+	ListCell  *cell;
+	IndexElem *index_elem;
+
+	/* For tables created WITH (oids = true), we expect oid column to be the only PK. */
+	if (desc->tdhasoid)
 	{
+		if (!primary_key ||
+			list_length(primary_key->yb_index_params) != 1 ||
+			strcmp(linitial_node(IndexElem, primary_key->yb_index_params)->name,
+				   "oid") != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("OID should be the only primary key column")));
+
+		index_elem = linitial_node(IndexElem, primary_key->yb_index_params);
+		SortByDir order = index_elem->ordering;
+		/*
+		 * We can only have OID columns on system catalog tables
+		 * and we disallow hash partitioning on those, so OID is not allowed
+		 * to be a hash column - but that will be caught normally.
+		 */
+		bool is_hash = (order == SORTBY_HASH ||
+						(order == SORTBY_DEFAULT &&
+						 !colocated && tablegroupId == InvalidOid));
+		bool is_desc = false;
+		bool is_nulls_first = false;
+		ColumnSortingOptions(order,
+							 index_elem->nulls_ordering,
+							 &is_desc,
+							 &is_nulls_first);
+		const YBCPgTypeEntity *col_type =
+			YBCDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
+		HandleYBStatus(YBCPgCreateTableAddColumn(handle,
+												 "oid",
+												 ObjectIdAttributeNumber,
+												 col_type,
+												 is_hash,
+												 true /* is_primary */,
+												 is_desc,
+												 is_nulls_first));
+	}
+	else if (primary_key != NULL)
+	{
+		/* Add all key columns first with respect to compound key order */
 		foreach(cell, primary_key->yb_index_params)
 		{
-			IndexElem *index_elem = (IndexElem *)lfirst(cell);
+			index_elem = lfirst_node(IndexElem, cell);
 			bool column_found = false;
 			for (int i = 0; i < desc->natts; ++i)
 			{
@@ -422,8 +455,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 	YBCPgStatement handle = NULL;
 	ListCell       *listptr;
+	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
+	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
 
-	char *db_name = get_database_name(MyDatabaseId);
+	char *db_name = get_database_name(databaseId);
 	char *schema_name = stmt->relation->schemaname;
 	if (schema_name == NULL)
 	{
@@ -481,9 +516,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   stmt->relation->relname,
-									   MyDatabaseId,
+									   databaseId,
 									   relationId,
-									   false, /* is_shared_table */
+									   is_shared_relation,
 									   false, /* if_not_exists */
 									   primary_key == NULL /* add_primary_key */,
 									   colocated,
@@ -506,14 +541,15 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 void
 YBCDropTable(Oid relationId)
 {
-	YBCPgStatement	handle = NULL;
-	bool			colocated = false;
+	YBCPgStatement  handle     = NULL;
+	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
+	bool            colocated  = false;
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(databaseId,
 														   relationId,
 														   &colocated),
 									 &not_found);
@@ -526,7 +562,7 @@ YBCDropTable(Oid relationId)
 	if (colocated || tablegroupId != InvalidOid)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   relationId,
 															   false,
 															   &handle),
@@ -547,7 +583,7 @@ YBCDropTable(Oid relationId)
 	/* Drop the table */
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
 													   relationId,
 													   false, /* if_exists */
 													   &handle),
@@ -566,13 +602,14 @@ YBCDropTable(Oid relationId)
 
 void
 YBCTruncateTable(Relation rel) {
-	YBCPgStatement	handle;
-	Oid				relationId = RelationGetRelid(rel);
-	bool			colocated = false;
+	YBCPgStatement  handle;
+	Oid             relationId = RelationGetRelid(rel);
+	Oid             databaseId = YBCGetDatabaseOid(rel);
+	bool            colocated  = false;
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
-		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+		HandleYBStatus(YBCPgIsTableColocated(databaseId,
 											 relationId,
 											 &colocated));
 	Oid tablegroupId = InvalidOid;
@@ -581,7 +618,7 @@ YBCTruncateTable(Relation rel) {
 	if (colocated || tablegroupId != InvalidOid)
 	{
 		/* Create table-level tombstone for colocated tables / tables in tablegroups */
-		HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId,
+		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
 												 &handle));
@@ -592,7 +629,7 @@ YBCTruncateTable(Relation rel) {
 	else
 	{
 		/* Send truncate table RPC to master for non-colocated tables */
-		HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId,
+		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
 											 relationId,
 											 &handle));
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
@@ -614,7 +651,7 @@ YBCTruncateTable(Relation rel) {
 
 		/* Determine if table is colocated */
 		if (MyDatabaseColocated)
-			HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+			HandleYBStatus(YBCPgIsTableColocated(databaseId,
 												 relationId,
 												 &colocated));
 
@@ -624,7 +661,7 @@ YBCTruncateTable(Relation rel) {
 		if (colocated || tablegroupId != InvalidOid)
 		{
 			/* Create table-level tombstone for colocated tables / tables in tablegroups */
-			HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId,
+			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 													 relationId,
 													 false,
 													 &handle));
@@ -635,7 +672,7 @@ YBCTruncateTable(Relation rel) {
 		else
 		{
 			/* Send truncate table RPC to master for non-colocated tables */
-			HandleYBStatus(YBCPgNewTruncateTable(MyDatabaseId,
+			HandleYBStatus(YBCPgNewTruncateTable(databaseId,
 												 indexId,
 												 &handle));
 			HandleYBStatus(YBCPgExecTruncateTable(handle));
@@ -699,7 +736,7 @@ YBCCreateIndex(const char *indexName,
 			   Oid tablegroupId,
 			   Oid tablespaceId)
 {
-	char *db_name	  = get_database_name(MyDatabaseId);
+	char *db_name	  = get_database_name(YBCGetDatabaseOid(rel));
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
 
 	if (!IsBootstrapProcessingMode())
@@ -713,7 +750,7 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgNewCreateIndex(db_name,
 									   schema_name,
 									   indexName,
-									   MyDatabaseId,
+									   YBCGetDatabaseOid(rel),
 									   indexId,
 									   RelationGetRelid(rel),
 									   rel->rd_rel->relisshared,
@@ -811,7 +848,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			 */
 			if (*rollbackHandle == NULL)
 			{
-				HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
+				HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOid(rel),
 												  relationId,
 												  rollbackHandle));
 			}
@@ -978,7 +1015,7 @@ YBCPrepareAlterTable(List** subcmds,
 	}
 
 	YBCPgStatement handle = NULL;
-	HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
+	HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
 									  relationId,
 									  &handle));
 
@@ -1018,13 +1055,14 @@ YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 void
 YBCRename(RenameStmt *stmt, Oid relationId)
 {
-	YBCPgStatement handle = NULL;
-	char *db_name	  = get_database_name(MyDatabaseId);
+	YBCPgStatement	handle     = NULL;
+	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
+	char		   *db_name	   = get_database_name(databaseId);
 
 	switch (stmt->renameType)
 	{
 		case OBJECT_TABLE:
-			HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  relationId,
 											  &handle));
 			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
@@ -1033,7 +1071,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 
-			HandleYBStatus(YBCPgNewAlterTable(MyDatabaseId,
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  relationId,
 											  &handle));
 
@@ -1053,13 +1091,14 @@ void
 YBCDropIndex(Oid relationId)
 {
 	YBCPgStatement	handle;
-	bool			colocated = false;
+	bool			colocated  = false;
+	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(databaseId,
 														   relationId,
 														   &colocated),
 									 &not_found);
@@ -1072,7 +1111,7 @@ YBCDropIndex(Oid relationId)
 	if (colocated || tablegroupId != InvalidOid)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   relationId,
 															   false,
 															   &handle),
@@ -1089,7 +1128,7 @@ YBCDropIndex(Oid relationId)
 	/* Drop the index table */
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(MyDatabaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
 													   relationId,
 													   false, /* if_exists */
 													   &handle),
@@ -1103,14 +1142,6 @@ YBCDropIndex(Oid relationId)
 			YBSaveDdlHandle(handle);
 		}
 	}
-}
-
-bool
-YBCIsTableColocated(Oid dboid, Oid relationId)
-{
-	bool colocated;
-	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
-	return colocated;
 }
 
 int32_t

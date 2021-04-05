@@ -207,6 +207,8 @@ extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 
+static void assign_ysql_upgrade_mode(bool newval, void *extra);
+
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
 static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source);
 static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource source);
@@ -1965,6 +1967,44 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_geolocation_costing,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
+						 "Allows creating new system tables with given relation and type OID. "
+						 "Do NOT use this unless you know exactly what you're doing, consequences "
+						 "may be dire!"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&IsYsqlUpgrade,
+		false,
+		NULL, assign_ysql_upgrade_mode, NULL
+	},
+
+	{
+		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
+						 "allow creating them."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_system_catalogs_creation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next DDL (only CREATE TABLE for now) "
+						 "will fail right after DocDB processes the actual database structure change."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_ddl,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -11118,6 +11158,23 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
+}
+
+static void
+assign_ysql_upgrade_mode(bool newval, void *extra)
+{
+	/*
+	 * YSQL upgrade mode also enables/disables allowSystemTableMods
+	 * and yb_non_ddl_txn_for_sys_tables_allowed.
+	 *
+	 * Note that PG doesn't allow user to change allowSystemTableMods.
+	 *
+	 * Also note that while we reuse allowSystemTableMods to cut some
+	 * corners for YSQL upgrade, we do alter the semantics of it to
+	 * imitate tables created by initdb rather than created by user.
+	 */
+	allowSystemTableMods = newval;
+	yb_non_ddl_txn_for_sys_tables_allowed = newval;
 }
 
 static bool

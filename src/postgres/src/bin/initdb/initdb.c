@@ -3585,8 +3585,8 @@ main(int argc, char *argv[])
 	{
 
 		/*
-     * Build up a shell command to tell the user how to start the server
-     */
+		 * Build up a shell command to tell the user how to start the server
+		 */
 		start_db_cmd = createPQExpBuffer();
 
 		/* Get directory specification used to start initdb ... */

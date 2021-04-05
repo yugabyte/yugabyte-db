@@ -801,6 +801,10 @@ EventTriggerDDLCommandStart(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
+		return;
+
 	runlist = EventTriggerCommonSetup(parsetree,
 									  EVT_DDLCommandStart,
 									  "ddl_command_start",
@@ -835,6 +839,10 @@ EventTriggerDDLCommandEnd(Node *parsetree)
 	 * triggers are disabled in single user mode.
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
 		return;
 
 	/*
@@ -883,6 +891,10 @@ EventTriggerSQLDrop(Node *parsetree)
 	 * triggers are disabled in single user mode.
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
 		return;
 
 	/*
@@ -968,6 +980,10 @@ EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason)
 	 * scenarios depend on code that's otherwise untested isn't appetizing.)
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
 		return;
 
 	/*

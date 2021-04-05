@@ -1386,7 +1386,7 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 }
 
 /*
- * Utility to add a Tuple entry to the cache only if it does not exist.
+ * Utility to add a Tuple entry to the cache only if it's negative or does not exist.
  * Used only when IsYugaByteEnabled() is true.
  * Currently used in two cases:
  *  1. When initializing the caches (i.e. on backend start).
@@ -1459,8 +1459,8 @@ SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc desc)
 	{
 		ct = dlist_container(CatCTup, cache_elem, iter.cur);
 
-		if (ct->dead)
-			continue;            /* ignore dead entries */
+		if (ct->dead || ct->negative)
+			continue;            /* ignore dead and negative entries */
 
 		if (ct->hash_value != hashValue)
 			continue;            /* quickly skip entry if wrong hash val */
