@@ -121,7 +121,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private Universe updateUniverseDetails(String instanceTypeCode) {
-    instanceType = InstanceType.upsert(defaultProvider.code, instanceTypeCode,
+    instanceType = InstanceType.upsert(defaultProvider.uuid, instanceTypeCode,
         10, 5.5, new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(
         defaultRegion, defaultProvider, instanceType, numNodes);

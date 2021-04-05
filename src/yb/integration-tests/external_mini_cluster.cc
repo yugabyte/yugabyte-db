@@ -57,7 +57,6 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/yb_rpc.h"
@@ -119,14 +118,12 @@ using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::ChangeMasterClusterConfigRequestPB;
 using yb::master::ChangeMasterClusterConfigResponsePB;
 using yb::master::SysClusterConfigEntryPB;
-using yb::master::BlacklistPB;
+using yb::tserver::ListTabletsForTabletServerRequestPB;
+using yb::tserver::ListTabletsForTabletServerResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
-using yb::master::ListMasterRaftPeersRequestPB;
-using yb::master::ListMasterRaftPeersResponsePB;
 using yb::tserver::TabletServerErrorPB;
 using yb::rpc::RpcController;
-using yb::pgwrapper::PgWrapper;
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
@@ -1203,24 +1200,30 @@ void ExternalMiniCluster::AssertNoCrashes() {
   }
 }
 
-Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTabletServer* ts) {
+Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniCluster::GetTablets(
+    ExternalTabletServer* ts) {
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
-  ListTabletsRequestPB req;
-  ListTabletsResponsePB resp;
+  ListTabletsForTabletServerRequestPB req;
+  ListTabletsForTabletServerResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(10));
-  RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  RETURN_NOT_OK(proxy.ListTabletsForTabletServer(req, &resp, &rpc));
+
+  std::vector<ListTabletsForTabletServerResponsePB::Entry> result;
+  for (const ListTabletsForTabletServerResponsePB::Entry& entry : resp.entries()) {
+    result.push_back(entry);
   }
 
+  return result;
+}
+
+Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTabletServer* ts) {
+  auto tablets = VERIFY_RESULT(GetTablets(ts));
   std::vector<std::string> result;
-  result.reserve(resp.status_and_schema().size());
-  for (const StatusAndSchemaPB& status : resp.status_and_schema()) {
-    result.push_back(status.tablet_status().tablet_id());
+  for (const auto& tablet : tablets) {
+    result.push_back(tablet.tablet_id());
   }
-
   return result;
 }
 
