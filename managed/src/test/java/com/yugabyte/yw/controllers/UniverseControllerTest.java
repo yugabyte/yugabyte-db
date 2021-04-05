@@ -912,10 +912,9 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
-    List<CustomerTask> th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findList();
-    // There should be 2 tasks. 1 for deleting universe, another for deleting the backup.
-    assertEquals(2, th.size());
-    assertThat(th.get(0).getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertAuditEntry(1, customer.uuid);
   }
 
