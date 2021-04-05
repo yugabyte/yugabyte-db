@@ -380,6 +380,11 @@ public class UniverseController extends AuthenticatedController {
     );
   }
 
+  /**
+   * Function to trim value of gfalg keys and values.
+   * @param data key value pairs.
+   * @return key value pairs with trim keys and values.
+   */
   @VisibleForTesting
   static Map<String, String> trimFlags(Map<String, String> data)
   {
@@ -426,8 +431,8 @@ public class UniverseController extends AuthenticatedController {
       Cluster c = taskParams.currentClusterType.equals(ClusterType.PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
       UserIntent primaryIntent = c.userIntent;
-     primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
-     primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+      primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+      primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid,
           clusterOpType);
@@ -572,8 +577,8 @@ public class UniverseController extends AuthenticatedController {
 
       if (primaryCluster != null) {
         UserIntent primaryIntent = primaryCluster.userIntent;
-       primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
-       primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+        primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+        primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
