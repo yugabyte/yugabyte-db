@@ -242,11 +242,6 @@ void InitGoogleLoggingSafe(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
 
-  // We need to initialize libbacktrace before installing custom signal handlers that use it in
-  // order to avoid handler calling libbacktrace during its initialization and causing thread to
-  // freeze.
-  InitLibBackTrace();
-
   google::InstallFailureWriter(CustomGlogFailureWriter);
   google::InstallFailureSignalHandler();
 
@@ -307,11 +302,6 @@ void InitGoogleLoggingSafe(const char* arg) {
 void InitGoogleLoggingSafeBasic(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
-
-  // We need to initialize libbacktrace before installing custom signal handlers that use it in
-  // order to avoid handler calling libbacktrace during its initialization and causing thread to
-  // freeze.
-  InitLibBackTrace();
 
   InitializeGoogleLogging(arg);
 
