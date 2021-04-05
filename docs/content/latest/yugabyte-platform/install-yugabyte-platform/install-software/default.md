@@ -37,6 +37,11 @@ showAsideToc: true
     </a>
   </li>
 
+<li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
+      <i class="fas fa-cubes"></i> OpenShift </a>
+  </li>
+
 </ul>
 
 YugabyteDB universes and clusters are created and managed using Yugabyte Platform. The default option to install Yugabyte Platform on a host machine that is connected to the Internet.
