@@ -254,6 +254,22 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
+YBIsDatabaseColocated(Oid dbId)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbId, &colocated));
+	return colocated;
+}
+
+bool
+YBIsTableColocated(Oid dbId, Oid relationId)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsTableColocated(dbId, relationId, &colocated));
+	return colocated;
+}
+
+bool
 YBRelHasSecondaryIndices(Relation relation)
 {
 	if (!relation->rd_rel->relhasindex)
@@ -726,7 +742,22 @@ YBCGetSchemaName(Oid schemaoid)
 Oid
 YBCGetDatabaseOid(Relation rel)
 {
-	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
+	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared);
+}
+
+Oid
+YBCGetDatabaseOidByRelid(Oid relid)
+{
+	Relation relation    = RelationIdGetRelation(relid);
+	bool     relisshared = relation->rd_rel->relisshared;
+	RelationClose(relation);
+	return YBCGetDatabaseOidFromShared(relisshared);
+}
+
+Oid
+YBCGetDatabaseOidFromShared(bool relisshared)
+{
+	return relisshared ? TemplateDbOid : MyDatabaseId;
 }
 
 void
@@ -790,6 +821,10 @@ bool yb_debug_report_error_stacktrace = false;
 bool yb_debug_log_catcache_events = false;
 
 bool yb_debug_log_internal_restarts = false;
+
+bool yb_test_system_catalogs_creation = false;
+
+bool yb_test_fail_next_ddl = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -1229,6 +1264,14 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
 	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->is_null = true;
+}
+
+void YBTestFailDdlIfRequested() {
+	if (!yb_test_fail_next_ddl)
+		return;
+
+	yb_test_fail_next_ddl = false;
+	elog(ERROR, "DDL failed as requested");
 }
 
 Datum
