@@ -43,6 +43,13 @@ showAsideToc: true
     </a>
   </li>
 
+<li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      OpenShift
+    </a>
+ </li>
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>

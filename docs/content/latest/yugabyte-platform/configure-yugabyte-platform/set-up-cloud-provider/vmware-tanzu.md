@@ -52,6 +52,11 @@ showAsideToc: true
     </a>
   </li>
 
+<li>
+    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+  </li>
+
   <li>
     <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>

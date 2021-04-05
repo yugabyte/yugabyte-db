@@ -33,7 +33,7 @@ menu:
         <div class="title">Configure the cloud provider</div>
       </div>
       <div class="body">
-        Set up providers for on-premises, AWS, GCP, Azure, and Kubernetes.
+        Set up providers for on-premises, AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu.
       </div>
     </a>
   </div>
