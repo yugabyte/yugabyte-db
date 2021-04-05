@@ -1143,7 +1143,7 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
 
-    JsonNode masterGFlags = Json.parse("[{ \"name\": \" master-flag \", \" value \": \" 123 \"}]");
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \" master-flag \", \"value\": \" 123 \"}]");
     JsonNode tserverGFlags = Json.parse("[{ \"name\": \" tserver-flag \", \"value\": \" 456 \"}]");
     userIntentJson.set("masterGFlags", masterGFlags);
     userIntentJson.set("tserverGFlags", tserverGFlags);
