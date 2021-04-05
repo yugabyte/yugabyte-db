@@ -201,30 +201,32 @@ public class Universe extends Model {
     switch (node.state) {
       // Unexpected/abnormal states.
       case ToBeAdded:
-        actions.add(NodeActionType.DELETE);
-        break;
       case Adding:
         actions.add(NodeActionType.DELETE);
         break;
       case ToJoinCluster:
+      case ToBeRemoved:
         actions.add(NodeActionType.REMOVE);
         break;
       case SoftwareInstalled:
         actions.addAll(Arrays.asList(NodeActionType.START, NodeActionType.DELETE));
         break;
-      case ToBeRemoved:
-        actions.add(NodeActionType.REMOVE);
-        break;
 
       // Expected/normal states.
       case Live:
-        actions.addAll(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
+        actions.addAll(Arrays.asList(
+          NodeActionType.STOP,
+          NodeActionType.REMOVE,
+          NodeActionType.QUERY));
         if (!node.isMaster && Util.areMastersUnderReplicated(node, this)) {
           actions.add(NodeActionType.START_MASTER);
         }
         break;
       case Stopped:
-        actions.addAll(Arrays.asList(NodeActionType.START, NodeActionType.RELEASE));
+        actions.addAll(Arrays.asList(
+          NodeActionType.START,
+          NodeActionType.RELEASE,
+          NodeActionType.QUERY));
         break;
       case Removed:
         actions.addAll(

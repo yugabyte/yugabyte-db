@@ -195,6 +195,13 @@ public class NodeInstanceController extends AuthenticatedController {
             return ApiResponse.error(BAD_REQUEST, errMsg);
         }
       }
+
+      if (nodeAction == NodeActionType.QUERY) {
+        String errMsg= "Node action not allowed for this action type.";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       LOG.info("{} Node {} in universe={}: name={} at version={}.",
                nodeAction.toString(false), nodeName, universe.universeUUID,
                universe.name, universe.version);

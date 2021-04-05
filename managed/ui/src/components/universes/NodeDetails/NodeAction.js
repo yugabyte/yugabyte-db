@@ -135,6 +135,23 @@ export default class NodeAction extends Component {
         disabled ||
         (actionType === 'STOP' && disableStop) ||
         (actionType === 'REMOVE' && disableRemove);
+      if (actionType === 'QUERY') {
+        if (!hideQueries) {
+          return (
+            <Fragment>
+              <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
+                disabled={disabled} onClick={this.handleLiveQueryClick}>
+                {this.getLabel('LIVE_QUERIES')}
+              </MenuItem>
+              <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
+                disabled={disabled} onClick={this.handleSlowQueryClick}>
+                {this.getLabel('SLOW_QUERIES')}
+              </MenuItem>
+            </Fragment>
+          );
+        }
+        return null;
+      }
       return (
         <MenuItem
           key={btnId}
@@ -166,27 +183,7 @@ export default class NodeAction extends Component {
               actionType={this.state.actionType}
             />
           </Fragment>
-        ) : null}
-        {!hideQueries && (
-          <Fragment>
-            <MenuItem
-              key="live_queries_action_btn"
-              eventKey="live_queries_action_btn"
-              disabled={disabled}
-              onClick={this.handleLiveQueryClick}
-            >
-              {this.getLabel('LIVE_QUERIES')}
-            </MenuItem>
-            <MenuItem
-              key="slow_queries_action_btn"
-              eventKey="slow_queries_action_btn"
-              disabled={disabled}
-              onClick={this.handleSlowQueryClick}
-            >
-              {this.getLabel('SLOW_QUERIES')}
-            </MenuItem>
-          </Fragment>
-        )}
+        ) : null}        
       </DropdownButton>
     );
   }
