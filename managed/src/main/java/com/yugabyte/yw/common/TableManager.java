@@ -224,10 +224,6 @@ public class TableManager extends DevopsBase {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
     } else {
-      if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
-        commandArgs.add("--ssh_user");
-        commandArgs.add(accessKey.getKeyInfo().sshUser);
-      }
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
       commandArgs.add("--ssh_key_path");

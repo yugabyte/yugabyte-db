@@ -21,7 +21,7 @@ from utils import get_vpc_for_subnet
 from ybops.cloud.aws.command import AwsInstanceCommand, AwsNetworkCommand, \
     AwsAccessCommand, AwsQueryCommand, AwsDnsCommand
 from ybops.cloud.common.cloud import AbstractCloud
-from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key, wait_for_ssh
+from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key
 
 from ybops.utils.remote_shell import RemoteShell
 
@@ -285,13 +285,15 @@ class AwsCloud(AbstractCloud):
         search_pattern = args.search_pattern
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
-    def get_host_info_specific_args(self, region, search_pattern, get_all=False, private_ip=None):
-        filters = [
-            {
-                "Name": "instance-state-name",
-                "Values": ["running"]
-            }
-        ]
+    def get_host_info_specific_args(self, region, search_pattern, get_all=False,
+                                    private_ip=None, filters=None):
+        if not filters:
+            filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["running"]
+                }
+            ]
 
         # If no argument passed, assume full scan.
         if is_valid_ip_address(search_pattern):
