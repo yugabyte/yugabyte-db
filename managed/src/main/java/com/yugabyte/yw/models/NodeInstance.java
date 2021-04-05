@@ -184,4 +184,9 @@ public class NodeInstance extends Model {
     node.save();
     return node;
   }
+
+  public static boolean checkIpInUse(String ipAddress) {
+    List<NodeInstance> nodeList = NodeInstance.find.all();
+    return nodeList.stream().anyMatch(x -> x.getDetails().ip.equals(ipAddress));
+  }
 }

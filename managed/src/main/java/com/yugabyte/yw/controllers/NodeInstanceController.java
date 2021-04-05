@@ -99,11 +99,17 @@ public class NodeInstanceController extends AuthenticatedController {
     Map<String, NodeInstance> nodes = new HashMap<>();
     try {
       for (NodeInstanceData nodeData : nodeDataList) {
-        NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
-        nodes.put(node.getDetails().ip, node);
+        if (!NodeInstance.checkIpInUse(nodeData.ip)) {
+          NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
+          nodes.put(node.getDetails().ip, node);
+        }
       }
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(nodes);
+      if (nodes.size() > 0) {
+        Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+        return ApiResponse.success(nodes);
+      }
+      return ApiResponse.error(BAD_REQUEST,
+        "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -131,9 +137,11 @@ public class NodeInstanceController extends AuthenticatedController {
       }
       List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(providerUUID);
       NodeInstance nodeToBeFound = null;
-      for (int a = 0; a < nodesInProvider.size(); a++) {
-        if (nodesInProvider.get(a).getDetails().ip.equals(instanceIP)) {
-          nodeToBeFound = nodesInProvider.get(a);
+      for (NodeInstance node : nodesInProvider) {
+        // TODO: Need to convert routes to use UUID instead of instances' IP address
+        // See: https://github.com/yugabyte/yugabyte-db/issues/7936
+        if (node.getDetails().ip.equals(instanceIP) && !node.inUse) {
+          nodeToBeFound = node;
         }
       }
       if (nodeToBeFound != null) {
