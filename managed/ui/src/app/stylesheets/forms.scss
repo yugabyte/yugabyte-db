@@ -171,6 +171,16 @@
   }
 }
 
+.instance-row-container {
+  .yb-field-group {
+    .embed-error {
+      position: relative;
+      top: unset;
+      right: unset;
+    }
+  }
+}
+
 .form-inline-controls {
   float: left;
 }
