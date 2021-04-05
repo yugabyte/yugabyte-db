@@ -75,7 +75,7 @@ declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 # Reuse the C errno value for this.
 declare -r -i YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY=2
 
-readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
+readonly YB_JENKINS_NFS_HOME_DIR=/Volumes/n/jenkins
 
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
