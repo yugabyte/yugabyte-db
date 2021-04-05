@@ -73,7 +73,6 @@ public class DestroyUniverse extends UniverseTaskBase {
             backup = Backup.get(params().customerUUID, backup.backupUUID);
             if (backup.state != Backup.BackupState.Completed) {
               LOG.error("Cannot delete backup in any other state other than completed.");
-              throw new RuntimeException("Backup cannot be deleted");
             }
             backup.transitionState(Backup.BackupState.Deleted);
             BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
@@ -87,7 +86,6 @@ public class DestroyUniverse extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.Completed);
                   LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
                             childBackupParams.storageLocation, response.code, jsonNode.has("error"));
-                  throw new RuntimeException(response.message);
                 } else {
                   LOG.info("[" + getName() + "] STDOUT: " + response.message);
                 }
@@ -101,7 +99,6 @@ public class DestroyUniverse extends UniverseTaskBase {
                 backup.transitionState(Backup.BackupState.Completed);
                 LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
                           backupParams.storageLocation, response.code, jsonNode.has("error"));
-                throw new RuntimeException(response.message);
               } else {
                 LOG.info("[" + getName() + "] STDOUT: " + response.message);
               }
