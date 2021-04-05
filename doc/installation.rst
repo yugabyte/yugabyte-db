@@ -33,9 +33,9 @@ Since |project| is an extension of PostgreSQL, its build system is based on `Ext
 Getting The Source
 ~~~~~~~~~~~~~~~~~~
 
-The |project| |release| sources can be obtained from its GitHub repository: `bitnine-oss/AgensGraph-Extension/releases`_.
+The |project| |release| sources can be obtained from its GitHub repository: `apache/incubator-age/releases`_.
 
-.. _bitnine-oss/AgensGraph-Extension/releases: https://github.com/bitnine-oss/AgensGraph-Extension/releases
+.. _apache/incubator-age/releases: https://github.com/apache/incubator-age/releases
 
 Installation Procedure
 ~~~~~~~~~~~~~~~~~~~~~~
