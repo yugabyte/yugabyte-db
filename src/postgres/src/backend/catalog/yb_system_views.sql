@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
- * src/backend/catalog/system_views.sql
+ * src/backend/catalog/yb_system_views.sql
  *
  * Note: this file is read in single-user -j mode, which means that the
  * command terminator is semicolon-newline-newline; whenever the backend
