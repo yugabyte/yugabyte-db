@@ -79,7 +79,7 @@ readonly TEST_DESCRIPTOR_SEPARATOR=":::"
 #
 readonly LIST_OF_TESTS_DIR_NAME="list_of_tests"
 
-readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/n/jenkins/build_stats"
+readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/Volumes/n/jenkins/build_stats"
 
 # https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
 readonly SANITIZER_COMMON_OPTIONS=""
@@ -358,7 +358,7 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
 }
 
 using_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/Volumes/n/ ]]; then
     return 0
   fi
   return 1

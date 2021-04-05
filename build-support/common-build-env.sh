@@ -83,7 +83,7 @@ MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
 MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
 
-readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
+readonly YB_JENKINS_NFS_HOME_DIR=/Volumes/n/jenkins
 
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
