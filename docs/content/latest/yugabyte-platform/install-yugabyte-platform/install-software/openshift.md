@@ -239,7 +239,7 @@ Installing Yugabyte Platform on an OpenShift cluster using Helm involves the fol
 
 - [Creating an instance of Yugabyte Platform](#creating-an-instance-of-yugabyte-platform-via-helm)
 - [Finding the availability zone labels](#finding-the-availability-zone-labels)
-- [Configuring the CLI with the OCP cluster](#configuring-the-cli with-the-ocp-cluster)
+- [Configuring the CLI with the OCP cluster](#configuring-the-cli-with-the-ocp-cluster)
 - [Accessing and configuring Yugabyte Platform](#accessing-and-configuring-yugabyte-platform)
 
 ### Creating an Instance of Yugabyte Platform via Helm
