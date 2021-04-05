@@ -570,7 +570,8 @@ public class TablesController extends AuthenticatedController {
   private HashMap<String, Double> queryTableSizes(String nodePrefix) {
     // Execute query and check for errors.
     ArrayList<MetricQueryResponse.Entry> values = metricQueryHelper.queryDirect(
-      "sum by (table_id) (rocksdb_total_sst_file_size{node_prefix=\"" + nodePrefix + "\"})"
+      "sum by (table_id) (rocksdb_current_version_sst_files_size{node_prefix=\""
+      + nodePrefix + "\"})"
     );
 
    HashMap<String, Double> result = new HashMap<String, Double>();
