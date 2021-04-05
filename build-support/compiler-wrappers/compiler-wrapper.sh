@@ -627,7 +627,7 @@ if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-}
   if [[ -n ${YB_CCACHE_DIR:-} ]]; then
     export CCACHE_DIR=$YB_CCACHE_DIR
   else
-    jenkins_ccache_dir=/n/jenkins/ccache
+    jenkins_ccache_dir=/Volumes/n/jenkins/ccache
     if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
       # Enable reusing cache entries from builds in different directories, potentially with
       # incorrect file paths in debug information. This is OK for Jenkins because we probably won't
