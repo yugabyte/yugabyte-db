@@ -461,5 +461,10 @@ void QLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   ThreadRestrictions::SetWaitAllowed(allowed);
 }
 
+CoarseTimePoint QLProcessor::GetDeadline() const {
+  // Used only in tests.
+  return CoarseMonoClock::now() + MonoDelta::FromSeconds(60);
+}
+
 }  // namespace ql
 }  // namespace yb

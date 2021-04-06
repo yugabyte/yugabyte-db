@@ -163,10 +163,9 @@ Batcher::~Batcher() {
       << "Bad state: " << state_;
 }
 
-void Batcher::SetTimeout(MonoDelta timeout) {
-  CHECK_GE(timeout, MonoDelta::kZero);
+void Batcher::SetDeadline(CoarseTimePoint deadline) {
   std::lock_guard<decltype(mutex_)> lock(mutex_);
-  timeout_ = timeout;
+  deadline_ = deadline;
 }
 
 bool Batcher::HasPendingOperations() const {
@@ -241,16 +240,6 @@ void Batcher::RunCallback(const Status& status) {
   }
 }
 
-CoarseTimePoint Batcher::ComputeDeadlineUnlocked() const {
-  MonoDelta timeout = timeout_;
-  if (PREDICT_FALSE(!timeout.Initialized())) {
-    YB_LOG_EVERY_N(WARNING, 100000) << "Client writing with no timeout set, using 60 seconds.\n"
-                                    << GetStackTrace();
-    timeout = MonoDelta::FromSeconds(60);
-  }
-  return CoarseMonoClock::now() + timeout;
-}
-
 void Batcher::FlushAsync(StatusFunctor callback) {
   size_t operations_count;
   {
@@ -258,7 +247,6 @@ void Batcher::FlushAsync(StatusFunctor callback) {
     CHECK_EQ(state_, BatcherState::kGatheringOps);
     state_ = BatcherState::kResolvingTablets;
     flush_callback_ = std::move(callback);
-    deadline_ = ComputeDeadlineUnlocked();
     operations_count = ops_.size();
   }
 
@@ -340,9 +328,8 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   } else {
     // deadline_ is set in FlushAsync(), after all Add() calls are done, so
     // here we're forced to create a new deadline.
-    auto deadline = ComputeDeadlineUnlocked();
     client_->data_->meta_cache_->LookupTabletByKey(
-        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline,
+        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline_,
         std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
   }
   return Status::OK();
