@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton, YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { YBConfirmModal } from '../../modals';
-import { isDefinedNotNull, isEmptyObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull, isEmptyArray, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = value => value ? undefined : 'This field is required.';
@@ -18,6 +18,17 @@ class AwsStorageConfiguration extends Component {
   iamInstanceToggle = (event) => {
     this.setState({ iamRoleEnabled: event.target.checked });
   };
+
+  componentDidMount = () => {
+    const {
+      customerConfigs: { data }
+    } = this.props;
+    const s3Config = data.find((config) => config.name === 'S3');
+    const config = s3Config ? s3Config.data : {};
+    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === "true") {
+      this.setState({ iamRoleEnabled: true })
+    }
+  }
 
   render() {
     const {

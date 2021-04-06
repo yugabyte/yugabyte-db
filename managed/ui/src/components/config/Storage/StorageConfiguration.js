@@ -151,6 +151,25 @@ class StorageConfiguration extends Component {
         break;
     }
 
+    if (values.type === "update") {
+      return this.props
+        .updateCustomerConfig({
+          type: 'STORAGE',
+          configUUID: values.configUUID,
+          name: type,
+          data: dataPayload
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.addConfig).isSuccess()) {
+            // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.addConfig).isError()) {
+            // show server-side validation errors under form inputs
+            throw new SubmissionError(this.props.addConfig.error);
+          }
+        });
+    } else {
     return this.props
       .addCustomerConfig({
         type: 'STORAGE',
@@ -167,6 +186,7 @@ class StorageConfiguration extends Component {
           throw new SubmissionError(this.props.addConfig.error);
         }
       });
+    }
   };
 
   deleteStorageConfig = (configUUID) => {
@@ -203,42 +223,57 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab Current Tab.
    * @param {Array<object>} configs Backup config Data.
    */
-  editBackupConfig = (activeTab, configs) => {
+  setInitialConfiValues = (activeTab = "nfs", configs) => {
     const data = !isNonEmptyArray(configs) &&
       configs.data.filter((config) => config.name === activeTab.toUpperCase());
     const initialVal = data.map((obj) => {
       switch (activeTab) {
         case "nfs":
           return {
-            type: "Update",
+            type: "update",
+            configUUID: obj?.configUUID,
             BACKUP_LOCATION: obj.data?.BACKUP_LOCATION
           };
 
         case "gcs":
           return {
-            type: "Update",
+            type: "update",
+            configUUID: obj?.configUUID,
             BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
             GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
           };
 
         case "az":
           return {
-            type: "Update",
+            type: "update",
+            configUUID: obj?.configUUID,
             BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
             AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
           };
 
         default:
-          return {
-            type: "Update",
-            IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID,
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY
+          if (isDefinedNotNull(obj.data?.IAM_INSTANCE_PROFILE)) {
+            return {
+              type: "update",
+              configUUID: obj?.configUUID,
+              IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
+              BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
+              AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
+            }
+          } else {
+            return {
+              type: "update",
+              configUUID: obj?.configUUID,
+              AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID,
+              AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY,
+              BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
+              AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
+            }
           }
       }
     });
 
-    this.props.editBackupConfig(initialVal[0]);
+    this.props.setInitialConfigValues(initialVal[0]);
   };
 
   render() {
@@ -263,7 +298,7 @@ class StorageConfiguration extends Component {
           title={getTabTitle('S3')}
           key={'s3-tab'}
           unmountOnExit={true}
-          onSelect={this.editBackupConfig(this.props.activeTab, customerConfigs)}>
+          onSelect={this.setInitialConfiValues(this.props.activeTab, customerConfigs)}>
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
