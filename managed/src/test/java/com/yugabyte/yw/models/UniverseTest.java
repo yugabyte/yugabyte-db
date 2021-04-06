@@ -310,12 +310,12 @@ public class UniverseTest extends FakeDBApplication {
     // Add non-EBS instance type with price to each region
     String instanceType = "c3.xlarge";
     double instancePrice = 0.1;
-    InstanceType.upsert(defaultProvider.code, instanceType, 1, 20.0, null);
+    InstanceType.upsert(defaultProvider.uuid, instanceType, 1, 20.0, null);
     PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
     instanceDetails.pricePerHour = instancePrice;
-    PriceComponent.upsert(defaultProvider.code, r1.code, instanceType, instanceDetails);
-    PriceComponent.upsert(defaultProvider.code, r2.code, instanceType, instanceDetails);
-    PriceComponent.upsert(defaultProvider.code, r3.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r1.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r2.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r3.code, instanceType, instanceDetails);
 
     // Create userIntent
     UserIntent userIntent = new UserIntent();

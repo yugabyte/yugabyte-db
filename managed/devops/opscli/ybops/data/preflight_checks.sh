@@ -132,7 +132,6 @@ update_result_json_with_rc() {
   update_result_json "$1" "$check_passed"
 }
 
-
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} --type {configure,provision} [<options>]
@@ -150,6 +149,8 @@ Options:
     Home directory of yugabyte user.
   --sudo_pass_file
     Bash file containing the sudo password variable.
+  --cleanup
+    Deletes this script after being run. Allows `scp` commands to port over new preflight scripts.
   -h, --help
     Show usage.
 EOT
@@ -195,9 +196,12 @@ while [[ $# -gt 0 ]]; do
         . $2
         rm -rf "$2"
       else
-        err_msg "Falied to find sudo_pass_file: $2" >&2
+        err_msg "Failed to find sudo_pass_file: $2"
       fi
       shift
+    ;;
+    --cleanup)
+      trap "rm -- $0" EXIT
     ;;
     -h|--help)
       show_usage >&2

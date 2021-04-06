@@ -16,11 +16,12 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include <rapidjson/document.h>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_defaults.h"
@@ -36,6 +37,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
 
 DECLARE_bool(use_client_to_server_encryption);
@@ -90,6 +92,17 @@ using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
+
+namespace {
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator) {
+  rapidjson::Value json_value(value.c_str(), *allocator);
+  out->AddMember(rapidjson::StringRef(name), json_value, *allocator);
+}
+
+}
 
 Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, bool show_deleted) {
   RpcController rpc;
@@ -177,7 +190,6 @@ Status ClusterAdminClient::CreateSnapshot(
     const vector<YBTableName>& tables,
     const bool add_indexes,
     const int flush_timeout_secs) {
-
   if (flush_timeout_secs > 0) {
     const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
     if (status.IsTimedOut()) {
@@ -247,6 +259,95 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
   }
 
   return CreateSnapshot(tables, /* add_indexes */ false);
+}
+
+Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
+    const std::vector<client::YBTableName>& tables, MonoDelta interval, MonoDelta retention) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::CreateSnapshotScheduleRequestPB req;
+  master::CreateSnapshotScheduleResponsePB resp;
+
+  auto& options = *req.mutable_options();
+  auto& filter_tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
+  for (const YBTableName& table_name : tables) {
+    table_name.SetIntoTableIdentifierPB(filter_tables.Add());
+  }
+
+  options.set_interval_sec(interval.ToSeconds());
+  options.set_retention_duration_sec(retention.ToSeconds());
+  RETURN_NOT_OK(master_backup_proxy_->CreateSnapshotSchedule(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField(
+      "schedule_id",
+      VERIFY_RESULT(FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id())).ToString(),
+      &document, &document.GetAllocator());
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
+    const SnapshotScheduleId& schedule_id) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::ListSnapshotSchedulesRequestPB req;
+  master::ListSnapshotSchedulesResponsePB resp;
+  if (schedule_id) {
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  }
+
+  RETURN_NOT_OK(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document result;
+  result.SetObject();
+  rapidjson::Value json_schedules(rapidjson::kArrayType);
+  for (const auto& schedule : resp.schedules()) {
+    rapidjson::Value json_schedule(rapidjson::kObjectType);
+    AddStringField("id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(),
+                   &json_schedule, &result.GetAllocator());
+
+    rapidjson::Value options(rapidjson::kObjectType);
+    AddStringField("interval", MonoDelta::FromSeconds(schedule.options().interval_sec()).ToString(),
+                   &options, &result.GetAllocator());
+    AddStringField("retention",
+                   MonoDelta::FromSeconds(schedule.options().retention_duration_sec()).ToString(),
+                   &options, &result.GetAllocator());
+    json_schedule.AddMember("options", options, result.GetAllocator());
+    rapidjson::Value json_snapshots(rapidjson::kArrayType);
+    for (const auto& snapshot : schedule.snapshots()) {
+      rapidjson::Value json_snapshot(rapidjson::kObjectType);
+      AddStringField("id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(),
+                     &json_snapshot, &result.GetAllocator());
+      auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+      AddStringField("snapshot_time_utc",
+                     Timestamp(snapshot_ht.GetPhysicalValueMicros()).ToHumanReadableTime(),
+                     &json_snapshot, &result.GetAllocator());
+      auto previous_snapshot_ht = HybridTime::FromPB(
+          snapshot.entry().previous_snapshot_hybrid_time());
+      if (previous_snapshot_ht) {
+        AddStringField(
+            "previous_snapshot_time_utc",
+            Timestamp(previous_snapshot_ht.GetPhysicalValueMicros()).ToHumanReadableTime(),
+            &json_snapshot, &result.GetAllocator());
+      }
+      json_snapshots.PushBack(json_snapshot, result.GetAllocator());
+    }
+    json_schedule.AddMember("snapshots", json_snapshots, result.GetAllocator());
+    json_schedules.PushBack(json_schedule, result.GetAllocator());
+
+  }
+  result.AddMember("schedules", json_schedules, result.GetAllocator());
+  return result;
 }
 
 Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id,
