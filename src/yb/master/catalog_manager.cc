@@ -2953,7 +2953,7 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
     } else {
       LOG(WARNING) << "Unknown RPC failure, removing transaction on table: " << table->ToString();
     }
-    // Commit the namespace in-memory state.
+    // Commit the in-memory state.
     l->Commit();
   } else {
     LOG(INFO) << "Table transaction failed, deleting: " << table->ToString();
