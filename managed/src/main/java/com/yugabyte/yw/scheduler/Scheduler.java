@@ -156,6 +156,7 @@ public class Scheduler {
             }
           }
         }
+        
         if (runTask) {
           if (taskType == TaskType.BackupUniverse) {
             this.runBackupTask(schedule);

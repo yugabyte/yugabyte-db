@@ -310,7 +310,6 @@ public class Universe extends Model {
       find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
-
   /**
    * Returns the Universe object given its uuid.
    *
