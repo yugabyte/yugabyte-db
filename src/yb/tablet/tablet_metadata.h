@@ -471,6 +471,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   bool colocated() const { return colocated_; }
 
+  Result<std::string> TopSnapshotsDir() const;
+
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
 

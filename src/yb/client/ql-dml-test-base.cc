@@ -19,10 +19,12 @@
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/bfql/gen_opcodes.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -47,13 +49,30 @@ template <>
 QLDmlTestBase<MiniCluster>::QLDmlTestBase() : mini_cluster_opt_(1, 3) {}
 
 template <>
+QLDmlTestBase<ExternalMiniCluster>::QLDmlTestBase() {
+  mini_cluster_opt_.num_masters = 1;
+  mini_cluster_opt_.num_tablet_servers = 3;
+}
+
+template<>
 void QLDmlTestBase<MiniCluster>::SetFlags() {
   SetAtomicFlag(false, &FLAGS_enable_ysql);
+}
+
+template<>
+void QLDmlTestBase<ExternalMiniCluster>::SetFlags() {
+  // TODO -- set FLAGS_enable_ysql to false.
 }
 
 template <>
 void QLDmlTestBase<MiniCluster>::StartCluster() {
   cluster_.reset(new MiniCluster(env_.get(), mini_cluster_opt_));
+  ASSERT_OK(cluster_->Start());
+}
+
+template <>
+void QLDmlTestBase<ExternalMiniCluster>::StartCluster() {
+  cluster_.reset(new ExternalMiniCluster(mini_cluster_opt_));
   ASSERT_OK(cluster_->Start());
 }
 
@@ -89,6 +108,7 @@ void QLDmlTestBase<MiniClusterType>::DoTearDown() {
 }
 
 template class QLDmlTestBase<MiniCluster>;
+template class QLDmlTestBase<ExternalMiniCluster>;
 
 namespace kv_table_test {
 
@@ -150,35 +170,33 @@ void CreateTable(
   ASSERT_OK(table->Create(kTableName, num_tablets, client, &builder));
 }
 
-void CreateIndex(
+void InitIndex(
     Transactional transactional,
     int indexed_column_index,
     bool use_mangled_names,
     const TableHandle& table,
-    YBClient* client,
-    TableHandle* index) {
+    IndexInfoPB* index_info,
+    YBSchemaBuilder* builder) {
   const YBSchema& schema = table.schema();
   DCHECK_LT(indexed_column_index, schema.num_columns());
 
   // When creating an index, we construct IndexInfo and associated it with the data-table.
-  IndexInfoPB index_info;
-  index_info.set_indexed_table_id(table->id());
-  index_info.set_is_local(false);
-  index_info.set_is_unique(false);
-  index_info.set_use_mangled_column_name(use_mangled_names);
+  index_info->set_indexed_table_id(table->id());
+  index_info->set_is_local(false);
+  index_info->set_is_unique(false);
+  index_info->set_use_mangled_column_name(use_mangled_names);
 
   // List key columns of data-table being indexed.
-  index_info.set_hash_column_count(1);
-  index_info.add_indexed_hash_column_ids(schema.ColumnId(0));
+  index_info->set_hash_column_count(1);
+  index_info->add_indexed_hash_column_ids(schema.ColumnId(0));
 
-  auto* column = index_info.add_columns();
+  auto* column = index_info->add_columns();
   const string name = schema.Column(indexed_column_index).name();
   column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
   column->set_indexed_column_id(schema.ColumnId(indexed_column_index));
 
   // Setup Index table schema.
-  YBSchemaBuilder builder;
-  builder.AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+  builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
       ->Type(schema.Column(indexed_column_index).type())
       ->NotNull()
       ->HashPrimaryKey();
@@ -187,19 +205,19 @@ void CreateIndex(
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != indexed_column_index) {
       const string name = schema.Column(i).name();
-      builder.AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
+      builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
           ->Type(schema.Column(i).type())
           ->NotNull()
           ->PrimaryKey();
 
-      column = index_info.add_columns();
+      column = index_info->add_columns();
       column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
       column->set_indexed_column_id(schema.ColumnId(i));
       ++num_range_keys;
     }
   }
 
-  index_info.set_range_column_count(num_range_keys);
+  index_info->set_range_column_count(num_range_keys);
   TableProperties table_properties;
   table_properties.SetUseMangledColumnName(use_mangled_names);
 
@@ -207,13 +225,55 @@ void CreateIndex(
     table_properties.SetTransactional(true);
   }
 
-  builder.SetTableProperties(table_properties);
+  builder->SetTableProperties(table_properties);
+}
 
+void CreateIndex(
+    Transactional transactional,
+    int indexed_column_index,
+    bool use_mangled_names,
+    const TableHandle& table,
+    YBClient* client,
+    TableHandle* index) {
+  IndexInfoPB index_info;
+  YBSchemaBuilder builder;
+  InitIndex(transactional, indexed_column_index, use_mangled_names, table, &index_info, &builder);
+
+  const YBSchema& schema = table.schema();
   const YBTableName index_name(YQL_DATABASE_CQL, table.name().namespace_name(),
       table.name().table_name() + '_' + schema.Column(indexed_column_index).name() + "_idx");
 
   ASSERT_OK(index->Create(index_name, schema.table_properties().num_tablets(),
       client, &builder, &index_info));
+}
+
+void PrepareIndex(
+    Transactional transactional,
+    int indexed_column_index,
+    bool use_mangled_names,
+    const TableHandle& table,
+    YBClient* client,
+    const YBTableName& index_name) {
+  IndexInfoPB index_info;
+  YBSchemaBuilder builder;
+  InitIndex(transactional, indexed_column_index, use_mangled_names, table, &index_info, &builder);
+
+  YBSchema schema;
+  ASSERT_OK(builder.Build(&schema));
+
+  std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  table_creator->table_name(index_name)
+      .schema(&schema)
+      .num_tablets(schema.table_properties().num_tablets());
+
+  // Setup Index properties.
+  table_creator->indexed_table_id(index_info.indexed_table_id())
+      .is_local_index(index_info.is_local())
+      .is_unique_index(index_info.is_unique())
+      .wait(false)
+      .mutable_index_info()->CopyFrom(index_info);
+
+  ASSERT_OK(table_creator->Create());
 }
 
 Result<YBqlWriteOpPtr> WriteRow(
@@ -324,6 +384,16 @@ void KeyValueTableTest<MiniClusterType>::CreateIndex(
 }
 
 template <class MiniClusterType>
+void KeyValueTableTest<MiniClusterType>::PrepareIndex(
+    Transactional transactional,
+    const YBTableName &index_name,
+    int indexed_column_index,
+    bool use_mangled_names) {
+  kv_table_test::PrepareIndex(
+      transactional, indexed_column_index, use_mangled_names, table_, client_.get(), index_name);
+}
+
+template <class MiniClusterType>
 int KeyValueTableTest<MiniClusterType>::NumTablets() {
   return num_tablets_;
 }
@@ -340,6 +410,7 @@ YBSessionPtr KeyValueTableTest<MiniClusterType>::CreateSession(
 }
 
 template class KeyValueTableTest<MiniCluster>;
+template class KeyValueTableTest<ExternalMiniCluster>;
 
 Status CheckOp(YBqlOp* op) {
   if (!op->succeeded()) {

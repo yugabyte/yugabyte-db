@@ -176,7 +176,7 @@ public class ModelFactory {
   }
 
   public static Backup createBackupWithExpiry(
-      UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.universeUUID = universeUUID;

@@ -128,7 +128,7 @@ public class InstanceTypeController extends AuthenticatedController {
     }
 
     try {
-      InstanceType it = InstanceType.upsert(formData.get().getProviderCode(),
+      InstanceType it = InstanceType.upsert(provider.uuid,
         formData.get().getInstanceTypeCode(),
         formData.get().numCores,
         formData.get().memSizeGB,
@@ -157,7 +157,7 @@ public class InstanceTypeController extends AuthenticatedController {
     }
 
     try {
-      InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
+      InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
       if (instanceType == null) {
         return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
       }
@@ -190,7 +190,7 @@ public class InstanceTypeController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
 
-    InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
+    InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
     if (instanceType == null) {
       return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
     }
