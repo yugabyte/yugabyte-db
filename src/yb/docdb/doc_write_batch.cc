@@ -32,6 +32,7 @@
 #include "yb/docdb/kv_debug.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 
 using yb::BinaryOutputFormat;
 
@@ -174,6 +175,24 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   return should_apply;
 }
 
+namespace {
+
+Status AppendToKeySafely(
+    const PrimitiveValue& subkey, const DocPath& doc_path, KeyBytes* key_bytes) {
+  if (subkey.value_type() == ValueType::kTombstone) {
+    // See https://github.com/yugabyte/yugabyte-db/issues/7835. By returning an error we are
+    // avoiding a tablet server crash even if the root cause is not clear.
+    auto status = STATUS_FORMAT(
+        IllegalState, "ValueType::kTombstone not allowed in keys. doc_path: $0", doc_path);
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << status;
+    return status;
+  }
+  subkey.AppendToKey(key_bytes);
+  return Status::OK();
+}
+
+}  // namespace
+
 CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
     const Value& value,
@@ -228,7 +247,8 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         if (!should_apply.get()) {
           return Status::OK();
         }
-        subkey.AppendToKey(&key_prefix_);
+
+        RETURN_NOT_OK(AppendToKeySafely(subkey, doc_path, &key_prefix_));
       } else if (subkey_index == num_subkeys - 1 && !is_deletion) {
         // REDIS
         // ~~~~~
@@ -242,7 +262,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         if (!IsObjectType(current_entry_.value_type)) {
           return STATUS(IllegalState, "Expected object subdocument type.");
         }
-        subkey.AppendToKey(&key_prefix_);
+        RETURN_NOT_OK(AppendToKeySafely(subkey, doc_path, &key_prefix_));
       } else {
         // REDIS
         // ~~~~~
@@ -253,7 +273,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         if (!IsObjectType(current_entry_.value_type)) {
           return STATUS(IllegalState, "Expected object subdocument type. $0");
         }
-        subkey.AppendToKey(&key_prefix_);
+        RETURN_NOT_OK(AppendToKeySafely(subkey, doc_path, &key_prefix_));
         RETURN_NOT_OK(SeekToKeyPrefix(iter, true));
         if (is_deletion && !subdoc_exists_) {
           // A parent subdocument of the value we're trying to delete, or that value itself, does
@@ -287,7 +307,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
       cache_.Put(key_prefix_, hybrid_time, ValueType::kObject);
-      subkey.AppendToKey(&key_prefix_);
+      RETURN_NOT_OK(AppendToKeySafely(subkey, doc_path, &key_prefix_));
     }
   }
 
