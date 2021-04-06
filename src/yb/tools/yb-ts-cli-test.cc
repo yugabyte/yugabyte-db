@@ -163,8 +163,10 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   ASSERT_NO_FATALS(StartCluster(extra_flags, extra_flags));
 
   // Verify that the cluster is started with the custom GFlag value in the config.
-  ASSERT_EQ(ASSERT_RESULT(cluster_->master(0)->GetFlag(gflag)), old_value);
-  ASSERT_EQ(ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)), old_value);
+  auto master_flag = ASSERT_RESULT(cluster_->master(0)->GetFlag(gflag));
+  ASSERT_EQ(master_flag, old_value);
+  auto ts_flag = ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag));
+  ASSERT_EQ(ts_flag, old_value);
 
   // Change the flagfile to have a different value for the GFlag.
   ASSERT_OK(Env::Default()->NewWritableFile(flag_filename, &flag_file));
@@ -186,7 +188,8 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   }, MonoDelta::FromSeconds(60), "Verify updated GFlag");
 
   // The TServer should still have the old value because we didn't send it the RPC.
-  ASSERT_EQ(ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)), old_value);
+  ts_flag = ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag));
+  ASSERT_EQ(ts_flag, old_value);
 
   // Now, send a RefreshFlags RPC to the TServer process
   argv.clear();
