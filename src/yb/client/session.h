@@ -115,11 +115,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void SetTransaction(YBTransactionPtr transaction);
 
   // Set the timeout for writes made in this session.
-  void SetTimeout(MonoDelta timeout);
+  void SetTimeout(MonoDelta delta);
 
-  MonoDelta timeout() const {
-    return timeout_;
-  }
+  void SetDeadline(CoarseTimePoint deadline);
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op);
 
@@ -290,7 +288,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   std::unordered_set<
       internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
 
-  // Timeout for the next batch.
+  // Session only one of deadline and timeout could be active.
+  // When new batcher is created its deadline is set as session deadline or
+  // current time + session timeout.
+  CoarseTimePoint deadline_;
   MonoDelta timeout_;
 
   // HybridTime for Write. Used for Index Backfill.
