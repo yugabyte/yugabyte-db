@@ -154,6 +154,8 @@ class CQLInboundCall : public rpc::InboundCall {
   CQLServiceImpl* service_impl_;
 
   ScopedTrackedConsumption consumption_;
+
+  CoarseTimePoint deadline_;
 };
 
 using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;

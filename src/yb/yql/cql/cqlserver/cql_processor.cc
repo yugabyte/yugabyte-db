@@ -25,6 +25,8 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
+using namespace std::literals;
+
 METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
     "Time spent to get a processor for processing a CQL query request.",
@@ -81,6 +83,7 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
+DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
 namespace cqlserver {
@@ -704,6 +707,11 @@ void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   auto messenger = service_impl_->messenger();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
   messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
+}
+
+CoarseTimePoint CQLProcessor::GetDeadline() const {
+  return call_ ? call_->GetClientDeadline()
+               : CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms;
 }
 
 }  // namespace cqlserver

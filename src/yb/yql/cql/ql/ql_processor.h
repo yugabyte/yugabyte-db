@@ -96,6 +96,7 @@ class QLProcessor : public Rescheduler {
 
   bool NeedReschedule() override { return true; }
   void Reschedule(rpc::ThreadPoolTask* task) override;
+  CoarseTimePoint GetDeadline() const override;
 
   // Check whether the current user has the required permissions for the parser tree node.
   CHECKED_STATUS CheckNodePermissions(const TreeNode* tnode);

@@ -49,7 +49,8 @@ TnodeContext* ExecContext::AddTnode(const TreeNode *tnode) {
 }
 
 //--------------------------------------------------------------------------------------------------
-Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv* ql_env) {
+Status ExecContext::StartTransaction(
+    const IsolationLevel isolation_level, QLEnv* ql_env, Rescheduler* rescheduler) {
   TRACE("Start Transaction");
   transaction_start_time_ = MonoTime::Now();
   if (!transaction_) {
@@ -68,16 +69,18 @@ Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv
     transactional_session_ = ql_env->NewSession();
     transactional_session_->SetReadPoint(client::Restart::kFalse);
   }
+  transactional_session_->SetDeadline(rescheduler->GetDeadline());
   transactional_session_->SetTransaction(transaction_);
 
   return Status::OK();
 }
 
-Status ExecContext::PrepareChildTransaction(ChildTransactionDataPB* data) {
+Status ExecContext::PrepareChildTransaction(
+    CoarseTimePoint deadline, ChildTransactionDataPB* data) {
   ChildTransactionDataPB result =
       VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
            client::ForceConsistentRead::kTrue,
-           CoarseMonoClock::now() + transactional_session_->timeout()).get());
+           deadline).get());
   *data = std::move(result);
   return Status::OK();
 }
@@ -86,13 +89,12 @@ Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultPB& 
   return DCHECK_NOTNULL(transaction_.get())->ApplyChildResult(result);
 }
 
-void ExecContext::CommitTransaction(CommitCallback callback) {
+void ExecContext::CommitTransaction(CoarseTimePoint deadline, CommitCallback callback) {
   if (!transaction_) {
     LOG(DFATAL) << "No transaction to commit";
     return;
   }
 
-  auto deadline = CoarseMonoClock::now() + transactional_session_->timeout();
   // Clear the transaction from the session before committing the transaction. SetTransaction()
   // must be called before the Commit() call instead of after because when the commit callback is
   // invoked, it will finish the current transaction, return the response and make the CQLProcessor

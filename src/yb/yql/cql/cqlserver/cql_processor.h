@@ -80,6 +80,7 @@ class CQLProcessor : public ql::QLProcessor {
  protected:
   bool NeedReschedule() override;
   void Reschedule(rpc::ThreadPoolTask* task) override;
+  CoarseTimePoint GetDeadline() const override;
 
  private:
   bool CheckAuthentication(const ql::CQLRequest& req) const;
