@@ -89,6 +89,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
                             StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   auto read_time = params.read_time();
   if (read_time) {
@@ -103,6 +104,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   session_->SetReadPoint(client::Restart::kFalse);
 
@@ -253,7 +255,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
   if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
     tnode_context = exec_context_->AddTnode(tnode);
     if (tnode->IsDml() && static_cast<const PTDmlStmt *>(tnode)->RequiresTransaction()) {
-      RETURN_NOT_OK(exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_));
+      RETURN_NOT_OK(exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_, rescheduler_));
     }
   }
   switch (tnode->opcode()) {
@@ -1335,7 +1337,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTStartTransaction *tnode) {
-  return exec_context_->StartTransaction(tnode->isolation_level(), ql_env_);
+  return exec_context_->StartTransaction(tnode->isolation_level(), ql_env_, rescheduler_);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1500,6 +1502,10 @@ bool NeedsRestart(const Status& s) {
   return s.IsTryAgain() || s.IsExpired();
 }
 
+bool ShouldRestart(const Status& s, Rescheduler* rescheduler) {
+  return NeedsRestart(s) && (CoarseMonoClock::now() < rescheduler->GetDeadline());
+}
+
 // Process TnodeContexts and their children under an ExecContext.
 Status ProcessTnodeContexts(ExecContext* exec_context,
                             const std::function<Result<bool>(TnodeContext*)>& processor) {
@@ -1568,9 +1574,10 @@ void Executor::FlushAsync() {
   num_flushes_ += flush_sessions.size();
   async_status_ = Status::OK();
   for (auto* exec_context : commit_contexts) {
-    exec_context->CommitTransaction([this, exec_context](const Status& s) {
-        CommitDone(s, exec_context);
-      });
+    exec_context->CommitTransaction(
+        rescheduler_->GetDeadline(), [this, exec_context](const Status& s) {
+      CommitDone(s, exec_context);
+    });
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
@@ -1674,7 +1681,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
       ql_metrics_->ql_transaction_->Increment(delta_usec);
     }
   } else {
-    if (NeedsRestart(s)) {
+    if (ShouldRestart(s, rescheduler_)) {
       exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
       std::lock_guard<std::mutex> lock(status_mutex_);
@@ -1882,7 +1889,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         const auto& result = response.child_transaction_result();
         const Status s = exec_context_->ApplyChildTransactionResult(result);
         // If restart is needed, reset the current context and return immediately.
-        if (NeedsRestart(s)) {
+        if (ShouldRestart(s, rescheduler_)) {
           exec_context_->Reset(client::Restart::kTrue, rescheduler_);
           return false;
         }
@@ -2082,7 +2089,8 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   if (!req->update_index_ids().empty() && tnode->RequiresTransaction()) {
-    RETURN_NOT_OK(exec_context_->PrepareChildTransaction(req->mutable_child_transaction_data()));
+    RETURN_NOT_OK(exec_context_->PrepareChildTransaction(
+        rescheduler_->GetDeadline(), req->mutable_child_transaction_data()));
   }
   return Status::OK();
 }
@@ -2328,7 +2336,7 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
             DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
             s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
           }
-          if (NeedsRestart(s)) {
+          if (ShouldRestart(s, rescheduler_)) {
             exec_context->Reset(client::Restart::kTrue, rescheduler_);
             return true; // done
           }
