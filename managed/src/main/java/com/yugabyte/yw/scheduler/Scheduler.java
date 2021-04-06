@@ -155,8 +155,7 @@ public class Scheduler {
                 "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
             }
           }
-        } 
-        
+        }
         if (runTask) {
           if (taskType == TaskType.BackupUniverse) {
             this.runBackupTask(schedule);

@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;

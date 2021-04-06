@@ -310,10 +310,6 @@ public class Universe extends Model {
       find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
-  public static Set<UUID> getAllUUIDs() {
-    return ImmutableSet.copyOf(
-      find.query().findIds());
-  }
 
   /**
    * Returns the Universe object given its uuid.
