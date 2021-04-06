@@ -57,7 +57,7 @@ Data loss can happen due to one of the following reasons:
 
 In a distributed SQL database such as YugabyteDB, the first two scenarios can be mitigated due to the presence of live replicas, as it's highly unlikely the same issue occurs on all nodes. However, for the third scenario, point in time recovery is an important solution.
 
-### Disaster scenarios
+### Disasters
 
 This is the scenario in which the data in the entire source cluster is lost irrecoverably, and a restore needs to be performed from a remote location. While the likelihood of this scenario is low, it's still important to understand the probability of correlated failures. For example, loss due to a natural disaster has a very low probability of occurrence in a multi-region deployment, but its probability increases with the proximity of the replicas.
 
@@ -136,7 +136,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    ./bin/ysqlsh -h 127.0.0.1
+    $ bin/ysqlsh -h 127.0.0.1
     ```
 
 1. Create a table and populate some sample data:
@@ -169,42 +169,44 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. Get a timestamp:
-
-    ```sql
-    yugabyte=# select date_part(('epoch', now())*100000);
-    ```
-
-    ```output
-        ?column?     
-    -----------------
-    161732630705543
-    (1 row)
-    ```
-
 1. Create a snapshot of the table from a shell prompt:
 
     ```sh
-    bin/yb-admin create_database_snapshot yugabyte
+    $ bin/yb-admin create_database_snapshot yugabyte
     ```
 
     ```output
-    Started snapshot creation: c22a2a50-2dad-4670-a8ed-3c35e2473970
+    Started snapshot creation: bb5fc435-a2b9-4f3a-a510-0bacc6aebccf
     ```
 
 1. Verify that the snapshot is complete:
 
     ```sh
-    bin/yb-admin list_snapshots
+    $ bin/yb-admin list_snapshots
     ```
 
     ```output
     Snapshot UUID                         State
-    c22a2a50-2dad-4670-a8ed-3c35e2473970  COMPLETE
+    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
     No snapshot restorations
     ```
 
-1. Back in `ysqlsh`, add a row to the table:
+### Restore from an absolute time
+
+1. Get a timestamp:
+
+    ```sql
+    yugabyte=# select extract(epoch from now())*100000 as current_timestamp;
+    ```
+
+    ```output
+    current_timestamp 
+    -------------------
+      161767067918510
+    (1 row)
+    ```
+
+1. Add a row for employee 9999 to the table:
 
     ```sql
     INSERT INTO employees (employee_no, name, department, salary) 
@@ -225,24 +227,97 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-### Restore from a relative time
+1. List snapshots:
 
-1. Get a timestamp:
+    ```sh
+    $ bin/yb-admin list_snapshots
+    ```
 
-1. Delete some data:
+    ```output
+    Snapshot UUID                         State
+    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    No snapshot restorations
+    ```
 
-1. Restore to the timestamp you obtained before you deleted the data:
+1. Restore the latest snapshot to the timestamp you obtained before you deleted the data:
+
+    ```sh
+    # NOTE add a zero (0) to the end of the timestamp!
+    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 1617670679185100
+
+1. Verify the snapshot is restored:
+
+    ```sh
+    $ bin/yb-admin list_snapshots
+    ```
+
+    ```output
+    Snapshot UUID                     State
+    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    Restoration UUID                      State
+    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
+    ```
 
 1. Verify the data is restored:
 
-### Restore from an absolute snapshot time
+    ```sql
+    yugabyte=# select * from employees;
+    ```
 
-1. Delete some data:
+    ```output
+    employee_no |      name      | department | salary 
+    -------------+----------------+------------+--------
+            1223 | Lucille Ball   | Operations |  70000
+            1224 | John Zimmerman | Sales      |  60000
+            1221 | John Smith     | Marketing  |  50000
+            1222 | Bette Davis    | Sales      |  55000
+    (4 rows)
+    ```
+
+### Restore from a relative time
+
+In addition to restoring to a particular timestamp, you can also restore to a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
+
+1. Wait five minutes after you complete the steps in the previous section. This is so that you can use a known relative time for the restore.
+
+1. Remove employee 1223 from the table:
+
+    ```sql
+    yugabyte=# delete from employees where employee_no=1223;
+
+    yugabyte=# select * from employees;
+    ```
+
+    ```output
+    employee_no |      name      | department | salary 
+    -------------+----------------+------------+--------
+            1224 | John Zimmerman | Sales      |  60000
+            1221 | John Smith     | Marketing  |  50000
+            1222 | Bette Davis    | Sales      |  55000
+    (4 rows)
+    ```
 
 1. Restore the snapshot you created earlier:
 
+    ```sh
+    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 
+    ```
+
 1. Verify the data is restored:
 
+    ```sql
+    yugabyte=# select * from employees;
+    ```
+
+    ```output
+    employee_no |      name      | department | salary 
+    -------------+----------------+------------+--------
+            1223 | Lucille Ball   | Operations |  70000
+            1224 | John Zimmerman | Sales      |  60000
+            1221 | John Smith     | Marketing  |  50000
+            1222 | Bette Davis    | Sales      |  55000
+    (4 rows)
+    ```
 
 ## Limitations
 
