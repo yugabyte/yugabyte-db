@@ -841,7 +841,6 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
   for (int i = 0; i != kThreads; ++i) {
     holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
       auto conn = ASSERT_RESULT(Connect());
-      SetFlagOnExit set_flag_on_exit(&stop);
       int key = 0;
 
       while (!stop.load(std::memory_order_acquire)) {

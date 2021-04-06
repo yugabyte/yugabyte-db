@@ -116,7 +116,7 @@ TAG_FLAG(scanner_batch_size_rows, advanced);
 TAG_FLAG(scanner_batch_size_rows, runtime);
 
 DEFINE_bool(parallelize_read_ops, true,
-            "Controls weather multiple (Redis) read ops that are present in a operation "
+            "Controls whether multiple (Redis) read ops that are present in a operation "
             "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
 TAG_FLAG(parallelize_read_ops, runtime);
@@ -164,7 +164,7 @@ TAG_FLAG(max_rejection_delay_ms, runtime);
 
 DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
               "For Non-Txn tables, it is impossible to know at the tservers "
-              "weather or not an 'old transaction' is still active. To avoid "
+              "whether or not an 'old transaction' is still active. To avoid "
               "having such old transactions, we assume a bound on the duration "
               "of such transactions (during the backfill process) and wait "
               "it out. This flag denotes a conservative upper bound on the "
@@ -189,7 +189,7 @@ DEFINE_int32(index_backfill_wait_for_old_txns_ms, 0,
              "backfilling the index. This is the max time that the GetSafeTime call will "
              "wait for, before it resorts to attempt aborting old transactions. This is "
              "necessary to guard against the pathological active transaction that never "
-             "commits, from blocking the index backfill forever.");
+             "commits from blocking the index backfill forever.");
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
 
@@ -566,7 +566,7 @@ void TabletServiceAdminImpl::GetSafeTime(
     // happen to commit after the backfill scan, it is possible that they may miss updating
     // the index because the some operations may have taken place prior to min_hybrid_time.
     //
-    // For Non-Txn tables, it is impossible to know at the tservers weather or not an "old
+    // For Non-Txn tables, it is impossible to know at the tservers whether or not an "old
     // transaction" is still active. To avoid having such old transactions, we assume a
     // bound on the length of such transactions (during the backfill process) and wait it
     // out.

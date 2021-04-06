@@ -118,7 +118,7 @@ typedef struct PgTypeEntity {
   // Postgres type OID.
   int type_oid;
 
-  // YugaByte storgate (DocDB) type.
+  // YugaByte storage (DocDB) type.
   YBCPgDataType yb_type;
 
   // Allow to be used for primary key.
