@@ -38,6 +38,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/range.hpp>
 
+#include "yb/common/json_util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
@@ -87,15 +88,15 @@ CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
 CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
                                const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
                                const std::string& errStr) {
-  if (args.size() < 4) {
+  if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const auto change_type = args[2];
+  const auto change_type = args[0];
   if (change_type != kBlacklistAdd && change_type != kBlacklistRemove) {
     return ClusterAdminCli::kInvalidArguments;
   }
   std::vector<HostPort> hostports;
-  for (const auto& arg : boost::make_iterator_range(args.begin() + 3, args.end())) {
+  for (const auto& arg : boost::make_iterator_range(args.begin() + 1, args.end())) {
     hostports.push_back(VERIFY_RESULT(HostPort::FromString(arg, kDefaultRpcPort)));
   }
 
@@ -108,19 +109,19 @@ CHECKED_STATUS MasterLeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
   const auto leader_uuid = VERIFY_RESULT(client->GetMasterLeaderUuid());
-  return client->MasterLeaderStepDown(leader_uuid,
-                      args.size() > 2 ? args[2] : std::string());
+  return client->MasterLeaderStepDown(
+      leader_uuid, args.size() > 0 ? args[0] : std::string());
 }
 
 CHECKED_STATUS LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
-  if (args.size() < 3) {
+  if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  std::string dest_uuid = (args.size() > 3) ? args[3] : "";
+  std::string dest_uuid = (args.size() > 1) ? args[1] : "";
   RETURN_NOT_OK_PREPEND(
-      client->LeaderStepDownWithNewLeader(args[2], dest_uuid), "Unable to step down leader");
+      client->LeaderStepDownWithNewLeader(args[0], dest_uuid), "Unable to step down leader");
   return Status::OK();
 }
 
@@ -214,7 +215,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   }
 
   // Run found command.
-  s = commands_[cmd->second].fn_(args);
+  CLIArguments command_args(args.begin() + 2, args.end());
+  s = commands_[cmd->second].action_(command_args);
   if (!s.ok()) {
     cerr << "Error: " << s.ToString() << endl;
     return STATUS(RuntimeError, "Error running command");
@@ -222,9 +224,17 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   return Status::OK();
 }
 
-void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, CommandFn&& cmd_fn) {
+void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, Action&& action) {
   command_indexes_[cmd_name] = commands_.size();
-  commands_.push_back({std::move(cmd_name), std::move(cmd_args), std::move(cmd_fn)});
+  commands_.push_back({std::move(cmd_name), std::move(cmd_args), std::move(action)});
+}
+
+void ClusterAdminCli::RegisterJson(string&& cmd_name, string&& cmd_args, JsonAction&& action) {
+  Register(std::move(cmd_name), std::move(cmd_args), [action](const CLIArguments& args) -> Status {
+    auto result = VERIFY_RESULT(action(args));
+    std::cout << common::PrettyWriteRapidJsonToString(result) << std::endl;
+    return Status::OK();
+  });
 }
 
 void ClusterAdminCli::SetUsage(const string& prog_name) {
@@ -256,15 +266,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "change_config",
       " <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [PRE_VOTER|PRE_OBSERVER]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 5) {
+        if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const string tablet_id = args[2];
-        const string change_type = args[3];
-        const string peer_uuid = args[4];
+        const string tablet_id = args[0];
+        const string change_type = args[1];
+        const string peer_uuid = args[2];
         boost::optional<string> member_type;
-        if (args.size() > 5) {
-          member_type = args[5];
+        if (args.size() > 3) {
+          member_type = args[3];
         }
         RETURN_NOT_OK_PREPEND(client->ChangeConfig(tablet_id, change_type, peer_uuid, member_type),
                               "Unable to change config");
@@ -274,10 +284,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "list_tablet_servers", " <tablet_id>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 3) {
+        if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const string tablet_id = args[2];
+        const string tablet_id = args[0];
         RETURN_NOT_OK_PREPEND(client->ListPerTabletTabletServers(tablet_id),
                               Substitute("Unable to list tablet servers of tablet $0", tablet_id));
         return Status::OK();
@@ -298,7 +308,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             std::make_pair(kIncludeTableId, &include_table_id),
             std::make_pair(kIncludeTableType, &include_table_type)
         };
-        for (const auto& arg :  args) {
+        for (const auto& arg : args) {
           for (const auto& flag : flags) {
             if (flag.first == arg) {
               *flag.second = true;
@@ -330,7 +340,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         int max = -1;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
-            client, args.begin() + 2, args.end(),
+            client, args.begin(), args.end(),
             [&max](auto i, const auto& end) -> Status {
               if (std::next(i) == end) {
                 max = VERIFY_RESULT(CheckedStoi(*i));
@@ -354,14 +364,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         Format(" [$0] [$1] [$2] [$3]", kTableName, kPlacementInfo, kReplicationFactor,
           kPlacementUuid),
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 5 || args.size() > 7) {
+        if (args.size() < 3 || args.size() > 5) {
           return ClusterAdminCli::kInvalidArguments;
         }
         std::string placement_info;
         int rf = -1;
         std::string placement_uuid;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
-            client, args.begin() + 2, args.end(),
+            client, args.begin(), args.end(),
             [&placement_info, &rf, &placement_uuid](
         auto i, const auto& end) -> Status {
           // Get placement info.
@@ -386,12 +396,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "modify_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
+        if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        int rf = boost::lexical_cast<int>(args[3]);
-        string placement_uuid = args.size() == 5 ? args[4] : "";
-        RETURN_NOT_OK_PREPEND(client->ModifyPlacementInfo(args[2], rf, placement_uuid),
+        int rf = boost::lexical_cast<int>(args[1]);
+        string placement_uuid = args.size() == 3 ? args[2] : "";
+        RETURN_NOT_OK_PREPEND(client->ModifyPlacementInfo(args[0], rf, placement_uuid),
                               Substitute("Unable to modify placement info."));
         return Status::OK();
       });
@@ -399,7 +409,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "clear_placement_info", "",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 2) {
+        if (args.size() != 0) {
           return ClusterAdminCli::kInvalidArguments;
         }
         RETURN_NOT_OK_PREPEND(client->ClearPlacementInfo(),
@@ -410,12 +420,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "add_read_replica_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
+        if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        int rf = boost::lexical_cast<int>(args[3]);
-        string placement_uuid = args.size() == 5 ? args[4] : "";
-        RETURN_NOT_OK_PREPEND(client->AddReadReplicaPlacementInfo(args[2], rf, placement_uuid),
+        int rf = boost::lexical_cast<int>(args[1]);
+        string placement_uuid = args.size() == 3 ? args[2] : "";
+        RETURN_NOT_OK_PREPEND(client->AddReadReplicaPlacementInfo(args[0], rf, placement_uuid),
                               Substitute("Unable to add read replica placement info."));
         return Status::OK();
       });
@@ -424,12 +434,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "modify_read_replica_placement_info",
       " <placement_info> <replication_factor> [placement_uuid]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
+        if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        int rf = boost::lexical_cast<int>(args[3]);
-        string placement_uuid = args.size() == 5 ? args[4] : "";
-        RETURN_NOT_OK_PREPEND(client->ModifyReadReplicaPlacementInfo(placement_uuid, args[2], rf),
+        int rf = boost::lexical_cast<int>(args[1]);
+        string placement_uuid = args.size() == 3 ? args[2] : "";
+        RETURN_NOT_OK_PREPEND(client->ModifyReadReplicaPlacementInfo(placement_uuid, args[0], rf),
                               Substitute("Unable to modify read replica placement info."));
         return Status::OK();
       });
@@ -437,7 +447,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "delete_read_replica_placement_info", "",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 2) {
+        if (args.size() != 0) {
           return ClusterAdminCli::kInvalidArguments;
         }
         RETURN_NOT_OK_PREPEND(client->DeleteReadReplicaPlacementInfo(),
@@ -448,10 +458,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "delete_namespace", " <namespace>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        auto namespace_name = VERIFY_RESULT(ParseNamespaceName(args[2]));
+        auto namespace_name = VERIFY_RESULT(ParseNamespaceName(args[0]));
         RETURN_NOT_OK_PREPEND(client->DeleteNamespace(namespace_name),
                               Substitute("Unable to delete namespace $0", namespace_name.name));
         return Status::OK();
@@ -460,11 +470,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "delete_namespace_by_id", " <namespace_id>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        RETURN_NOT_OK_PREPEND(client->DeleteNamespaceById(args[2]),
-                              Substitute("Unable to delete namespace $0", args[2]));
+        RETURN_NOT_OK_PREPEND(client->DeleteNamespaceById(args[0]),
+                              Substitute("Unable to delete namespace $0", args[0]));
         return Status::OK();
       });
 
@@ -472,7 +482,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "delete_table", " <table>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
-            ResolveSingleTableName(client, args.begin() + 2, args.end()));
+            ResolveSingleTableName(client, args.begin(), args.end()));
         RETURN_NOT_OK_PREPEND(client->DeleteTable(table_name),
                               Substitute("Unable to delete table $0", table_name.ToString()));
         return Status::OK();
@@ -481,11 +491,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "delete_table_by_id", " <table_id>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        RETURN_NOT_OK_PREPEND(client->DeleteTableById(args[2]),
-                              Substitute("Unable to delete table $0", args[2]));
+        RETURN_NOT_OK_PREPEND(client->DeleteTableById(args[0]),
+                              Substitute("Unable to delete table $0", args[0]));
         return Status::OK();
       });
 
@@ -493,7 +503,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "delete_index", " <index>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
-            ResolveSingleTableName(client, args.begin() + 2, args.end()));
+            ResolveSingleTableName(client, args.begin(), args.end()));
         RETURN_NOT_OK_PREPEND(client->DeleteIndex(table_name),
                               Substitute("Unable to delete index $0", table_name.ToString()));
         return Status::OK();
@@ -502,11 +512,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "delete_index_by_id", " <index_id>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        RETURN_NOT_OK_PREPEND(client->DeleteIndexById(args[2]),
-                              Substitute("Unable to delete index $0", args[2]));
+        RETURN_NOT_OK_PREPEND(client->DeleteIndexById(args[0]),
+                              Substitute("Unable to delete index $0", args[0]));
         return Status::OK();
       });
 
@@ -518,7 +528,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         bool add_indexes = false;
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
-            client, args.begin() + 2, args.end(),
+            client, args.begin(), args.end(),
             [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
               std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
                   GetTimeoutAndAddIndexesFlag(i, end));
@@ -538,16 +548,16 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
         int timeout_secs = 20;
-        if (args.size() < 3) {
+        if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(
-          args.begin() + 3, args.end()));
-        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[2]},
+          args.begin() + 1, args.end()));
+        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[0]},
                                                       add_indexes,
                                                       timeout_secs,
                                                       false /* is_compaction */),
-                              Substitute("Unable to flush table $0", args[2]));
+                              Substitute("Unable to flush table $0", args[0]));
         return Status::OK();
       });
 
@@ -559,7 +569,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         bool add_indexes = false;
         int timeout_secs = 20;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
-            client, args.begin() + 2, args.end(),
+            client, args.begin(), args.end(),
             [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
               std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
                   GetTimeoutAndAddIndexesFlag(i, end));
@@ -580,17 +590,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
         int timeout_secs = 20;
-        if (args.size() < 3) {
+        if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
-            GetTimeoutAndAddIndexesFlag(args.begin() + 3, args.end()));
+            GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[2]},
+        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[0]},
                                                       add_indexes,
                                                       timeout_secs,
                                                       true /* is_compaction */),
-                              Substitute("Unable to compact table $0", args[2]));
+                              Substitute("Unable to compact table $0", args[0]));
         return Status::OK();
       });
 
@@ -616,23 +626,23 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         int16 new_port = 0;
         string new_host;
 
-        if (args.size() != 5 && args.size() != 6) {
+        if (args.size() != 3 && args.size() != 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        const string change_type = args[2];
+        const string change_type = args[0];
         if (change_type != "ADD_SERVER" && change_type != "REMOVE_SERVER") {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        new_host = args[3];
-        new_port = VERIFY_RESULT(CheckedStoi(args[4]));
+        new_host = args[1];
+        new_port = VERIFY_RESULT(CheckedStoi(args[2]));
 
         // For REMOVE_SERVER, default to using host:port to identify server
         // to make it easier to remove down hosts
         bool use_hostport = (change_type == "REMOVE_SERVER");
-        if (args.size() == 6) {
-          use_hostport = (atoi(args[5].c_str()) != 0);
+        if (args.size() == 4) {
+          use_hostport = VERIFY_RESULT(CheckedStoi(args[3])) != 0;
         }
         RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port,
                                                          use_hostport),
@@ -644,8 +654,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "dump_masters_state", " [CONSOLE]",
       [client](const CLIArguments& args) -> Status {
         bool to_console = false;
-        if (args.size() > 2) {
-          if (IsEqCaseInsensitive(args[2], "CONSOLE")) {
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "CONSOLE")) {
             to_console = true;
           } else {
             return ClusterAdminCli::kInvalidArguments;
@@ -667,10 +677,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "list_tablets_for_tablet_server", " <ts_uuid>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const string& ts_uuid = args[2];
+        const string& ts_uuid = args[0];
         RETURN_NOT_OK_PREPEND(client->ListTabletsForTabletServer(ts_uuid),
                               "Unable to list tablet server tablets");
         return Status::OK();
@@ -679,11 +689,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "set_load_balancer_enabled", " <0|1>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        const bool is_enabled = atoi(args[2].c_str()) != 0;
+        const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[0])) != 0;
         RETURN_NOT_OK_PREPEND(client->SetLoadBalancerEnabled(is_enabled),
                               "Unable to change load balancer state");
         return Status::OK();
@@ -692,7 +702,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "get_load_balancer_state", "",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 2) {
+        if (args.size() != 0) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
@@ -729,7 +739,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_leader_counts", " <table>",
       [client](const CLIArguments& args) -> Status {
         const auto table_name = VERIFY_RESULT(
-            ResolveSingleTableName(client, args.begin() + 2, args.end()));
+            ResolveSingleTableName(client, args.begin(), args.end()));
         RETURN_NOT_OK_PREPEND(client->ListLeaderCounts(table_name),
                               "Unable to get leader counts");
         return Status::OK();
@@ -776,10 +786,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "split_tablet", " <tablet_id>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 3) {
+        if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        const string tablet_id = args[2];
+        const string tablet_id = args[0];
         RETURN_NOT_OK_PREPEND(client->SplitTablet(tablet_id),
                               Format("Unable to start split of tablet $0", tablet_id));
         return Status::OK();

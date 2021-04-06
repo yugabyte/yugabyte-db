@@ -26,13 +26,13 @@ namespace yb {
 namespace tablet {
 
 struct TransactionStatusInfo {
-  TransactionId transaction_id;
+  TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
   HybridTime status_ht;
+  HybridTime coordinator_safe_time;
 
   std::string ToString() const {
-    return Format("{ transaction_id: $0 status: $1 status_ht: $2 }",
-                  transaction_id, status, status_ht);
+    return YB_STRUCT_TO_STRING(transaction_id, status, status_ht, coordinator_safe_time);
   }
 };
 

@@ -3069,14 +3069,22 @@ void Tablet::StartDocWriteOperation(
 }
 
 Result<HybridTime> Tablet::DoGetSafeTime(
-    tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
-  if (!require_lease) {
+    RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
+  if (require_lease == RequireLease::kFalse) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
-  if (require_lease && ht_lease_provider_) {
+  if (ht_lease_provider_) {
     // This will block until a leader lease reaches the given value or a timeout occurs.
-    ht_lease = VERIFY_RESULT(ht_lease_provider_(min_allowed, deadline));
+    auto ht_lease_result = ht_lease_provider_(min_allowed, deadline);
+    if (!ht_lease_result.ok()) {
+      if (require_lease == RequireLease::kFallbackToFollower &&
+          ht_lease_result.status().IsIllegalState()) {
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+      }
+      return ht_lease_result.status();
+    }
+    ht_lease = *ht_lease_result;
     if (min_allowed > ht_lease.time) {
       return STATUS_FORMAT(
           InternalError, "Read request hybrid time after current time: $0, lease: $1",
@@ -3446,6 +3454,55 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 void Tablet::TriggerPostSplitCompactionSync() {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
   WARN_NOT_OK(ForceFullRocksDBCompact(), "Failed to compact post-split tablet.");
+}
+
+Status Tablet::VerifyDataIntegrity() {
+  LOG_WITH_PREFIX(INFO) << "Beginning data integrity checks on this tablet";
+
+  // Verify regular db.
+  if (regular_db_) {
+    const auto& db_dir = metadata()->rocksdb_dir();
+    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+  }
+
+  // Verify intents db.
+  if (intents_db_) {
+    const auto& db_dir = metadata()->intents_rocksdb_dir();
+    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+  }
+
+  return Status::OK();
+}
+
+Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
+  // Similar to ldb's CheckConsistency, we open db as read-only with paranoid checks on.
+  // If any corruption is detected then the open will fail with a Corruption status.
+  rocksdb::Options db_opts;
+  InitRocksDBOptions(&db_opts, LogPrefix());
+  db_opts.paranoid_checks = true;
+
+  std::unique_ptr<rocksdb::DB> db;
+  rocksdb::DB* db_raw = nullptr;
+  rocksdb::Status st = rocksdb::DB::OpenForReadOnly(db_opts, db_dir, &db_raw);
+  if (db_raw != nullptr) {
+    db.reset(db_raw);
+  }
+  if (!st.ok()) {
+    if (st.IsCorruption()) {
+      LOG_WITH_PREFIX(WARNING) << "Detected rocksdb data corruption: " << st;
+      // TODO: should we bump metric here or in top-level validation or both?
+      metrics()->tablet_data_corruptions->Increment();
+      return st;
+    }
+
+    LOG_WITH_PREFIX(WARNING) << "Failed to open read-only RocksDB in directory " << db_dir
+                             << ": " << st;
+    return Status::OK();
+  }
+
+  // TODO: we can add more checks here to verify block contents/checksums
+
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------

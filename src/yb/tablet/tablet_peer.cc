@@ -638,6 +638,10 @@ HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
       /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
 }
 
+Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+  return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
+}
+
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
   data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
@@ -1164,6 +1168,10 @@ int64_t TabletPeer::LeaderTerm() const {
     consensus = consensus_;
   }
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
+Result<HybridTime> TabletPeer::LeaderSafeTime() const {
+  return tablet_->SafeTime();
 }
 
 consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {

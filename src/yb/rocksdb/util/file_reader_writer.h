@@ -30,6 +30,8 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/port/port.h"
 
+DECLARE_int32(rocksdb_file_starting_buffer_size);
+
 namespace yb {
 
 class PriorityThreadPoolSuspender;
@@ -158,7 +160,7 @@ class WritableFileWriter {
         suspender_(suspender) {
 
     buf_.Alignment(writable_file_->GetRequiredBufferAlignment());
-    buf_.AllocateNewBuffer(65536);
+    buf_.AllocateNewBuffer(FLAGS_rocksdb_file_starting_buffer_size);
   }
 
   WritableFileWriter(const WritableFileWriter&) = delete;

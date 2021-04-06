@@ -34,6 +34,11 @@
 #include "yb/common/ql_name.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -44,6 +49,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/encryption_manager.h"
+#include "yb/master/restore_sys_catalog_state.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -601,7 +607,8 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
         SendRestoreTabletSnapshotRequest(
-            tablet, snapshot_id, HybridTime(), TabletSnapshotOperationCallback());
+            tablet, snapshot_id, HybridTime(), SendMetadata::kFalse,
+            TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -1361,12 +1368,18 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet,
     const string& snapshot_id,
     HybridTime restore_at,
+    SendMetadata send_metadata,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   if (restore_at) {
     call->SetSnapshotHybridTime(restore_at);
+  }
+  if (send_metadata) {
+    auto lock = tablet->table()->LockForRead();
+    const auto& pb = lock->data().pb;
+    call->SetMetadata(pb.version(), pb.schema(), pb.indexes());
   }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -1386,6 +1399,73 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
 
 Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
   return tablet_peer()->tablet()->snapshots().Create(data);
+}
+
+Status CatalogManager::RestoreSysCatalog(
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
+    HybridTime write_time, const SnapshotScheduleFilterPB& filter) {
+  auto& tablet = *tablet_peer()->tablet();
+  auto dir = VERIFY_RESULT(tablet.snapshots().RestoreToTemporary(
+      snapshot_id, restore_at));
+  rocksdb::Options rocksdb_options;
+  std::string log_prefix = LogPrefix();
+  // Remove ": " to patch suffix.
+  log_prefix.erase(log_prefix.size() - 2);
+  tablet.InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+
+  const auto& schema = this->schema();
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+  RestoreSysCatalogState state;
+  {
+    auto iter = std::make_unique<docdb::DocRowwiseIterator>(
+        schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
+        ReadHybridTime::SingleTime(restore_at), nullptr);
+    RETURN_NOT_OK(EnumerateSysCatalog(
+        iter.get(), schema, SysRowEntry::TABLE,
+        std::bind(&RestoreSysCatalogState::LoadTable, &state, _1, _2)));
+  }
+  {
+    auto iter = std::make_unique<docdb::DocRowwiseIterator>(
+        schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
+        ReadHybridTime::SingleTime(restore_at), nullptr);
+    RETURN_NOT_OK(EnumerateSysCatalog(
+        iter.get(), schema, SysRowEntry::TABLET,
+        std::bind(&RestoreSysCatalogState::LoadTablet, &state, _1, _2)));
+  }
+  auto entries = VERIFY_RESULT(state.FilterEntries(filter));
+
+  docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
+  docdb::DocOperationApplyData apply_data{.doc_write_batch = &write_batch};
+  std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
+  for (const auto& entry : entries.entries()) {
+    QLWriteRequestPB write_request;
+    RETURN_NOT_OK(FillSysCatalogWriteRequest(
+        entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
+        &write_request));
+    docdb::QLWriteOperation operation(schema_ptr, IndexMap(), nullptr, boost::none);
+    QLResponsePB response;
+    RETURN_NOT_OK(operation.Init(&write_request, &response));
+    RETURN_NOT_OK(operation.Apply(apply_data));
+  }
+  docdb::KeyValueWriteBatchPB kv_write_batch;
+  write_batch.MoveToWriteBatchPB(&kv_write_batch);
+
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PrepareNonTransactionWriteBatch(
+      kv_write_batch, write_time, nullptr, &rocksdb_write_batch, nullptr);
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(op_id, &frontiers);
+  set_hybrid_time(write_time, &frontiers);
+
+  tablet.WriteToRocksDB(
+      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+
+  // TODO(pitr) Handle master leader failover.
+  RETURN_NOT_OK(ElectedAsLeaderCb());
+
+  return Status::OK();
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -3342,6 +3422,10 @@ void CatalogManager::Started() {
 
 Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
   return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
+}
+
+void CatalogManager::SysCatalogLoaded(int64_t term) {
+  return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
 } // namespace enterprise

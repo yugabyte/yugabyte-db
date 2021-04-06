@@ -418,7 +418,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -473,7 +474,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -517,7 +519,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "SingleUserUniverse")
@@ -561,7 +564,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -599,7 +603,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     az1.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
-    InstanceType i = InstanceType.upsert(p.code, "small", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "small", 10, 5.5,
                                          new InstanceType.InstanceTypeDetails());
 
     ModelFactory.createUniverse("K8sUniverse1", customer.getCustomerId(), CloudType.kubernetes);
@@ -646,7 +650,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -692,7 +697,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -740,7 +746,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -1009,7 +1016,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     setInTransitNode(u.universeUUID);
 
@@ -1424,7 +1432,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5,
         new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -1477,7 +1485,8 @@ public class UniverseControllerTest extends WithApplication {
     Region rReadOnly = Region.create(p, "region-readOnly-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(rReadOnly, "az-readOnly-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(rReadOnly, "az-readOnly-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univWithReadOnlyCreate";
@@ -1551,7 +1560,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
     utd.universeUUID= u.universeUUID;
@@ -1597,7 +1607,8 @@ public class UniverseControllerTest extends WithApplication {
 
   public UniverseDefinitionTaskParams setupOnPremTestData(int numNodesToBeConfigured, Provider p, Region r, List<AvailabilityZone> azList) {
     int numAZsToBeConfigured = azList.size();
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     for (int k = 0; k < numNodesToBeConfigured; ++k) {
       NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
@@ -1644,7 +1655,8 @@ public class UniverseControllerTest extends WithApplication {
     Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getTestUserIntent(r, p, i, 5);
     userIntent.providerType = CloudType.onprem;
@@ -1682,7 +1694,8 @@ public class UniverseControllerTest extends WithApplication {
     azList.add(az1);
     azList.add(az2);
 
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
@@ -1752,7 +1765,8 @@ public class UniverseControllerTest extends WithApplication {
 
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     taskParams.nodePrefix = "test_uni";
     UserIntent userIntent = getTestUserIntent(r, p, i, 5);
@@ -1811,7 +1825,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
@@ -1874,7 +1889,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
@@ -1931,7 +1947,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i = InstanceType
-            .upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            .upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams createTaskParams = new UniverseDefinitionTaskParams();
     ObjectNode createBodyJson = (ObjectNode) Json.toJson(createTaskParams);
@@ -2311,7 +2327,7 @@ public class UniverseControllerTest extends WithApplication {
     AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5,
         new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
