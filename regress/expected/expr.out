@@ -4359,7 +4359,7 @@ ERROR:  sqrt() unsupported argument agtype 1
 -- user defined function expressions - using pg functions for these tests
 --
 SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt(25)
+    RETURN pg_catalog.sqrt(25::pg_float8)
 $$) as (result agtype);
  result 
 --------
@@ -4376,7 +4376,7 @@ $$) as (result agtype);
 
 -- should return null
 SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt(null)
+    RETURN pg_catalog.sqrt(null::pg_float8)
 $$) as (result agtype);
  result 
 --------
@@ -4392,18 +4392,18 @@ LINE 2:     RETURN pg_catalog.sqrt()
                               ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt("1")
+    RETURN pg_catalog.sqrt("1"::pg_float8)
 $$) as (result agtype);
 ERROR:  cannot cast agtype string to type float
 SELECT * from cypher('expr', $$
-    RETURN pg_catalog.sqrt(-1)
+    RETURN pg_catalog.sqrt(-1::pg_float8)
 $$) as (result agtype);
 ERROR:  cannot take square root of a negative number
 SELECT * from cypher('expr', $$
-    RETURN something.pg_catalog.sqrt("1")
+    RETURN something.pg_catalog.sqrt("1"::pg_float8)
 $$) as (result agtype);
 ERROR:  invalid indirection syntax
-LINE 2:     RETURN something.pg_catalog.sqrt("1")
+LINE 2:     RETURN something.pg_catalog.sqrt("1"::pg_float8)
                    ^
 -- should fail do to schema but using a reserved_keyword
 SELECT * from cypher('expr', $$
@@ -4477,9 +4477,9 @@ SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
 
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
 AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
-       avg        |  sum  | sum_divided_by_count | count | count_star 
-------------------+-------+----------------------+-------+------------
- 3.49285714285714 | 24.45 | 3.49285714285714     | 7     | 7
+       avg        |      sum       |    sum_divided_by_count     | count | count_star 
+------------------+----------------+-----------------------------+-------+------------
+ 3.49285714285714 | 24.45::numeric | 3.4928571428571429::numeric | 7     | 7
 (1 row)
 
 -- add in 2 null gpa records
@@ -4509,9 +4509,9 @@ SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN (u) $$) AS (vertex agtype);
 
 SELECT * FROM cypher('UCSC', $$ MATCH (u) RETURN avg(u.gpa), sum(u.gpa), sum(u.gpa)/count(u.gpa), count(u.gpa), count(*) $$) 
 AS (avg agtype, sum agtype, sum_divided_by_count agtype, count agtype, count_star agtype);
-       avg        |  sum  | sum_divided_by_count | count | count_star 
-------------------+-------+----------------------+-------+------------
- 3.49285714285714 | 24.45 | 3.49285714285714     | 7     | 9
+       avg        |      sum       |    sum_divided_by_count     | count | count_star 
+------------------+----------------+-----------------------------+-------+------------
+ 3.49285714285714 | 24.45::numeric | 3.4928571428571429::numeric | 7     | 9
 (1 row)
 
 -- should return null
@@ -4536,12 +4536,12 @@ SELECT * FROM cypher('UCSC', $$ RETURN count(NULL) $$) AS (count agtype);
 
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN avg() $$) AS (avg agtype);
-ERROR:  function pg_catalog.avg() does not exist
+ERROR:  function ag_catalog.age_avg() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN avg() $$) AS (avg agt...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agtype);
-ERROR:  function pg_catalog.sum() does not exist
+ERROR:  function ag_catalog.age_sum() does not exist
 LINE 1: SELECT * FROM cypher('UCSC', $$ RETURN sum() $$) AS (sum agt...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
@@ -4861,9 +4861,9 @@ SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, u.k$$) AS (i a
 SELECT * FROM cypher('group_by', $$MATCH (u:row) RETURN u.i, u.j, sum(u.k)$$) AS (i agtype, j agtype, sumk agtype);
  i | j | sumk 
 ---+---+------
- 1 | 2 | 7.0
- 2 | 3 | 6.0
- 1 | 3 | 5.0
+ 1 | 2 | 7
+ 2 | 3 | 6
+ 1 | 3 | 5
 (3 rows)
 
 SELECT * FROM cypher('group_by', $$CREATE (:L {a: 1, b: 2, c:3})$$) AS (result agtype);

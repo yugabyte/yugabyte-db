@@ -6076,7 +6076,7 @@ static float8 get_float_compatible_arg(Datum arg, Oid type, char *funcname,
             result = float8in_internal_null(string, NULL, "double precision",
                                             string, &is_valid);
 
-            /* return null if it was not a invalid float */
+            /* return 0 if it was an invalid float */
             if (!is_valid)
                 return 0;
         }
@@ -7431,29 +7431,222 @@ agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
     return agtype_result;
 }
 
+/*
+ * Transfer function for age_sum(agtype, agtype).
+ *
+ * Note: that the running sum will change type depending on the
+ * precision of the input. The most precise value determines the
+ * result type.
+ *
+ * Note: The sql definition is STRICT so no input NULLs need to
+ * be dealt with except for agtype.
+ */
+PG_FUNCTION_INFO_V1(age_agtype_sum);
+
+Datum age_agtype_sum(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg0 = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agt_arg1 = AG_GET_ARG_AGTYPE_P(1);
+    agtype_value *agtv_lhs;
+    agtype_value *agtv_rhs;
+    agtype_value agtv_result;
+
+    /* get our args */
+    agt_arg0 = AG_GET_ARG_AGTYPE_P(0);
+    agt_arg1 = AG_GET_ARG_AGTYPE_P(1);
+
+    /* only scalars are allowed */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg0) || !AGT_ROOT_IS_SCALAR(agt_arg1))
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("arguments must resolve to a scalar")));
+
+    /* get the values */
+    agtv_lhs = get_ith_agtype_value_from_container(&agt_arg0->root, 0);
+    agtv_rhs = get_ith_agtype_value_from_container(&agt_arg1->root, 0);
+
+    /* only numbers are allowed */
+    if ((agtv_lhs->type != AGTV_INTEGER && agtv_lhs->type != AGTV_FLOAT &&
+         agtv_lhs->type != AGTV_NUMERIC) || (agtv_rhs->type != AGTV_INTEGER &&
+        agtv_rhs->type != AGTV_FLOAT && agtv_rhs->type != AGTV_NUMERIC))
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("arguments must resolve to a number")));
+
+    /* check for agtype null */
+    if (agtv_lhs->type == AGTV_NULL)
+        PG_RETURN_POINTER(agt_arg1);
+    if (agtv_rhs->type == AGTV_NULL)
+        PG_RETURN_POINTER(agt_arg0);
+
+    /* we want to maintain the precision of the most precise input */
+    if (agtv_lhs->type == AGTV_NUMERIC || agtv_rhs->type == AGTV_NUMERIC)
+    {
+        agtv_result.type = AGTV_NUMERIC;
+    }
+    else if (agtv_lhs->type == AGTV_FLOAT || agtv_rhs->type == AGTV_FLOAT)
+    {
+        agtv_result.type = AGTV_FLOAT;
+    }
+    else
+    {
+        agtv_result.type = AGTV_INTEGER;
+    }
+
+    /* switch on the type to perform the correct addition */
+    switch(agtv_result.type)
+    {
+        /* if the type is integer, they are obviously both ints */
+        case AGTV_INTEGER:
+            agtv_result.val.int_value = DatumGetInt64(
+                DirectFunctionCall2(int8pl,
+                                    Int64GetDatum(agtv_lhs->val.int_value),
+                                    Int64GetDatum(agtv_rhs->val.int_value)));
+            break;
+        /* for float it can be either, float + float or float + int */
+        case AGTV_FLOAT:
+        {
+            Datum dfl;
+            Datum dfr;
+            Datum dresult;
+            /* extract and convert the values as necessary */
+            /* float + float */
+            if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+            {
+                dfl = Float8GetDatum(agtv_lhs->val.float_value);
+                dfr = Float8GetDatum(agtv_rhs->val.float_value);
+            }
+            /* float + int */
+            else
+            {
+                int64 ival;
+                float8 fval;
+                bool is_null;
+
+                ival = (agtv_lhs->type == AGTV_INTEGER) ?
+                    agtv_lhs->val.int_value : agtv_rhs->val.int_value;
+                fval = (agtv_lhs->type == AGTV_FLOAT) ?
+                    agtv_lhs->val.float_value : agtv_rhs->val.float_value;
+
+                dfl = Float8GetDatum(get_float_compatible_arg(Int64GetDatum(ival),
+                                                              INT8OID, "",
+                                                              &is_null));
+                dfr = Float8GetDatum(fval);
+            }
+            /* add the floats and set the result */
+            dresult = DirectFunctionCall2(float8pl, dfl, dfr);
+            agtv_result.val.float_value = DatumGetFloat8(dresult);
+        }
+            break;
+        /*
+         * For numeric it can be either, numeric + numeric or numeric + float or
+         * numeric + int
+         */
+        case AGTV_NUMERIC:
+        {
+            Datum dnl;
+            Datum dnr;
+            Datum dresult;
+            /* extract and convert the values as necessary */
+            /* numeric + numeric */
+            if (agtv_lhs->type == AGTV_NUMERIC && agtv_rhs->type == AGTV_NUMERIC)
+            {
+                dnl = NumericGetDatum(agtv_lhs->val.numeric);
+                dnr = NumericGetDatum(agtv_rhs->val.numeric);
+            }
+            /* numeric + float */
+            else if (agtv_lhs->type == AGTV_FLOAT || agtv_rhs->type == AGTV_FLOAT)
+            {
+                float8 fval;
+                Numeric nval;
+
+                fval = (agtv_lhs->type == AGTV_FLOAT) ?
+                    agtv_lhs->val.float_value : agtv_rhs->val.float_value;
+                nval = (agtv_lhs->type == AGTV_NUMERIC) ?
+                    agtv_lhs->val.numeric : agtv_rhs->val.numeric;
+
+                dnl = DirectFunctionCall1(float8_numeric, Float8GetDatum(fval));
+                dnr = NumericGetDatum(nval);
+            }
+            /* numeric + int */
+            else
+            {
+                int64 ival;
+                Numeric nval;
+
+                ival = (agtv_lhs->type == AGTV_INTEGER) ?
+                    agtv_lhs->val.int_value : agtv_rhs->val.int_value;
+                nval = (agtv_lhs->type == AGTV_NUMERIC) ?
+                    agtv_lhs->val.numeric : agtv_rhs->val.numeric;
+
+                dnl = DirectFunctionCall1(int8_numeric, Int64GetDatum(ival));
+                dnr = NumericGetDatum(nval);
+            }
+            /* add the numerics and set the result */
+            dresult = DirectFunctionCall2(numeric_add, dnl, dnr);
+            agtv_result.val.numeric = DatumGetNumeric(dresult);
+        }
+            break;
+
+        default:
+            elog(ERROR, "unexpected agtype");
+            break;
+    }
+    /* return the result */
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+/*
+ * Wrapper function for float8_accum to take an agtype input.
+ * This function is defined as STRICT so it does not need to check
+ * for NULL input parameters
+ */
+PG_FUNCTION_INFO_V1(age_agtype_float8_accum);
+
+Datum age_agtype_float8_accum(PG_FUNCTION_ARGS)
+{
+    Datum dfloat;
+    Datum result;
+
+    /* convert to a float8 datum, if possible */
+    dfloat = DirectFunctionCall1(agtype_to_float8, PG_GETARG_DATUM(1));
+    /* pass the arguments off to float8_accum */
+    result = DirectFunctionCall2(float8_accum, PG_GETARG_DATUM(0), dfloat);
+
+    PG_RETURN_DATUM(result);
+}
+
+/* Wrapper for stdDev function. */
 PG_FUNCTION_INFO_V1(age_float8_stddev_samp_aggfinalfn);
 
 Datum age_float8_stddev_samp_aggfinalfn(PG_FUNCTION_ARGS)
 {
     Datum result;
     PGFunction func;
+    agtype_value agtv_float;
 
     /* we can't use DirectFunctionCall1 as it errors for NULL values */
     func = float8_stddev_samp;
     result = (*func) (fcinfo);
 
+    agtv_float.type = AGTV_FLOAT;
+
     /*
      * Check to see if float8_stddev_samp returned null. If so, we need to
-     * return a float8 0.
+     * return a agtype float 0.
      */
     if (fcinfo->isnull)
     {
+        /* we need to clear the flag */
         fcinfo->isnull = false;
-
-        PG_RETURN_FLOAT8(0.0);
+        agtv_float.val.float_value = 0.0;
+    }
+    else
+    {
+        agtv_float.val.float_value = DatumGetFloat8(result);
     }
 
-    return result;
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_float));
 }
 
 PG_FUNCTION_INFO_V1(age_float8_stddev_pop_aggfinalfn);
@@ -7462,23 +7655,30 @@ Datum age_float8_stddev_pop_aggfinalfn(PG_FUNCTION_ARGS)
 {
     Datum result;
     PGFunction func;
+    agtype_value agtv_float;
 
     /* we can't use DirectFunctionCall1 as it errors for NULL values */
     func = float8_stddev_pop;
     result = (*func) (fcinfo);
 
+    agtv_float.type = AGTV_FLOAT;
+
     /*
      * Check to see if float8_stddev_pop returned null. If so, we need to
-     * return a float8 0.
+     * return a agtype float 0.
      */
     if (fcinfo->isnull)
     {
+        /* we need to clear the flag */
         fcinfo->isnull = false;
-
-        PG_RETURN_FLOAT8(0.0);
+        agtv_float.val.float_value = 0.0;
+    }
+    else
+    {
+        agtv_float.val.float_value = DatumGetFloat8(result);
     }
 
-    return result;
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_float));
 }
 
 PG_FUNCTION_INFO_V1(age_agtype_larger_aggtransfn);
@@ -7575,7 +7775,9 @@ Datum age_percentile_aggtransfn(PG_FUNCTION_ARGS)
             ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
                 errmsg("percentile value NULL is not a valid numeric value")));
 
-        percentile = PG_GETARG_FLOAT8(2);
+        percentile = DatumGetFloat8(DirectFunctionCall1(agtype_to_float8,
+                         PG_GETARG_DATUM(2)));
+
         if (percentile < 0 || percentile > 1 || isnan(percentile))
         ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
                         errmsg("percentile value %g is not between 0 and 1",
@@ -7609,7 +7811,9 @@ Datum age_percentile_aggtransfn(PG_FUNCTION_ARGS)
     /* Load the datum into the tuplesort object, but only if it's not null */
     if (!PG_ARGISNULL(1))
     {
-        tuplesort_putdatum(pgastate->sortstate, PG_GETARG_DATUM(1), false);
+        Datum dfloat = DirectFunctionCall1(agtype_to_float8, PG_GETARG_DATUM(1));
+
+        tuplesort_putdatum(pgastate->sortstate, dfloat, false);
         pgastate->number_of_rows++;
     }
     /* return the state */
@@ -7630,6 +7834,7 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
     Datum second_val;
     double proportion;
     bool isnull;
+    agtype_value agtv_float;
 
     /* verify we are in an aggregate context */
     Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
@@ -7685,7 +7890,11 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
         val = float8_lerp(first_val, second_val, proportion);
     }
 
-    PG_RETURN_DATUM(val);
+    /* convert to an agtype float and return the result */
+    agtv_float.type = AGTV_FLOAT;
+    agtv_float.val.float_value = DatumGetFloat8(val);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_float));
 }
 
 /* Code borrowed and adjusted from PG's percentile_disc_final function */
@@ -7698,6 +7907,7 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
     Datum val;
     bool isnull;
     int64 rownum;
+    agtype_value agtv_float;
 
     Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
 
@@ -7742,8 +7952,12 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
     /* We shouldn't have stored any nulls, but do the right thing anyway */
     if (isnull)
         PG_RETURN_NULL();
-    else
-        PG_RETURN_DATUM(val);
+
+    /* convert to an agtype float and return the result */
+    agtv_float.type = AGTV_FLOAT;
+    agtv_float.val.float_value = DatumGetFloat8(val);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_float));
 }
 
 /* functions to support the aggregate function COLLECT() */

@@ -1690,10 +1690,6 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
             funcname = SystemFuncName("random");
         else if (pg_strcasecmp(name, "pi") == 0)
             funcname = SystemFuncName("pi");
-        else if (pg_strcasecmp(name, "avg") == 0)
-            funcname = SystemFuncName("avg");
-        else if (pg_strcasecmp(name, "sum") == 0)
-            funcname = SystemFuncName("sum");
         else if (pg_strcasecmp(name, "count") == 0)
             funcname = SystemFuncName("count");
         else
