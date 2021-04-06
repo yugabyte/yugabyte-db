@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-
+import React from 'react';
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { StorageConfiguration } from '../../config';
@@ -28,8 +28,16 @@ const mapDispatchToProps = (dispatch) => {
     addCustomerConfig: (config) => {
       return dispatch(addCustomerConfig(config)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          const errorMessageObject = response.payload?.response?.data?.error || response.payload.message;
+          Object.keys(errorMessageObject).forEach((errorKey) => {
+            toast.error(
+              <ol>
+                {errorMessageObject[errorKey].map((error) => (
+                  <li>{error}</li>
+                ))}
+              </ol>
+            );
+          });
         }
         return dispatch(addCustomerConfigResponse(response.payload));
       });
