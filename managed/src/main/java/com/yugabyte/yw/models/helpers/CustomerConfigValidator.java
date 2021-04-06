@@ -52,6 +52,8 @@ public class CustomerConfigValidator {
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
+  private static final String S3_BUCKET_NAME = "^s3://.*";
+
   public static abstract class ConfigValidator {
 
     private final String type;
@@ -70,6 +72,10 @@ public class CustomerConfigValidator {
       if (this.type.equals(type) && this.name.equals(name)) {
         JsonNode value = data.get(fieldName);
         doValidate(value == null ? "" : value.asText(), errorsCollector);
+        if (this.name.equals("S3") &&
+            data.get("AWS_ACCESS_KEY_ID") != null) {
+          validateS3DataContent(data, errorsCollector);
+        }
       }
     }
 
@@ -136,8 +142,8 @@ public class CustomerConfigValidator {
   public CustomerConfigValidator() {
     validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_NFS, BACKUP_LOCATION_FIELDNAME,
         NFS_PATH_REGEXP));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
-        S3_URL_SCHEMES, false));
+    validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
+        S3_BUCKET_NAME));
     validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, AWS_HOST_BASE_FIELDNAME,
         S3_URL_SCHEMES, true));
     validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_GCS, BACKUP_LOCATION_FIELDNAME,
@@ -201,34 +207,35 @@ public class CustomerConfigValidator {
    * @param formData, region
    * @return Json filled with errors
    */
-  public ObjectNode validateS3DataContent(JsonNode formData, String region) {
-    ObjectNode errorJson = Json.newObject();
+  public static ObjectNode validateS3DataContent(JsonNode formData, ObjectNode errorJson) {
     try {
-      String bucketname = formData.get("data").get("BACKUP_LOCATION").asText();
-      AmazonS3 s3client = getS3Client(formData, region);
+      String bucketname = formData.get("BACKUP_LOCATION").asText();
+      //Assuming bucket name will always start with s3:// otherwise that will be invalid
+      bucketname = bucketname.substring(5);
+      AmazonS3 s3client = getS3Client(formData);
       List<Bucket> buckets = s3client.listBuckets();
       for (Bucket bucket : buckets) {
         if (bucket.getName().equals(bucketname))
           return errorJson;
       }
-      errorJson.set("S3BucketException:", Json.newArray().add("Bucket name " + bucketname +
+      errorJson.set("BackupConfigException", Json.newArray().add("Bucket name " + bucketname +
           " doesn't exist"));
     } catch (AmazonS3Exception s3Exception) {
-      errorJson.set("BackupConfigException:", Json.newArray().add(s3Exception.getErrorMessage()));
+      errorJson.set("BackupConfigException", Json.newArray().add(s3Exception.getErrorMessage()));
     }
     return errorJson;
   }
 
   // TODO: move to some common utils or AWSCloudImpl file
-  public AmazonS3 getS3Client(JsonNode formData, String region) {
+  public static AmazonS3 getS3Client(JsonNode formData) {
     AWSCredentials credentials = new BasicAWSCredentials(
-      formData.get("data").get("AWS_ACCESS_KEY_ID").asText(),
-      formData.get("data").get("AWS_SECRET_ACCESS_KEY").asText()
+      formData.get("AWS_ACCESS_KEY_ID").asText(),
+      formData.get("AWS_SECRET_ACCESS_KEY").asText()
     );
     return AmazonS3ClientBuilder
       .standard()
       .withCredentials(new AWSStaticCredentialsProvider(credentials))
-      .withRegion(Regions.valueOf(region))
+      .withRegion(Regions.DEFAULT_REGION)
       .build();
   }
 }

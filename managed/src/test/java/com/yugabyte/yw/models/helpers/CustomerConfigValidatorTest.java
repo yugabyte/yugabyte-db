@@ -33,7 +33,7 @@ public class CustomerConfigValidatorTest {
 
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, true",
     "S3, AWS_HOST_BASE, s3://backups.yugabyte.com/test/itest, false",  // BACKUP_LOCATION undefined
-    "S3, BACKUP_LOCATION, s3.amazonaws.com, true",
+    "S3, BACKUP_LOCATION, s3.amazonaws.com, false",
     "S3, BACKUP_LOCATION, ftp://s3.amazonaws.com, false",
     "S3, BACKUP_LOCATION,, false",
 
@@ -94,16 +94,17 @@ public class CustomerConfigValidatorTest {
   @Test
   public void testValidateS3DataContent() {
     ObjectNode data = Json.newObject();
-    data.put("BACKUP_LOCATION", "abc");
+    ObjectNode errorcode = Json.newObject();
+    data.put("BACKUP_LOCATION", "s3://abc");
     data.put("AWS_ACCESS_KEY_ID", "xyz");
     data.put("AWS_SECRET_ACCESS_KEY", "secret");
-    ObjectNode result = validator.validateS3DataContent(createFormData(
-      "STORAGE",
-      "S3",
-      data),
-      "AP_SOUTH_1"
-    );
+    data.put("type", "STORAGE");
+    data.put("name", "S3");
+    ObjectNode result = validator.validateS3DataContent(data, errorcode);
+    String expectedErrorMessage = "The AWS Access Key Id you provided does not " +
+        "exist in our records.";
     assertEquals(1, result.size());
+    assertEquals(expectedErrorMessage, result.get("BackupConfigException").get(0).asText());
   }
 
   private JsonNode createFormData(String type, String name, JsonNode data) {

@@ -6,14 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
 
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,21 +30,10 @@ public class CustomerConfigController extends AuthenticatedController {
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-    if (formData.get("name").asText().equals("S3") &&
-      formData.get("data").get("AWS_ACCESS_KEY_ID") != null) {
-      String region = Region.getByProvider(Provider.get(customerUUID, Common.CloudType.aws).uuid)
-          .get(0).code.replace('-', '_').toUpperCase();
-      errorJson = configValidator.validateS3DataContent(formData, region);
-    }
-    if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
-    }
-
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     Audit.createAuditEntry(ctx(), request(), formData);
     return ApiResponse.success(customerConfig);
