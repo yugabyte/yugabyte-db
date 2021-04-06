@@ -1161,7 +1161,7 @@ public class UniverseController extends AuthenticatedController {
       isForceDelete = Boolean.parseBoolean(request().getQueryString("isForceDelete"));
     }
     boolean isDeleteBackups = false;
-    if (request().getQueryString("isForceDelete") != null) {
+    if (request().getQueryString("isDeleteBackups") != null) {
       isDeleteBackups = Boolean.parseBoolean(request().getQueryString("isDeleteBackups"));
     }
     
