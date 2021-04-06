@@ -300,7 +300,7 @@ In addition to restoring to a particular timestamp, you can also restore to a re
 1. Restore the snapshot you created earlier:
 
     ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 
+    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf "minus 3m"
     ```
 
 1. Verify the data is restored:
