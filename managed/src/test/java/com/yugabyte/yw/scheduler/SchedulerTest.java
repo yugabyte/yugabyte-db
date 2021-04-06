@@ -73,13 +73,9 @@ public class SchedulerTest extends FakeDBApplication {
         s3StorageConfig.configUUID);
     backup.transitionState(Backup.BackupState.Completed);
 
-    List<Backup> expiredBackups = Backup.getExpiredBackups();
-    assertEquals(1, expiredBackups.size());
-
     scheduler.scheduleRunner();
  
     CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
     assertEquals(task.getType(), CustomerTask.TaskType.Delete);
-   
   }
 }
