@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import socket
+import time
 
 from botocore.utils import InstanceMetadataFetcher
 from botocore.credentials import InstanceMetadataProvider
@@ -43,6 +44,9 @@ class AwsCloud(AbstractCloud):
     INSTANCE_IDENTITY_API = "http://169.254.169.254/2016-09-02/dynamic/instance-identity/document"
     NETWORK_METADATA_API = os.path.join(INSTANCE_METADATA_API, "network/interfaces/macs/")
     METADATA_API_TIMEOUT_SECONDS = 3
+    RETRY_COUNT = 30
+    WAIT_SECONDS = 10
+
 
     def __init__(self):
         super(AwsCloud, self).__init__("aws")
@@ -382,11 +386,30 @@ class AwsCloud(AbstractCloud):
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args):
+    def start_instance(self, args, ssh_port):
         ec2 = boto3.resource('ec2',  args["region"])
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=args["id"])
             instance.start()
             instance.wait_until_running()
+            # The OS boot up may take some time,
+            # so retry until the instance allows SSH connection.
+            retry_count = 0
+            while retry_count < self.RETRY_COUNT:
+                time.sleep(self.WAIT_SECONDS)
+                retry_count = retry_count + 1
+                result = sock.connect_ex((args["private_ip"], ssh_port))
+                if result == 0:
+                    break
+            else:
+                logging.error("Start instance {} exceeded maxRetries!".format(args["id"]))
+                raise YBOpsRuntimeError(
+                    "Cannot reach the instance {} after its start at port {}".format(
+                        args["id"], ssh_port)
+                    )
         except ClientError as e:
             logging.error(e)
+        finally:
+            sock.close()
+
