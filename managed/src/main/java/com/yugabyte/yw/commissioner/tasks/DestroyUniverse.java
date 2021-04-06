@@ -38,7 +38,6 @@ import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
-  private TableManager tableManager;
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -55,7 +54,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-      tableManager = Play.current().injector().instanceOf(TableManager.class);
+      TableManager tableManager = Play.current().injector().instanceOf(TableManager.class);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
