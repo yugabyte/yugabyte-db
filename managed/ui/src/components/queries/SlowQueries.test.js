@@ -1,13 +1,12 @@
 import React from 'react';
 import axios from 'axios';
-import { render, screen, waitFor } from './helpers/test-utils';
+import { render, screen } from '../../test-utils';
 import userEvent from '@testing-library/user-event';
 import { within } from '@testing-library/dom';
 import { mockSlowYsqlQueries } from './helpers/mockQueryData';
 import { SlowQueries } from './SlowQueries';
 
 jest.mock('axios');
-jest.mock('../../pages/Login');
 
 beforeEach(() => {
   const ysqlQueries = {
@@ -23,35 +22,28 @@ beforeEach(() => {
 });
 
 describe('Query search input tests', () => {
-  it('render all columns in autocomplete dropdown', async () => {
+  it('render all columns in autocomplete dropdown', () => {
     userEvent.click(screen.getByRole('textbox'));
-    await waitFor(() => {
-      const searchBar = document.getElementById('slow-query-search-bar');
-      expect(within(searchBar).getAllByRole('listitem')).toHaveLength(11);
-    });
+    const searchBar = document.getElementById('slow-query-search-bar');
+    expect(within(searchBar).getAllByRole('listitem')).toHaveLength(11);
   });
 
-  it('render columns in autocomplete that match user input', async () => {
+  it('render columns in autocomplete that match user input', () => {
     userEvent.click(screen.getByRole('textbox'));
     userEvent.type(screen.getByRole('textbox'), 'time');
-    await waitFor(() => {
-      const searchBar = document.getElementById('slow-query-search-bar');
-      expect(within(searchBar).getAllByRole('listitem')).toHaveLength(5);
-    });
+    const searchBar = document.getElementById('slow-query-search-bar');
+    expect(within(searchBar).getAllByRole('listitem')).toHaveLength(5);
+
     userEvent.type(screen.getByRole('textbox'), '{arrowdown}{arrowdown}{arrowdown}{enter}');
-    await waitFor(() => {
-      expect(screen.getByRole('textbox')).toHaveValue('Min Time:');
-    });
+    expect(screen.getByRole('textbox')).toHaveValue('Min Time:');
   });
 
-  it('test dropdown shows after entering search term', async () => {
+  it('test dropdown shows after entering search term', () => {
     const table = document.getElementsByClassName('slow-queries__table')[0];
     expect(within(table).getAllByRole('row')).toHaveLength(3);
     userEvent.click(screen.getByRole('textbox'));
     userEvent.type(screen.getByRole('textbox'), 'Count:>10{enter}');
-    await waitFor(() => {
-      expect(screen.getByRole('textbox')).toHaveFocus();
-      expect(within(table).getAllByRole('row')).toHaveLength(2);
-    });
+    expect(screen.getByRole('textbox')).toHaveFocus();
+    expect(within(table).getAllByRole('row')).toHaveLength(2);
   });
 });

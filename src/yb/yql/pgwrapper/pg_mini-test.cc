@@ -687,6 +687,7 @@ class PgMiniTestManualSysTableTxn : public PgMiniTest {
     // Enable manual transaction control for operations on system tables. Otherwise, they would
     // execute non-transactionally.
     FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
+    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 
@@ -1325,6 +1326,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
   TestBigInsert(/* restart= */ true);
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithDropTable)) {
+  constexpr int kNumRows = 10000;
+  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+}
+
 void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1364,7 +1376,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
 
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
-TEST_F(PgMiniTest, NoRestartSecondRead) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
   FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());

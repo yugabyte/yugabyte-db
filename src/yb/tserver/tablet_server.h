@@ -64,8 +64,6 @@ class MaintenanceManager;
 
 namespace tserver {
 
-constexpr const char* const kTcMallocMaxThreadCacheBytes = "tcmalloc.max_total_thread_cache_bytes";
-
 class Heartbeater;
 class MetricsSnapshotter;
 class TabletServerPathHandlers;

@@ -64,7 +64,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultProvider.save();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;
@@ -88,7 +88,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 3;

@@ -674,6 +674,7 @@ Status CatalogManager::Init() {
       hps.insert(hp);
     }
     RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
+    RETURN_NOT_OK(GetRegistration(&server_registration_));
     RETURN_NOT_OK(EnableBgTasks());
   }
 
@@ -777,9 +778,12 @@ void CatalogManager::LoadSysCatalogDataTask() {
     }
   }
 
-  std::lock_guard<simple_spinlock> l(state_lock_);
-  leader_ready_term_ = term;
-  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    leader_ready_term_ = term;
+    LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  }
+  SysCatalogLoaded(term);
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
@@ -2047,10 +2051,16 @@ Status CatalogManager::DoSplitTablet(
                             source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
   }
 
-  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
-
   const auto source_table_lock = source_tablet_info->table()->LockForWrite();
   const auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+  if (source_tablet_info->table()->IsBackfilling()) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Backfill operation in progress, table_id: $0",
+                            source_tablet_info->table()->id());
+  }
+
+  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
@@ -2576,7 +2586,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << ts_descs.size() << " primary servers";
   }
-  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // Create partitions.
   PartitionSchema partition_schema;
@@ -2584,7 +2593,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (colocated || req.has_tablegroup_id()) {
     RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
     req.clear_partition_schema();
-    req.set_num_tablets(1);
+    num_tablets = 1;
   } else {
     s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
     if (req.partitions_size() > 0) {
@@ -2605,9 +2614,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         partitions.push_back(std::move(np));
       }
     } else {
+      // Supplied number of partitions is merely a suggestion, actual number of
+      // created partitions might differ.
       RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
     }
+    // The vector 'partitions' contains real setup partitions, so the variable
+    // should be updated.
+    num_tablets = partitions.size();
   }
+
+  LOG(INFO) << "Set number of tablets: " << num_tablets;
+  req.set_num_tablets(num_tablets);
+  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // For index table, populate the index info.
   IndexInfoPB index_info;
@@ -5889,7 +5907,7 @@ void CatalogManager::ProcessPendingNamespace(
 
   // Ensure that we are currently the Leader before handling DDL operations.
   {
-    ScopedLeaderSharedLock l(this);
+    SCOPED_LEADER_SHARED_LOCK(l, this);
     if (!l.catalog_status().ok() || !l.leader_status().ok()) {
       LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
       // Don't try again, we have to reset in-memory state after losing leader election.
@@ -8348,8 +8366,9 @@ Status CatalogManager::GetTabletLocations(
   return BuildLocationsForTablet(tablet_info, locs_pb);
 }
 
-Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
-                                         GetTableLocationsResponsePB* resp) {
+Status CatalogManager::GetTableLocations(
+    const GetTableLocationsRequestPB* req,
+    GetTableLocationsResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
   VLOG(4) << "GetTableLocations: " << req->ShortDebugString();
 
@@ -9082,7 +9101,7 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 
 void CatalogManager::RebuildYQLSystemPartitions() {
   if (FLAGS_partitions_vtable_cache_refresh_secs > 0) {
-    ScopedLeaderSharedLock l(this);
+    SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
         auto s = down_cast<const YQLPartitionsVTable&>(
@@ -9116,12 +9135,9 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
-  ServerRegistrationPB reg;
-  RETURN_NOT_OK(GetRegistration(&reg));
-
   for (const CloudInfoPB& cloud_info : affinitized_leaders) {
     // Do nothing if already in an affinitized zone.
-    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, reg.cloud_info())) {
+    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
       return Status::OK();
     }
   }
@@ -9135,11 +9151,12 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
 
     for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
       if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
-        LOG_WITH_PREFIX(INFO) << "Sys catalog tablet is not in an affinitized zone, "
-                              << "sending step down request to master uuid "
-                              << master.instance_id().permanent_uuid()
-                              << " in zone "
-                              << TSDescriptor::generate_placement_id(master_cloud_info);
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+            << "Sys catalog tablet is not in an affinitized zone, "
+            << "sending step down request to master uuid "
+            << master.instance_id().permanent_uuid()
+            << " in zone "
+            << TSDescriptor::generate_placement_id(master_cloud_info);
         std::shared_ptr<TabletPeer> tablet_peer;
         RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
 
@@ -9151,7 +9168,9 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
         consensus::LeaderStepDownResponsePB resp;
         RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
         if (resp.has_error()) {
-          return StatusFromPB(resp.error().status());
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Step down failed: "
+                                                    << resp.error().status().message();
+          break;
         }
         LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
         return Status::OK();
@@ -9159,7 +9178,7 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     }
   }
 
-  return STATUS(NotFound, "Couldn't find a master in an affinitized zone");
+  return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
 }  // namespace master

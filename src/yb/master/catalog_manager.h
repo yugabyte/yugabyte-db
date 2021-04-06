@@ -173,9 +173,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   };
 
  public:
-  // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
-  using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
-
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
@@ -1231,6 +1228,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual void Started() {}
 
+  virtual void SysCatalogLoaded(int64_t term) {}
+
   // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
@@ -1448,6 +1447,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  ServerRegistrationPB server_registration_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
