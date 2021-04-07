@@ -1,12 +1,13 @@
 ---
-title: Point-in-Time Restore for YCQL (BETA)
-headerTitle: Point in time restore (BETA)
-linkTitle: Point in time restore (BETA)
-description: Restore data from a specific point in time in YugabyteDB for YCQL (BETA)
+title: Point-in-Time Restore for YCQL
+headerTitle: Point in time restore
+linkTitle: Point in time restore
+description: Restore data from a specific point in time in YugabyteDB for YCQL
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
 menu:
   latest:
-    identifier: point-in-time-restore-ycql
+    identifier: point-in-time-restore-2-ycql
     parent: backup-restore
     weight: 704
 isTocNested: true

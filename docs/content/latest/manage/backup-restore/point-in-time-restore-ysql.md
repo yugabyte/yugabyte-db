@@ -1,8 +1,9 @@
 ---
-title: Point-in-Time Restore for YSQL (BETA)
-headerTitle: Point-in-time restore (BETA)
-linkTitle: Point-in-time restore (BETA)
-description: Restore data from a specific point in time in YugabyteDB for YSQL (BETA)
+title: Point-in-Time Restore for YSQL
+headerTitle: Point-in-time restore
+linkTitle: Point-in-time restore
+description: Restore data from a specific point in time in YugabyteDB for YSQL
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
 menu:
   latest:
