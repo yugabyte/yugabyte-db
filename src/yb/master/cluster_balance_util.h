@@ -14,18 +14,25 @@
 #ifndef YB_MASTER_CLUSTER_BALANCE_UTIL_H
 #define YB_MASTER_CLUSTER_BALANCE_UTIL_H
 
-#include <unordered_set>
-
 #include <map>
 #include <memory>
+#include <regex>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <atomic>
 
+#include <boost/none.hpp>
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/common.pb.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
@@ -85,6 +92,18 @@ struct CBTabletMetadata {
     return !leader_blacklisted_tablet_servers.empty();
   }
 
+  // Can the TS be added to any of the placements that lack
+  // a replica for this tablet.
+  bool CanAddTSToMissingPlacements(const std::shared_ptr<TSDescriptor> ts_descriptor) const {
+    for (const auto& under_replicated_ci : under_replicated_placements) {
+      // A prefix.
+      if (ts_descriptor->MatchesCloudInfo(under_replicated_ci)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Number of running replicas for this tablet.
   int running = 0;
 
@@ -97,7 +116,7 @@ struct CBTabletMetadata {
   bool is_under_replicated = false;
 
   // Set of placement ids that have less replicas available than the configured minimums.
-  std::set<PlacementId> under_replicated_placements;
+  std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to> under_replicated_placements;
 
   // If this tablet has more replicas than the configured number in the PlacementInfoPB.
   bool is_over_replicated;
@@ -402,20 +421,20 @@ class PerTableLoadState {
     } else {
       // If we do have placement information, figure out how the load is distributed based on
       // placement blocks, for this tablet.
-      unordered_map<PlacementId, vector<TabletReplica>> placement_to_replicas;
-      unordered_map<PlacementId, int> placement_to_min_replicas;
+      unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
+                                                                      placement_to_replicas;
+      unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
       // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
       for (const auto& pb : placement.placement_blocks()) {
-        const auto& placement_id = TSDescriptor::generate_placement_id(pb.cloud_info());
         // Default empty vector.
-        placement_to_replicas[placement_id];
-        placement_to_min_replicas[placement_id] = pb.min_num_replicas();
+        placement_to_replicas[pb.cloud_info()];
+        placement_to_min_replicas[pb.cloud_info()] = pb.min_num_replicas();
       }
       // Now actually fill the structures with matching TSs.
       for (auto& replica_entry : *replica_map) {
-        if (VERIFY_RESULT(HasValidPlacement(replica_entry.first, &placement))) {
-          const auto& placement_id = per_ts_meta_[replica_entry.first].descriptor->placement_id();
-          placement_to_replicas[placement_id].push_back(std::move(replica_entry.second));
+        auto ci = GetValidPlacement(replica_entry.first, &placement);
+        if (ci.has_value()) {
+          placement_to_replicas[*ci].push_back(std::move(replica_entry.second));
         } else {
           // If placement does not match, we likely changed the config or the schema and this
           // tablet should no longer live on this tablet server.
@@ -425,12 +444,12 @@ class PerTableLoadState {
 
       // Loop over the data and populate extra replica as well as missing replica information.
       for (const auto& entry : placement_to_replicas) {
-        const auto& placement_id = entry.first;
+        const auto& cloud_info = entry.first;
         const auto& replica_set = entry.second;
-        const auto min_num_replicas = placement_to_min_replicas[placement_id];
+        const auto min_num_replicas = placement_to_min_replicas[cloud_info];
         if (min_num_replicas > replica_set.size()) {
           // Placements that are under-replicated should be handled ASAP.
-          tablet_meta.under_replicated_placements.insert(placement_id);
+          tablet_meta.under_replicated_placements.insert(cloud_info);
         } else if (tablet_meta.is_over_replicated && min_num_replicas < replica_set.size()) {
           // If this tablet is over-replicated, consider all the placements that have more than the
           // minimum number of tablets, as candidates for removing a replica.
@@ -519,7 +538,7 @@ class PerTableLoadState {
       return false;
     }
     // If we ask to use placement information, check against it.
-    if (placement_info && !VERIFY_RESULT(HasValidPlacement(to_ts, placement_info))) {
+    if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
       LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
                 << "Not allowing it to take more tablets.";
       return false;
@@ -534,17 +553,24 @@ class PerTableLoadState {
     return true;
   }
 
-  Result<bool> HasValidPlacement(const TabletServerId& ts_uuid,
+  // For a TS specified by ts_uuid, this function checks if there is a placement
+  // block in placement_info where this TS can be placed. If there doesn't exist
+  // any, it returns boost::none. On the other hand if there is a placement block
+  // that satisfies the criteria then it returns the cloud info of that block.
+  // If there wasn't any placement information passed in placement_info then
+  // it returns the cloud info of the TS itself.
+  boost::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid,
                                  const PlacementInfoPB* placement_info) {
     if (!placement_info->placement_blocks().empty()) {
       for (const auto& pb : placement_info->placement_blocks()) {
         if (per_ts_meta_[ts_uuid].descriptor->MatchesCloudInfo(pb.cloud_info())) {
-          return true;
+          return pb.cloud_info();
         }
       }
-      return false;
+      return boost::none;
     }
-    return true;
+    // Return the cloudInfoPB of TS if no placement policy is specified
+    return per_ts_meta_[ts_uuid].descriptor->GetCloudInfo();
   }
 
   Result<bool> CanSelectWrongReplicaToMove(
@@ -572,9 +598,21 @@ class PerTableLoadState {
           found_match = true;
         } else {
           if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
-            const auto& from_placement_id = per_ts_meta_[from_uuid].descriptor->placement_id();
-            const auto& to_placement_id = per_ts_meta_[to_uuid].descriptor->placement_id();
-            if (from_placement_id == to_placement_id) {
+            // If we have placement information, we want to only pick the tablet if it's moving
+            // to the same placement, so we guarantee we're keeping the same type of distribution.
+            // Since we allow prefixes as well, we can still respect the placement of this tablet
+            // even if their placement ids aren't the same. An e.g.
+            // placement info of tablet: C.R1.*
+            // placement info of from_ts: C.R1.Z1
+            // placement info of to_ts: C.R2.Z2
+            // Note that we've assumed that for every TS there is a unique placement block
+            // to which it can be mapped (see the validation rules in yb_admin-client).
+            // If there is no unique placement block then it is simply the C.R.Z of the TS itself.
+            auto ci_from_ts = GetValidPlacement(from_uuid, &placement_info);
+            auto ci_to_ts = GetValidPlacement(to_uuid, &placement_info);
+            if (ci_to_ts.has_value() && ci_from_ts.has_value() &&
+            TSDescriptor::generate_placement_id(*ci_from_ts) ==
+                                      TSDescriptor::generate_placement_id(*ci_to_ts)) {
               found_match = true;
             } else {
               // ENG-500 : Placement does not match, but we can still use this combo as a fallback.

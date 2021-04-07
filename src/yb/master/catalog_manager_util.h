@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/catalog_entity_info.h"
@@ -69,6 +70,18 @@ class CatalogManagerUtil {
 
   // Returns error if tablet partition is not covered by running inner tablets partitions.
   static CHECKED_STATUS CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
+
+  // Checks if one cloudinfo is a prefix of another. This assumes that ci1 and ci2 are
+  // prefixes.
+  static bool IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2);
+
+  // Validate if the specified placement information conforms to the rules.
+  // Currently, the following assumption about placement blocks is made.
+  // Every TS should have a unique placement block to which it can be mapped.
+  // This translates to placement blocks being disjoint i.e. no placement
+  // block string (C.R.Z format) should be proper prefix of another.
+  // Validate placement information if passed.
+  static CHECKED_STATUS IsPlacementInfoValid(const PlacementInfoPB& placement_info);
 
  private:
   CatalogManagerUtil();
