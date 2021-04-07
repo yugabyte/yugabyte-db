@@ -27,6 +27,7 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 
 #include "yb/rpc/messenger.h"
@@ -41,6 +42,7 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -207,7 +209,7 @@ class YBTransaction::Impl final {
   }
 
   // This transaction is a restarted transaction, so we set it up with data from original one.
-  CHECKED_STATUS FillRestartedTransaction(Impl* other) {
+  CHECKED_STATUS FillRestartedTransaction(Impl* other) EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
@@ -253,7 +255,7 @@ class YBTransaction::Impl final {
     TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
     VTRACE_TO(2, trace_, "Perparing $0 ops", AsString(ops_info->groups));
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      UNIQUE_LOCK(lock, mutex_);
       const bool defer = !ready_;
 
       if (!defer || initial) {
@@ -298,14 +300,14 @@ class YBTransaction::Impl final {
     return true;
   }
 
-  void ExpectOperations(size_t count) {
+  void ExpectOperations(size_t count) EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
     running_requests_ += count;
   }
 
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) {
+      const Status& status) EXCLUDES(mutex_) {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -316,6 +318,8 @@ class YBTransaction::Impl final {
 
     boost::optional<Status> notify_commit_status;
     bool abort = false;
+
+    CommitCallback commit_callback;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       running_requests_ -= ops.size();
@@ -323,7 +327,7 @@ class YBTransaction::Impl final {
       if (status.ok()) {
         if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
-          #ifndef NDEBUG
+#ifndef NDEBUG
           if (read_point_already_set) {
             // Display details of operations before crashing in debug mode.
             int op_idx = 1;
@@ -332,7 +336,7 @@ class YBTransaction::Impl final {
               op_idx++;
             }
           }
-          #endif
+#endif
           LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
               << "Read time already picked (" << read_point_.GetReadTime()
               << ", but server replied with used read time: " << used_read_time;
@@ -357,17 +361,18 @@ class YBTransaction::Impl final {
             // State will be changed to aborted in SetError
           }
         }
-        SetError(status, &lock);
+        SetErrorUnlocked(status);
       }
 
       if (running_requests_ == 0 && commit_replicated_) {
         notify_commit_status = status_;
+        commit_callback = std::move(commit_callback_);
       }
     }
 
     if (notify_commit_status) {
       VLOG_WITH_PREFIX(4) << "Sealing done: " << *notify_commit_status;
-      commit_callback_(*notify_commit_status);
+      commit_callback(*notify_commit_status);
     }
 
     if (abort && !child_) {
@@ -375,13 +380,15 @@ class YBTransaction::Impl final {
     }
   }
 
-  void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
+  void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback)
+      EXCLUDES(mutex_) {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      auto status = CheckCouldCommit(seal_only, &lock);
+      UNIQUE_LOCK(lock, mutex_);
+      auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
+        lock.unlock();
         callback(status);
         return;
       }
@@ -396,7 +403,9 @@ class YBTransaction::Impl final {
         // to remove this special case if it turns out there is a bug elsewhere.
         if (tablets_.empty() && running_requests_ == 0) {
           VLOG_WITH_PREFIX(4) << "Committed empty transaction";
-          commit_callback_(Status::OK());
+          auto commit_callback = std::move(commit_callback_);
+          lock.unlock();
+          commit_callback(Status::OK());
           return;
         }
 
@@ -410,13 +419,13 @@ class YBTransaction::Impl final {
     DoCommit(deadline, seal_only, Status::OK(), transaction);
   }
 
-  void Abort(CoarseTimePoint deadline) {
+  void Abort(CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto transaction = transaction_->shared_from_this();
 
     VLOG_WITH_PREFIX(2) << "Abort";
     TRACE_TO(trace_, __func__);
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      UNIQUE_LOCK(lock, mutex_);
       auto state = state_.load(std::memory_order_acquire);
       if (state != TransactionState::kRunning) {
         LOG_IF_WITH_PREFIX(DFATAL, state != TransactionState::kAborted)
@@ -446,8 +455,8 @@ class YBTransaction::Impl final {
     return read_point_.IsRestartRequired();
   }
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() {
-    std::unique_lock<std::mutex> lock(mutex_);
+  std::shared_future<Result<TransactionMetadata>> GetMetadata() EXCLUDES(mutex_) {
+    UNIQUE_LOCK(lock, mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
@@ -465,9 +474,11 @@ class YBTransaction::Impl final {
       });
       lock.unlock();
       RequestStatusTablet(TransactionRpcDeadline());
-    } else {
-      metadata_promise_.set_value(metadata_);
+      lock.lock();
+      return metadata_future_;
     }
+
+    metadata_promise_.set_value(metadata_);
     return metadata_future_;
   }
 
@@ -476,9 +487,10 @@ class YBTransaction::Impl final {
       PrepareChildCallback callback) {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
-    std::unique_lock<std::mutex> lock(mutex_);
-    auto status = CheckRunning(&lock);
+    UNIQUE_LOCK(lock, mutex_);
+    auto status = CheckRunningUnlocked();
     if (!status.ok()) {
+      lock.unlock();
       callback(status);
       return;
     }
@@ -492,19 +504,21 @@ class YBTransaction::Impl final {
 
     if (!ready_) {
       waiters_.emplace_back(std::bind(
-          &Impl::DoPrepareChild, this, _1, transaction, std::move(callback), nullptr /* lock */));
+          &Impl::DoPrepareChild, this, _1, transaction, std::move(callback)));
       lock.unlock();
       RequestStatusTablet(deadline);
       return;
     }
 
-    DoPrepareChild(Status::OK(), transaction, std::move(callback), &lock);
+    ChildTransactionDataPB child_txn_data_pb = PrepareChildTransactionDataUnlocked(transaction);
+    lock.unlock();
+    callback(child_txn_data_pb);
   }
 
   Result<ChildTransactionResultPB> FinishChild() {
     TRACE_TO(trace_, __func__);
-    std::unique_lock<std::mutex> lock(mutex_);
-    RETURN_NOT_OK(CheckRunning(&lock));
+    UNIQUE_LOCK(lock, mutex_);
+    RETURN_NOT_OK(CheckRunningUnlocked());
     if (!child_) {
       return STATUS(IllegalState, "Finish child of non child transaction");
     }
@@ -524,7 +538,7 @@ class YBTransaction::Impl final {
     return result;
   }
 
-  Status ApplyChildResult(const ChildTransactionResultPB& result) {
+  Status ApplyChildResult(const ChildTransactionResultPB& result) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     std::vector<std::string> cleanup_tablet_ids;
     auto se = ScopeExit([this, &cleanup_tablet_ids] {
@@ -535,7 +549,7 @@ class YBTransaction::Impl final {
           manager_->client(), manager_->clock(), metadata_.transaction_id, Sealed::kFalse,
           CleanupType::kImmediate, cleanup_tablet_ids);
     });
-    std::unique_lock<std::mutex> lock(mutex_);
+    UNIQUE_LOCK(lock, mutex_);
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
       cleanup_tablet_ids.reserve(result.tablets().size());
       for (const auto& tablet : result.tablets()) {
@@ -543,7 +557,7 @@ class YBTransaction::Impl final {
       }
     }
 
-    RETURN_NOT_OK(CheckRunning(&lock));
+    RETURN_NOT_OK(CheckRunningUnlocked());
     if (child_) {
       return STATUS(IllegalState, "Apply child result of child transaction");
     }
@@ -564,7 +578,7 @@ class YBTransaction::Impl final {
     return log_prefix_;
   }
 
-  std::string ToString() {
+  std::string ToString() EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
     return Format("{ metadata: $0 state: $1 }", metadata_, state_.load(std::memory_order_acquire));
   }
@@ -578,7 +592,7 @@ class YBTransaction::Impl final {
   }
 
   Result<TransactionMetadata> Release() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    UNIQUE_LOCK(lock, mutex_);
     auto state = state_.load(std::memory_order_acquire);
     if (state != TransactionState::kRunning) {
       return STATUS_FORMAT(IllegalState, "Attempt to release transaction in the wrong state $0: $1",
@@ -632,10 +646,9 @@ class YBTransaction::Impl final {
     }
   }
 
-  CHECKED_STATUS CheckRunning(std::unique_lock<std::mutex>* lock) {
+  CHECKED_STATUS CheckRunningUnlocked() REQUIRES(mutex_) {
     if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
       auto status = status_;
-      lock->unlock();
       if (status.ok()) {
         status = STATUS(IllegalState, "Transaction already completed");
       }
@@ -646,14 +659,17 @@ class YBTransaction::Impl final {
 
   void DoCommit(
       CoarseTimePoint deadline, SealOnly seal_only, const Status& status,
-      const YBTransactionPtr& transaction) {
+      const YBTransactionPtr& transaction) EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(1)
         << Format("Commit, seal_only: $0, tablets: $1, status: $2",
                   seal_only, tablets_, status);
 
+    UNIQUE_LOCK(lock, mutex_);
     if (!status.ok()) {
       VLOG_WITH_PREFIX(4) << "Commit failed: " << status;
-      commit_callback_(status);
+      auto commit_callback = std::move(commit_callback_);
+      lock.unlock();
+      commit_callback(status);
       return;
     }
 
@@ -679,8 +695,11 @@ class YBTransaction::Impl final {
     // But notify caller that commit was successful, so it is transparent for him.
     if (state.tablets().empty()) {
       VLOG_WITH_PREFIX(4) << "Committed empty";
-      DoAbort(deadline, transaction);
-      commit_callback_(Status::OK());
+      auto status_tablet = status_tablet_;
+      auto commit_callback = std::move(commit_callback_);
+      lock.unlock();
+      DoAbort(deadline, transaction, status_tablet);
+      commit_callback(Status::OK());
       return;
     }
 
@@ -694,18 +713,28 @@ class YBTransaction::Impl final {
         &commit_handle_);
   }
 
-  void DoAbort(CoarseTimePoint deadline, const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Abort";
+  void DoAbort(CoarseTimePoint deadline, const YBTransactionPtr& transaction) EXCLUDES(mutex_) {
+    decltype(status_tablet_) status_tablet;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      status_tablet = status_tablet_;
+    }
+    DoAbort(deadline, transaction, status_tablet);
+  }
 
+  void DoAbort(
+      CoarseTimePoint deadline,
+      const YBTransactionPtr& transaction,
+      internal::RemoteTabletPtr status_tablet) EXCLUDES(mutex_) {
     tserver::AbortTransactionRequestPB req;
-    req.set_tablet_id(status_tablet_->tablet_id());
+    req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     req.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
 
     manager_->rpcs().RegisterAndStart(
         AbortTransaction(
             deadline,
-            status_tablet_.get(),
+            status_tablet.get(),
             manager_->client(),
             &req,
             std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
@@ -714,7 +743,8 @@ class YBTransaction::Impl final {
     DoAbortCleanup(transaction, CleanupType::kImmediate);
   }
 
-  void DoAbortCleanup(const YBTransactionPtr& transaction, CleanupType cleanup_type) {
+  void DoAbortCleanup(const YBTransactionPtr& transaction, CleanupType cleanup_type)
+      EXCLUDES(mutex_) {
     if (FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) {
       return;
     }
@@ -747,6 +777,7 @@ class YBTransaction::Impl final {
     manager_->rpcs().Unregister(&commit_handle_);
 
     Status actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+    CommitCallback commit_callback;
     if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
         actual_status.ok()) {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -754,9 +785,13 @@ class YBTransaction::Impl final {
       if (running_requests_ != 0) {
         return;
       }
+      commit_callback = std::move(commit_callback_);
+    } else {
+      std::lock_guard<std::mutex> lock(mutex_);
+      commit_callback = std::move(commit_callback_);
     }
     VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
-    commit_callback_(actual_status);
+    commit_callback(actual_status);
 
     if (actual_status.IsExpired()) {
       // We can't perform immediate cleanup here because the transaction could be committed,
@@ -778,7 +813,7 @@ class YBTransaction::Impl final {
     manager_->rpcs().Unregister(&abort_handle_);
   }
 
-  void RequestStatusTablet(const CoarseTimePoint& deadline) {
+  void RequestStatusTablet(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     bool expected = false;
     if (!requested_status_tablet_.compare_exchange_strong(
@@ -862,7 +897,7 @@ class YBTransaction::Impl final {
         DCHECK(!ready_);
         ready_ = true;
       } else {
-        SetError(status, &lock);
+        SetErrorUnlocked(status);
       }
       waiters_.swap(waiters);
     }
@@ -902,7 +937,14 @@ class YBTransaction::Impl final {
     }
 
     tserver::UpdateTransactionRequestPB req;
-    req.set_tablet_id(status_tablet_->tablet_id());
+
+    internal::RemoteTabletPtr status_tablet;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      status_tablet = status_tablet_;
+    }
+
+    req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
@@ -910,7 +952,7 @@ class YBTransaction::Impl final {
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
             CoarseMonoClock::now() + timeout,
-            status_tablet_.get(),
+            status_tablet.get(),
             manager_->client(),
             &req,
             std::bind(&Impl::HeartbeatDone, this, _1, _2, status, transaction)),
@@ -979,41 +1021,47 @@ class YBTransaction::Impl final {
     }
   }
 
-  void SetError(const Status& status, std::lock_guard<std::mutex>* lock = nullptr) {
+  void SetError(const Status& status) EXCLUDES(mutex_) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    SetErrorUnlocked(status);
+  }
+
+  void SetErrorUnlocked(const Status& status) REQUIRES(mutex_) {
     VLOG_WITH_PREFIX(1) << "Failed: " << status;
-    if (!lock) {
-      std::lock_guard<std::mutex> new_lock(mutex_);
-      SetError(status, &new_lock);
-      return;
-    }
     if (status_.ok()) {
       status_ = status;
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
   }
 
+  ChildTransactionDataPB PrepareChildTransactionDataUnlocked(
+      const YBTransactionPtr& transaction) REQUIRES(mutex_) {
+    ChildTransactionDataPB data;
+    metadata_.ToPB(data.mutable_metadata());
+    read_point_.PrepareChildTransactionData(&data);
+    return data;
+  }
+
   void DoPrepareChild(const Status& status,
                       const YBTransactionPtr& transaction,
-                      PrepareChildCallback callback,
-                      std::unique_lock<std::mutex>* parent_lock) {
+                      PrepareChildCallback callback) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     if (!status.ok()) {
       callback(status);
       return;
     }
 
-    std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
-    if (!parent_lock) {
-      lock.lock();
+    ChildTransactionDataPB child_txn_data_pb;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      child_txn_data_pb = PrepareChildTransactionDataUnlocked(transaction);
     }
-    ChildTransactionDataPB data;
-    metadata_.ToPB(data.mutable_metadata());
-    read_point_.PrepareChildTransactionData(&data);
-    callback(data);
+
+    callback(child_txn_data_pb);
   }
 
-  CHECKED_STATUS CheckCouldCommit(SealOnly seal_only, std::unique_lock<std::mutex>* lock) {
-    RETURN_NOT_OK(CheckRunning(lock));
+  CHECKED_STATUS CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
+    RETURN_NOT_OK(CheckRunningUnlocked());
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");
     }
@@ -1030,7 +1078,8 @@ class YBTransaction::Impl final {
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
-  CoarseTimePoint start_;
+
+  const CoarseTimePoint start_;
 
   // Manager is created once per service.
   TransactionManager* const manager_;
@@ -1041,16 +1090,19 @@ class YBTransaction::Impl final {
   TransactionMetadata metadata_;
   ConsistentReadPoint read_point_;
 
-  std::string log_prefix_;
   std::atomic<bool> requested_status_tablet_{false};
-  internal::RemoteTabletPtr status_tablet_;
+  internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
   std::atomic<TransactionState> state_{TransactionState::kRunning};
+
   // Transaction is successfully initialized and ready to process intents.
   const bool child_;
-  bool child_had_read_time_ = false;
-  bool ready_ = false;
-  CommitCallback commit_callback_;
-  Status status_;
+  const bool child_had_read_time_ = false;
+  bool ready_ GUARDED_BY(mutex_) = false;
+  CommitCallback commit_callback_ GUARDED_BY(mutex_);
+  Status status_ GUARDED_BY(mutex_);
+
+  // The following fields are initialized in CompleteConstruction() and can be used with no locking.
+  std::string log_prefix_;
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
   rpc::Rpcs::Handle abort_handle_;
@@ -1067,11 +1119,12 @@ class YBTransaction::Impl final {
   typedef std::unordered_map<TabletId, TabletState> TabletStates;
 
   std::mutex mutex_;
-  TabletStates tablets_;
+  TabletStates tablets_ GUARDED_BY(mutex_);
   std::vector<Waiter> waiters_;
   std::promise<Result<TransactionMetadata>> metadata_promise_;
-  std::shared_future<Result<TransactionMetadata>> metadata_future_;
-  size_t running_requests_ = 0;
+  std::shared_future<Result<TransactionMetadata>> metadata_future_ GUARDED_BY(mutex_);
+  size_t running_requests_ GUARDED_BY(mutex_) = 0;
+
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ = false;
 };

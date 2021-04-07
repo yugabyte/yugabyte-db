@@ -58,12 +58,15 @@
 #ifndef YB_GUTIL_THREAD_ANNOTATIONS_H
 #define YB_GUTIL_THREAD_ANNOTATIONS_H
 
-
-#if (defined(__GNUC__) && defined(__SUPPORT_TS_ANNOTATION__) && !defined(SWIG)) || \
-    defined(__clang__)
+// We don't restrict thread safety analysis to a subset of Clang versions here. Instead, we do that
+// in CMakeLists.txt by conditionally specifying -Wthread-safety-analysis.
+#if ((defined(__GNUC__) && defined(__SUPPORT_TS_ANNOTATION__) && !defined(SWIG)) || \
+     defined(__clang__))
 #define THREAD_ANNOTATION_ATTRIBUTE__(x)   __attribute__((x))
+#define THREAD_ANNOTATIONS_ENABLED 1
 #else
 #define THREAD_ANNOTATION_ATTRIBUTE__(x)   // no-op
+#define THREAD_ANNOTATIONS_ENABLED 0
 #endif
 
 #define CAPABILITY(x) \

@@ -341,8 +341,9 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
-  # Remove this check when all Clang builds will use libc++.
-  if("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$" OR APPLE)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "11.0.0")
+    # Clang versions earlier than 11 cannot correctly handle unique_lock with manual
+    # locking/unlocking.
     ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
     ADD_CXX_FLAGS("-Wthread-safety-analysis")
   endif()
