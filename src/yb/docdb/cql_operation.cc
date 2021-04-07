@@ -620,14 +620,25 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
   QLExprResult temp;
+  rapidjson::Document document;
   RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
   const auto& ql_value = temp.Value();
-  if (IsNull(ql_value)) {
-    return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
+  if (!IsNull(ql_value)) {
+    Jsonb jsonb(std::move(ql_value.jsonb_value()));
+    RETURN_NOT_OK(jsonb.ToRapidJson(&document));
+  } else {
+    if (!is_insert && column_value.json_args_size() > 1) {
+      return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
+        column_value.ShortDebugString());
+    }
+    common::Jsonb empty_jsonb;
+    RETURN_NOT_OK(empty_jsonb.FromString("{}"));
+    QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
+    column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+
+    Jsonb jsonb(column.value.jsonb_value());
+    RETURN_NOT_OK(jsonb.ToRapidJson(&document));
   }
-  Jsonb jsonb(std::move(ql_value.jsonb_value()));
-  rapidjson::Document document;
-  RETURN_NOT_OK(jsonb.ToRapidJson(&document));
 
   // Deserialize the rhs.
   Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
