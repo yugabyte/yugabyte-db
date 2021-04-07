@@ -674,6 +674,7 @@ Status CatalogManager::Init() {
       hps.insert(hp);
     }
     RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
+    RETURN_NOT_OK(GetRegistration(&server_registration_));
     RETURN_NOT_OK(EnableBgTasks());
   }
 
@@ -777,9 +778,12 @@ void CatalogManager::LoadSysCatalogDataTask() {
     }
   }
 
-  std::lock_guard<simple_spinlock> l(state_lock_);
-  leader_ready_term_ = term;
-  LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    leader_ready_term_ = term;
+    LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
+  }
+  SysCatalogLoaded(term);
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
@@ -2047,10 +2051,16 @@ Status CatalogManager::DoSplitTablet(
                             source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
   }
 
-  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
-
   const auto source_table_lock = source_tablet_info->table()->LockForWrite();
   const auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+  if (source_tablet_info->table()->IsBackfilling()) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Backfill operation in progress, table_id: $0",
+                            source_tablet_info->table()->id());
+  }
+
+  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
@@ -9125,12 +9135,9 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
-  ServerRegistrationPB reg;
-  RETURN_NOT_OK(GetRegistration(&reg));
-
   for (const CloudInfoPB& cloud_info : affinitized_leaders) {
     // Do nothing if already in an affinitized zone.
-    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, reg.cloud_info())) {
+    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
       return Status::OK();
     }
   }
@@ -9144,11 +9151,12 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
 
     for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
       if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
-        LOG_WITH_PREFIX(INFO) << "Sys catalog tablet is not in an affinitized zone, "
-                              << "sending step down request to master uuid "
-                              << master.instance_id().permanent_uuid()
-                              << " in zone "
-                              << TSDescriptor::generate_placement_id(master_cloud_info);
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+            << "Sys catalog tablet is not in an affinitized zone, "
+            << "sending step down request to master uuid "
+            << master.instance_id().permanent_uuid()
+            << " in zone "
+            << TSDescriptor::generate_placement_id(master_cloud_info);
         std::shared_ptr<TabletPeer> tablet_peer;
         RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
 
@@ -9160,7 +9168,9 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
         consensus::LeaderStepDownResponsePB resp;
         RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
         if (resp.has_error()) {
-          return StatusFromPB(resp.error().status());
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Step down failed: "
+                                                    << resp.error().status().message();
+          break;
         }
         LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
         return Status::OK();
@@ -9168,7 +9178,7 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     }
   }
 
-  return STATUS(NotFound, "Couldn't find a master in an affinitized zone");
+  return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
 }  // namespace master

@@ -24,6 +24,10 @@ us-west1:
   name: Oregon
   latitude: 45.6094756
   longitude: -121.2088799
+us-west2:
+  name: California
+  latitude: 34.052235
+  longitude: -118.243683
 us-east1:
   name: South Carolina
   latitude: 33.1637261

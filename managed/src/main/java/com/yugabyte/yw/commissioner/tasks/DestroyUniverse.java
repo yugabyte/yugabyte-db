@@ -38,7 +38,6 @@ import java.util.UUID;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
-  private TableManager tableManager;
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -55,7 +54,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     try {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-      tableManager = Play.current().injector().instanceOf(TableManager.class);
+      TableManager tableManager = Play.current().injector().instanceOf(TableManager.class);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -73,6 +72,7 @@ public class DestroyUniverse extends UniverseTaskBase {
             backup = Backup.get(params().customerUUID, backup.backupUUID);
             if (backup.state != Backup.BackupState.Completed) {
               LOG.error("Cannot delete backup in any other state other than completed.");
+              continue;
             }
             backup.transitionState(Backup.BackupState.Deleted);
             BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
@@ -86,6 +86,7 @@ public class DestroyUniverse extends UniverseTaskBase {
                   backup.transitionState(Backup.BackupState.Completed);
                   LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
                             childBackupParams.storageLocation, response.code, jsonNode.has("error"));
+                  break;
                 } else {
                   LOG.info("[" + getName() + "] STDOUT: " + response.message);
                 }

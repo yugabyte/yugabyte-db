@@ -53,6 +53,8 @@ message SysSnapshotEntryPB {
   optional int64 version = 5;
 
   optional bytes schedule_id = 6;
+
+  optional fixed64 previous_snapshot_hybrid_time = 7;
 }
 
 ////////////////////////////////////////////////////////////
