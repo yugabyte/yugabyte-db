@@ -166,4 +166,16 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="sharding/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Sharding Strategies</div>
+      </div>
+      <div class="body">
+        Learn about range and hash sharding strategies.
+      </div>
+    </a>
+  </div>
+
 </div>
