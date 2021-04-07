@@ -88,6 +88,14 @@ const getTabTitle = (configName) => {
 };
 
 class StorageConfiguration extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      enableEditOption: true
+    }
+  }
+
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find((config) => config.name.toLowerCase() === name);
   };
@@ -152,6 +160,7 @@ class StorageConfiguration extends Component {
     }
 
     if (values.type === "update") {
+      this.setState({ enableEditOption: true });
       return this.props
         .updateCustomerConfig({
           type: 'STORAGE',
@@ -170,6 +179,7 @@ class StorageConfiguration extends Component {
           }
         });
     } else {
+      this.setState({ enableEditOption: false });
     return this.props
       .addCustomerConfig({
         type: 'STORAGE',
@@ -203,6 +213,21 @@ class StorageConfiguration extends Component {
 
   componentDidMount() {
     this.props.fetchCustomerConfigs();
+  }
+
+  /**
+   * This method will enable edit options for respective
+   * backup config.
+   */
+  onEditConfig = () => {
+    this.setState({ enableEditOption: false });
+  }
+
+  /**
+   * This method will disable the edit input fields.
+   */
+  disableEditFields = () => {
+    this.setState({ enableEditOption: true });
   }
 
   /**
@@ -284,6 +309,10 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
+    const { enableEditOption } = this.state;
+    const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
+    const config = this.getConfigByType(activeTab, customerConfigs);
+
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
     }
@@ -302,6 +331,8 @@ class StorageConfiguration extends Component {
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
+            enableEdit={enableEditOption}
+            onEditConfig={this.onEditConfig}
           />
         </Tab>
       ];
@@ -364,6 +395,13 @@ class StorageConfiguration extends Component {
                     : () => {}
                 }
               />
+              {activeTab !== "nfs" &&
+                <YBButton
+                  btnText='Edit Configuration'
+                  btnClass='btn btn-orange'
+                  onClick={this.onEditConfig}
+                />
+              }
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
                   name="delete-storage-config"
@@ -403,9 +441,6 @@ class StorageConfiguration extends Component {
         }
       });
 
-      const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
-      const config = this.getConfigByType(activeTab, customerConfigs);
-
       return (
         <div className="provider-config-container">
           <Formik initialValues={initialValues}>
@@ -428,12 +463,24 @@ class StorageConfiguration extends Component {
                     disabled={submitting || loading}
                     btnType="submit"
                   /> :
-                  <YBButton
-                    btnText='Update'
-                    btnClass={'btn btn-orange'}
-                    disabled={submitting || loading}
-                    btnType="submit"
-                  />
+                  <>
+                    {activeTab !== "nfs" &&
+                      <YBButton
+                        btnText='Update'
+                        btnClass={'btn btn-orange'}
+                        disabled={enableEditOption || submitting || loading}
+                        btnType="submit"
+                      />
+                    }
+                    {!enableEditOption &&
+                      <YBButton
+                        btnText='Cancel'
+                        btnClass={'btn btn-default'}
+                        btnType="cancel"
+                        onClick={this.disableEditFields}
+                      />
+                    }
+                  </>
                 }
               </div>
             </form>

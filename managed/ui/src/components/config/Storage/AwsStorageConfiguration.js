@@ -36,7 +36,9 @@ class AwsStorageConfiguration extends Component {
       submitting,
       addConfig: { loading },
       deleteStorageConfig,
-      showDeleteStorageConfig
+      showDeleteStorageConfig,
+      enableEdit,
+      onEditConfig
     } = this.props;
     const { iamRoleEnabled } = this.state;
     const s3Config = customerConfigs.data.find((config) => config.name === 'S3');
@@ -54,6 +56,7 @@ class AwsStorageConfiguration extends Component {
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
                 onToggle={this.iamInstanceToggle}
+                isReadOnly={enableEdit}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
@@ -68,7 +71,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Key"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={iamRoleEnabled}
+                isReadOnly={enableEdit || iamRoleEnabled}
               />
             </Col>
           </Row>
@@ -82,7 +85,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Secret"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={iamRoleEnabled}
+                isReadOnly={enableEdit || iamRoleEnabled}
               />
             </Col>
           </Row>
@@ -164,6 +167,11 @@ class AwsStorageConfiguration extends Component {
                     ? showDeleteStorageConfig.bind(this, s3Config.name)
                     : null
                 }
+              />
+              <YBButton
+                btnText='Edit Configuration'
+                btnClass='btn btn-orange'
+                onClick={onEditConfig}
               />
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
