@@ -255,7 +255,9 @@ Status TabletServer::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object_->SetEndpoint(bound_addresses.front());
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
+    shared_object_->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
   }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.

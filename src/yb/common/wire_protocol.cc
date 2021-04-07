@@ -68,6 +68,8 @@ namespace yb {
 
 namespace {
 
+YB_STRONGLY_TYPED_BOOL(PublicAddressAllowed);
+
 template <class Index, class Value>
 void SetAt(
     Index index, const Value& value, const Value& default_value, std::vector<Value>* vector) {
@@ -118,6 +120,20 @@ std::vector<Status::Code> CreateErrorCodeToStatus() {
 }
 
 const std::vector<Status::Code> kErrorCodeToStatus = CreateErrorCodeToStatus();
+
+const HostPortPB& GetHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    PublicAddressAllowed public_address_allowed) {
+  if (!broadcast_addresses.empty() && public_address_allowed) {
+    return broadcast_addresses[0];
+  }
+  if (!private_host_ports.empty()) {
+    return private_host_ports[0];
+  }
+  static const HostPortPB empty_host_port;
+  return empty_host_port;
+}
 
 } // namespace
 
@@ -494,19 +510,20 @@ bool UsePublicIp(const CloudInfoPB& connect_to,
   return mode != UsePrivateIpMode::zone;
 }
 
+const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
+  return GetHostPort(registration.broadcast_addresses(),
+                     registration.private_rpc_addresses(),
+                     PublicAddressAllowed::kTrue);
+}
+
 const HostPortPB& DesiredHostPort(
     const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
     const CloudInfoPB& connect_from) {
-  if (!broadcast_addresses.empty() && UsePublicIp(connect_to, connect_from)) {
-    return broadcast_addresses[0];
-  }
-  if (!private_host_ports.empty()) {
-    return private_host_ports[0];
-  }
-  static const HostPortPB empty_host_port;
-  return empty_host_port;
+  return GetHostPort(broadcast_addresses,
+                     private_host_ports,
+                     PublicAddressAllowed(UsePublicIp(connect_to, connect_from)));
 }
 
 const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
