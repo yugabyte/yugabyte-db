@@ -424,6 +424,27 @@ bool TableInfo::IsCreateInProgress() const {
   return false;
 }
 
+Status TableInfo::SetIsBackfilling() {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  if (is_backfilling_) {
+    return STATUS(AlreadyPresent, "Backfill already in progress", id(),
+                  MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
+  }
+
+  const auto table_lock = LockForRead();
+  for (const auto& tabletIt : tablet_map_) {
+    const auto& tablet = tabletIt.second;
+    if (tablet->LockForRead()->data().pb.state() != SysTabletsEntryPB::RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState,
+                              MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                              "Some tablets are not running, table_id: $0 tablet_id: $1",
+                              id(), tablet->tablet_id());
+    }
+  }
+  is_backfilling_ = true;
+  return Status::OK();
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   std::lock_guard<decltype(lock_)> l(lock_);
   create_table_error_ = status;

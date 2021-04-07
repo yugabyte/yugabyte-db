@@ -136,6 +136,8 @@ message MasterErrorPB {
     INVALID_TABLE_REPLICATION_INFO = 35;
 
     REACHED_SPLIT_LIMIT = 36;
+
+    SPLIT_OR_BACKFILL_IN_PROGRESS = 37;
   }
 
   // The error code.

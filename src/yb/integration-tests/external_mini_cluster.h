@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -357,6 +358,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Wait until all tablets on the given tablet server are in 'RUNNING'
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
+      ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 

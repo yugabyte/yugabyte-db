@@ -363,7 +363,7 @@ def main():
         help='Download cache on the local disk')
     parser.add_argument(
         '--nfs-cache-dir',
-        default='/n/jenkins/download_cache',
+        default='/Volumes/n/jenkins/download_cache',
         help='Download cache on NFS')
 
     parser.add_argument('--verbose', action='store_true', help='Verbose logging')

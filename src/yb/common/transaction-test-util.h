@@ -61,6 +61,10 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return HybridTime::kMin;
   }
 
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "WaitForSafeTime not implemented");
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };

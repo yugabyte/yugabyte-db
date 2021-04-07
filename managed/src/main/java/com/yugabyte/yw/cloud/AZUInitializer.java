@@ -60,7 +60,7 @@ public class AZUInitializer extends AbstractInitializer {
       priceDetails.currency = PriceDetails.Currency.USD;
       priceDetails.effectiveDate = now;
 
-      PriceComponent.upsert(provider.code, regionCode, instanceTypeCode, priceDetails);
+      PriceComponent.upsert(provider.uuid, regionCode, instanceTypeCode, priceDetails);
     }
   }
 
@@ -100,7 +100,7 @@ public class AZUInitializer extends AbstractInitializer {
 
         InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createAZUDefault();
 
-        InstanceType.upsert(provider.code,
+        InstanceType.upsert(provider.uuid,
                             instanceTypeCode,
                             instanceTypeToDetailsMap.get("numCores").asInt(),
                             instanceTypeToDetailsMap.get("memSizeGb").asDouble(),

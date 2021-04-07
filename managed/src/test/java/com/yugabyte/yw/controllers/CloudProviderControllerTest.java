@@ -407,7 +407,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     metaData.put("ybImage", "yb-image-1");
     metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
 
-    InstanceType.createWithMetadata(p, "region-1", metaData);
+    InstanceType.createWithMetadata(p.uuid, "region-1", metaData);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     assertOk(result);
@@ -584,7 +584,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
     ObjectNode configJson = Json.newObject();
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
 
     mockDnsManagerListSuccess("test");
@@ -596,9 +596,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
     assertNotNull(provider);
     assertEquals("1234", provider.getHostedZoneId());
-    assertEquals("test", provider.getAwsHostedZoneName());
-    assertEquals("1234", provider.getConfig().get("AWS_HOSTED_ZONE_ID"));
-    assertEquals("test", provider.getConfig().get("AWS_HOSTED_ZONE_NAME"));
+    assertEquals("test", provider.getHostedZoneName());
+    assertEquals("1234", provider.getConfig().get("HOSTED_ZONE_ID"));
+    assertEquals("test", provider.getConfig().get("HOSTED_ZONE_NAME"));
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -608,7 +608,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
     ObjectNode configJson = Json.newObject();
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 0);
@@ -624,7 +624,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
     ObjectNode configJson = Json.newObject();
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 1);
