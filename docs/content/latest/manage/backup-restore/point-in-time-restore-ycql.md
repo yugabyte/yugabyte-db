@@ -103,11 +103,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. Get a timestamp. YCQL doesn't have a now() function, so use a command such as one of the following:
+1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as one of the following:
 
     ```sh
     # Ruby: remove the decimal point before using the timestamp
     $ ruby -e 'puts Time.now.to_f'
+    ```
+
+    ```output
+    1617818825.646913
     ```
 
     ```sh
@@ -115,9 +119,17 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     $ python -c 'import datetime; print datetime.datetime.now().strftime("%s.%f")'
     ```
 
+    ```output
+    1617818868.669611
+    ```
+
     ```sh
     # Linux and some other systems (but not macOS): use the timestamp as-is
-    $ date +%s%N | cut -b1-15
+    $ date +%s%N | cut -b1-16
+    ```
+
+    ```output
+    1617818943892323
     ```
 
 1. Add a row for employee 9999 to the table:
@@ -155,7 +167,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Restore the latest snapshot to the timestamp you obtained before you deleted the data, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 1617670679185100
+    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf 1617818943892323
 
 1. Next, verify the restoration is in `RESTORED` state:
 
