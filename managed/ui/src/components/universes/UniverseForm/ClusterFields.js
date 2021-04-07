@@ -112,8 +112,8 @@ const initialState = {
   // By default, we don't want to expose the service.
   enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
   enableYEDIS: false,
-  enableNodeToNodeEncrypt: false,
-  enableClientToNodeEncrypt: false,
+  enableNodeToNodeEncrypt: true,
+  enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
   customizePorts: false
 };
