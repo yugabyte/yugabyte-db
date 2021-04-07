@@ -353,7 +353,7 @@ public class TestUtils {
   }
 
   public static void waitFor(Condition condition, long timeoutMs, int sleepTime) throws Exception {
-    timeoutMs *= SanitizerUtil.getTimeoutMultiplier();
+    timeoutMs = SanitizerUtil.adjustTimeout(timeoutMs);
     final long startTimeMs = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(sleepTime);

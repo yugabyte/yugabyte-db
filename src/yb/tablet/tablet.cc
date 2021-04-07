@@ -1548,6 +1548,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     if (!client) {
       client = client_future_.get();
       session = std::make_shared<YBSession>(client);
+      session->SetDeadline(operation->deadline());
       if (write_op->request().has_child_transaction_data()) {
         child_transaction_data = &write_op->request().child_transaction_data();
         if (!transaction_manager_) {

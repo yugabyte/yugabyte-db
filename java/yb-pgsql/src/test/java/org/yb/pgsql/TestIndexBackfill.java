@@ -29,7 +29,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
-  private static final int AWAIT_TIMEOUT_SEC = (int) (80 * SanitizerUtil.getTimeoutMultiplier());
+  private static final int AWAIT_TIMEOUT_SEC = (int) SanitizerUtil.adjustTimeout(80);
 
   @Override
   protected Map<String, String> getMasterAndTServerFlags() {

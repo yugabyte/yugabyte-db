@@ -70,7 +70,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
               new SimpleStatement(String.format(
                   "create table %s (k int primary key, v int) " +
                   "with transactions = {'enabled' : true};", tableName))
-              .setReadTimeoutMillis((int) (36000 * SanitizerUtil.getTimeoutMultiplier())));
+              .setReadTimeoutMillis((int) SanitizerUtil.adjustTimeout(36000)));
           LOG.info("Created table " + tableName);
           session.execute(String.format("create index on %s (v);", tableName));
           LOG.info("Created index on " + tableName);
@@ -86,7 +86,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
           LOG.info("Checked selected data from " + tableName);
         });
       }
-      MiscUtil.runInParallel(cmds, startSignal, (int) (60 * SanitizerUtil.getTimeoutMultiplier()));
+      MiscUtil.runInParallel(cmds, startSignal, (int) SanitizerUtil.adjustTimeout(60));
       for (Session s : sessions) {
         s.close();
       }

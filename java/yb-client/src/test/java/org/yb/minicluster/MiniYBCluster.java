@@ -94,8 +94,7 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC = 120;
 
   // Timeout for waiting process to terminate.
-  private static final long PROCESS_TERMINATE_TIMEOUT_MS =
-      (long) (180 * 1000 * SanitizerUtil.getTimeoutMultiplier());
+  private static final long PROCESS_TERMINATE_TIMEOUT_MS = SanitizerUtil.adjustTimeout(180 * 1000);
 
   // List of threads that print log messages.
   private final List<LogPrinter> logPrinters = new ArrayList<>();

@@ -195,7 +195,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
     // TODO(bogdan): Fake sleep until after #4663 is fixed, as we're seeing issues with test work
     // starting, while initial leaders are still moving.
-    Thread.sleep((long)(10000 * SanitizerUtil.getTimeoutMultiplier()));
+    Thread.sleep(SanitizerUtil.adjustTimeout(10000));
 
     GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
         YBClient.REDIS_KEYSPACE_NAME, tableName);

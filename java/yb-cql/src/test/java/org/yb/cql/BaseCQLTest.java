@@ -41,6 +41,7 @@ import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
+import org.yb.util.SanitizerUtil;
 import org.yb.util.StringUtil;
 
 import java.io.Closeable;
@@ -98,7 +99,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     flagMap.put("cql_system_query_cache_empty_responses",
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(clientReadWriteTimeoutMs));
+        String.valueOf(SanitizerUtil.adjustTimeout(clientReadWriteTimeoutMs)));
 
     return flagMap;
   }

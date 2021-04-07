@@ -61,6 +61,10 @@ public final class SanitizerUtil {
     return 1;
   }
 
+  public static long adjustTimeout(long timeout) {
+    return (long) (timeout * getTimeoutMultiplier());
+  }
+
   /**
    * Adds the given value to the appropriate sanitizer environment variable (ASAN_OPTIONS or
    * TSAN_OPTIONS). The environment variables are stored and modified in the given map. No actual
