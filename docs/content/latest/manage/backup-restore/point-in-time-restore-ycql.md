@@ -277,7 +277,7 @@ Relative times can be in any of the following formats (again, note that you can 
 
 ## Limitations
 
-This is a BETA feature, and is in active development. Currently, you can **restore data only**. The feature doesn't support metadata; in other words, it won't currently roll back operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE.
+This is a BETA feature, and is in active development. Currently, you can **restore data only**. The feature doesn't support metadata; in other words, rolling back past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
