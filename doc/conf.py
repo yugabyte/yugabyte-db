@@ -37,13 +37,13 @@
 # -- Project information -----------------------------------------------------
 
 project = u'Apache AGE'
-copyright = u'2019, Bitnine Global, Inc.'
-author = u'Bitnine Global, Inc.'
+copyright = u'2021, Apache Foundation (ASF)'
+author = u'Apache AGE (incubating) Team'
 
 # The short X.Y version
 version = u''
 # The full version, including alpha/beta/rc tags
-release = u'0.2.0'
+release = u'0.4.0'
 
 
 # -- General configuration ---------------------------------------------------
