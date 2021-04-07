@@ -18,6 +18,8 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/gutil/strings/human_readable.h"
+
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
@@ -36,6 +38,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -114,6 +117,31 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "Max running workers in compaction thread pool. "
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
+
+namespace {
+  constexpr int kDbCacheSizeUsePercentage = -1;
+  constexpr int kDbCacheSizeCacheDisabled = -2;
+  constexpr int kDbCacheSizeUseDefault = -3;
+}
+
+DEFINE_bool(enable_block_based_table_cache_gc, false,
+            "Set to true to enable block based table garbage collector.");
+
+DEFINE_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
+             "Size of RocksDB block cache (in bytes). "
+             "This defaults to -1 for system auto-generated default, which would use "
+             "FLAGS_db_block_cache_size_percentage to select a percentage of the total "
+             "memory as the default size for the shared block cache. Value of -2 disables "
+             "block cache.");
+
+DEFINE_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
+             "Default percentage of total available memory to use as block cache size, if not "
+             "asking for a raw number, through FLAGS_db_block_cache_size_bytes. "
+             "Defaults to -3 (use default percentage as defined by master or tserver).");
+
+DEFINE_int32(db_block_cache_num_shard_bits, 4,
+             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
+TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 
 using std::shared_ptr;
 using std::string;
@@ -711,6 +739,78 @@ Status ForceRocksDBCompact(rocksdb::DB* db) {
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");
   return Status::OK();
+}
+
+namespace {
+
+class LRUCacheGC : public GarbageCollector {
+ public:
+  explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
+
+  void CollectGarbage(size_t required) {
+    if (!FLAGS_enable_block_based_table_cache_gc) {
+      return;
+    }
+
+    auto evicted = cache_->Evict(required);
+    LOG(INFO) << "Evicted from table cache: " << HumanReadableNumBytes::ToString(evicted)
+              << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
+              << ", required: " << HumanReadableNumBytes::ToString(required);
+  }
+
+  virtual ~LRUCacheGC() = default;
+
+ private:
+  std::shared_ptr<rocksdb::Cache> cache_;
+};
+
+int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentage) {
+  int32_t target_block_cache_size_percentage =
+      (FLAGS_db_block_cache_size_percentage == kDbCacheSizeUseDefault) ?
+      default_block_cache_size_percentage : FLAGS_db_block_cache_size_percentage;
+
+  int64_t target_block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
+  // Auto-compute size of block cache if asked to.
+  if (target_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
+    // Check some bounds.
+    CHECK(target_block_cache_size_percentage > 0 && target_block_cache_size_percentage <= 100)
+        << Substitute(
+               "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+               "$0",
+               target_block_cache_size_percentage);
+
+    const int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
+    target_block_cache_size_bytes = total_ram_avail * target_block_cache_size_percentage / 100;
+  }
+  return target_block_cache_size_bytes;
+}
+
+}  // namespace
+
+std::shared_ptr<MemTracker> InitBlockCacheMemTracker(
+    const int32_t default_block_cache_size_percentage,
+    const std::shared_ptr<MemTracker>& mem_tracker) {
+  int64_t block_cache_size_bytes = GetTargetBlockCacheSize(default_block_cache_size_percentage);
+
+  return MemTracker::FindOrCreateTracker(block_cache_size_bytes, "BlockBasedTable", mem_tracker);
+}
+
+std::shared_ptr<GarbageCollector> InitBlockCache(
+    const scoped_refptr<MetricEntity>& metrics,
+    const int32_t default_block_cache_size_percentage,
+    MemTracker* block_based_table_mem_tracker,
+    tablet::TabletOptions* options) {
+  std::shared_ptr<GarbageCollector> block_based_table_gc;
+  int64_t block_cache_size_bytes = GetTargetBlockCacheSize(default_block_cache_size_percentage);
+
+  if (block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
+    options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
+                                                FLAGS_db_block_cache_num_shard_bits);
+    options->block_cache->SetMetrics(metrics);
+    block_based_table_gc = std::make_shared<LRUCacheGC>(options->block_cache);
+    block_based_table_mem_tracker->AddGarbageCollector(block_based_table_gc);
+  }
+  return block_based_table_gc;
 }
 
 }  // namespace docdb

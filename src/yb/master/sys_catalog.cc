@@ -56,6 +56,7 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/split.h"
@@ -128,6 +129,8 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 
 namespace yb {
 namespace master {
+
+constexpr int32_t kDefaultMasterBlockCacheSizePercentage = 25;
 
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
@@ -512,13 +515,22 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
+
+  block_based_table_mem_tracker_ = docdb::InitBlockCacheMemTracker(
+      kDefaultMasterBlockCacheSizePercentage,
+      master_->mem_tracker());
+  block_based_table_gc_ = docdb::InitBlockCache(
+      GetMetricEntity(),
+      kDefaultMasterBlockCacheSizePercentage,
+      block_based_table_mem_tracker_.get(),
+      &tablet_options);
+
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
       .client_future = master_->async_client_initializer().get_client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = master_->mem_tracker(),
-      .block_based_table_mem_tracker =
-          MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
+      .block_based_table_mem_tracker = block_based_table_mem_tracker_,
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,

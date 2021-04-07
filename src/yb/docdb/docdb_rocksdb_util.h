@@ -29,6 +29,7 @@
 
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -104,6 +105,16 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 
 // Request RocksDB compaction and wait until it completes.
 CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
+
+std::shared_ptr<MemTracker> InitBlockCacheMemTracker(
+    const int32_t default_block_cache_size_percentage,
+    const std::shared_ptr<MemTracker>& mem_tracker);
+
+std::shared_ptr<GarbageCollector> InitBlockCache(
+    const scoped_refptr<MetricEntity>& metrics,
+    const int32_t default_block_cache_size_percentage,
+    MemTracker* block_based_table_mem_tracker,
+    tablet::TabletOptions* options);
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
