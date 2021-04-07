@@ -129,6 +129,8 @@ class TSDescriptor {
   // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
+  CloudInfoPB GetCloudInfo() const;
+
   // Return the pre-computed placement_id, comprised of the cloud_info data.
   std::string placement_id() const;
 

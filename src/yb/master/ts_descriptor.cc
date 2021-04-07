@@ -37,10 +37,14 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
@@ -233,11 +237,15 @@ const std::shared_ptr<TSInformationPB> TSDescriptor::GetTSInformationPB() const 
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   SharedLock<decltype(lock_)> l(lock_);
-  const auto& ci = ts_information_->registration().common().cloud_info();
+  const auto& ts_ci = ts_information_->registration().common().cloud_info();
 
-  return cloud_info.placement_cloud() == ci.placement_cloud() &&
-         cloud_info.placement_region() == ci.placement_region() &&
-         cloud_info.placement_zone() == ci.placement_zone();
+  // cloud_info should be a prefix of ts_ci.
+  return CatalogManagerUtil::IsCloudInfoPrefix(cloud_info, ts_ci);
+}
+
+CloudInfoPB TSDescriptor::GetCloudInfo() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return ts_information_->registration().common().cloud_info();
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {

@@ -18,11 +18,15 @@
 #include <utility>
 
 #include <boost/algorithm/string/join.hpp>
+#include <boost/none.hpp>
+#include <boost/optional/optional.hpp>
 #include <boost/thread/locks.hpp>
 
+#include "yb/common/common.pb.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
@@ -610,12 +614,19 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
         // placement that is under-replicated and the ts is not in that placement, then that ts
         // isn't valid.
         const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
-        // We have specific placement blocks that are under-replicated, so confirm that this TS
-        // matches.
+        // Either we have specific placement blocks that are under-replicated, so confirm
+        // that this TS matches or all the placement blocks have min_num_replicas
+        // but overall num_replicas is fewer than expected.
+        // In the latter case, we still need to conform to the placement rules.
         if (missing_placements.empty() ||
-            missing_placements.count(ts_meta.descriptor->placement_id())) {
-          // Don't check placement information anymore.
-          can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+            tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
+          // If we don't have any missing placements but are under-replicated then we need to
+          // validate placement information in order to avoid adding to a wrong placement block.
+          //
+          // Do the placement check for both the cases.
+          // If we have missing placements then this check is a tautology otherwise it matters.
+          can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid,
+                                                                                &placement_info));
         }
       }
       // If we've passed the checks, then we can choose this TS to add the replica to.
@@ -836,8 +847,6 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     }
   }
 
-  bool same_placement = state_->per_ts_meta_[from_ts].descriptor->placement_id() ==
-                        state_->per_ts_meta_[to_ts].descriptor->placement_id();
   // This flag indicates whether we've found a load move operation from a leader. Since we want to
   // prioritize moving from non-leaders, keep iterating until we find such a move. Otherwise,
   // return the move from the leader.
@@ -849,6 +858,22 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     //
     // If we have placement information, we want to only pick the tablet if it's moving to the same
     // placement, so we guarantee we're keeping the same type of distribution.
+    // Since we allow prefixes as well, we can still respect the placement of this tablet
+    // even if their placement ids aren't the same. An e.g.
+    // placement info of tablet: C.R1.*
+    // placement info of from_ts: C.R1.Z1
+    // placement info of to_ts: C.R2.Z2
+    // Note that we've assumed that for every TS there is a unique placement block to which it
+    // can be mapped (see the validation rules in yb_admin-client). If there is no unique placement
+    // block then it is simply the C.R.Z of the TS itself.
+    auto from_ts_ci = state_->GetValidPlacement(from_ts, &placement_info);
+    auto to_ts_ci = state_->GetValidPlacement(to_ts, &placement_info);
+    bool same_placement = false;
+    if (to_ts_ci.has_value() && from_ts_ci.has_value()) {
+        same_placement = TSDescriptor::generate_placement_id(*from_ts_ci) ==
+                                TSDescriptor::generate_placement_id(*to_ts_ci);
+    }
+
     if (!placement_info.placement_blocks().empty() && !same_placement) {
       continue;
     }
