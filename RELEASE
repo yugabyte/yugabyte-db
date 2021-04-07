@@ -15,72 +15,30 @@
 # specific language governing permissions and limitations
 # under the License.
 
-Release Notes for AGE 0.3.0 (alpha)
+Release Notes for AGE 0.4.0 (alpha)
 
-The following functionality is included in this release.
+    Added Auto Group By aggregation support for RETURN and WITH clauses.
 
-    Standard functions
+    Added support for more input types in aggregate functions.
 
-        Added support for standard functions.
+    Added support for DISTINCT in functions.
 
-            1) Trigonometric functions
+    Added explicit type cast from AGTYPEOID to TEXTOID.
 
-               e, sqrt, exp, log, log10, degrees, radians, pi, sin, cos, tan,
-               asin, acos, atan, & atan2.
+    Added explicit type casting Agtype to PG's shortint, int, and Bigint
 
-            2) String functions
+    Added type casting from AGTYPEOID to INT8OID and FLOATOID. For use with user defined (non-AGE) functions within the cypher query.
 
-               replace, split, left, right, substring, rTrim, lTrim, trim,
-               toUpper, toLower, reverse, & toString.
+    Added overloading for INT8OID mathematical operators.
 
-            3) Numeric functions
+    Added * and optional edge grammar components.
 
-               rand, abs, ceil, floor, round, & sign.
+    Changed input types for typecasting functions to “any”.
 
-    User defined functions
+    Added support for the DELETE clause.
 
-        Added support for user defined functions of the following forms.
+    Added support for Stored Procedures and PL/pgSQL.
 
-            1) schema.function(args)
-
-    Aggregate functions
-
-        Currently working on openCypher aggregate function support. This is not
-        complete nor fully implemented but the following functions are now
-        available for use.
-
-            1) min, max, stDev, stDevP, percentileCont, percentileDisc & count.
-            2) avg & sum are supported but their output is only of type float.
-
-    EXISTS clause
-
-        Added support for the EXISTS clause.
-
-            1) EXISTS(property)
-            2) EXISTS(pattern)
-
-    Property constraints
-
-        The MATCH clause now supports using property constraints.
-
-    SET clause
-
-        Added support for the SET clause.
-
-            1) Support for updating a single property value.
-            2) Multiple SET clauses can be used in a single query.
-            3) Implemented in MATCH, CREATE, and REMOVE clauses.
-
-    REMOVE clause
-
-        Added support for the REMOVE clause
-
-            1) Support for removing a single property value.
-            2) Multiple REMOVE clauses can be used in a single query.
-            3) Implemented in MATCH, CREATE, and SET clauses.
-
-    Define extension’s behavior when dropped.
-
-        Added a process to occur when the extension is dropped in postgres.
+    Added a basic agtype parser for the NodeJS driver.
 
 
