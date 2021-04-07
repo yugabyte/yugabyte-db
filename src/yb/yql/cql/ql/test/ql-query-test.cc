@@ -1957,7 +1957,6 @@ TEST_F(TestQLQuery, TestJsonUpdate) {
   ASSERT_OK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
-  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));
 
   // Setting primitive value in JSON column should work
   ASSERT_OK(processor->Run("UPDATE test_json SET data='true' WHERE k1 = 1"));
