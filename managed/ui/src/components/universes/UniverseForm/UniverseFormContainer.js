@@ -316,8 +316,8 @@ function mapStateToProps(state, ownProps) {
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false,
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
       selectEncryptionAtRestConfig: null
