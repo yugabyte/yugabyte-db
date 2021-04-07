@@ -63,15 +63,17 @@ export default class DeleteUniverse extends Component {
       type,
       universe: {
         currentUniverse: { data }
-      }
+      },
+      submitDeleteUniverse,
+      submitDeleteReadReplica
     } = this.props;
     this.props.onHide();
     if (type === 'primary') {
-      this.props.submitDeleteUniverse(data.universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
+      submitDeleteUniverse(data.universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
     } else {
       const cluster = getReadOnlyCluster(data.universeDetails.clusters);
       if (isEmptyObject(cluster)) return;
-      this.props.submitDeleteReadReplica(cluster.uuid, data.universeUUID, this.state.isForceDelete);
+      submitDeleteReadReplica(cluster.uuid, data.universeUUID, this.state.isForceDelete);
     }
   };
 
@@ -111,7 +113,7 @@ export default class DeleteUniverse extends Component {
         footerAccessory={
           <div className="force-delete">
             <YBCheckBox
-              label={'Ignore Errors and Force Delete'}
+              label="Ignore Errors and Force Delete"
               className="footer-accessory"
               input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }}
             />

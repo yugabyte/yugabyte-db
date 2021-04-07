@@ -213,8 +213,8 @@ export function resetUniverseList() {
 export function deleteUniverse(universeUUID, isForceDelete, isDeleteBackups) {
   const customerUUID = localStorage.getItem('customerId');
   const deleteRequestPayload = {
-    isForceDelete: isForceDelete,
-    isDeleteBackups: isDeleteBackups
+    isForceDelete,
+    isDeleteBackups
   };
   const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {
     params: deleteRequestPayload
