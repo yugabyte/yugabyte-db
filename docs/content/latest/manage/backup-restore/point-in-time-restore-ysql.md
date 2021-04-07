@@ -1,7 +1,7 @@
 ---
 title: Point-in-Time Restore for YSQL (BETA)
-headerTitle: Point-in-time restore
-linkTitle: Point-in-time restore
+headerTitle: Point-in-time restore (BETA)
+linkTitle: Point-in-time restore (BETA)
 description: Restore data from a specific point in time in YugabyteDB for YSQL (BETA)
 aliases:
 menu:
@@ -39,8 +39,6 @@ To learn more about YugabyteDB's point-in-time restore feature, refer to the [Re
 ## Try out the PITR feature
 
 You can test the PITR feature by creating a database and populating it, creating a snapshot, and restoring ([data only](#limitations)!) from that snapshot.
-
-Let's get started:
 
 ### Create and snapshot a table
 
@@ -82,7 +80,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. Create a snapshot of the table from a shell prompt:
+1. At a terminal prompt, create a snapshot of the table from a shell prompt:
 
     ```sh
     $ bin/yb-admin create_database_snapshot yugabyte
@@ -106,7 +104,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. Get a timestamp.
+1. From the YSQL shell, get a timestamp.
 
     <br/>
 
@@ -144,7 +142,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-1. List snapshots:
+1. At a terminal prompt, list snapshots:
 
     ```sh
     $ bin/yb-admin list_snapshots
@@ -179,7 +177,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
     ```
 
-1. Verify the data is restored, without a row for employee 9999:
+1. In the YSQL shell, verify the data is restored, without a row for employee 9999:
 
     ```sql
     yugabyte=# select * from employees;
@@ -199,9 +197,18 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 In addition to restoring to a particular timestamp, you can also restore to a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
 
-1. Wait five minutes after you complete the steps in the previous section. This is so that you can use a known relative time for the restore.
+When you specify a relative time, you can specify any or all of _days_, _hours_, and _minutes_. For example:
 
-1. Remove employee 1223 from the table:
+* `"5m"` to restore from five minutes ago
+* `"1h"` to restore from one hour ago
+* `"3d"` to restore from three days ago
+* `"1h 5m"` to restore from one hour and five minutes ago
+
+**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
+
+1. Wait at least five minutes after you complete the steps in the previous section. This is so that you can use a known relative time for the restore.
+
+1. In the YSQL shell, remove employee 1223 from the table:
 
     ```sql
     yugabyte=# delete from employees where employee_no=1223;
@@ -218,10 +225,23 @@ In addition to restoring to a particular timestamp, you can also restore to a re
     (3 rows)
     ```
 
-1. Restore the snapshot you created earlier:
+1. At a terminal prompt, restore the snapshot you created earlier:
 
     ```sh
     $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf "minus 5m"
+    ```
+
+1. Verify the restoration is in `RESTORED` state:
+
+    ```sh
+    $ bin/yb-admin list_snapshots
+    ```
+
+    ```output
+    Snapshot UUID                     State
+    bb5fc435-a2b9-4f3a-a510-0bacc6aebccf  COMPLETE
+    Restoration UUID                      State
+    bd7e4e52-b763-4b95-87ce-9399e1ac206e  RESTORED
     ```
 
 1. Verify the data is restored, with a row for employee 1223:
