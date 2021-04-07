@@ -228,7 +228,7 @@ When you specify a relative time, you can specify any or all of _days_, _hours_,
 1. At a terminal prompt, restore the snapshot you created earlier:
 
     ```sh
-    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf "minus 5m"
+    $ bin/yb-admin restore_snapshot bb5fc435-a2b9-4f3a-a510-0bacc6aebccf minus "5m"
     ```
 
 1. Verify the restoration is in `RESTORED` state:
