@@ -381,7 +381,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
-   * Function to trim value of gfalg keys and values.
+   * Function to Trim keys and values of the passed map.
    * @param data key value pairs.
    * @return key value pairs with trim keys and values.
    */

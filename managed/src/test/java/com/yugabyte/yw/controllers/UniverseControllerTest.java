@@ -8,7 +8,6 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -70,7 +69,6 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 
@@ -1162,6 +1160,17 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithTrimParams2() {
+    Map<String, String> data = new HashMap<String, String>();
+    data.put(" Test ", " One ");
+    data.put(" Test 2 ", " Two ");
+
+    Map<String, String> result = UniverseController.trimFlags(data);
+    assertEquals(result.get("Test"), "One");
+    assertEquals(result.get("Test 2"), "Two");
   }
 
   @Test
