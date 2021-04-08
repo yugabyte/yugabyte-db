@@ -172,8 +172,6 @@ class LogCache {
 
   CHECKED_STATUS FlushIndex();
 
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
-
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
   FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);

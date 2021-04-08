@@ -234,7 +234,8 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
-  // entries appended up to this point are available in closed, readable segments.
+  // entries appended up to this point are available in closed, readable segments. Note that this
+  // assumes there is already a valid active_segment_.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
@@ -348,7 +349,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Initializes a new one or continues an existing log.
   CHECKED_STATUS Init();
 
-  // Make segments roll over.
+  // Make segments roll over. Note this assumes there was an existing valid active_segment_ we are
+  // rolling over from.
   CHECKED_STATUS RollOver();
 
   // Writes the footer and closes the current segment.
