@@ -35,6 +35,10 @@ public class Common {
       return this.regionMetadataConfigType;
     }
 
+    public boolean isVM() {
+      return !CloudType.kubernetes.value.equals(this.value);
+    }
+
     public String toString() {
       return this.value;
     }
