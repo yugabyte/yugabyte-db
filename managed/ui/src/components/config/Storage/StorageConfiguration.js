@@ -464,11 +464,10 @@ class StorageConfiguration extends Component {
                     btnType="submit"
                   /> :
                   <>
-                    {activeTab !== "nfs" &&
+                    {!enableEditOption &&
                       <YBButton
                         btnText='Update'
                         btnClass={'btn btn-orange'}
-                        disabled={enableEditOption || submitting || loading}
                         btnType="submit"
                       />
                     }
