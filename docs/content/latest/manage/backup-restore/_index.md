@@ -54,4 +54,15 @@ This section goes into details of backing up data and restoring it from Yugabyte
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="point-in-time-restore-ysql">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
+        <div class="title">Point-in-time restore</div>
+      </div>
+      <div class="body">
+        This section describes how to restore data from a particular point in time.
+      </div>
+    </a>
+  </div>
 </div>
