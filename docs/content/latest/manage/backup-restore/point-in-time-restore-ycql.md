@@ -1,7 +1,7 @@
 ---
 title: Point-in-Time Restore for YCQL
-headerTitle: Point in time restore
-linkTitle: Point in time restore
+headerTitle: Point-in-time restore
+linkTitle: Point-in-time restore
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
@@ -104,7 +104,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as one of the following:
+1. Get a timestamp. YCQL doesn't have a `now()` function, so use a command such as one of the following. You can also use a [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
 
     ```sh
     # Ruby: remove the decimal point before using the timestamp
@@ -202,7 +202,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from a relative time
 
-In addition to restoring to a particular timestamp, you can also restore to a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
+In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago". In this example, you'll delete some data from the existing `employees` table, then restore the state of the database to what it was five minutes prior.
 
 When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
 
