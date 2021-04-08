@@ -160,24 +160,65 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 		elog(DEBUG1, "%s", "pg_stat_monitor: out of memory");
 	return entry;
 }
-
 /*
- * Deallocate least-used entries.
+ * Reset all the entries.
  *
  * Caller must hold an exclusive lock on pgss->lock.
  */
 void
-hash_query_entry_dealloc(int bucket)
+hash_query_entryies_reset()
 {
 	HASH_SEQ_STATUS 	hash_seq;
 	pgssQueryEntry      *entry;
 
 	hash_seq_init(&hash_seq, pgss_query_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
+		entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
+}
+
+
+/*
+ * Deallocate finished entries.
+ *
+ * Caller must hold an exclusive lock on pgss->lock.
+ */
+void
+hash_query_entry_dealloc(int bucket, unsigned char *buf)
+{
+	HASH_SEQ_STATUS 	hash_seq;
+	pgssQueryEntry      *entry;
+	unsigned char       *old_buf;
+	pgssSharedState     *pgss = pgsm_get_ss();
+
+	old_buf = palloc0(pgss->query_buf_size_bucket);
+	memcpy(old_buf, buf, pgss->query_buf_size_bucket);
+
+	memset(buf, 0, pgss->query_buf_size_bucket);
+
+	hash_seq_init(&hash_seq, pgss_query_hash);
+	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		if (entry->key.bucket_id == bucket || bucket < 0)
-			entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
+		if (entry->key.bucket_id == bucket)
+		{
+			if (entry->state == PGSS_FINISHED || entry->state == PGSS_ERROR)
+			{
+				entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
+			}
+			else
+			{
+				int len;
+				char query_txt[1024];
+				if (read_query(old_buf, entry->key.bucket_id, entry->key.queryid, query_txt) == 0)
+				{
+					len = read_query_buffer(entry->key.bucket_id, entry->key.queryid, query_txt);
+					if (len != MAX_QUERY_BUFFER_BUCKET)
+						snprintf(query_txt, 32, "%s", "<insufficient disk/shared space>");
+				}
+				SaveQueryText(entry->key.bucket_id, entry->key.queryid, buf, query_txt, strlen(query_txt));
+			}
+		}
 	}
+	pfree(old_buf);
 }
 
 /*
@@ -185,20 +226,23 @@ hash_query_entry_dealloc(int bucket)
  *
  * Caller must hold an exclusive lock on pgss->lock.
  */
-void
+bool
 hash_entry_dealloc(int bucket)
 {
 	HASH_SEQ_STATUS hash_seq;
-	pgssEntry		*entry;
+	pgssEntry		*entry = NULL;
 
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		if (entry->key.bucket_id == bucket || bucket < 0)
+		if (bucket < 0 ||
+			(entry->key.bucket_id == bucket &&
+				 (entry->counters.state == PGSS_FINISHED || entry->counters.state == PGSS_ERROR)))
 		{
 			entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 		}
 	}
+	return true;
 }
 
 /*

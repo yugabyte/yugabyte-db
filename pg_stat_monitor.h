@@ -183,6 +183,7 @@ typedef struct pgssQueryEntry
 {
 	pgssQueryHashKey    key;		/* hash key of entry - MUST BE FIRST */
 	uint64              pos;		/* bucket number */
+	uint64              state;
 } pgssQueryEntry;
 
 typedef struct PlanInfo
@@ -356,6 +357,8 @@ typedef struct pgssJumbleState
 
 /* Links to shared memory state */
 
+bool SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *query, uint64 query_len);
+
 /* guc.c */
 void init_guc(void);
 GucVariable *get_conf(int i);
@@ -372,11 +375,15 @@ HTAB *pgsm_get_hash(void);
 HTAB *pgsm_get_plan_hash(void);
 HTAB* pgsm_get_query_hash(void);
 void hash_entry_reset(void);
-void hash_query_entry_dealloc(int bucket);
-void hash_entry_dealloc(int bucket);
+void hash_query_entryies_reset(void);
+void hash_query_entries();
+void hash_query_entry_dealloc(int bucket, unsigned char *buf);
+bool hash_entry_dealloc(int bucket);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
+int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
+uint64 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query);
 pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
 pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
 void pgss_startup(void);

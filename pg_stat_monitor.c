@@ -188,8 +188,6 @@ pgss_store_query(uint64 queryid,
 				  int query_len,
 				  pgssJumbleState *jstate,
 				  pgssStoreKind kind);
-static uint64 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query);
-int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
 
 static uint64 get_query_id(pgssJumbleState *jstate, Query *query);
 
@@ -1292,7 +1290,7 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	hash_entry_dealloc(-1);
-	hash_query_entry_dealloc(-1);
+	hash_query_entryies_reset();
 	LWLockRelease(pgss->lock);
 	PG_RETURN_VOID();
 }
@@ -1398,8 +1396,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		char 		  *query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
 
-		if (!IsBucketValid(bucketid))
-			continue;
 
 		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip);
 		if (query_entry == NULL)
@@ -1419,6 +1415,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			SpinLockAcquire(&e->mutex);
 			tmp = e->counters;
 			SpinLockRelease(&e->mutex);
+		}
+		if (!IsBucketValid(bucketid))
+		{
+			if (tmp.state == PGSS_FINISHED)
+				continue;
 		}
 		/* bucketid at column number 0 */
 		values[i++] = Int64GetDatumFast(bucketid);
@@ -1689,12 +1690,11 @@ get_next_wbucket(pgssSharedState *pgss)
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 		buf = pgss_qbuf[bucket_id];
 		hash_entry_dealloc(bucket_id);
-		hash_query_entry_dealloc(bucket_id);
+		hash_query_entry_dealloc(bucket_id, buf);
+
 		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
 		unlink(file_name);
 
-		/* reset the query buffer */
-		memset(buf, 0, sizeof (uint64));
 		LWLockRelease(pgss->lock);
 		pgss->prev_bucket_usec = current_usec;
 		lt = localtime(&tv.tv_sec);
@@ -2642,7 +2642,7 @@ intarray_get_datum(int32 arr[], int len)
 
 }
 
-static uint64
+uint64
 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
 {
 	bool found            = false;
@@ -2673,7 +2673,6 @@ read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
 		rlen += sizeof (uint64);
 		if (buf_len < rlen + query_len)
 			goto exit;
-
 		if (found)
 		{
 			if (query != NULL)
@@ -2704,7 +2703,6 @@ pgss_store_query_info(uint64 bucketid,
 					  uint64 query_len,
 					  pgssStoreKind kind)
 {
-    uint64          buf_len = 0;
 	pgssSharedState *pgss   = pgsm_get_ss();
 	unsigned char   *buf    = pgss_qbuf[pgss->current_wbucket];
 	pgssQueryEntry	*entry;
@@ -2722,6 +2720,18 @@ pgss_store_query_info(uint64 bucketid,
 	entry = hash_create_query_entry(bucketid, queryid, dbid, userid, ip);
 	if (!entry)
 		return NULL;
+	entry->state = kind;
+
+	if(!SaveQueryText(bucketid, queryid, buf, query, query_len))
+		return NULL;
+
+	return entry;
+}
+
+bool
+SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *query, uint64 query_len)
+{
+	uint64 buf_len = 0;
 
 	memcpy(&buf_len, buf, sizeof (uint64));
 	if (buf_len == 0)
@@ -2732,7 +2742,7 @@ pgss_store_query_info(uint64 bucketid,
 		switch(PGSM_OVERFLOW_TARGET)
 		{
 			case OVERFLOW_TARGET_NONE:
-				return NULL;
+				return false;
 			case OVERFLOW_TARGET_DISK:
 			{
 				dump_queries_buffer(bucketid, buf, MAX_QUERY_BUFFER_BUCKET);
@@ -2753,7 +2763,7 @@ pgss_store_query_info(uint64 bucketid,
 	memcpy(&buf[buf_len], query, query_len); /* query */
 	buf_len += query_len;
 	memcpy(buf, &buf_len, sizeof (uint64));
-	return entry;
+	return true;
 }
 
 static uint64
