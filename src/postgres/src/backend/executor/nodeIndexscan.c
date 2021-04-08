@@ -117,6 +117,7 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
+		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -241,6 +242,7 @@ IndexNextWithReorder(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
+		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and

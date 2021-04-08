@@ -40,6 +40,7 @@
 #include "miscadmin.h"
 #include "nodes/relation.h"
 #include "optimizer/cost.h"
+#include "optimizer/var.h"
 #include "utils/datum.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
@@ -262,10 +263,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
-		if (ybScan->tableOid != InvalidOid)
-		{
-			tuple->t_tableOid = ybScan->tableOid;
-		}
+		tuple->t_tableOid = RelationGetRelid(ybScan->relation);
 	}
 	pfree(values);
 	pfree(nulls);
@@ -369,9 +367,10 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
  *    - For this scan, YugaByte ALWAYS return index-tuple, which is expected by Postgres layer.
  */
 static void
-ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
-				 YbScanDesc ybScan, YbScanPlan scan_plan)
+ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 {
+	Relation relation = ybScan->relation;
+	Relation index = ybScan->index;
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
 
@@ -385,7 +384,6 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 	 * NOTE: Primary index is a special case as there isn't a primary index
 	 * table in YugaByte.
 	 */
-	ybScan->index = index;
 
 	ybScan->prepare_params.querying_colocated_table =
 		IsSystemRelation(relation);
@@ -617,11 +615,10 @@ static int int_compar_cb(const void *v1, const void *v2)
 }
 
 /* Use the scan-descriptor and scan-plan to setup scan key for filtering */
-static void	ybcSetupScanKeys(Relation relation,
-							 Relation index,
-							 YbScanDesc ybScan,
-							 YbScanPlan scan_plan)
+static void
+ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
+	Relation relation = ybScan->relation;
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
@@ -654,10 +651,10 @@ static void	ybcSetupScanKeys(Relation relation,
 }
 
 /* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
-static void ybcBindScanKeys(Relation relation,
-							Relation index,
-							YbScanDesc ybScan,
-							YbScanPlan scan_plan) {
+static void
+ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
+	Relation relation = ybScan->relation;
+	Relation index = ybScan->index;
 	Oid		dboid    = YBCGetDatabaseOid(relation);
 	Oid		relid    = RelationGetRelid(relation);
 
@@ -930,24 +927,100 @@ static void ybcBindScanKeys(Relation relation,
 	}
 }
 
-/* Setup the targets */
-static void ybcSetupTargets(Relation relation,
-														Relation index,
-														YbScanDesc ybScan,
-														YbScanPlan scan_plan) {
-	if (scan_plan->target_relation->rd_rel->relhasoids)
-		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
+/*
+ * YbColumnFilter struct stores list of target columns required by scan plan.
+ * All other non system columns may be excluded from reading from DocDB for optimization.
+ * Required columns are:
+ * - all bound key columns
+ * - all query targets columns (from index for Index Only Scan case and from table otherwise)
+ * - all table columns required for filtering resulting rows on postgres' side
+ *
+ * Example:
+ * SELECT <target columns from index or table> FROM t
+ *     WHERE <bound key columns> + <table filtering columns>
+ */
+typedef struct YbColumnFilter {
+	YbScanDesc ybScan;
+	int min_attr;
+	Bitmapset *required_attrs;
+} YbColumnFilter;
 
+static void
+ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_plan) {
+	const int min_attr = YBGetFirstLowInvalidAttributeNumber(
+		ybScan->index ? ybScan->index : ybScan->relation);
+
+	filter->required_attrs = NULL;
+	filter->ybScan = ybScan;
+	filter->min_attr = min_attr;
+	if (!pg_scan_plan)
+		return;
+
+	Bitmapset *items = NULL;
+	/* Collect bound key attributes */
+	AttrNumber *sk_attno = ybScan->target_key_attnums;
+	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys; sk_attno != sk_attno_end; ++sk_attno)
+		items = bms_add_member(items, *sk_attno - min_attr + 1);
+
+	ListCell *lc;
+	Index target_relid = INDEX_VAR;
+	if (!ybScan->prepare_params.index_only_scan)
+	{
+		/* Collect table filtering attributes */
+		foreach(lc, pg_scan_plan->plan.qual)
+			pull_varattnos_min_attr((Node *) lfirst(lc), pg_scan_plan->scanrelid, &items, min_attr);
+		target_relid = pg_scan_plan->scanrelid;
+	}
+
+	/* Collect target attributes */
+	foreach(lc, pg_scan_plan->plan.targetlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		pull_varattnos_min_attr((Node *) tle->expr, target_relid, &items, min_attr);
+	}
+
+	/* In case InvalidAttrNumber is set whole row columns are required */
+	if (bms_is_member(InvalidAttrNumber - min_attr + 1, items))
+		bms_free(items);
+	else
+		filter->required_attrs = items;
+}
+
+static void
+ybcResetColumnFilter(YbColumnFilter *filter) {
+	bms_free(filter->required_attrs);
+	filter->required_attrs = NULL;
+	filter->ybScan = NULL;
+}
+
+static void
+ybcAddTargetColumnIfRequired(YbColumnFilter *filter, AttrNumber attnum) {
+	if (!filter->required_attrs ||
+	    bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
+		ybcAddTargetColumn(filter->ybScan, attnum);
+}
+
+/* Setup the targets */
+static void
+ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan) {
+	Relation index = ybScan->index;
+
+	YbColumnFilter filter;
+	ybcInitColumnFilter(&filter, ybScan, pg_scan_plan);
 	if (ybScan->prepare_params.index_only_scan && index->rd_index->indisprimary)
 		/*
 		 * Special case: For Primary-Key-ONLY-Scan, we select ONLY the primary key from the target
 		 * table instead of the whole target table.
 		 */
 		for (int i = 0; i < index->rd_index->indnatts; i++)
-			ybcAddTargetColumn(ybScan, index->rd_index->indkey.values[i]);
+		ybcAddTargetColumnIfRequired(&filter, index->rd_index->indkey.values[i]);
 	else
 		for (AttrNumber attnum = 1; attnum <= ybScan->target_desc->natts; attnum++)
-			ybcAddTargetColumn(ybScan, attnum);
+			ybcAddTargetColumnIfRequired(&filter, attnum);
+	ybcResetColumnFilter(&filter);
+
+	if (scan_plan->target_relation->rd_rel->relhasoids)
+		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
 
 	if (scan_plan->target_relation->rd_index)
 		/*
@@ -992,7 +1065,9 @@ static void ybcSetupTargets(Relation relation,
  *   identify the desired row.
  */
 YbScanDesc
-ybcBeginScan(Relation relation, Relation index, bool xs_want_itup, int nkeys, ScanKey key)
+ybcBeginScan(
+	Relation relation, Relation index, bool xs_want_itup, int nkeys, ScanKey key,
+	Scan *pg_scan_plan)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -1005,22 +1080,20 @@ ybcBeginScan(Relation relation, Relation index, bool xs_want_itup, int nkeys, Sc
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
-	ybScan->tableOid = RelationGetRelid(relation);
 	ybScan->quit_scan = false;
+	ybScan->relation = relation;
+	ybScan->index = index;
 
 	/* Setup the scan plan */
 	YbScanPlanData	scan_plan;
-	ybcSetupScanPlan(relation, index, xs_want_itup, ybScan, &scan_plan);
+	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 
 	/* Setup binds for the scan-key */
-	ybcSetupScanKeys(relation, index, ybScan, &scan_plan);
-	ybcBindScanKeys(relation, index, ybScan, &scan_plan);
+	ybcSetupScanKeys(ybScan, &scan_plan);
+	ybcBindScanKeys(ybScan, &scan_plan);
 
-	/*
-	 * Set up the scan targets. If the table is indexed and only the indexed columns should be
-	 * returned, fetch just those columns. Otherwise, fetch all "real" columns.
-	 */
-	ybcSetupTargets(relation, index, ybScan, &scan_plan);
+	/* Setup the scan targets with respect to postgres scan plan (i.e. set only required targets) */
+	ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
 	/*
 	 * Set the current syscatalog version (will check that we are up to date).
@@ -1249,7 +1322,9 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 		}
 	}
 
-	YbScanDesc ybScan = ybcBeginScan(relation, index, false /* xs_want_itup */, nkeys, key);
+	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
+	YbScanDesc ybScan = ybcBeginScan(
+		relation, index, false /* xs_want_itup */, nkeys, key, pg_scan_plan);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -1293,8 +1368,9 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 bool temp_snap)
 {
 	/* Restart should not be prevented if operation caused by system read of system table. */
-	YbScanDesc ybScan = ybcBeginScan(relation, NULL /* index */, false /* xs_want_itup */,
-	                                 nkeys, key);
+	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
+	YbScanDesc ybScan = ybcBeginScan(
+		relation, NULL /* index */, false /* xs_want_itup */, nkeys, key, pg_scan_plan);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
