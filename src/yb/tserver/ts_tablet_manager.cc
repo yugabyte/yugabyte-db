@@ -165,6 +165,10 @@ DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
                  "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
                  "TABLET_DATA_READY.");
 
+DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
+                 "Fraction of the time when the tablet will crash immediately before flushing a "
+                 "parent tablet's kSplit operation.");
+
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
 
@@ -991,6 +995,8 @@ Status TSTabletManager::ApplyTabletSplit(
     auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
     raft_log = tablet_peer->raft_consensus()->log().get();
   }
+
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
 
   RETURN_NOT_OK(raft_log->FlushIndex());
 
