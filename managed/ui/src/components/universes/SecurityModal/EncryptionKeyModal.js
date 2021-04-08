@@ -58,7 +58,7 @@ export default class EncryptionKeyModal extends Component {
     const labelText = currentUniverse.data.name
       ? `Enable Encryption-at-Rest for ${this.props.name}?`
       : 'Enable Encryption-at-Rest?';
-    const kmsOptions = configList.data.map((config) => ({
+    const kmsOptions = configList?.data?.map((config) => ({
       value: config.metadata.configUUID,
       label: config.metadata.provider + ' - ' + config.metadata.name
     }));
