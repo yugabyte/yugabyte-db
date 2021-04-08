@@ -56,8 +56,6 @@ export default class SideNavBar extends Component {
       return null;
     }
 
-    console.log(currentCustomer);
-
     return (
       <div className="side-nav-container">
         <div className="left_col">

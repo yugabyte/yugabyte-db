@@ -1192,11 +1192,12 @@ export default class ClusterFields extends Component {
         );
       });
 
+    const configList = cloud.authConfig.data ?? [];
     const kmsConfigList = [
       <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
-      ...cloud.authConfig.data.map?.((config, index) => {
+      ...configList.map((config, index) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
         return (
           <option value={config.metadata.configUUID} key={`kms-option-${index + 1}`}>
