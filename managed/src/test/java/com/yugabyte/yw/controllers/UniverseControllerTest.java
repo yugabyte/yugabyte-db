@@ -19,12 +19,7 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperatio
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyList;
@@ -493,6 +488,59 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(json.get("universeUUID"));
     assertNotNull(json.get("universeDetails"));
     assertNotNull(json.get("universeConfig"));
+    // setTxnTableWaitCountFlag will be false as enableYSQL is false in this case
+    assertFalse(json.get("universeDetails").get("setTxnTableWaitCountFlag").asBoolean());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseCreateWithYsqlEnabled() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode)
+            .put("enableYSQL", "true");
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json.get("universeUUID"));
+    assertNotNull(json.get("universeDetails"));
+    assertNotNull(json.get("universeConfig"));
+    // setTxnTableWaitCountFlag should be true as enableYSQL is true in this case
+    assertTrue(json.get("universeDetails").get("setTxnTableWaitCountFlag").asBoolean());
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
