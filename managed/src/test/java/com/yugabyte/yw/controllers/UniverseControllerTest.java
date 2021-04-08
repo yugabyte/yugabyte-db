@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 
@@ -1163,7 +1165,7 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseGFlagsUpgradeWithTrimParams2() {
+  public void testUniverseTrimFlags() {
     Map<String, String> data = new HashMap<String, String>();
     data.put(" Test ", " One ");
     data.put(" Test 2 ", " Two ");
