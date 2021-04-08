@@ -1166,11 +1166,12 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseTrimFlags() {
-    Map<String, String> data = new HashMap<String, String>();
+    Map<String, String> data = new HashMap<>();
     data.put(" Test ", " One ");
     data.put(" Test 2 ", " Two ");
 
     Map<String, String> result = UniverseController.trimFlags(data);
+    assertEquals(result.size(), 2);
     assertEquals(result.get("Test"), "One");
     assertEquals(result.get("Test 2"), "Two");
   }

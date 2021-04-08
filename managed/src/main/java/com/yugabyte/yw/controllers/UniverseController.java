@@ -388,7 +388,7 @@ public class UniverseController extends AuthenticatedController {
   @VisibleForTesting
   static Map<String, String> trimFlags(Map<String, String> data)
   {
-    Map<String, String> trimData = new HashMap<String, String>();
+    Map<String, String> trimData = new HashMap<>();
     for (Map.Entry<String, String> intent : data.entrySet()) {
       String key  = intent.getKey();
       String value = intent.getValue();
