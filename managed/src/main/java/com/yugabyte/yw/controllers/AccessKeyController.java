@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AccessKey;
@@ -32,7 +34,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 public class AccessKeyController extends AuthenticatedController {
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   AccessManager accessManager;
@@ -44,43 +46,24 @@ public class AccessKeyController extends AuthenticatedController {
 
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
     String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
 
-    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-    if (accessKey == null) {
-      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-    }
+    AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     return ApiResponse.success(accessKey);
   }
 
   public Result list(UUID customerUUID, UUID providerUUID) {
     String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
 
     List<AccessKey> accessKeys;
-    try {
-      accessKeys = AccessKey.getAll(providerUUID);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
+    accessKeys = AccessKey.getAll(providerUUID);
     return ApiResponse.success(accessKeys);
   }
 
   public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
     UUID regionUUID = formData.get().regionUUID;
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
-    if (region == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID");
-    }
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
     String keyCode = formData.get().keyCode;
     String keyContent = formData.get().keyContent;
@@ -139,7 +122,8 @@ public class AccessKeyController extends AuthenticatedController {
       }
     } catch(RuntimeException | IOException e) {
       LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
+          "Unable to create access key: " + keyCode);
     }
     Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     return ApiResponse.success(accessKey);
@@ -147,14 +131,8 @@ public class AccessKeyController extends AuthenticatedController {
 
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
 
-    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-    if (accessKey == null) {
-      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-    }
+    AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
 
     LOG.info(
       "Deleting access key {} for customer {}, provider {}",
@@ -165,20 +143,20 @@ public class AccessKeyController extends AuthenticatedController {
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted KeyCode: " + keyCode);
     } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
     }
   }
 
   private String validateUUIDs(UUID customerUUID, UUID providerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
-      return "Invalid Customer UUID: " + customerUUID;
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     Provider provider = Provider.find.query().where()
         .eq("customer_uuid", customerUUID)
         .idEq(providerUUID).findOne();
     if (provider == null) {
-      return "Invalid Provider UUID: " + providerUUID;
+      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     return null;
   }

@@ -1,11 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
 package com.yugabyte.yw.models;
-
+import play.mvc.Http;
+import play.mvc.Result;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import com.yugabyte.yw.common.YWServiceException;
+
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -14,6 +18,8 @@ import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import java.util.List;
 import java.util.UUID;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class AccessKey extends Model {
@@ -63,6 +69,14 @@ public class AccessKey extends Model {
 
   public static AccessKey get(AccessKeyId accessKeyId) {
     return find.byId(accessKeyId);
+  }
+
+  public static AccessKey getOrBadRequest(UUID providerUUID, String keyCode) {
+    AccessKey accessKey = get(providerUUID, keyCode);
+    if (accessKey == null) {
+      throw new YWServiceException(BAD_REQUEST, "KeyCode not found: " + keyCode);
+    }
+    return accessKey;
   }
 
   public static AccessKey get(UUID providerUUID, String keyCode) {
