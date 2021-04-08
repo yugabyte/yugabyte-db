@@ -213,6 +213,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
                                 tablet_wal_path,
                                 fs_manager.uuid(),
                                 scoped_refptr<MetricEntity>(),
+                                scoped_refptr<MetricEntity>(),
                                 &reader));
 
   SegmentSequence segments;
@@ -318,7 +319,8 @@ Status FilterLogSegment(const string& segment_path) {
       "log-dump-tool",
       tablet_schema,
       segment_header.schema_version(),
-      /* metric_entity */ nullptr,
+      /* table_metric_entity */ nullptr,
+      /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),
       log_thread_pool.get(),
       /* cdc_min_replicated_index */ 0,

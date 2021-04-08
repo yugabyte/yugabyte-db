@@ -511,6 +511,47 @@ public class TestIndex extends BaseCQLTest {
                 "");
   }
 
+  private void testIndexUpdateMisc(boolean strongConsistency) throws Exception {
+    // #7641: UPDATE a row without liveness column. Set some columns with only null values
+    // (so it actually seems like a delete until we discover an existing non-null column).
+    // A row without liveness column can be achieved by inserting a row using UPDATE (upsert
+    // semantics). There should be no deletion of index entry.
+    createTable("create table test_update (h1 int, r1 int, v1 int, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1, r1");}};
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+      put("i1", "\"C$_v3\", \"C$_h1\", \"C$_r1\"");
+    }};
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update as described in #7641. Assert that index entry isn't removed spuriously.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v2=null where h1=1 and r1=2");
+
+    // Follow-up test case: Apart from actual bug in #7641, we also test below case:
+    //   - UPDATE a row without liveness column. Set only null values on regular columns except a
+    //     non-null value on a static column. Index entry should get deleted.
+    session.execute("drop table test_update");
+    createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set s1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update - index entry should be removed since tuple is removed in main table.
+    session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
+    // assertQuery("select * from test_update where v3=null", "");
+    Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
+    assertTrue(index_tuples.size() == 0);
+  }
+
   @Test
   public void testIndexUpdate() throws Exception {
     testIndexUpdate(true);
@@ -519,6 +560,16 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
+  }
+
+  @Test
+  public void testIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(true);
+  }
+
+  @Test
+  public void testWeakIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(false);
   }
 
   @Test

@@ -87,6 +87,7 @@ const char* const kListTabletsOp = "list_tablets";
 const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
+const char* const kRefreshFlagsOp = "refresh_flags";
 const char* const kDumpTabletOp = "dump_tablet";
 const char* const kTabletStateOp = "get_tablet_state";
 const char* const kDeleteTabletOp = "delete_tablet";
@@ -168,6 +169,9 @@ class TsAdminClient {
   // safe to change at runtime.
   Status SetFlag(const string& flag, const string& val,
                  bool force);
+
+  // Refreshes all gflags on the remote server to the flagfile, via RPC.
+  Status RefreshFlags();
 
   // Get the schema for the given tablet.
   Status GetTabletSchema(const std::string& tablet_id, SchemaPB* schema);
@@ -306,6 +310,16 @@ Status TsAdminClient::SetFlag(const string& flag, const string& val,
     default:
       return STATUS(RemoteError, resp.ShortDebugString());
   }
+}
+
+Status TsAdminClient::RefreshFlags() {
+  server::RefreshFlagsRequestPB req;
+  server::RefreshFlagsResponsePB resp;
+  RpcController rpc;
+
+  rpc.set_timeout(timeout_);
+
+  return generic_proxy_->RefreshFlags(req, &resp, &rpc);
 }
 
 Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
@@ -469,6 +483,7 @@ void SetUsage(const char* argv0) {
       << "  " << kAreTabletsRunningOp << "\n"
       << "  " << kIsServerReadyOp << "\n"
       << "  " << kSetFlagOp << " [-force] <flag> <value>\n"
+      << "  " << kRefreshFlagsOp << "\n"
       << "  " << kTabletStateOp << " <tablet_id>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
@@ -579,6 +594,11 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.SetFlag(argv[2], argv[3], FLAGS_force),
                                     "Unable to set flag");
 
+  } else if (op == kRefreshFlagsOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.RefreshFlags(),
+        "Unable to refresh flags");
   } else if (op == kTabletStateOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 

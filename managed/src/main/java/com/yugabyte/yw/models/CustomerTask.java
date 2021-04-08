@@ -53,7 +53,7 @@ public class CustomerTask extends Model {
   public enum TaskType {
     @EnumValue("Create")
     Create,
-    
+
     @EnumValue("Pause")
     Pause,
 

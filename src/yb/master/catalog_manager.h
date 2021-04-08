@@ -45,6 +45,7 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
@@ -617,6 +618,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // must have updated the config in the meantime.
   CHECKED_STATUS GetClusterConfig(GetMasterClusterConfigResponsePB* resp);
   CHECKED_STATUS GetClusterConfig(SysClusterConfigEntryPB* config);
+
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 

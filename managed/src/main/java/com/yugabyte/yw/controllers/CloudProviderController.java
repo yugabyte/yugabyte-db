@@ -186,7 +186,7 @@ public class CloudProviderController extends AuthenticatedController {
         String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
@@ -202,7 +202,7 @@ public class CloudProviderController extends AuthenticatedController {
             }
             break;
           case "azu":
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;

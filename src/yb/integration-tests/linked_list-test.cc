@@ -97,8 +97,6 @@ DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 DECLARE_int32(replication_factor);
 
-METRIC_DECLARE_entity(tablet);
-
 namespace yb {
 
 using yb::client::YBClient;
