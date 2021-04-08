@@ -109,6 +109,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // unaffected.
   public boolean allowInsecure = true;
 
+  // Flag to check whether the txn_table_wait_ts_count gflag has to be set
+  // while creating the universe or not. By default it should be false as we
+  // should not set this flag for operations other than create universe.
+  public boolean setTxnTableWaitCountFlag = false;
+
   // Development flag to download package from s3 bucket.
   public String itestS3PackagePath = "";
   public String remotePackagePath = "";
