@@ -560,6 +560,13 @@ public class UniverseController extends AuthenticatedController {
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
+      if (taskParams.getPrimaryCluster() != null) {
+        UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+        if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
+          taskParams.setTxnTableWaitCountFlag = true;
+        }
+      }
+
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(taskParams, customer.getCustomerId());

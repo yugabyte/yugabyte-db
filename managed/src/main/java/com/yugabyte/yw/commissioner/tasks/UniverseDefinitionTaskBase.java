@@ -696,6 +696,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
 
       params.allowInsecure = taskParams().allowInsecure;
+      params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
       params.rootCA = taskParams().rootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
 
