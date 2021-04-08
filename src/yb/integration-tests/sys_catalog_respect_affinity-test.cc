@@ -92,6 +92,7 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
   }
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_master_flags.push_back("--sys_catalog_respect_affinity_task=true");
     opts->extra_master_flags.push_back("--placement_cloud=c");
     opts->extra_master_flags.push_back("--placement_region=r");
     opts->extra_master_flags.push_back("--placement_zone=z${index}");
