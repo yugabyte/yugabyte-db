@@ -665,6 +665,53 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
 }
 
+// Override the index backfill test to have HBA config with local trust:
+// 1. if any user tries to connect over ip, trust
+// 2. if any user tries to connect over unix-domain socket, trust
+class PgIndexBackfillLocalTrust : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_hba_conf="
+        "host $0 all all trust,"
+        "local $0 all trust",
+        "yugabyte"));
+  }
+};
+
+// Make sure backfill works when there exists user-defined HBA configuration with "local".
+// This is for issue (#7705).
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(LocalTrustSimple),
+          PgIndexBackfillLocalTrust) {
+  const std::string kNamespaceName = "yugabyte";
+  const std::string kTableName = "t";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char, i int, p point)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (c ASC)", kTableName));
+
+  // Index scan to verify contents of index table.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY c", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  auto res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 3);
+  std::array<int, 3> values = {
+    ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
+    ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
+    ASSERT_RESULT(GetInt32(res.get(), 2, 1)),
+  };
+  ASSERT_EQ(values[0], 0);
+  ASSERT_EQ(values[1], 100);
+  ASSERT_EQ(values[2], -5);
+}
+
 // Override the index backfill test to disable transparent retries on cache version mismatch.
 class PgIndexBackfillNoRetry : public PgIndexBackfillTest {
  public:
