@@ -50,8 +50,7 @@
 #include "yb/master/master.proxy.h"
 
 DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
-             "Timeout for WaitUntilIndexPermissionsAtLeast RPCs from client to master initiated "
-             "from YSQL layer.");
+             "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
@@ -1193,19 +1192,6 @@ Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool 
 
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
-}
-
-Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
-    const PgObjectId& table_id,
-    const PgObjectId& index_id,
-    const IndexPermissions& target_index_permissions) {
-  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
-      FLAGS_ysql_wait_until_index_permissions_timeout_ms);
-  return client_->WaitUntilIndexPermissionsAtLeast(
-      table_id.GetYBTableId(),
-      index_id.GetYBTableId(),
-      target_index_permissions,
-      deadline);
 }
 
 Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {

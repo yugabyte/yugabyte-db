@@ -514,28 +514,6 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
 }
 
-YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid,
-    const YBCPgOid index_oid,
-    const uint32_t target_index_permissions,
-    uint32_t *actual_index_permissions) {
-  const PgObjectId table_id(database_oid, table_oid);
-  const PgObjectId index_id(database_oid, index_oid);
-  IndexPermissions returned_index_permissions = IndexPermissions::INDEX_PERM_DELETE_ONLY;
-  YBCStatus s = ExtractValueFromResult(pgapi->WaitUntilIndexPermissionsAtLeast(
-        table_id,
-        index_id,
-        static_cast<IndexPermissions>(target_index_permissions)),
-      &returned_index_permissions);
-  if (s) {
-    // Bad status.
-    return s;
-  }
-  *actual_index_permissions = static_cast<uint32_t>(returned_index_permissions);
-  return YBCStatusOK();
-}
-
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid) {

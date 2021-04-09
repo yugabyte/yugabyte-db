@@ -294,11 +294,6 @@ class PgApiImpl {
                               bool if_exist,
                               PgStatement **handle);
 
-  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
-      const PgObjectId& table_id,
-      const PgObjectId& index_id,
-      const IndexPermissions& target_index_permissions);
-
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
