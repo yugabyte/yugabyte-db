@@ -61,11 +61,11 @@ public class Provider extends Model {
   @JsonBackReference(value="regions")
   public Set<Region> regions;
 
-  @JsonManagedReference
+  @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
   public Set<InstanceType> instanceTypes;
 
-  @JsonManagedReference
+  @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
   public Set<PriceComponent> priceComponents;
 

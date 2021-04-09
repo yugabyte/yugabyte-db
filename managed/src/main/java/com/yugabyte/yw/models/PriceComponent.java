@@ -25,7 +25,6 @@ public class PriceComponent extends Model {
   // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
   // insertable and updatable are set to false as actual updates
   // are taken care by providerUuid parameter in PriceComponentKey
-  @JsonBackReference
   @ManyToOne(optional = false)
   @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
   private Provider provider;
