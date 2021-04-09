@@ -360,6 +360,19 @@ class PerTableLoadState {
                                  ts_uuid);
       }
 
+      // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
+      if (check_ts_aliveness && !per_ts_meta_[ts_uuid].descriptor->IsLiveAndHasReported()) {
+        if (!blacklisted_servers_.count(ts_uuid)) {
+          return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader not received "
+                "heartbeat from ts $0. Stopping LB operations for tables with replicas",
+                " in this TS.", ts_uuid);
+        } else {
+          LOG(INFO) << strings::Substitute("Master leader not received heartbeat from ts $0"
+                                " but it is blacklisted. Continuing LB operations for tables"
+                                " with replicas in this TS.", ts_uuid);
+        }
+      }
+
       // Fill leader info.
       if (replica.second.role == consensus::RaftPeerPB::LEADER) {
         tablet_meta.leader_uuid = ts_uuid;
@@ -488,7 +501,13 @@ class PerTableLoadState {
     // Also insert into per_ts_global_meta_ if we have yet to.
     global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerLoadCounts());
 
-    sorted_load_.push_back(ts_uuid);
+    // Only add TS for LBing if it is not dead.
+    // check_ts_aliveness is an artifact of cluster_balance_mocked.h
+    // and is used to ensure that we don't perform a liveness check
+    // during mimicing load balancers.
+    if (!check_ts_aliveness || ts_desc->IsLiveAndHasReported()) {
+      sorted_load_.push_back(ts_uuid);
+    }
 
     // Mark as blacklisted if it matches.
     bool is_blacklisted = false;
@@ -510,9 +529,14 @@ class PerTableLoadState {
 
     // Add this tablet server for leader load-balancing only if it is not blacklisted and it has
     // heartbeated recently enough to be considered responsive for leader balancing.
+    // Also, don't add it if isn't live or hasn't reported all its tablets.
+    // check_ts_aliveness is an artifact of cluster_balance_mocked.h
+    // and is used to ensure that we don't perform a liveness check
+    // during mimicing load balancers.
     if (!is_blacklisted &&
         ts_desc->TimeSinceHeartbeat().ToMilliseconds() <
-        FLAGS_leader_balance_unresponsive_timeout_ms) {
+        FLAGS_leader_balance_unresponsive_timeout_ms &&
+        (!check_ts_aliveness || ts_desc->IsLiveAndHasReported())) {
       sorted_leader_load_.push_back(ts_uuid);
     }
 
@@ -525,6 +549,12 @@ class PerTableLoadState {
     const TabletId& tablet_id, const TabletServerId& to_ts,
     const PlacementInfoPB* placement_info = nullptr) {
     const auto& ts_meta = per_ts_meta_[to_ts];
+
+    // If this server is deemed DEAD then don't add it.
+    if (check_ts_aliveness && !ts_meta.descriptor->IsLiveAndHasReported()) {
+      return false;
+    }
+
     // If this tablet has already been added to a new tablet server, don't add it again.
     if (tablets_added_.count(tablet_id)) {
       return false;
@@ -898,6 +928,12 @@ class PerTableLoadState {
 
   // Boolean whether tablets for this table should respect the affinited zones.
   bool use_preferred_zones_ = true;
+
+  // check_ts_aliveness is used to indicate if the TS descriptors
+  // need to be checked if they are live and considered for Load balancing.
+  // In most scenarios, this would be true, except when we use the cluster_balance_mocked.h
+  // for triggering LB scenarios.
+  bool check_ts_aliveness = true;
 
  private:
   const std::string uninitialized_ts_meta_format_msg =
