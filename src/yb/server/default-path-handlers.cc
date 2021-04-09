@@ -58,6 +58,8 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
@@ -184,7 +186,7 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
-  
+
   int max_depth = INT_MAX;
   string depth = FindWithDefault(req.parsed_args, "max_depth", "");
   if (depth != "") {
@@ -274,7 +276,7 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
               "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteForPrometheus(const MetricRegistry* const metrics,
+static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   MetricPrometheusOptions opts;
@@ -337,7 +339,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
-      WriteForPrometheus, metrics, _1, _2);
+      WriteMetricsForPrometheus, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
   webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);
@@ -348,6 +350,37 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
 
   webserver->RegisterPathHandler(
       "/prometheus-metrics", "Metrics", prometheus_callback, not_styled, not_on_nav_bar);
+}
+
+// Registered to handle "/drives", and prints out paths usage
+static void PathUsageHandler(FsManager* fsmanager,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h1>Drives usage by subsystem</h1>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Path</th><th>Used Space</th>"
+      "<th>Total Space</th></tr>\n";
+
+  Env* env = fsmanager->env();
+  for (const auto& path : fsmanager->GetDataRootDirs()) {
+    const auto stats = env->GetFilesystemStatsBytes(path);
+    if (!stats.ok()) {
+      LOG(WARNING) << stats.status();
+      *output << Format("  <tr><td>$0</td><td>NA</td><td>NA</td></tr>\n", path);
+      continue;
+    }
+    const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
+    const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
+    *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
+                      path, used_space_str, total_space_str);
+  }
+  *output << "</table>\n";
+}
+
+void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
+  Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
+  webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
 }
 
 } // namespace yb

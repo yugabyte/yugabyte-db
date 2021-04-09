@@ -320,14 +320,14 @@ class Env {
   // Read link's actual target
   virtual Result<std::string> ReadLink(const std::string& link) = 0;
 
-  // Store the physical size of fname in *file_size.
+  // Returns the physical size of fname.
   //
   // This differs from GetFileSize() in that it returns the actual amount
   // of space consumed by the file, not the user-facing file size.
   virtual Result<uint64_t> GetFileSizeOnDisk(const std::string& fname) = 0;
 
-  // Store the block size of the filesystem where fname resides in
-  // *block_size. fname must exist but it may be a file or a directory.
+  // Returns the block size of the filesystem where fname resides.
+  // fname must exist but it may be a file or a directory.
   virtual Result<uint64_t> GetBlockSize(const std::string& fname) = 0;
 
   // Rename file src to target.
@@ -469,6 +469,15 @@ class Env {
 
   // Get free space available on the path's filesystem.
   virtual Result<uint64_t> GetFreeSpaceBytes(const std::string& path) = 0;
+
+  struct FilesystemStats {
+    uint64_t free_space;
+    uint64_t used_space;
+    uint64_t total_space;
+  };
+
+  // Returns the stats of the filesystem where fname resides in bytes.
+  virtual Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& fname) = 0;
 
   // Get ulimit
   virtual Result<ResourceLimits> GetUlimit(int resource) = 0;
@@ -757,6 +766,9 @@ class EnvWrapper : public Env {
   }
   Result<uint64_t> GetBlockSize(const std::string& f) override {
     return target_->GetBlockSize(f);
+  }
+  Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override {
+    return target_->GetFilesystemStatsBytes(f);
   }
   CHECKED_STATUS LinkFile(const std::string& s, const std::string& t) override {
     return target_->LinkFile(s, t);

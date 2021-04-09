@@ -50,6 +50,7 @@ namespace yb {
 
 class MetricRegistry;
 class Webserver;
+class FsManager;
 
 // Adds a set of default path handlers to the webserver to display
 // logs and configuration flags.
@@ -57,6 +58,9 @@ void AddDefaultPathHandlers(Webserver* webserver);
 
 // Adds an endpoint to get metrics in JSON format.
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics);
+
+// Adds an endpoint to display path usage.
+void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);
 
 } // namespace yb
 

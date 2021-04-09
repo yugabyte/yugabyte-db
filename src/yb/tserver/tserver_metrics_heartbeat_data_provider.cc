@@ -91,6 +91,17 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   VLOG_WITH_PREFIX(4) << "Write Ops per second: " << wops_per_sec;
   VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
   VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
+
+  for (const std::string& path : server().fs_manager()->GetDataRootDirs()) {
+    auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
+    if (!stat.ok()) {
+      continue;
+    }
+    auto* path_metric = metrics->add_path_metrics();
+    path_metric->set_path_id(path);
+    path_metric->set_used_space(stat->used_space);
+    path_metric->set_total_space(stat->total_space);
+  }
 }
 
 uint64_t TServerMetricsHeartbeatDataProvider::CalculateUptime() {
