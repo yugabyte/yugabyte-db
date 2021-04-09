@@ -42,7 +42,11 @@ public class Backup extends Model {
     Deleted,
 
     @EnumValue("Skipped")
-    Skipped
+    Skipped,
+
+    // Complete or partial failure to delete
+    @EnumValue("FailedToDelete")
+    FailedToDelete,
   }
 
   @Id
@@ -222,11 +226,11 @@ public class Backup extends Model {
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState) ||
         (this.state == BackupState.Completed && newState == BackupState.Deleted) ||
-        // This condition is for the case in which the delete fails and we need
-        // to reset the state.
-        (this.state == BackupState.Deleted && newState == BackupState.Completed)) {
+        (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)) {
       this.state = newState;
       save();
+    } else {
+      LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
     }
   }
 
