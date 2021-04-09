@@ -237,8 +237,8 @@ class StorageConfiguration extends Component {
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
-  disableInputFields = (fieldKey) => {
-    return fieldKey === "BACKUP_LOCATION" ? true : false
+  disableInputFields = (fieldKey, enableEdit) => {
+    return enableEdit || fieldKey === "BACKUP_LOCATION" ? true : false
   };
 
   /**
@@ -366,7 +366,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     component={YBTextInputWithLabel}
-                    isReadOnly={this.disableInputFields(field.id)}
+                    isReadOnly={this.disableInputFields(field.id, enableEditOption)}
                   />
                 </Col>
               </Row>
