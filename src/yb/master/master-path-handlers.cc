@@ -661,6 +661,20 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
 
+        jw.String("path_metrics");
+        jw.StartArray();
+        for(const auto& path_metric : desc->path_metrics()) {
+          jw.StartObject();
+          jw.String("path");
+          jw.String(path_metric.first);
+          jw.String("space_used");
+          jw.Uint64(path_metric.second.used_space);
+          jw.String("total_space_size");
+          jw.Uint64(path_metric.second.total_space);
+          jw.EndObject();
+        }
+        jw.EndArray();
+
         jw.String("read_ops_per_sec");
         jw.Double(desc->read_ops_per_sec());
 
