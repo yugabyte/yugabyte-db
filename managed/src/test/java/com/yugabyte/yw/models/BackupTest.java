@@ -7,8 +7,11 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
 
 import java.util.*;
@@ -27,6 +30,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 
 
+@RunWith(JUnitParamsRunner.class)
 public class BackupTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig s3StorageConfig;
@@ -164,33 +168,34 @@ public class BackupTest extends FakeDBApplication {
 
 
   @Test
-  public void testTransitionStateValid() throws InterruptedException {
+  @Parameters({
+    "InProgress, Completed",
+    "Completed, Deleted",
+    "Completed, FailedToDelete"})
+  public void testTransitionStateValid(Backup.BackupState from, Backup.BackupState to) {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
-    Date beforeUpdateTime  = b.getUpdateTime();
-    assertNotNull(beforeUpdateTime);
-    Thread.sleep(1);
-    b.transitionState(Backup.BackupState.Completed);
-    assertEquals(Completed, b.state);
-    assertNotNull(b.getUpdateTime());
-    assertNotEquals(beforeUpdateTime, b.getUpdateTime());
-    b.transitionState(Deleted);
-    assertEquals(Deleted, b.state);
+    b.transitionState(from);
+    assertEquals(from, b.state);
+    b.transitionState(to);
+    assertEquals(to, b.state);
   }
 
   @Test
-  public void testTransitionStateInvalid() throws InterruptedException {
+  @Parameters({"Completed, Failed"})
+  public void testTransitionStateInvalid(
+    Backup.BackupState from, Backup.BackupState to) throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid,
         u.universeUUID, s3StorageConfig.configUUID);
     Date beforeUpdateTime  = b.getUpdateTime();
     assertNotNull(b.getUpdateTime());
     Thread.sleep(1);
-    b.transitionState(Backup.BackupState.Completed);
+    b.transitionState(from);
     assertNotNull(b.getUpdateTime());
     assertNotEquals(beforeUpdateTime, b.getUpdateTime());
-    b.transitionState(Failed);
+    b.transitionState(to);
     assertNotEquals(Failed, b.state);
   }
 

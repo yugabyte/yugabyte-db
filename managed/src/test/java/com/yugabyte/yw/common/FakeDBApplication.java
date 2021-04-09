@@ -43,6 +43,7 @@ public class FakeDBApplication extends WithApplication {
   public DnsManager mockDnsManager;
   public NetworkManager mockNetworkManager;
   public YamlWrapper mockYamlWrapper;
+  public final TableManager mockTableManager = mock(TableManager.class);
 
   @Override
   protected Application provideApplication() {
@@ -84,6 +85,7 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
+        .overrides(bind(TableManager.class).toInstance(mockTableManager))
         .build();
   }
 }
