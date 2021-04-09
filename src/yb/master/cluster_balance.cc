@@ -508,7 +508,7 @@ void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   global_state_ = std::make_unique<GlobalLoadState>();
   if (initialize_ts_descs) {
     // Only call GetAllReportedDescriptors once for a LB run, and then cache it in global_state_.
-    GetAllReportedDescriptors(&global_state_->ts_descs_);
+    GetAllDescriptors(&global_state_->ts_descs_);
   }
 }
 
@@ -1183,6 +1183,10 @@ void ClusterLoadBalancer::InitializeTSDescriptors() {
 //
 void ClusterLoadBalancer::GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const {
   catalog_manager_->master_->ts_manager()->GetAllReportedDescriptors(ts_descs);
+}
+
+void ClusterLoadBalancer::GetAllDescriptors(TSDescriptorVector* ts_descs) const {
+  catalog_manager_->master_->ts_manager()->GetAllDescriptors(ts_descs);
 }
 
 const TabletInfoMap& ClusterLoadBalancer::GetTabletMap() const {

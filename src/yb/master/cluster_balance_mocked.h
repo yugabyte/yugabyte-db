@@ -75,6 +75,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
     auto table_state = std::make_unique<PerTableLoadState>(global_state_.get());
     table_state->options_ = options;
+    table_state->check_ts_aliveness = false;
     state_ = table_state.get();
 
     per_table_states_[table_id] = std::move(table_state);
