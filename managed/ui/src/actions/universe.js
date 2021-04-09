@@ -700,6 +700,12 @@ export function fetchSlowQueries(universeUUID, cancelFn) {
   return request;
 }
 
+export function resetSlowQueries(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
+  return axios.delete(endpoint);
+}
+
 export function createAlertDefinition(universeUUID, data) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;

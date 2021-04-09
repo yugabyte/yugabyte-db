@@ -9,9 +9,9 @@ import { Highlighter } from '../../../helpers/Highlighter';
 import './MetricsPanel.scss';
 
 const GRAPH_COL_WIDTH = 192;
-export const QueryDisplayPanel = ({ universeUUID }) => {
+export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
   const { ysqlQueries, loading, errors } = useSlowQueriesApi({
-    universeUUID
+    universeUUID, enabled
   }); 
   
   // Get top 5 queries by total_time descending

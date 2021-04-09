@@ -1808,6 +1808,28 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = queryHelper.resetQueries(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+        "Failed reach node, invalid IP or DNS.");
+    } catch (Throwable t) {
+      LOG.error("Error resetting slow queries for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
   private void markAllUniverseTasksAsCompleted(UUID universeUUID) {
     List<CustomerTask> existingTasks = CustomerTask.findIncompleteByTargetUUID(universeUUID);
     if (existingTasks == null) {

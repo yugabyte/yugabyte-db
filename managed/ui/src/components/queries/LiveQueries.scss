@@ -200,7 +200,7 @@
     }
   }
 
-  .content-panel .container > .body {
+  .content-panel .container > .body.show-table {
     padding: 80px 45px 25px 45px;
     width: calc(100% - 260px);
 
@@ -546,6 +546,18 @@
           height: auto;
         }
       }
+    }
+  }
+
+  &__actions {
+    grid-column-start: 4;
+    position: relative;
+    display: inline-flex;
+
+    .btn-default {
+      height: 40px;
+      margin-top: 20px;
+      margin-right: 20px;
     }
   }
 }

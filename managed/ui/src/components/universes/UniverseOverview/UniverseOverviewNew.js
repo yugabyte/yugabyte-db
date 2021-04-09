@@ -763,6 +763,7 @@ export default class UniverseOverviewNew extends Component {
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
     return (
       <Fragment>
         <Row>
@@ -797,11 +798,13 @@ export default class UniverseOverviewNew extends Component {
             {this.getTablesWidget(universeInfo)}
           </Col>
         </Row>
-        <Row>
-          <Col lg={12} md={12} sm={12} xs={12}>
-            <QueryDisplayPanel universeUUID={universeInfo.universeUUID} />
-          </Col>
-        </Row>
+        {isQueryMonitoringEnabled &&
+          <Row>
+            <Col lg={12} md={12} sm={12} xs={12}>
+              <QueryDisplayPanel universeUUID={universeInfo.universeUUID} enabled={isQueryMonitoringEnabled} />
+            </Col>
+          </Row>
+        }
       </Fragment>
     );
   }

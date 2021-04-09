@@ -76,6 +76,13 @@ public class QueryHelper {
     return responseJson;
   }
 
+  public JsonNode resetQueries(Universe universe) {
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = "SELECT pg_stat_statements_reset()";
+    ysqlQuery.db_name = "postgres";
+    return ysqlQueryExecutor.executeQuery(universe, ysqlQuery);
+  }
+
   public JsonNode query(Universe universe, boolean fetchSlowQueries) {
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
     Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
