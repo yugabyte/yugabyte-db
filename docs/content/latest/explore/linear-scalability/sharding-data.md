@@ -2,8 +2,8 @@
 title: Sharding Data
 headerTitle: Sharding Data Across Nodes
 linkTitle: Sharding Data Across Nodes
-description: Sharding Data Across Nodes in YugabyteDB.
-headcontent: Sharding Data Across Nodes in YugabyteDB.
+description: Sharding Data Across Nodes in YugabyteDB
+headcontent: Sharding Data Across Nodes in YugabyteDB
 menu:
   latest:
     name: Sharding Data
