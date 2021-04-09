@@ -1130,6 +1130,53 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testUniverseGFlagsUpgradeWithTrimParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \" master-flag \", \"value\": \" 123 \"}]");
+    JsonNode tserverGFlags = Json.parse("[{ \"name\": \" tserver-flag \", \"value\": \" 456 \"}]");
+    userIntentJson.set("masterGFlags", masterGFlags);
+    userIntentJson.set("tserverGFlags", tserverGFlags);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseTrimFlags() {
+    Map<String, String> data = new HashMap<>();
+    data.put(" Test ", " One ");
+    data.put(" Test 2 ", " Two ");
+
+    Map<String, String> result = UniverseController.trimFlags(data);
+    assertEquals(result.size(), 2);
+    assertEquals(result.get("Test"), "One");
+    assertEquals(result.get("Test 2"), "Two");
+  }
+
+  @Test
   public void testUniverseGFlagsUpgradeWithInvalidParams() {
     Universe u = createUniverse(customer.getCustomerId());
 
