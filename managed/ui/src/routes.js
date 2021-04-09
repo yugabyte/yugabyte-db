@@ -42,7 +42,21 @@ export const clearCredentials = () => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
-  localStorage.removeItem('userId');
+  localStorage.removeItem('userId');  
+  /* 
+   * Remove domain cookies if YW is running on subdomain. 
+   * For context, see issue: https://github.com/yugabyte/yugabyte-db/issues/7653
+   * We may want to remove this extra if-clause logic in the future when
+   * we no longer rely on iframe authentication for cloud.
+   */
+  const domainArray = window.location.host.split('.');
+  const cookiePath = domainArray.slice(domainArray.length - 2).join('.');
+  if (cookiePath !== window.location.host) {
+    Cookies.remove('apiToken', { domain: cookiePath });
+    Cookies.remove('authToken', { domain: cookiePath });
+    Cookies.remove('customerId', { domain: cookiePath });
+    Cookies.remove('userId', { domain: cookiePath });  
+  }
   Cookies.remove('apiToken');
   Cookies.remove('authToken');
   Cookies.remove('customerId');
