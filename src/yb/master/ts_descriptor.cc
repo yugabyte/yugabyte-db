@@ -338,6 +338,10 @@ bool TSDescriptor::IsLive() const {
          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms) && !IsRemoved();
 }
 
+bool TSDescriptor::IsLiveAndHasReported() const {
+  return IsLive() && has_tablet_report();
+}
+
 std::string TSDescriptor::ToString() const {
   SharedLock<decltype(lock_)> l(lock_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",

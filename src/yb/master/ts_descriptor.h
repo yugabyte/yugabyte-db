@@ -314,6 +314,8 @@ class TSDescriptor {
     return capabilities_.find(capability) != capabilities_.end();
   }
 
+  virtual bool IsLiveAndHasReported() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
