@@ -3,7 +3,6 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 aliases:
-  - /develop/ecosystem-integrations/janusgraph/
 menu:
   latest:
     identifier: janusgraph
