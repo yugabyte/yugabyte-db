@@ -364,7 +364,7 @@ CREATE OPERATOR + (
   COMMUTATOR = +
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_add(agtype, bigint)
+CREATE FUNCTION ag_catalog.agtype_any_add(agtype, smallint)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -373,13 +373,73 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR + (
-  FUNCTION = ag_catalog.agtype_bigint_add,
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = agtype,
+  RIGHTARG =  smallint,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(smallint, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = smallint,
+  RIGHTARG =  agtype,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(agtype, integer)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = agtype,
+  RIGHTARG =  integer,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(integer, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = integer,
+  RIGHTARG =  agtype,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(agtype, bigint)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
   LEFTARG = agtype,
   RIGHTARG =  bigint,
   COMMUTATOR = +
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_add(bigint, agtype)
+CREATE FUNCTION ag_catalog.agtype_any_add(bigint, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -388,8 +448,68 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR + (
-  FUNCTION = ag_catalog.agtype_bigint_add,
+  FUNCTION = ag_catalog.agtype_any_add,
   LEFTARG = bigint,
+  RIGHTARG =  agtype,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(agtype, real)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = agtype,
+  RIGHTARG =  real,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(real, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = real,
+  RIGHTARG =  agtype,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(agtype, double precision)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = agtype,
+  RIGHTARG =  double precision,
+  COMMUTATOR = +
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_add(double precision, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR + (
+  FUNCTION = ag_catalog.agtype_any_add,
+  LEFTARG = double precision,
   RIGHTARG =  agtype,
   COMMUTATOR = +
 );
@@ -408,7 +528,7 @@ CREATE OPERATOR - (
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_sub(agtype, bigint)
+CREATE FUNCTION ag_catalog.agtype_any_sub(agtype, smallint)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -417,12 +537,68 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR - (
-  FUNCTION = ag_catalog.agtype_bigint_sub,
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = agtype,
+  RIGHTARG =  smallint
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(smallint, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = smallint,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(agtype, integer)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = agtype,
+  RIGHTARG =  integer
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(integer, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = integer,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(agtype, bigint)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
   LEFTARG = agtype,
   RIGHTARG =  bigint
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_sub(bigint, agtype)
+CREATE FUNCTION ag_catalog.agtype_any_sub(bigint, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -431,8 +607,64 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR - (
-  FUNCTION = ag_catalog.agtype_bigint_sub,
+  FUNCTION = ag_catalog.agtype_any_sub,
   LEFTARG = bigint,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(agtype, real)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = agtype,
+  RIGHTARG =  real
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(real, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = real,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(agtype, double precision)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = agtype,
+  RIGHTARG =  double precision
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_sub(double precision, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = ag_catalog.agtype_any_sub,
+  LEFTARG = double precision,
   RIGHTARG =  agtype
 );
 
@@ -464,7 +696,7 @@ CREATE OPERATOR * (
   COMMUTATOR = *
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_mul(agtype, bigint)
+CREATE FUNCTION ag_catalog.agtype_any_mul(agtype, smallint)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -473,13 +705,73 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR * (
-  FUNCTION = ag_catalog.agtype_bigint_mul,
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = agtype,
+  RIGHTARG =  smallint,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(smallint, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = smallint,
+  RIGHTARG =  agtype,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(agtype, integer)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = agtype,
+  RIGHTARG =  integer,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(integer, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = integer,
+  RIGHTARG =  agtype,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(agtype, bigint)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
   LEFTARG = agtype,
   RIGHTARG =  bigint,
   COMMUTATOR = *
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_mul(bigint, agtype)
+CREATE FUNCTION ag_catalog.agtype_any_mul(bigint, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -488,8 +780,68 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR * (
-  FUNCTION = ag_catalog.agtype_bigint_mul,
+  FUNCTION = ag_catalog.agtype_any_mul,
   LEFTARG = bigint,
+  RIGHTARG =  agtype,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(agtype, real)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = agtype,
+  RIGHTARG =  real,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(real, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = real,
+  RIGHTARG =  agtype,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(agtype, double precision)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = agtype,
+  RIGHTARG =  double precision,
+  COMMUTATOR = *
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mul(double precision, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = ag_catalog.agtype_any_mul,
+  LEFTARG = double precision,
   RIGHTARG =  agtype,
   COMMUTATOR = *
 );
@@ -508,7 +860,7 @@ CREATE OPERATOR / (
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_div(agtype, bigint)
+CREATE FUNCTION ag_catalog.agtype_any_div(agtype, smallint)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -517,12 +869,68 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR / (
-  FUNCTION = ag_catalog.agtype_bigint_div,
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = agtype,
+  RIGHTARG =  smallint
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(smallint, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = smallint,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(agtype, integer)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = agtype,
+  RIGHTARG =  integer
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(integer, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = integer,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(agtype, bigint)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
   LEFTARG = agtype,
   RIGHTARG =  bigint
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_div(bigint, agtype)
+CREATE FUNCTION ag_catalog.agtype_any_div(bigint, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -531,8 +939,64 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR / (
-  FUNCTION = ag_catalog.agtype_bigint_div,
+  FUNCTION = ag_catalog.agtype_any_div,
   LEFTARG = bigint,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(agtype, real)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = agtype,
+  RIGHTARG =  real
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(real, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = real,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(agtype, double precision)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = agtype,
+  RIGHTARG =  double precision
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_div(double precision, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR / (
+  FUNCTION = ag_catalog.agtype_any_div,
+  LEFTARG = double precision,
   RIGHTARG =  agtype
 );
 
@@ -550,7 +1014,7 @@ CREATE OPERATOR % (
   RIGHTARG = agtype
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_mod(agtype, bigint)
+CREATE FUNCTION ag_catalog.agtype_any_mod(agtype, smallint)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -559,12 +1023,68 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR % (
-  FUNCTION = ag_catalog.agtype_bigint_mod,
+  FUNCTION = ag_catalog.agtype_any_mod,
+  LEFTARG = agtype,
+  RIGHTARG =  smallint
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mod(smallint, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR % (
+  FUNCTION = ag_catalog.agtype_any_mod,
+  LEFTARG = smallint,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mod(agtype, integer)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR % (
+  FUNCTION = ag_catalog.agtype_any_mod,
+  LEFTARG = agtype,
+  RIGHTARG =  integer
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mod(integer, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR % (
+  FUNCTION = ag_catalog.agtype_any_mod,
+  LEFTARG = integer,
+  RIGHTARG =  agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_mod(agtype, bigint)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR % (
+  FUNCTION = ag_catalog.agtype_any_mod,
   LEFTARG = agtype,
   RIGHTARG =  bigint
 );
 
-CREATE FUNCTION ag_catalog.agtype_bigint_mod(bigint, agtype)
+CREATE FUNCTION ag_catalog.agtype_any_mod(bigint, agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
@@ -573,7 +1093,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE OPERATOR % (
-  FUNCTION = ag_catalog.agtype_bigint_mod,
+  FUNCTION = ag_catalog.agtype_any_mod,
   LEFTARG = bigint,
   RIGHTARG =  agtype
 );
@@ -615,6 +1135,186 @@ CREATE OPERATOR = (
   JOIN = eqjoinsel
 );
 
+CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_eq(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = ag_catalog.agtype_any_eq,
+  LEFTARG = double precision,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
 CREATE FUNCTION ag_catalog.agtype_ne(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -626,6 +1326,186 @@ AS 'MODULE_PATHNAME';
 CREATE OPERATOR <> (
   FUNCTION = ag_catalog.agtype_ne,
   LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ne(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = ag_catalog.agtype_any_ne,
+  LEFTARG = double precision,
   RIGHTARG = agtype,
   COMMUTATOR = <>,
   NEGATOR = =,
@@ -651,6 +1531,186 @@ CREATE OPERATOR < (
   JOIN = scalarltjoinsel
 );
 
+CREATE FUNCTION ag_catalog.agtype_any_lt(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_lt(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = ag_catalog.agtype_any_lt,
+  LEFTARG = double precision,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
 CREATE FUNCTION ag_catalog.agtype_gt(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -662,6 +1722,186 @@ AS 'MODULE_PATHNAME';
 CREATE OPERATOR > (
   FUNCTION = ag_catalog.agtype_gt,
   LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_gt(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = ag_catalog.agtype_any_gt,
+  LEFTARG = double precision,
   RIGHTARG = agtype,
   COMMUTATOR = <,
   NEGATOR = <=,
@@ -687,6 +1927,186 @@ CREATE OPERATOR <= (
   JOIN = scalarlejoinsel
 );
 
+CREATE FUNCTION ag_catalog.agtype_any_le(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_le(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = ag_catalog.agtype_any_le,
+  LEFTARG = double precision,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
 CREATE FUNCTION ag_catalog.agtype_ge(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -698,6 +2118,186 @@ AS 'MODULE_PATHNAME';
 CREATE OPERATOR >= (
   FUNCTION = ag_catalog.agtype_ge,
   LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(agtype, smallint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = agtype,
+  RIGHTARG = smallint,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(smallint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = smallint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(agtype, integer)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = agtype,
+  RIGHTARG = integer,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(integer, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = integer,
+  RIGHTARG = agtype,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(agtype, bigint)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = agtype,
+  RIGHTARG = bigint,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(bigint, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = bigint,
+  RIGHTARG = agtype,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(agtype, real)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = agtype,
+  RIGHTARG = real,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(real, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = real,
+  RIGHTARG = agtype,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(agtype, double precision)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = agtype,
+  RIGHTARG = double precision,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_any_ge(double precision, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = ag_catalog.agtype_any_ge,
+  LEFTARG = double precision,
   RIGHTARG = agtype,
   COMMUTATOR = <=,
   NEGATOR = <,
@@ -921,8 +2521,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype AS float8)
-WITH FUNCTION ag_catalog.agtype_to_float8(agtype)
-AS IMPLICIT;
+WITH FUNCTION ag_catalog.agtype_to_float8(agtype);
 
 -- int8 -> agtype (explicit)
 CREATE FUNCTION ag_catalog.int8_to_agtype(int8)

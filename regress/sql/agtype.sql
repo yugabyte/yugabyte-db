@@ -145,29 +145,29 @@ SELECT agtype_pow('2.0', '-1.0::numeric');
 SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 
 --
--- Test overloaded agtype bigint mathematical operator functions
+-- Test overloaded agtype any mathematical operator functions
 -- +, -, *, /, and %
 --
 
-SELECT agtype_bigint_add('1', -1);
-SELECT agtype_bigint_add('1.0', -1);
-SELECT agtype_bigint_add('1::numeric', 1);
-SELECT agtype_bigint_add('1.0::numeric', 1);
+SELECT agtype_any_add('1', -1);
+SELECT agtype_any_add('1.0', -1);
+SELECT agtype_any_add('1::numeric', 1);
+SELECT agtype_any_add('1.0::numeric', 1);
 
-SELECT agtype_bigint_sub('1', -1);
-SELECT agtype_bigint_sub('1.0', -1);
-SELECT agtype_bigint_sub('1::numeric', 1);
-SELECT agtype_bigint_sub('1.0::numeric', 1);
+SELECT agtype_any_sub('1', -1);
+SELECT agtype_any_sub('1.0', -1);
+SELECT agtype_any_sub('1::numeric', 1);
+SELECT agtype_any_sub('1.0::numeric', 1);
 
-SELECT agtype_bigint_mul('-2', 3);
-SELECT agtype_bigint_mul('2.0', -3);
-SELECT agtype_bigint_mul('-2::numeric', 3);
-SELECT agtype_bigint_mul('-2.0::numeric', 3);
+SELECT agtype_any_mul('-2', 3);
+SELECT agtype_any_mul('2.0', -3);
+SELECT agtype_any_mul('-2::numeric', 3);
+SELECT agtype_any_mul('-2.0::numeric', 3);
 
-SELECT agtype_bigint_div('-4', 3);
-SELECT agtype_bigint_div('4.0', -3);
-SELECT agtype_bigint_div('-4::numeric', 3);
-SELECT agtype_bigint_div('-4.0::numeric', 3);
+SELECT agtype_any_div('-4', 3);
+SELECT agtype_any_div('4.0', -3);
+SELECT agtype_any_div('-4::numeric', 3);
+SELECT agtype_any_div('-4.0::numeric', 3);
 --
 -- Should fail with divide by zero
 --
@@ -181,10 +181,10 @@ SELECT agtype_div('1::numeric', '0');
 SELECT agtype_div('1::numeric', '0.0');
 SELECT agtype_div('1::numeric', '0::numeric');
 
-SELECT agtype_bigint_div('1', 0);
-SELECT agtype_bigint_div('1.0', 0);
-SELECT agtype_bigint_div('-1::numeric', 0);
-SELECT agtype_bigint_div('-1.0::numeric', 0);
+SELECT agtype_any_div('1', 0);
+SELECT agtype_any_div('1.0', 0);
+SELECT agtype_any_div('-1::numeric', 0);
+SELECT agtype_any_div('-1.0::numeric', 0);
 
 --
 -- Should get Infinity
@@ -218,7 +218,7 @@ SELECT '3.14'::agtype + '3.14::numeric'::agtype;
 SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
 
 --
--- Test overloaded bigint operators +, -, *, /, %
+-- Test overloaded agytype any operators +, -, *, /, %
 --
 
 SELECT '3'::agtype + 3;
@@ -355,6 +355,106 @@ SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
 SELECT agtype_in('1::numeric') < agtype_in('null');
 SELECT agtype_in('true') < agtype_in('1::numeric');
+
+--
+-- Test overloaded agytype any comparison operators =, <>, <, >, <=, >=,
+--
+-- Integer
+SELECT agtype_in('1') = 1;
+SELECT agtype_in('1') <> 2;
+SELECT agtype_in('1') <> -2;
+SELECT agtype_in('1') < 2;
+SELECT agtype_in('1') > -2;
+SELECT agtype_in('1') <= 2;
+SELECT agtype_in('1') >= -2;
+
+-- Float
+SELECT agtype_in('1.01') = 1.01;
+SELECT agtype_in('1.01') <> 1.001;
+SELECT agtype_in('1.01') <> 1.011;
+SELECT agtype_in('1.01') < 1.011;
+SELECT agtype_in('1.01') > 1.001;
+SELECT agtype_in('1.01') <= 1.011;
+SELECT agtype_in('1.01') >= 1.001;
+SELECT agtype_in('1.01') < 'Infinity';
+SELECT agtype_in('1.01') > '-Infinity';
+-- NaN, under ordering, is considered to be the biggest numeric value
+-- greater than positive infinity. So, greater than any other number.
+SELECT agtype_in('1.01') < 'NaN';
+SELECT agtype_in('NaN') > 'Infinity';
+SELECT agtype_in('NaN') > '-Infinity';
+SELECT agtype_in('NaN') = 'NaN';
+
+-- Mixed Integer and Float
+SELECT agtype_in('1') = 1.0;
+SELECT agtype_in('1') <> 1.001;
+SELECT agtype_in('1') <> 0.999999;
+SELECT agtype_in('1') < 1.001;
+SELECT agtype_in('1') > 0.999999;
+SELECT agtype_in('1') <= 1.001;
+SELECT agtype_in('1') >= 0.999999;
+SELECT agtype_in('1') < 'Infinity';
+SELECT agtype_in('1') > '-Infinity';
+SELECT agtype_in('1') < 'NaN';
+
+-- Mixed Float and Integer
+SELECT agtype_in('1.0') = 1;
+SELECT agtype_in('1.001') <> 1;
+SELECT agtype_in('0.999999') <> 1;
+SELECT agtype_in('1.001') > 1;
+SELECT agtype_in('0.999999') < 1;
+
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = 1::numeric;
+SELECT agtype_in('1') <> 2::numeric;
+SELECT agtype_in('1') <> -2::numeric;
+SELECT agtype_in('1') < 2::numeric;
+SELECT agtype_in('1') > -2::numeric;
+SELECT agtype_in('1') <= 2::numeric;
+SELECT agtype_in('1') >= -2::numeric;
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = 1.01::numeric;
+SELECT agtype_in('1.01') <> 1.001::numeric;
+SELECT agtype_in('1.01') <> 1.011::numeric;
+SELECT agtype_in('1.01') < 1.011::numeric;
+SELECT agtype_in('1.01') > 1.001::numeric;
+SELECT agtype_in('1.01') <= 1.011::numeric;
+SELECT agtype_in('1.01') >= 1.001::numeric;
+
+-- Strings
+SELECT agtype_in('"a"') = '"a"';
+SELECT agtype_in('"a"') <> '"b"';
+SELECT agtype_in('"a"') < '"aa"';
+SELECT agtype_in('"b"') > '"aa"';
+SELECT agtype_in('"a"') <= '"aa"';
+SELECT agtype_in('"b"') >= '"aa"';
+
+-- Lists
+SELECT agtype_in('[0, 1, null, 2]') = '[0, 1, null, 2]';
+SELECT agtype_in('[0, 1, null, 2]') <> '[2, null, 1, 0]';
+SELECT agtype_in('[0, 1, null]') < '[0, 1, null, 2]';
+SELECT agtype_in('[1, 1, null, 2]') > '[0, 1, null, 2]';
+
+-- Objects (Maps)
+SELECT agtype_in('{"bool":true, "null": null}') = '{"null":null, "bool":true}';
+SELECT agtype_in('{"bool":true}') < '{"bool":true, "null": null}';
+
+-- Comparisons between types
+-- Object < List < String < Boolean < Integer = Float = Numeric < Null
+SELECT agtype_in('1') < 'null';
+SELECT agtype_in('NaN') < 'null';
+SELECT agtype_in('Infinity') < 'null';
+SELECT agtype_in('true') < '1';
+SELECT agtype_in('true') < 'NaN';
+SELECT agtype_in('true') < 'Infinity';
+SELECT agtype_in('"string"') < 'true';
+SELECT agtype_in('[1,3,5,7,9,11]') < '"string"';
+SELECT agtype_in('{"bool":true, "integer":1}') < '[1,3,5,7,9,11]';
+SELECT agtype_in('[1, "string"]') < '[1, 1]';
+SELECT agtype_in('{"bool":true, "integer":1}') < '{"bool":true, "integer":null}';
+SELECT agtype_in('1::numeric') < 'null';
+SELECT agtype_in('true') < '1::numeric';
 
 --
 -- Test agtype to boolean cast

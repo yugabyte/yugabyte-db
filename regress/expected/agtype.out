@@ -394,101 +394,101 @@ SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 (1 row)
 
 --
--- Test overloaded agtype bigint mathematical operator functions
+-- Test overloaded agtype any mathematical operator functions
 -- +, -, *, /, and %
 --
-SELECT agtype_bigint_add('1', -1);
- agtype_bigint_add 
--------------------
+SELECT agtype_any_add('1', -1);
+ agtype_any_add 
+----------------
  0
 (1 row)
 
-SELECT agtype_bigint_add('1.0', -1);
- agtype_bigint_add 
--------------------
+SELECT agtype_any_add('1.0', -1);
+ agtype_any_add 
+----------------
  0.0
 (1 row)
 
-SELECT agtype_bigint_add('1::numeric', 1);
- agtype_bigint_add 
--------------------
+SELECT agtype_any_add('1::numeric', 1);
+ agtype_any_add 
+----------------
  2::numeric
 (1 row)
 
-SELECT agtype_bigint_add('1.0::numeric', 1);
- agtype_bigint_add 
--------------------
+SELECT agtype_any_add('1.0::numeric', 1);
+ agtype_any_add 
+----------------
  2.0::numeric
 (1 row)
 
-SELECT agtype_bigint_sub('1', -1);
- agtype_bigint_sub 
--------------------
+SELECT agtype_any_sub('1', -1);
+ agtype_any_sub 
+----------------
  2
 (1 row)
 
-SELECT agtype_bigint_sub('1.0', -1);
- agtype_bigint_sub 
--------------------
+SELECT agtype_any_sub('1.0', -1);
+ agtype_any_sub 
+----------------
  2.0
 (1 row)
 
-SELECT agtype_bigint_sub('1::numeric', 1);
- agtype_bigint_sub 
--------------------
+SELECT agtype_any_sub('1::numeric', 1);
+ agtype_any_sub 
+----------------
  0::numeric
 (1 row)
 
-SELECT agtype_bigint_sub('1.0::numeric', 1);
- agtype_bigint_sub 
--------------------
+SELECT agtype_any_sub('1.0::numeric', 1);
+ agtype_any_sub 
+----------------
  0.0::numeric
 (1 row)
 
-SELECT agtype_bigint_mul('-2', 3);
- agtype_bigint_mul 
--------------------
+SELECT agtype_any_mul('-2', 3);
+ agtype_any_mul 
+----------------
  -6
 (1 row)
 
-SELECT agtype_bigint_mul('2.0', -3);
- agtype_bigint_mul 
--------------------
+SELECT agtype_any_mul('2.0', -3);
+ agtype_any_mul 
+----------------
  -6.0
 (1 row)
 
-SELECT agtype_bigint_mul('-2::numeric', 3);
- agtype_bigint_mul 
--------------------
+SELECT agtype_any_mul('-2::numeric', 3);
+ agtype_any_mul 
+----------------
  -6::numeric
 (1 row)
 
-SELECT agtype_bigint_mul('-2.0::numeric', 3);
- agtype_bigint_mul 
--------------------
+SELECT agtype_any_mul('-2.0::numeric', 3);
+ agtype_any_mul 
+----------------
  -6.0::numeric
 (1 row)
 
-SELECT agtype_bigint_div('-4', 3);
- agtype_bigint_div 
--------------------
+SELECT agtype_any_div('-4', 3);
+ agtype_any_div 
+----------------
  -1
 (1 row)
 
-SELECT agtype_bigint_div('4.0', -3);
- agtype_bigint_div 
+SELECT agtype_any_div('4.0', -3);
+  agtype_any_div   
 -------------------
  -1.33333333333333
 (1 row)
 
-SELECT agtype_bigint_div('-4::numeric', 3);
-      agtype_bigint_div       
+SELECT agtype_any_div('-4::numeric', 3);
+        agtype_any_div        
 ------------------------------
  -1.3333333333333333::numeric
 (1 row)
 
-SELECT agtype_bigint_div('-4.0::numeric', 3);
-      agtype_bigint_div       
+SELECT agtype_any_div('-4.0::numeric', 3);
+        agtype_any_div        
 ------------------------------
  -1.3333333333333333::numeric
 (1 row)
@@ -514,13 +514,13 @@ SELECT agtype_div('1::numeric', '0.0');
 ERROR:  division by zero
 SELECT agtype_div('1::numeric', '0::numeric');
 ERROR:  division by zero
-SELECT agtype_bigint_div('1', 0);
+SELECT agtype_any_div('1', 0);
 ERROR:  division by zero
-SELECT agtype_bigint_div('1.0', 0);
+SELECT agtype_any_div('1.0', 0);
 ERROR:  division by zero
-SELECT agtype_bigint_div('-1::numeric', 0);
+SELECT agtype_any_div('-1::numeric', 0);
 ERROR:  division by zero
-SELECT agtype_bigint_div('-1.0::numeric', 0);
+SELECT agtype_any_div('-1.0::numeric', 0);
 ERROR:  division by zero
 --
 -- Should get Infinity
@@ -626,7 +626,7 @@ SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
 (1 row)
 
 --
--- Test overloaded bigint operators +, -, *, /, %
+-- Test overloaded agytype any operators +, -, *, /, %
 --
 SELECT '3'::agtype + 3;
  ?column? 
@@ -1263,6 +1263,466 @@ SELECT agtype_in('1::numeric') < agtype_in('null');
 (1 row)
 
 SELECT agtype_in('true') < agtype_in('1::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- Test overloaded agytype any comparison operators =, <>, <, >, <=, >=,
+--
+-- Integer
+SELECT agtype_in('1') = 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= -2;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Float
+SELECT agtype_in('1.01') = 1.01;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= 1.011;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- NaN, under ordering, is considered to be the biggest numeric value
+-- greater than positive infinity. So, greater than any other number.
+SELECT agtype_in('1.01') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') = 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Float
+SELECT agtype_in('1') = 1.0;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 1.001;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= 0.999999;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > '-Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Integer
+SELECT agtype_in('1.0') = 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') <> 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') <> 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.001') > 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('0.999999') < 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = 1::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= 2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= -2::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = 1.01::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= 1.011::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= 1.001::numeric;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Strings
+SELECT agtype_in('"a"') = '"a"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <> '"b"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') < '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') > '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"a"') <= '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"b"') >= '"aa"';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Lists
+SELECT agtype_in('[0, 1, null, 2]') = '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null, 2]') <> '[2, null, 1, 0]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[0, 1, null]') < '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, 1, null, 2]') > '[0, 1, null, 2]';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Objects (Maps)
+SELECT agtype_in('{"bool":true, "null": null}') = '{"null":null, "bool":true}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true}') < '{"bool":true, "null": null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Comparisons between types
+-- Object < List < String < Boolean < Integer = Float = Numeric < Null
+SELECT agtype_in('1') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('NaN') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('Infinity') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < '1';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < 'NaN';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < 'Infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('"string"') < 'true';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1,3,5,7,9,11]') < '"string"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < '[1,3,5,7,9,11]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('[1, "string"]') < '[1, 1]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('{"bool":true, "integer":1}') < '{"bool":true, "integer":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1::numeric') < 'null';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < '1::numeric';
  ?column? 
 ----------
  t
