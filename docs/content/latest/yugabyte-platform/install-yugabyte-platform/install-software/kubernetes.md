@@ -1,7 +1,7 @@
 ---
 title: Install Yugabyte Platform software - Kubernetes
 headerTitle: Install Yugabyte Platform software - Kubernetes
-linkTitle: Install software 
+linkTitle: Install software
 description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
   latest:
@@ -41,52 +41,6 @@ showAsideToc: true
   </li>
 
 </ul>
-
-## Prerequisites
-
-Before you install Yugabyte Platform on a Kubernetes cluster, perform the following:
-
-- Create a yugabyte-helm service account.
-- Create a `kubeconfig` file for configuring access to the Kubernetes cluster.
-
-### Create a yugabyte-helm service account
-
-Run the following `kubectl` command to apply the YAML file:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
-```
-
-The following output should appear:
-
-```
-serviceaccount "yugabyte-helm" created
-clusterrolebinding "yugabyte-helm" created
-```
-
-## Create a `kubeconfig` File for a Kubernetes Cluster
-
-You can create a `kubeconfig` file for a yugabyte-helm service account as follows:
-
-1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
-
-    ```sh
-    wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
-    ```
-
-2. Run the following command to generate the `kubeconfig` file:
-
-    ```sh
-    python generate_kubeconfig.py -s yugabyte-helm
-    ```
-    
-    The following output should appear:
-    
-    ```
-    Generated the kubeconfig file: /tmp/yugabyte-helm.conf
-    ```
-    
-3. Upload the generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform provider configuration.
 
 ## Install Yugabyte Platform on a Kubernetes Cluster
 
@@ -147,12 +101,51 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
-A message output will notify you whether or not the deployment is successful.
+6. Use the following command to check the service:
+
+    ```sh
+    kubectl get svc -n yb-platform
+    ```
+    The following output should appear:
+
+    ```
+    NAME                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                       AGE
+    yw-test-yugaware-ui   LoadBalancer   10.111.241.9   34.93.169.64   80:32006/TCP,9090:30691/TCP   2m12s
+    ```
+
+## Customization
+
+1. To change CPU & memory resources:
+
+  ```sh
+  helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --set yugaware.resources.requests.cpu=2 \
+    --set yugaware.resources.requests.memory=4Gi \
+    --set yugaware.resources.limits.cpu=2 \
+    --set yugaware.resources.limits.memory=4Gi
+  ```
+
+2. To disable the internet/public facing LB.
+
+  Provide the annotations to YW service for disabling the Public facing LB. Every cloud has different annontations to disable the LB. Use the following docs links to know more.
+
+  1. [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing)
+  2. [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb)
+  3. [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html)
+
+  *Example-*
+
+  For GKE lower then v1.17
+
+  ```sh
+  helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+  ```
 
 ## Delete the Helm Installation of Yugabyte Platform
 
-To delete the Helm installation, run the following `helm del` command:
+To delete the Helm installation, run the following command:
 
 ```sh
-helm del --purge yw-test -n yb-platform
+helm uninstall yw-test -n yb-platform
 ```
