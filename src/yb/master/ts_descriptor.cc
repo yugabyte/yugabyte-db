@@ -289,6 +289,10 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
+  for (const auto& path_metric : metrics.path_metrics()) {
+    ts_metrics_.path_metrics[path_metric.path_id()] =
+        { path_metric.used_space(), path_metric.total_space() };
+  }
 }
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
@@ -301,6 +305,12 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
   metrics->set_read_ops_per_sec(ts_metrics_.read_ops_per_sec);
   metrics->set_write_ops_per_sec(ts_metrics_.write_ops_per_sec);
   metrics->set_uptime_seconds(ts_metrics_.uptime_seconds);
+  for (const auto& path_metric : ts_metrics_.path_metrics) {
+    auto* new_path_metric = metrics->add_path_metrics();
+    new_path_metric->set_path_id(path_metric.first);
+    new_path_metric->set_used_space(path_metric.second.used_space);
+    new_path_metric->set_total_space(path_metric.second.total_space);
+  }
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {
