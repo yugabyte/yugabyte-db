@@ -176,8 +176,8 @@ YBCDataTypeFromOidMod(int attnum, Oid type_id)
 				break;
 			case TYPTYPE_ENUM:
 				/*
-				 * TODO(jason): use the following line instead once user-defined enums can be
-				 * primary keys:
+				 * TODO(jason): use the following line instead once
+				 * user-defined enums can be primary keys:
 				 *   basetp_oid = ANYENUMOID;
 				 */
 				return &YBCFixedLenByValTypeEntity;
@@ -1249,25 +1249,30 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumFromData)YBCDocdbToDatum },
 };
 
-/* Special type entity used for fixed-length, pass-by-value user-defined types.
- * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
- * `true`.
+/*
+ * Special type entity used for fixed-length, pass-by-value user-defined types.
+ * TODO(jason): When user-defined types as primary keys are supported, change
+ * the below `false` to `true`.
  */
 static const YBCPgTypeEntity YBCFixedLenByValTypeEntity =
 	{ InvalidOid, YB_YQL_DATA_TYPE_INT64, false, sizeof(int64),
 		(YBCPgDatumToData)YBCDatumToInt64,
 		(YBCPgDatumFromData)YBCInt64ToDatum };
-/* Special type entity used for null-terminated, pass-by-reference user-defined types.
- * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
- * `true`.
+/*
+ * Special type entity used for null-terminated, pass-by-reference user-defined
+ * types.
+ * TODO(jason): When user-defined types as primary keys are supported, change
+ * the below `false` to `true`.
  */
 static const YBCPgTypeEntity YBCNullTermByRefTypeEntity =
 	{ InvalidOid, YB_YQL_DATA_TYPE_BINARY, false, -2,
 		(YBCPgDatumToData)YBCDatumToCStr,
 		(YBCPgDatumFromData)YBCCStrToDatum };
-/* Special type entity used for variable-length, pass-by-reference user-defined types.
- * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
- * `true`.
+/*
+ * Special type entity used for variable-length, pass-by-reference user-defined
+ * types.
+ * TODO(jason): When user-defined types as primary keys are supported, change
+ * the below `false` to `true`.
  */
 static const YBCPgTypeEntity YBCVarLenByRefTypeEntity =
 	{ InvalidOid, YB_YQL_DATA_TYPE_BINARY, false, -1,
