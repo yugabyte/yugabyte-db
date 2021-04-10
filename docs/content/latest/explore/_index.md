@@ -52,7 +52,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="linear-scalability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Linear scalability</div>
+        <div class="title">Horizontal scalability</div>
       </div>
       <div class="body">
         Reliable, rapid scaling for both writes and reads.
