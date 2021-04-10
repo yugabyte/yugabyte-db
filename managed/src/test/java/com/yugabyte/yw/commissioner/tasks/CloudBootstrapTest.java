@@ -127,7 +127,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
             eq(taskParams.sshPort), eq(taskParams.airGapInstall), eq(false));
       } else {
         String expectedAccessKeyCode = String.format(
-            "yb-%s-%s-key", defaultCustomer.code, provider.name.toLowerCase());
+            "yb-%s-%s_%s-key", defaultCustomer.code, provider.name.toLowerCase(), taskParams.providerUUID);
         verify(mockAccessManager, times(1)).addKey(eq(r.uuid), eq(expectedAccessKeyCode),
                any(),eq(taskParams.sshUser), eq(taskParams.sshPort), eq(taskParams.airGapInstall),
                eq(false));
