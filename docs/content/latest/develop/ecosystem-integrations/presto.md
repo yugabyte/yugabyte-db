@@ -3,7 +3,6 @@ title: Presto
 linkTitle: Presto
 description: Presto
 aliases:
-  - /develop/ecosystem-integrations/presto/
 menu:
   latest:
     identifier: presto
@@ -14,11 +13,12 @@ showAsideToc: true
 ---
 
 [Presto](https://prestosql.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
-This page shows how Presto can be setup to query YugabyteDB's YCQL tables.
+
+This page shows how to set up Presto to query YugabyteDB's YCQL tables.
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra compatible API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
+Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra compatible API as [documented](../../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
 
 ## 2. Download and configure Presto
 
@@ -57,11 +57,13 @@ $ mkdir data
 $ cat > etc/node.properties
 ```
 
-```
+```cfg
 node.environment=test
 node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
 node.data-dir=/Users/<username>/presto-server-309/data
 ```
+
+Press Ctrl-D after you've pasted the file contents.
 
 ### Create jvm.config file
 
@@ -69,7 +71,7 @@ node.data-dir=/Users/<username>/presto-server-309/data
 $ cat > etc/jvm.config
 ```
 
-```
+```cfg
 -server
 -Xmx6G
 -XX:+UseG1GC
@@ -80,13 +82,15 @@ $ cat > etc/jvm.config
 -XX:+ExitOnOutOfMemoryError
 ```
 
+Press Ctrl-D after you've pasted the file contents.
+
 ### Create config.properties file
 
 ```sh
 $ cat > etc/config.properties
 ```
 
-```
+```cfg
 coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
@@ -96,15 +100,19 @@ discovery-server.enabled=true
 discovery.uri=http://localhost:8080
 ```
 
+Press Ctrl-D after you've pasted the file contents.
+
 ### Create log.properties file
 
 ```sh
 $ cat > etc/log.properties
 ```
 
-```
+```cfg
 io.prestosql=INFO
 ```
+
+Press Ctrl-D after you've pasted the file contents.
 
 ### Configure Cassandra connector to YugabyteDB
 
@@ -115,10 +123,12 @@ Detailed instructions are [here](https://prestosql.io/docs/current/connector/cas
 $ cat > etc/catalog/cassandra.properties
 ```
 
-```
+```cfg
 connector.name=cassandra
 cassandra.contact-points=127.0.0.1
 ```
+
+Press Ctrl-D after you've pasted the file contents.
 
 ## 3. Download Presto CLI
 
@@ -130,7 +140,7 @@ $ cd ~/presto-server-309/bin
 $ wget https://repo1.maven.org/maven2/io/prestosql/presto-cli/309/presto-cli-309-executable.jar
 ```
 
-Rename jar to ‘presto’. It is meant to be a self-running binary.
+Rename the JAR file to `presto`. It is meant to be a self-running binary.
 
 ```sh
 $ mv presto-cli-309-executable.jar presto && chmod +x presto
@@ -139,19 +149,19 @@ $ mv presto-cli-309-executable.jar presto && chmod +x presto
 ## 4. Launch Presto server
 
 ```sh
-$ cd presto-server-309
+$ cd ~/presto-server-309
 ```
 
 To run in foreground mode.
 
 ```sh
-$ ./bin/launcher run       
+$ ./bin/launcher run
 ```
 
 To run in background mode.
 
 ```sh
-$ ./bin/launcher start  
+$ ./bin/launcher start
 ```
 
 ## 5. Test Presto queries
@@ -168,7 +178,7 @@ Start using `myapp`.
 presto:default> use myapp;
 ```
 
-```sh
+```output
 USE
 ```
 
@@ -178,7 +188,7 @@ Show the tables available.
 presto:myapp> show tables;
 ```
 
-```
+```output
  Table
 -------
  stock_market
@@ -191,7 +201,7 @@ Describe a particular table.
 presto:myapp> describe stock_market;
 ```
 
-```
+```output
     Column     |  Type   | Extra | Comment 
 ---------------+---------+-------+---------
  stock_symbol  | varchar |       |         
@@ -206,7 +216,7 @@ presto:myapp> describe stock_market;
 presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
 
-```
+```output
  stock_symbol |         ts          | current_price 
 --------------+---------------------+---------------
  AAPL         | 2017-10-26 09:00:00 |        157.41 
@@ -220,7 +230,7 @@ presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 presto:myapp> select stock_symbol, avg(current_price) from stock_market group by stock_symbol;
 ```
 
-```
+```output
  stock_symbol |  _col1  
 --------------+---------
  GOOG         | 972.235 
