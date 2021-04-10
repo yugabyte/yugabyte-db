@@ -3,7 +3,6 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 aliases:
-  - /develop/ecosystem-integrations/metabase/
 menu:
   latest:
     identifier: metabase
@@ -41,8 +40,8 @@ $ tar zxvf sample-data.tgz
 $ ls data/
 ```
 
-```
-orders.sql	products.sql	reviews.sql	users.sql
+```output
+orders.sql  products.sql  reviews.sql  users.sql
 ```
 
 ### Connect to YugabyteDB using ysqlsh
@@ -53,7 +52,7 @@ You can do this as shown below.
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -62,15 +61,9 @@ yugabyte=#
 
 ### Create a database
 
-```plpgsql
+```sql
 yugabyte=# CREATE DATABASE yb-demo;
-```
-
-```plpgsql
 yugabyte=# GRANT ALL ON DATABASE yb-demo to yugabyte;
-```
-
-```plpgsql
 yugabyte=# \c yb-demo;
 ```
 
@@ -78,31 +71,22 @@ yugabyte=# \c yb-demo;
 
 First create the 4 tables necessary to store the data.
 
-```plpgsql
+```sql
 yugabyte=# \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
-```plpgsql
+```sql
 yugabyte=# \i 'data/products.sql'
-```
-
-```plpgsql
 yugabyte=# \i 'data/users.sql'
-```
-
-```plpgsql
 yugabyte=# \i 'data/orders.sql'
-```
-
-```plpgsql
 yugabyte=# \i 'data/reviews.sql'
 ```
 
 ## 3. Download and configure Metabase
 
-Detailed steps for setting up Metabase are available [here](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
+Detailed steps for setting up Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
 
 ```sh
 $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
@@ -112,15 +96,15 @@ $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
 $ java -jar metabase.jar
 ```
 
-Go to http://localhost:3000 to configure your Metabase server and point it to the YSQL API endpoint at `localhost:5433`.
+Go to <http://localhost:3000> to configure your Metabase server and point it to the YSQL API endpoint at `localhost:5433`.
 
 ## 4. Run complex queries with Metabase
 
-Detailed steps on how to use Metabase are available [here](https://www.metabase.com/docs/latest/getting-started.html). For this doc, you will specifically focus on asking questions that require RDBMS capabilities.
+Detailed steps on how to use Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/getting-started.html). For this doc, you will specifically focus on asking questions that require RDBMS capabilities.
 
 - Filter data using WHERE clauses
 - Join data between tables
 - Perform data aggregation using GROUP BY
 - Use built-in functions such as SUM, MIN, MAX, etc.
 
-You can click on Ask a Question -> Custom Query. Choose the database you just setup, and enter the SQL queries noted in the [Retail Analytics](../../realworld-apps/retail-analytics/) section.
+Click Ask a Question > Custom Query. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../realworld-apps/retail-analytics/) section.

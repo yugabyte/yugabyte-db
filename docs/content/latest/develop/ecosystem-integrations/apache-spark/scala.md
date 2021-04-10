@@ -4,7 +4,6 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
-  - /develop/ecosystem-integrations/apache-spark/
   - /latest/develop/ecosystem-integrations/apache-spark/
 menu:
   latest:
@@ -46,7 +45,7 @@ isTocNested: true
 
 To build your Scala application using the YugabyteDB Spark Connector for YCQL, add the following sbt dependency to your application:
 
-```
+```scala
 libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
 ```
 
@@ -60,7 +59,7 @@ This tutorial assumes that you have:
 
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project as shown below.
 
-```sh
+```scala
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
 ```
 
@@ -68,7 +67,7 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
 
 Create an sbt build file (`build.sbt`) and add the following content into it.
 
-```sbt
+```scala
 name := "CassandraSparkWordCount"
 version := "1.0"
 scalaVersion := "2.11.12"
@@ -305,7 +304,7 @@ $ spark-submit --class com.yugabyte.sample.apps.CassandraSparkWordCount \
 
 You should see a table similar to the following as the output.
 
-```
+```output
 +-----+-----+
 | word|count|
 +-----+-----+

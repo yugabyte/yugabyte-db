@@ -3,7 +3,6 @@ title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
-  - /develop/ecosystem-integrations/apache-kafka/
 menu:
   latest:
     identifier: apache-kafka
@@ -23,7 +22,7 @@ Start a YugabyteDB cluster on your [local machine](../../../quick-start/install/
 $ ./bin/ycqlsh localhost
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -116,7 +115,7 @@ $ ./bin/connect-standalone.sh \
 
 The `yugabyte.sink.properties` file used above (and shown below) has the configuration necessary for this sink to work correctly. You will have to change this file to the Kafka topic and YugabyteDB table necessary for your application.
 
-```
+```cfg
 # Sample yugabyte sink properties.
 
 name=yugabyte-sink
@@ -140,7 +139,7 @@ $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh
 
 Enter the following.
 
-```
+```json
 {"key" : "A", "value" : 1, "ts" : 1541559411000}
 {"key" : "B", "value" : 2, "ts" : 1541559412000}
 {"key" : "C", "value" : 3, "ts" : 1541559413000}
@@ -154,7 +153,7 @@ The events above should now show up as rows in the YugabyteDB table.
 ycqlsh> SELECT * FROM demo.test_table;
 ```
 
-```
+```output
 key | value | ts
 ----+-------+---------------------------------
   A |     1 | 2018-11-07 02:56:51.000000+0000

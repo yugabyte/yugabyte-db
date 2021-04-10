@@ -3,7 +3,6 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 aliases:
-  - /develop/ecosystem-integrations/janusgraph/
 menu:
   latest:
     identifier: janusgraph
@@ -23,7 +22,7 @@ Start a cluster on your [local machine](../../../quick-start/install/). Check th
 $ ycqlsh
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -50,6 +49,9 @@ $ cd janusgraph-0.2.0-hadoop2
 
 ```sh
 $ ./bin/gremlin.sh
+```
+
+```output
          \,,,/
          (o o)
 -----oOOo-(3)-oOOo-----
@@ -66,6 +68,9 @@ gremlin>
 
 ```sql
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
+```
+
+```output
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```
 
@@ -79,8 +84,17 @@ We are going to load the sample data that JanusGraph ships with - the Graph of t
 
 ```sh
 gremlin> GraphOfTheGodsFactory.loadWithoutMixedIndex(graph,true)
+```
+
+```output
 ==>null
+```
+
+```sql
 gremlin> g = graph.traversal()
+```
+
+```output
 ==>graphtraversalsource[standardjanusgraph[cql:[127.0.0.1]], standard]
 ```
 
@@ -94,6 +108,9 @@ For reference, here is the graph data loaded by the Graph of the Gods. You can f
 
 ```sh
 gremlin> saturn = g.V().has('name', 'saturn').next()
+```
+
+```output
 ==>v[4168]
 ```
 
@@ -101,6 +118,9 @@ gremlin> saturn = g.V().has('name', 'saturn').next()
 
 ```sh
 gremlin> g.V(saturn).in('father').in('father').values('name')
+```
+
+```output
 ==>hercules
 ```
 
@@ -108,26 +128,49 @@ gremlin> g.V(saturn).in('father').in('father').values('name')
 
 ```sh
 gremlin> hercules = g.V(saturn).repeat(__.in('father')).times(2).next()
-==>v[4120]
+```
 
+```output
+==>v[4120]
+```
+
+```sql
 // Who were the parents of Hercules?
 gremlin> g.V(hercules).out('father', 'mother').values('name')
+```
+
+```output
 ==>jupiter
 ==>alcmene
+```
 
+```sql
 // Were the parents of Hercules gods or humans?
 gremlin> g.V(hercules).out('father', 'mother').label()
+```
+
+```output
 ==>god
 ==>human
+```
 
+```sql
 // Who did Hercules battle?
 gremlin> g.V(hercules).out('battled').valueMap()
+```
+
+```output
 ==>[name:[hydra]]
 ==>[name:[nemean]]
 ==>[name:[cerberus]]
+```
 
+```sql
 // Who did Hercules battle after time 1?
 gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
+```
+
+```output
 ==>cerberus
 ==>hydra
 ```
@@ -136,38 +179,69 @@ gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 
 - Who are Pluto's cohabitants?
 
-```sh
+```sql
 gremlin> pluto = g.V().has('name', 'pluto').next()
-==>v[8416]
+```
 
+```output
+==>v[8416]
+```
+
+```sql
 // who are pluto's cohabitants?
 gremlin> g.V(pluto).out('lives').in('lives').values('name')
+```
+
+```output
 ==>pluto
 ==>cerberus
+```
 
+```sql
 // pluto can't be his own cohabitant
 gremlin> g.V(pluto).out('lives').in('lives').where(is(neq(pluto))).values('name')
+```
+
+```output
 ==>cerberus
+```
+
+```sql
 gremlin> g.V(pluto).as('x').out('lives').in('lives').where(neq('x')).values('name')
+```
+
+```output
 ==>cerberus
-gremlin>
 ```
 
 - Queries about Pluto’s Brothers.
 
-```sh
+```sql
 // where do pluto's brothers live?
 gremlin> g.V(pluto).out('brother').out('lives').values('name')
+```
+
+```output
 ==>sea
 ==>sky
+```
 
+```sql
 // which brother lives in which place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place')
+```
+
+```output
 ==>[god:v[4248],place:v[4320]]
 ==>[god:v[8240],place:v[4144]]
+```
 
+```sql
 // what is the name of the brother and the name of the place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place').by('name')
+```
+
+```output
 ==>[god:neptune,place:sea]
 ==>[god:jupiter,place:sky]
 ```
@@ -176,14 +250,22 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 
 Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 
-```sh
+```sql
 // Show all events that happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
+```
+
+```output
 ==>e[4cj-36g-7x1-6c8][4120-battled->8216]
 ==>e[3yb-36g-7x1-9io][4120-battled->12336]
+```
 
+```sql
 // For these events that happened within 50 kilometers of Athens, show who battled whom.
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50))).as('source').inV().as('god2').select('source').outV().as('god1').select('god1', 'god2').by('name')
+```
+
+```output
 ==>[god1:hercules,god2:hydra]
 ==>[god1:hercules,god2:nemean]
 ```
