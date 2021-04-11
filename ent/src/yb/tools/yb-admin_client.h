@@ -41,11 +41,15 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
+  Result<rapidjson::Document> ListSnapshotRestorations(
+      const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const std::vector<client::YBTableName>& tables,
                                                      MonoDelta interval, MonoDelta retention);
   Result<rapidjson::Document> ListSnapshotSchedules(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,
-                                 const std::string& timestamp);
+                                 HybridTime timestamp);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,

@@ -13,11 +13,13 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <iostream>
+#include <regex>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/common/snapshot.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/date_time.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/tostring.h"
@@ -33,6 +35,46 @@ using std::vector;
 
 using client::YBTableName;
 using strings::Substitute;
+
+namespace {
+
+Result<HybridTime> ParseHybridTime(const string& timestamp) {
+  // Acceptable system time formats:
+  //  1. HybridTime Timestamp (in Microseconds)
+  //  2. -Interval
+  //  3. Human readable string
+  auto ts = boost::trim_copy(timestamp);
+
+  HybridTime ht;
+  // The HybridTime is given in milliseconds and will contain 16 chars.
+  static const std::regex int_regex("[0-9]{16}");
+  if (std::regex_match(ts, int_regex)) {
+    return HybridTime::FromMicros(std::stoul(ts));
+  }
+  if (!ts.empty() && ts[0] == '-') {
+    return HybridTime::FromMicros(
+        VERIFY_RESULT(WallClock()->Now()).time_point -
+        VERIFY_RESULT(DateTime::IntervalFromString(ts.substr(1))).ToMicroseconds());
+  }
+  return HybridTime::FromMicros(VERIFY_RESULT(DateTime::TimestampFromString(ts)).ToInt64());;
+}
+
+const string kMinus = "minus";
+
+template <class T, class Args>
+Result<T> GetOptionalArg(const Args& args, size_t idx) {
+  if (args.size() <= idx) {
+    return T::Nil();
+  }
+  if (args.size() > idx + 1) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "Too many arguments for command, at most $0 expected, but $1 found",
+                         idx + 1, args.size());
+  }
+  return VERIFY_RESULT(T::FromString(args[idx]));
+}
+
+} // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
@@ -90,6 +132,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   RegisterJson(
+      "list_snapshot_restorations",
+      " [<restoration_id>]",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        auto restoration_id = VERIFY_RESULT(GetOptionalArg<TxnSnapshotRestorationId>(args, 0));
+        return client->ListSnapshotRestorations(restoration_id);
+      });
+
+  RegisterJson(
       "create_snapshot_schedule",
       " <snapshot_interval_in_minutes>"
       " <snapshot_retention_in_minutes>"
@@ -110,12 +160,29 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_snapshot_schedules",
       " [<schedule_id>]",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        if (args.size() > 1) {
+        auto schedule_id = VERIFY_RESULT(GetOptionalArg<SnapshotScheduleId>(args, 0));
+        return client->ListSnapshotSchedules(schedule_id);
+      });
+
+  RegisterJson(
+      "restore_snapshot_schedule",
+      Format(" <schedule_id> (<timestamp> | $0 <interval>)", kMinus),
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        if (args.size() < 2 || args.size() > 3) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        auto schedule_id = args.empty() ? SnapshotScheduleId::Nil()
-                                        : VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
-        return client->ListSnapshotSchedules(schedule_id);
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        HybridTime restore_at;
+        if (args.size() == 2) {
+          restore_at = VERIFY_RESULT(ParseHybridTime(args[1]));
+        } else {
+          if (args[1] != kMinus) {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+          restore_at = VERIFY_RESULT(ParseHybridTime("-" + args[2]));
+        }
+
+        return client->RestoreSnapshotSchedule(schedule_id, restore_at);
       });
 
   Register(
@@ -156,18 +223,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "restore_snapshot", " <snapshot_id> [{<timestamp> | minus {interval}]",
+      "restore_snapshot", Format(" <snapshot_id> [{<timestamp> | $0 {interval}]", kMinus),
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1 || 3 < args.size()) {
           return ClusterAdminCli::kInvalidArguments;
-        } else if (args.size() == 3 && args[1] != "minus") {
+        } else if (args.size() == 3 && args[1] != kMinus) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string snapshot_id = args[0];
-        string timestamp = (args.size() == 2) ? args[1] : "";
-        if (args.size() == 3) {
-          timestamp = "-" + args[2];
+        HybridTime timestamp;
+        if (args.size() == 2) {
+          timestamp = VERIFY_RESULT(ParseHybridTime(args[1]));
+        } else if (args.size() == 3) {
+          timestamp = VERIFY_RESULT(ParseHybridTime("-" + args[2]));
         }
+
         RETURN_NOT_OK_PREPEND(client->RestoreSnapshot(snapshot_id, timestamp),
                               Substitute("Unable to restore snapshot $0", snapshot_id));
         return Status::OK();

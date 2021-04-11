@@ -42,6 +42,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
 
+  Result<TxnSnapshotId> CreateForSchedule(
+      const SnapshotScheduleId& schedule_id, CoarseTimePoint deadline);
+
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 
   // As usual negative leader_term means that this operation was replicated at the follower.
