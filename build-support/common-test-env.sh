@@ -77,7 +77,7 @@ readonly INITIAL_SPARK_DRIVER_CORES=8
 # This must match the constant with the same name in run_tests_on_spark.py.
 readonly TEST_DESCRIPTOR_SEPARATOR=":::"
 
-readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/n/jenkins/build_stats"
+readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/Volumes/n/jenkins/build_stats"
 
 # https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
 readonly SANITIZER_COMMON_OPTIONS=""
@@ -374,7 +374,7 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
 }
 
 using_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/Volumes/n/ ]]; then
     return 0
   fi
   return 1
@@ -506,7 +506,9 @@ prepare_for_running_cxx_test() {
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
-  create_test_tmpdir
+  # Ensure we have a TEST_TMPDIR defined and it exists.
+  # If it doesn't exit, we need to make a new one
+  [[ -d "${TEST_TMPDIR:-}" ]] || create_test_tmpdir
   test_log_path="$test_log_path_prefix.log"
 
   # gtest won't overwrite old junit test files, resulting in a build failure
@@ -1817,6 +1819,7 @@ run_python_doctest() {
     fi
     if [[ $basename == .ycm_extra_conf.py ||
           $basename == split_long_command_line.py ||
+          $basename == check-diff-name.py ||
           $python_file =~ managed/.* ]]; then
       continue
     fi

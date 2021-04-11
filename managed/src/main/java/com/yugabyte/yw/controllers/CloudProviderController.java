@@ -7,7 +7,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -106,9 +105,6 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject
   private play.Environment environment;
 
-  @Inject
-  CloudAPI.Factory cloudAPIFactory;
-
   /**
    * GET endpoint for listing providers
    * @return JSON response with provider's
@@ -150,13 +146,7 @@ public class CloudProviderController extends AuthenticatedController {
         accessKey.delete();
       }
       NodeInstance.deleteByProvider(providerUUID);
-
-      int providersCount = Provider.getByCode(provider.code).size();
-      // Instance type has been shared across providers.
-      // We can’t delete instance types if multiple providers exist with the same provider code.
-      if (providersCount == 1) {
-        InstanceType.deleteInstanceTypesForProvider(provider, config);
-      }
+      InstanceType.deleteInstanceTypesForProvider(provider, config);
       provider.delete();
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success("Deleted provider: " + providerUUID);
@@ -196,14 +186,7 @@ public class CloudProviderController extends AuthenticatedController {
         String hostedZoneId = provider.getHostedZoneId();
         switch (provider.code) {
           case "aws":
-            CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-            if (cloudAPI != null && !cloudAPI.isValidCreds(config, requestBody.get("region")
-                .textValue())) {
-              provider.delete();
-              return ApiResponse.error(BAD_REQUEST, "Invalid AWS Credentials.");
-            }
-            String hostedZoneId = provider.getAwsHostedZoneId();
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
@@ -219,7 +202,7 @@ public class CloudProviderController extends AuthenticatedController {
             }
             break;
           case "azu":
-            if (hostedZoneId != null) {
+            if (hostedZoneId != null && hostedZoneId.length() != 0) {
               return validateHostedZoneUpdate(provider, hostedZoneId);
             }
             break;
@@ -430,7 +413,7 @@ public class CloudProviderController extends AuthenticatedController {
     KUBERNETES_INSTANCE_TYPES.forEach((instanceType -> {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
-      InstanceType.upsert(provider.code,
+      InstanceType.upsert(provider.uuid,
           instanceType.get("instanceTypeCode").asText(),
           instanceType.get("numCores").asDouble(),
           instanceType.get("memSizeGB").asDouble(),
@@ -440,7 +423,7 @@ public class CloudProviderController extends AuthenticatedController {
     if (environment.isDev()) {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
-      InstanceType.upsert(provider.code,
+      InstanceType.upsert(provider.uuid,
           KUBERNETES_DEV_INSTANCE_TYPE.get("instanceTypeCode").asText(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asDouble(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("memSizeGB").asDouble(),
@@ -450,7 +433,7 @@ public class CloudProviderController extends AuthenticatedController {
     if (customer.code.equals("cloud")) {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 5, InstanceType.VolumeType.SSD);
-      InstanceType.upsert(provider.code,
+      InstanceType.upsert(provider.uuid,
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("instanceTypeCode").asText(),
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("numCores").asDouble(),
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("memSizeGB").asDouble(),
@@ -483,7 +466,7 @@ public class CloudProviderController extends AuthenticatedController {
       });
       Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
       instanceTypeMetadata.forEach((itCode, metadata) ->
-          InstanceType.createWithMetadata(newProvider, itCode, Json.toJson(metadata)));
+          InstanceType.createWithMetadata(newProvider.uuid, itCode, Json.toJson(metadata)));
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success(newProvider);
     } catch (Exception e) {

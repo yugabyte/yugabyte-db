@@ -253,6 +253,9 @@ class PartitionSchema {
   // the [0, max_partition_key] range into the requested number of intervals.
   // - Inputs are from SQL and CQL.
   // - YugaByte methods are used for hash and range partitioning to create tablets.
+  // 'num_tablets' is just a recommendation for the target number of partitions. The final
+  // partitions are in the result variable 'partitions', so the final number of tablets is
+  // 'partitions.size()' value.
   //
   // TODO(neil) Investigate partitions to support both hash and range schema.
   // - First, use range schema to split the table.

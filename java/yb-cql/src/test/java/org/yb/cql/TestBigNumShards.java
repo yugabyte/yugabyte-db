@@ -24,7 +24,7 @@ public class TestBigNumShards extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBigNumShards.class);
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 32;
   }
 

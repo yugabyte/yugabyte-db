@@ -129,6 +129,8 @@ class TSDescriptor {
   // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
+  CloudInfoPB GetCloudInfo() const;
+
   // Return the pre-computed placement_id, comprised of the cloud_info data.
   std::string placement_id() const;
 
@@ -197,6 +199,16 @@ class TSDescriptor {
   HybridTime hybrid_time() const {
     SharedLock<decltype(lock_)> l(lock_);
     return hybrid_time_;
+  }
+
+  void set_heartbeat_rtt(MonoDelta heartbeat_rtt) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    heartbeat_rtt_ = heartbeat_rtt;
+  }
+
+  MonoDelta heartbeat_rtt() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return heartbeat_rtt_;
   }
 
   void set_total_memory_usage(uint64_t total_memory_usage) {
@@ -362,6 +374,9 @@ class TSDescriptor {
   // The physical and hybrid times on this node at the time of heartbeat
   MicrosTime physical_time_;
   HybridTime hybrid_time_;
+
+  // Roundtrip time of previous heartbeat.
+  MonoDelta heartbeat_rtt_;
 
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;

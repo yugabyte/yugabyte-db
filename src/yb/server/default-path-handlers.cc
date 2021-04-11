@@ -184,10 +184,20 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
+  
+  int max_depth = INT_MAX;
+  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
+  if (depth != "") {
+    max_depth = std::stoi(depth);
+  }
 
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
+    // If the data.depth >= max_depth, skip the info.
+    if (data.depth > max_depth) {
+      continue;
+    }
     const auto& tracker = data.tracker;
     const std::string limit_str =
         tracker->limit() == -1 ? "none" : HumanReadableNumBytes::ToString(tracker->limit());

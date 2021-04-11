@@ -134,7 +134,7 @@ TEST_F(MasterTest, TestCallHome) {
 
   webserver.RegisterPathHandler("/callhome", "callhome", handler);
   FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = Substitute("http://$0/callhome", ToString(addr));
+  FLAGS_callhome_url = Format("http://$0/callhome", addr);
 
   set<string> low {"cluster_uuid", "node_uuid", "server_type", "version_info",
                    "timestamp", "tables", "masters",  "tservers", "tablets", "gflags"};
@@ -224,7 +224,7 @@ TEST_F(MasterTest, TestCallHomeFlag) {
   LOG(INFO) << "Started webserver to listen for callhome post requests.";
 
   FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = strings::Substitute("http://$0/callhome", ToString(addr));
+  FLAGS_callhome_url = Format("http://$0/callhome", addr);
   // Set the interval to 3 secs.
   FLAGS_callhome_interval_secs = 3 * kTimeMultiplier;
   // Start with the default value i.e. callhome enabled.

@@ -179,7 +179,7 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
   std::vector<std::string> ExtraTServerFlags() override {
     return {
         "--allow_index_table_read_write=true",
-        "--client_read_write_timeout_ms=10000",
+        Format("--client_read_write_timeout_ms=$0", 10000 * kTimeMultiplier),
         "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=12000",
         "--yb_client_admin_operation_timeout_sec=90",
     };
@@ -289,7 +289,7 @@ class CppCassandraDriverTestUserEnforcedIndex : public CppCassandraDriverTestInd
 
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTestIndexSlow::ExtraTServerFlags();
-    flags.push_back("--client_read_write_timeout_ms=10000");
+    flags.push_back(Format("--client_read_write_timeout_ms=$0", 10000 * kTimeMultiplier));
     flags.push_back(
         "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=12000");
     return flags;

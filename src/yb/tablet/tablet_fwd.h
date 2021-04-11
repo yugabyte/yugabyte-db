@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -54,7 +55,9 @@ class TransactionParticipantContext;
 class UpdateTxnOperationState;
 class WriteOperationState;
 
-YB_STRONGLY_TYPED_BOOL(RequireLease);
+struct CreateSnapshotData;
+
+YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 

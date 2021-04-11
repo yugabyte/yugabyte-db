@@ -201,7 +201,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader, redirect the URL.
     if (!l.first_failed_status().ok()) {
@@ -225,7 +225,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output,
 
   if (viewType == TServersViewType::kTServersClocksView) {
     *output << "      <th>Physical Time (UTC)</th>\n"
-            << "      <th>Hybrid Time (UTC)</th>\n";
+            << "      <th>Hybrid Time (UTC)</th>\n"
+            << "      <th>Heartbeat RTT</th>\n";
   } else {
     DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
     *output << "      <th>User Tablet-Peers / Leaders</th>\n"
@@ -369,6 +370,9 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
           *output << " / Logical: " << ht.GetLogicalValue();
         }
         *output << "</td>";
+        // Render the roundtrip time of previous heartbeat.
+        double rtt_ms = desc->heartbeat_rtt().ToMicroseconds()/1000.0;
+        *output << "    <td>" <<  StringPrintf("%.2fms", rtt_ms) << "</td>";
       } else {
         DCHECK_EQ(viewType, TServersViewType::kTServersDefaultView);
         *output << "    <td>" << (no_tablets ? 0
@@ -1370,7 +1374,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
     // We are not the leader master, retrieve the response from the leader master.
     RedirectToLeader(req, resp);
@@ -1741,7 +1745,7 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   {
-    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
 
     // If we are not the master leader.
     if (!l.first_failed_status().ok()) {

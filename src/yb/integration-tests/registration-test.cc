@@ -120,8 +120,13 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniTabletServer* ts = cluster_->mini_tablet_server(0);
 
     auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
-          ->tablet_peer()->shared_tablet()->GetMetricEntity();
+      auto metrics = cluster_->mini_master()
+                         ->master()
+                         ->catalog_manager()
+                         ->sys_catalog()
+                         ->tablet_peer()
+                         ->shared_tablet()
+                         ->GetTabletMetricsEntity();
       return prototype.Instantiate(metrics)->value();
     };
     int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);

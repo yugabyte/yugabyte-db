@@ -21,6 +21,8 @@
 
 #include "yb/common/consistent_read_point.h"
 
+using namespace std::literals;
+
 DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
 
 namespace yb {
@@ -36,7 +38,6 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock)
     : client_(client),
       read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
-      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)),
       hybrid_time_for_write_(HybridTime::kInvalid) {
   const auto metric_entity = client_->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
@@ -111,9 +112,18 @@ Status YBSession::Close(bool force) {
 
 void YBSession::SetTimeout(MonoDelta timeout) {
   CHECK_GE(timeout, MonoDelta::kZero);
+  deadline_ = CoarseTimePoint();
   timeout_ = timeout;
   if (batcher_) {
-    batcher_->SetTimeout(timeout);
+    batcher_->SetDeadline(CoarseMonoClock::now() + timeout_);
+  }
+}
+
+void YBSession::SetDeadline(CoarseTimePoint deadline) {
+  timeout_ = MonoDelta();
+  deadline_ = deadline;
+  if (batcher_) {
+    batcher_->SetDeadline(deadline);
   }
 }
 
@@ -205,8 +215,18 @@ internal::Batcher& YBSession::Batcher() {
     batcher_.reset(new internal::Batcher(
         client_, error_collector_.get(), shared_from_this(), transaction_, read_point(),
         force_consistent_read_));
-    if (timeout_.Initialized()) {
-      batcher_->SetTimeout(timeout_);
+    if (deadline_ != CoarseTimePoint()) {
+      batcher_->SetDeadline(deadline_);
+    } else {
+      auto timeout = timeout_;
+      if (PREDICT_FALSE(!timeout.Initialized())) {
+        YB_LOG_EVERY_N(WARNING, 100000)
+             << "Client writing with no deadline set, using 60 seconds.\n"
+             << GetStackTrace();
+        timeout = MonoDelta::FromSeconds(60);
+      }
+
+      batcher_->SetDeadline(CoarseMonoClock::now() + timeout);
     }
     batcher_->SetRejectionScoreSource(rejection_score_source_);
     if (hybrid_time_for_write_.is_valid()) {

@@ -1,13 +1,13 @@
 import _ from 'lodash';
 import React, { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
-import { BootstrapTable, Options, TableHeaderColumn } from 'react-bootstrap-table';
+import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { YBLoading } from '../../common/indicators';
-import { HAReplicationError } from '../replication/HAReplicationError';
+import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
@@ -28,16 +28,14 @@ const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement
 const renderLastBackup = (cell: HAPlatformInstance['last_backup']): string =>
   cell ? moment(cell).format('lll') : 'n/a';
 
-const tableOptions: Options = {
-  defaultSortName: 'address',
-  defaultSortOrder: 'asc'
-};
-
 export const HAInstances: FC = () => {
   const [isAddInstancesModalVisible, setAddInstancesModalVisible] = useState(false);
   const [instanceToDelete, setInstanceToDelete] = useState<string>();
   const [instanceToPromote, setInstanceToPromote] = useState<string>();
-  const { config, error, isNoHAConfigExists, isLoading } = useLoadHAConfiguration(false);
+  const { config, error, isNoHAConfigExists, isLoading } = useLoadHAConfiguration({
+    loadSchedule: false,
+    autoRefresh: true
+  });
 
   const showAddInstancesModal = () => setAddInstancesModalVisible(true);
   const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
@@ -80,12 +78,12 @@ export const HAInstances: FC = () => {
   }
 
   if (error) {
-    return <HAReplicationError error={error} />;
+    return <HAErrorPlaceholder error={error} />;
   }
 
   if (isNoHAConfigExists) {
     return (
-      <div className="ha-instances__no-config">
+      <div className="ha-instances__no-config" data-testid="ha-instances-no-config">
         <i className="fa fa-file-o" />
         <div>You must create a replication configuration first</div>
       </div>
@@ -93,7 +91,7 @@ export const HAInstances: FC = () => {
   }
 
   if (config && currentInstance) {
-    const sortedInstances = _.sortBy(config.instances, [item => !item.is_leader, 'address']);
+    const sortedInstances = _.sortBy(config.instances, [(item) => !item.is_leader, 'address']);
     return (
       <Grid fluid className="ha-instances">
         <AddStandbyInstanceModal
@@ -134,7 +132,7 @@ export const HAInstances: FC = () => {
         </Row>
         <Row>
           <Col xs={12}>
-            <BootstrapTable data={sortedInstances} options={tableOptions}>
+            <BootstrapTable data={sortedInstances}>
               <TableHeaderColumn dataField="uuid" isKey hidden />
               <TableHeaderColumn
                 dataField="address"

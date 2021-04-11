@@ -99,12 +99,10 @@ DEFINE_bool(transactions_poll_check_aborted, true, "Check aborted transactions d
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 METRIC_DEFINE_simple_counter(
-    tablet, transaction_not_found,
-    "Total number of missing transactions during load",
+    tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
-    tablet, transactions_running,
-    "Total number of transactions running in participant",
+    tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
 
 namespace yb {
@@ -536,7 +534,7 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();
 
-      UpdateAppliedTransaction(data, apply_state);
+      UpdateAppliedTransaction(data, apply_state, &operation);
     }
 
     NotifyApplied(data);
@@ -545,7 +543,8 @@ class TransactionParticipant::Impl
 
   void UpdateAppliedTransaction(
        const TransactionApplyData& data,
-       const docdb::ApplyTransactionState& apply_state) NO_THREAD_SAFETY_ANALYSIS {
+       const docdb::ApplyTransactionState& apply_state,
+       ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents or not.
@@ -555,7 +554,7 @@ class TransactionParticipant::Impl
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, "applied"s, &min_running_notifier);
       } else {
-        lock_and_iterator.transaction().SetApplyData(apply_state, &data);
+        lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
       }
     }
   }
@@ -566,6 +565,7 @@ class TransactionParticipant::Impl
     if (data.leader_term != OpId::kUnknownTerm) {
       tserver::UpdateTransactionRequestPB req;
       req.set_tablet_id(data.status_tablet);
+      req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
       auto& state = *req.mutable_state();
       state.set_transaction_id(data.transaction_id.data(), data.transaction_id.size());
       state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
@@ -908,6 +908,10 @@ class TransactionParticipant::Impl
                                      : STATUS(TimedOut, "TimedOut while aborting old transactions");
   }
 
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    return participant_context_.WaitForSafeTime(safe_time, deadline);
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -940,13 +944,35 @@ class TransactionParticipant::Impl
 
   void LoadFinished(const ApplyStatesMap& pending_applies) override {
     start_latch_.Wait();
-    if (closing_.load(std::memory_order_acquire)) {
-      LOG_WITH_PREFIX(INFO) << __func__ << ": closing, not starting transaction status resolution";
-      return;
+    std::vector<ScopedRWOperation> operations;
+    operations.reserve(pending_applies.size());
+    for (;;) {
+      if (closing_.load(std::memory_order_acquire)) {
+        LOG_WITH_PREFIX(INFO)
+            << __func__ << ": closing, not starting transaction status resolution";
+        return;
+      }
+      while (operations.size() < pending_applies.size()) {
+        ScopedRWOperation operation(pending_op_counter_);
+        if (!operation.ok()) {
+          break;
+        }
+        operations.push_back(std::move(operation));
+      }
+      if (operations.size() == pending_applies.size()) {
+        break;
+      }
+      operations.clear();
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+          << __func__ << ": unable to start scoped RW operation";
+      std::this_thread::sleep_for(10ms);
     }
 
-    {
+    if (!pending_applies.empty()) {
+      LOG_WITH_PREFIX(INFO)
+          << __func__ << ": starting " << pending_applies.size() << " pending applies";
       std::lock_guard<std::mutex> lock(mutex_);
+      size_t idx = 0;
       for (const auto& p : pending_applies) {
         auto it = transactions_.find(p.first);
         if (it == transactions_.end()) {
@@ -957,7 +983,8 @@ class TransactionParticipant::Impl
         TransactionApplyData apply_data;
         apply_data.transaction_id = p.first;
         apply_data.commit_ht = p.second.commit_ht;
-        (**it).SetApplyData(p.second.state, &apply_data);
+        (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
+        ++idx;
       }
     }
 
@@ -1225,7 +1252,8 @@ class TransactionParticipant::Impl
     min_running_notifier->Satisfied();
   }
 
-  void TransactionsStatus(const std::vector<TransactionStatusInfo>& status_infos) {
+  void TransactionsStatus(
+      const std::vector<TransactionStatusInfo>& status_infos) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     HybridTime now = participant_context_.Now();
@@ -1234,7 +1262,7 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
-      if ((**it).UpdateStatus(info.status, info.status_ht)) {
+      if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
         EnqueueRemoveUnlocked(info.transaction_id, &min_running_notifier);
       } else {
         transactions_.modify(it, [now](const auto& txn) {
@@ -1377,8 +1405,8 @@ class TransactionParticipant::Impl
 
   TransactionStatusResolver& AddStatusResolver() override EXCLUDES(status_resolvers_mutex_) {
     std::lock_guard<std::mutex> lock(status_resolvers_mutex_);
-    status_resolvers_.emplace_back(&
-        participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
+    status_resolvers_.emplace_back(
+        &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
         std::bind(&Impl::TransactionsStatus, this, _1));
     return status_resolvers_.back();
   }
@@ -1614,6 +1642,11 @@ std::string TransactionParticipant::DumpTransactions() const {
 
 Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
   return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+}
+
+Result<HybridTime> TransactionParticipant::WaitForSafeTime(
+    HybridTime safe_time, CoarseTimePoint deadline) {
+  return impl_->WaitForSafeTime(safe_time, deadline);
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

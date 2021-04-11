@@ -866,6 +866,27 @@ public class YBClient implements AutoCloseable {
     }
   }
 
+  /**
+   * Checks whether the LoadBalancer is currently running.
+   */
+  private class LoadBalancerActiveCondition implements Condition {
+    public LoadBalancerActiveCondition() {
+    }
+    @Override
+    public boolean get() throws Exception {
+      try {
+        IsLoadBalancerIdleResponse resp = getIsLoadBalancerIdle();
+      } catch (MasterErrorException e) {
+        // TODO (deepthi.srinivasan) Instead of writing if-else
+        // with Exceptions, find a way to receive the error code
+        // neatly.
+        return e.toString().contains("LOAD_BALANCER_RECENTLY_ACTIVE");
+      }
+      return false;
+    }
+  }
+
+
   private class AreLeadersOnPreferredOnlyCondition implements Condition {
     @Override
     public boolean get() throws Exception {
@@ -997,6 +1018,16 @@ public class YBClient implements AutoCloseable {
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Condition loadBalanceCondition = new LoadBalanceCondition(numServers);
     return waitForCondition(loadBalanceCondition, timeoutMs);
+  }
+
+  /**
+  * Wait for the Load Balancer to become active.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the load balancer is currently running.
+  */
+  public boolean waitForLoadBalancerActive(final long timeoutMs) {
+    Condition loadBalancerActiveCondition = new LoadBalancerActiveCondition();
+    return waitForCondition(loadBalancerActiveCondition, timeoutMs);
   }
 
   /**
