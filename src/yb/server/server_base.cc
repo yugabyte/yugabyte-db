@@ -458,6 +458,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
   instance_pb_->set_instance_seqno(Env::Default()->NowMicros());
+  instance_pb_->set_start_time(Env::Default()->NowMicros());
 }
 
 Status RpcAndWebServerBase::Init() {
