@@ -270,8 +270,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit2000() {
     String authToken = user.createAuthToken();
     Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
-    IntStream.range(0, 3000).forEach(i -> createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
-    Create, "Foo", "Running", 50.0));
+    IntStream.range(0, 3000).forEach(i -> createTaskWithStatus(
+        universe.universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0));
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
         customer.uuid +  "/universes/" + universe.universeUUID + "/tasks", authToken);
     assertEquals(OK, result.status());
