@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.scheduler;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import akka.actor.ActorSystem;
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -80,7 +82,8 @@ public class Scheduler {
   /**
    * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
    */
-  public void scheduleRunner() {
+  @VisibleForTesting
+  void scheduleRunner() {
     if (HighAvailabilityConfig.isFollower()) {
       LOG.debug("Skipping scheduler for follower platform");
       return;
@@ -251,6 +254,17 @@ public class Scheduler {
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
+    UUID universeUUID = backup.getBackupInfo().universeUUID;
+    try {
+      Universe universe = Universe.get(universeUUID);
+      if (universe.getUniverseDetails().universePaused) {
+        LOG.warn("Cannot delete the backup since the universe {} is currently in a paused state.",
+            universeUUID.toString());
+        return;
+      }
+    } catch (Exception e) {
+      LOG.warn("Universe not found for the backup {}.", backup.backupUUID.toString());
+    }
 
     if (backup.state != Backup.BackupState.Completed) {
       LOG.warn("Cannot delete backup {} since it is not in completed state.",

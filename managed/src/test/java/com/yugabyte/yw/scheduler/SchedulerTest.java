@@ -66,7 +66,6 @@ public class SchedulerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
 
-    UUID universeUUID = UUID.randomUUID();
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
 
     Backup backup = ModelFactory.createBackupWithExpiry(defaultCustomer.uuid, universe.universeUUID,
@@ -76,6 +75,6 @@ public class SchedulerTest extends FakeDBApplication {
     scheduler.scheduleRunner();
  
     CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
-    assertEquals(task.getType(), CustomerTask.TaskType.Delete);
+    assertEquals(CustomerTask.TaskType.Delete, task.getType());
   }
 }
