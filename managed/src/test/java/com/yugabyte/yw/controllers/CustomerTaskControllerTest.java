@@ -27,6 +27,7 @@ import play.test.WithApplication;
 import play.test.Helpers;
 
 import java.util.Calendar;
+import java.util.stream.IntStream;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -262,6 +263,23 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testTaskHistoryLimit2000() {
+    String authToken = user.createAuthToken();
+    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
+    IntStream.range(0, 3000).forEach(i -> createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
+    Create, "Foo", "Running", 50.0));
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid +  "/universes/" + universe.universeUUID + "/tasks", authToken);
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isObject());
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    assertEquals(2000, universeTasks.size());
     assertAuditEntry(0, customer.uuid);
   }
 
