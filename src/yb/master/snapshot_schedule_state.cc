@@ -63,13 +63,26 @@ void SnapshotScheduleState::PrepareOperations(
       (last_snapshot_time && last_snapshot_time.AddSeconds(options_.interval_sec()) > now)) {
     return;
   }
+  operations->push_back(MakeCreateSnapshotOperation(last_snapshot_time));
+}
+
+SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
+    HybridTime last_snapshot_time) {
   creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
-  operations->push_back(SnapshotScheduleOperation {
+  return SnapshotScheduleOperation {
     .schedule_id = id_,
     .filter = options_.filter(),
     .snapshot_id = creating_snapshot_id_,
     .previous_snapshot_hybrid_time = last_snapshot_time,
-  });
+  };
+}
+
+Result<SnapshotScheduleOperation> SnapshotScheduleState::ForceCreateSnapshot(
+    HybridTime last_snapshot_time) {
+  if (creating_snapshot_id_) {
+    return STATUS_FORMAT(IllegalState, "Creating snapshot in progress: $0", creating_snapshot_id_);
+  }
+  return MakeCreateSnapshotOperation(last_snapshot_time);
 }
 
 void SnapshotScheduleState::SnapshotFinished(

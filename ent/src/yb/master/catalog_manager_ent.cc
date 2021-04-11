@@ -301,6 +301,14 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
     return CreateTransactionAwareSnapshot(*req, resp, rpc);
   }
 
+  if (req->has_schedule_id()) {
+    auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
+    auto snapshot_id = VERIFY_RESULT(
+        snapshot_coordinator_.CreateForSchedule(schedule_id, rpc->GetClientDeadline()));
+    resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    return Status::OK();
+  }
+
   return CreateNonTransactionAwareSnapshot(req, resp, rpc);
 }
 
@@ -489,9 +497,6 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
     HybridTime ht;
     if (req->has_restore_ht()) {
       ht = HybridTime(req->restore_ht());
-    } else if (req->has_restore_interval()) {
-      ht = HybridTime::FromMicros(
-          master_->clock()->Now().GetPhysicalValueMicros() - req->restore_interval());
     }
     TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht));
     resp->set_restoration_id(id.data(), id.size());
