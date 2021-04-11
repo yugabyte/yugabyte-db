@@ -134,6 +134,28 @@ class MasterSnapshotCoordinator::Impl {
     return snapshot_id;
   }
 
+  Result<TxnSnapshotId> CreateForSchedule(
+      const SnapshotScheduleId& schedule_id, CoarseTimePoint deadline) {
+    boost::optional<SnapshotScheduleOperation> operation;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = schedules_.find(schedule_id);
+      if (it == schedules_.end()) {
+        return STATUS_FORMAT(NotFound, "Unknown snapshot schedule: $0", schedule_id);
+      }
+      auto* last_snapshot = BoundingSnapshot((**it).id(), Bound::kLast);
+      auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
+                                              : HybridTime::kInvalid;
+      operation = VERIFY_RESULT((**it).ForceCreateSnapshot(last_snapshot_time));
+    }
+
+    auto synchronizer = std::make_shared<Synchronizer>();
+    RETURN_NOT_OK(ExecuteScheduleOperation(*operation, synchronizer));
+    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
+
+    return operation->snapshot_id;
+  }
+
   CHECKED_STATUS CreateReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
@@ -669,16 +691,23 @@ class MasterSnapshotCoordinator::Impl {
     SubmitWrite(std::move(write_batch), &context_);
   }
 
-  CHECKED_STATUS ExecuteScheduleOperation(const SnapshotScheduleOperation& operation) {
+  CHECKED_STATUS ExecuteScheduleOperation(
+      const SnapshotScheduleOperation& operation,
+      const std::weak_ptr<Synchronizer>& synchronizer = std::weak_ptr<Synchronizer>()) {
     auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
         operation.snapshot_id,
         tablet::MakeFunctorOperationCompletionCallback(
-            [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id](
+            [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
+             synchronizer](
                 const Status& status) {
           if (!status.ok()) {
             CreateSnapshotAborted(status, schedule_id, snapshot_id);
+          }
+          auto locked_synchronizer = synchronizer.lock();
+          if (locked_synchronizer) {
+            locked_synchronizer->StatusCB(status);
           }
         })));
     return Status::OK();
@@ -1041,6 +1070,11 @@ Result<SnapshotSchedulesToTabletsMap>
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {
   impl_->SysCatalogLoaded(term);
+}
+
+Result<TxnSnapshotId> MasterSnapshotCoordinator::CreateForSchedule(
+    const SnapshotScheduleId& schedule_id, CoarseTimePoint deadline) {
+  return impl_->CreateForSchedule(schedule_id, deadline);
 }
 
 } // namespace master

@@ -125,17 +125,14 @@ CHECKED_STATUS SnapshotTestBase::WaitSnapshotDone(
 }
 
 Result<TxnSnapshotRestorationId> SnapshotTestBase::StartRestoration(
-    const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-    int64_t interval) {
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
   master::RestoreSnapshotRequestPB req;
   master::RestoreSnapshotResponsePB resp;
 
   rpc::RpcController controller;
   controller.set_timeout(60s);
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-  if (interval != 0) {
-    req.set_restore_interval(interval);
-  } else if (restore_at) {
+  if (restore_at) {
     req.set_restore_ht(restore_at.ToUint64());
   }
   RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
@@ -169,9 +166,8 @@ Result<bool> SnapshotTestBase::IsRestorationDone(const TxnSnapshotRestorationId&
 }
 
 Status SnapshotTestBase::RestoreSnapshot(
-    const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-    int64_t interval) {
-  auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at, interval));
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at));
 
   return WaitFor([this, &restoration_id] {
     return IsRestorationDone(restoration_id);

@@ -26,6 +26,7 @@
 #include <locale>
 #include <regex>
 
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/timestamp.h"
 
@@ -36,11 +37,9 @@ class DateTime {
   //----------------------------------------------------------------------------------------------
   // Timestamp input and output formats.
   struct InputFormat {
-    const std::vector<std::regex> regexes;
-    const int input_precision;
-
-    InputFormat(const std::vector<std::regex>& regexes, const int input_precision)
-        : regexes(regexes), input_precision(input_precision) {}
+    std::vector<std::regex> regexes;
+    int input_precision;
+    bool use_utc;
   };
 
   struct OutputFormat {
@@ -54,6 +53,7 @@ class DateTime {
   static const OutputFormat CqlOutputFormat;
 
   // Human readable format.
+  static const InputFormat HumanReadableInputFormat;
   static const OutputFormat HumanReadableOutputFormat;
 
   //----------------------------------------------------------------------------------------------
@@ -88,7 +88,7 @@ class DateTime {
   // Interval represents a relative span of time, in microseconds.
   // This is normally utilized relative to the current HybridTime.
 
-  static Result<int64_t> IntervalFromString(const std::string& str);
+  static Result<MonoDelta> IntervalFromString(const std::string& str);
 
   //----------------------------------------------------------------------------------------------
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);

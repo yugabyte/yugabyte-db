@@ -117,16 +117,6 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
   return result;
 }
 
-void StateWithTablets::TabletsToPB(
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* out) {
-  out->Reserve(tablets_.size());
-  for (const auto& tablet : tablets_) {
-    auto* tablet_state = out->Add();
-    tablet_state->set_id(tablet.id);
-    tablet_state->set_state(tablet.state);
-  }
-}
-
 void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
   VLOG(4) << __func__ << "(" << tablet_id << ", " << status << ")";
 

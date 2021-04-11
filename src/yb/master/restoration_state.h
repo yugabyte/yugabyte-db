@@ -35,7 +35,7 @@ class RestorationState : public StateWithTablets {
     return snapshot_id_;
   }
 
-  CHECKED_STATUS ToPB(SnapshotInfoPB* out);
+  CHECKED_STATUS ToPB(RestorationInfoPB* out);
 
   TabletInfos PrepareOperations();
 
