@@ -58,7 +58,6 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
-  void TabletsToPB(google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* out);
   void Done(const TabletId& tablet_id, const Status& status);
   bool AllInState(SysSnapshotEntryPB::State state);
   bool HasInState(SysSnapshotEntryPB::State state);
@@ -81,6 +80,16 @@ class StateWithTablets {
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids) {
     InitTabletIds(tablet_ids, initial_state_);
+  }
+
+  template <class PB>
+  void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
+    out->Reserve(tablets_.size());
+    for (const auto& tablet : tablets_) {
+      auto* tablet_state = out->Add();
+      tablet_state->set_id(tablet.id);
+      tablet_state->set_state(tablet.state);
+    }
   }
 
   // Invoking callback for all operations that are not running and are still in the initial state.
