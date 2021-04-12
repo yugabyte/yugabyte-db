@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = (value) => (value ? undefined : 'This field is required.');
@@ -32,8 +32,8 @@ class AwsStorageConfiguration extends Component {
    * @param {boolean} iamRoleEnabled IAM enabled state.
    * @returns true
    */
-  disableInputFields = (data, configName, iamRoleEnabled = false) => {
-    if (!isEmptyObject(data) && configName !== 'S3_CONFIGURATION_NAME') {
+  disableInputFields = (isEdited, configName, iamRoleEnabled = false, inUse) => {
+    if (isEdited && (configName === 'S3_BACKUP_LOCATION' || configName === 'AWS_HOST_BASE')) {
       return true;
     }
 
@@ -44,7 +44,7 @@ class AwsStorageConfiguration extends Component {
   };
 
   render() {
-    const { data, iamInstanceToggle, iamRoleEnabled } = this.props;
+    const { isEdited, iamInstanceToggle, iamRoleEnabled } = this.props;
 
     return (
       <Row className="config-section-header">
@@ -59,7 +59,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="Configuration Name"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={this.disableInputFields(data, 'S3_CONFIGURATION_NAME')}
+                isReadOnly={this.disableInputFields(isEdited, 'S3_CONFIGURATION_NAME')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -78,7 +78,7 @@ class AwsStorageConfiguration extends Component {
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
                 onToggle={iamInstanceToggle}
-                isReadOnly={this.disableInputFields(data, 'IAM_INSTANCE_PROFILE')}
+                isReadOnly={this.disableInputFields(isEdited, 'IAM_INSTANCE_PROFILE')}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
@@ -93,7 +93,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Key"
                 component={YBTextInputWithLabel}
                 validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(data, 'AWS_ACCESS_KEY_ID', iamRoleEnabled)}
+                isReadOnly={this.disableInputFields(isEdited, 'AWS_ACCESS_KEY_ID', iamRoleEnabled)}
               />
             </Col>
           </Row>
@@ -107,7 +107,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="AWS Access Secret"
                 component={YBTextInputWithLabel}
                 validate={(value) => validateKeys(value, iamRoleEnabled)}
-                isReadOnly={this.disableInputFields(data, 'AWS_SECRET_ACCESS_KEY', iamRoleEnabled)}
+                isReadOnly={this.disableInputFields(isEdited, 'AWS_SECRET_ACCESS_KEY', iamRoleEnabled)}
               />
             </Col>
           </Row>
@@ -121,7 +121,7 @@ class AwsStorageConfiguration extends Component {
                 placeHolder="s3://bucket_name"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={this.disableInputFields(data, 'S3_BACKUP_LOCATION')}
+                isReadOnly={this.disableInputFields(isEdited, 'S3_BACKUP_LOCATION')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
@@ -137,7 +137,7 @@ class AwsStorageConfiguration extends Component {
                 name="AWS_HOST_BASE"
                 placeHolder="s3.amazonaws.com"
                 component={YBTextInputWithLabel}
-                isReadOnly={this.disableInputFields(data, 'AWS_HOST_BASE')}
+                isReadOnly={this.disableInputFields(isEdited, 'AWS_HOST_BASE')}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">

@@ -56,6 +56,8 @@ export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE'
 export const ADD_CUSTOMER_CONFIG = 'ADD_CUSTOMER_CONFIG';
 export const ADD_CUSTOMER_CONFIG_RESPONSE = 'ADD_CUSTOMER_CONFIG_RESPONSE';
 
+export const SET_INITIAL_VALUES = 'SET_INITIAL_VALUES';
+
 export const EDIT_CUSTOMER_CONFIG = 'EDIT_CUSTOMER_CONFIG';
 export const EDIT_CUSTOMER_CONFIG_RESPONSE = 'EDIT_CUSTOMER_CONFIG_RESPONSE';
 
@@ -488,6 +490,13 @@ export function addCustomerConfig(config) {
   return {
     type: ADD_CUSTOMER_CONFIG,
     payload: request
+  };
+}
+
+export function setInitialValues(initialValues) {
+  return {
+    type: SET_INITIAL_VALUES,
+    payload: initialValues
   };
 }
 

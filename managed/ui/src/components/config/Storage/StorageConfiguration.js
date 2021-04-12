@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
 import { withRouter } from 'react-router';
-import { SubmissionError, change } from 'redux-form';
+import { SubmissionError } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -15,6 +15,7 @@ import { storageConfigTypes } from './ConfigType';
 import { ConfigControls } from './ConfigControls';
 import awss3Logo from './images/aws-s3.png';
 import azureLogo from './images/azure_logo.svg';
+import { Formik } from 'formik';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -43,22 +44,10 @@ class StorageConfiguration extends Component {
 
     this.state = {
       editView: {
-        s3: {
-          isEdited: false,
-          data: {}
-        },
-        nfs: {
-          isEdited: false,
-          data: {}
-        },
-        gcs: {
-          isEdited: false,
-          data: {}
-        },
-        az: {
-          isEdited: false,
-          data: {}
-        }
+        s3: false,
+        nfs: false,
+        gcs: false,
+        az: false
       },
       iamRoleEnabled: false,
       listView: {
@@ -159,16 +148,13 @@ class StorageConfiguration extends Component {
           ]);
         }
         break;
-    }
+    };
 
-    if (values.type === 'edit') {
+    if (values.type === 'update') {
       this.setState({
         editView: {
           ...this.state.editView,
-          [props.activeTab]: {
-            isEdited: false,
-            data: {}
-          }
+          [props.activeTab]: false
         },
         listView: {
           ...this.state.listView,
@@ -242,29 +228,57 @@ class StorageConfiguration extends Component {
    */
   editBackupConfig = (row, activeTab) => {
     const tab = activeTab.toUpperCase();
-    const data = {
-      ...row.data,
-      type: 'edit',
-      configUUID: row.configUUID,
-      inUse: row.inUse,
-      [`${tab}_BACKUP_LOCATION`]: row.data.BACKUP_LOCATION,
-      [`${tab}_CONFIGURATION_NAME`]: row.configName
-    };
+    let initialVal = {};
+    switch (activeTab) {
+      case "nfs":
+        initialVal = {
+          type: "update",
+          configUUID: row?.configUUID,
+          [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+        };
+        break;
 
-    Object.keys(data).map((fieldName) => {
-      const fieldValue = data[fieldName];
-      this.props.dispatch(change('storageConfigForm', fieldName, fieldValue));
-    });
+      case "gcs":
+        initialVal = {
+          type: "update",
+          configUUID: row?.configUUID,
+          [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          GCS_CREDENTIALS_JSON: row.data?.GCS_CREDENTIALS_JSON
+        };
+        break;
 
+      case "az":
+        initialVal = {
+          type: "update",
+          configUUID: row?.configUUID,
+          [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN
+        };
+        break;
+
+      default:
+        initialVal = {
+          type: "update",
+          configUUID: row?.configUUID,
+          IAM_INSTANCE_PROFILE: row.data?.IAM_INSTANCE_PROFILE,
+          AWS_ACCESS_KEY_ID: row.data?.AWS_ACCESS_KEY_ID || "",
+          AWS_SECRET_ACCESS_KEY: row.data?.AWS_SECRET_ACCESS_KEY || "",
+          [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          AWS_HOST_BASE: row.data?.AWS_HOST_BASE
+        }
+        break;
+    }
+    this.props.setInitialValues(initialVal);
     this.setState({
       editView: {
         ...this.state.editView,
-        [activeTab]: {
-          isEdited: true,
-          data: data
-        }
+        [activeTab]: true
       },
-      iamRoleEnabled: data['IAM_INSTANCE_PROFILE'],
+      iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
       listView: {
         ...this.state.listView,
         [activeTab]: false
@@ -278,7 +292,6 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab It's a respective active tab.
    */
   createBackupConfig = (activeTab) => {
-    this.props.reset();
     this.setState({
       listView: {
         ...this.state.listView,
@@ -293,14 +306,11 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab It's a respective active tab.
    */
   showListView = (activeTab) => {
-    this.props.reset();
+    this.props.setInitialValues();
     this.setState({
       editView: {
         ...this.state.editView,
-        [activeTab]: {
-          isEdited: false,
-          data: {}
-        }
+        [activeTab]: false
       },
       iamRoleEnabled: false,
       listView: {
@@ -323,9 +333,14 @@ class StorageConfiguration extends Component {
   render() {
     const {
       handleSubmit,
-      customerConfigs
+      customerConfigs,
+      initialValues
     } = this.props;
-    const { iamRoleEnabled } = this.state;
+    const {
+      iamRoleEnabled,
+      editView,
+      listView
+    } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
@@ -343,69 +358,63 @@ class StorageConfiguration extends Component {
     ) {
       const configs = [
         <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
-          {!this.state.listView.s3 && (
+          {!listView.s3 && (
             <AwsStorageConfiguration
-              data={this.state.editView.s3.data}
               iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
+              isEdited={editView[activeTab]}
             />
           )}
         </Tab>
       ];
+
       Object.keys(storageConfigTypes).forEach((configName) => {
-        if (this.state.editView[activeTab]?.isEdited) {
-          const configFields = [];
-          const configTemplate = storageConfigTypes[configName];
-          configTemplate.fields.forEach((field) => {
-            const value = this.state.editView[activeTab].data;
-            configFields.push(
-              <BackupConfigField key={field.id} configName={configName} data={value} field={field} />
-            );
-          });
-          configs.push(this.wrapFields(configFields, configName));
-        } else {
-          const configFields = [];
-          const config = storageConfigTypes[configName];
-          config.fields.forEach((field) => {
-            const value = this.state.editView[activeTab].data;
-            configFields.push(
-              <BackupConfigField key={field.id} configName={configName} data={value} field={field} />
-            );
-          });
-          configs.push(this.wrapFields(configFields, configName));
-        }
+        const configFields = [];
+        const config = storageConfigTypes[configName];
+        config.fields.forEach((field) => {
+          configFields.push(
+            <BackupConfigField
+              key={field.id}
+              configName={configName}
+              field={field}
+              isEdited={editView[activeTab]} />
+          );
+        });
+        configs.push(this.wrapFields(configFields, configName));
       });
 
       return (
         <div className="provider-config-container">
-          <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
-            <YBTabsPanel
-              defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
-              activeTab={activeTab}
-              id="storage-config-tab-panel"
-              className="config-tabs"
-              routePrefix="/config/backup/"
-            >
-              {this.state.listView[activeTab] && (
-                <BackupList
-                  {...this.props}
-                  activeTab={activeTab}
-                  data={backupListData}
-                  onCreateBackup={() => this.createBackupConfig(activeTab)}
-                  onEditConfig={(row) => this.editBackupConfig(row, activeTab)}
-                  deleteStorageConfig={(row) => this.deleteStorageConfig(row)}
-                />
-              )}
+          <Formik initialValues={initialValues}>
+            <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
+              <YBTabsPanel
+                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+                activeTab={activeTab}
+                id="storage-config-tab-panel"
+                className="config-tabs"
+                routePrefix="/config/backup/"
+              >
+                {this.state.listView[activeTab] && (
+                  <BackupList
+                    {...this.props}
+                    activeTab={activeTab}
+                    data={backupListData}
+                    onCreateBackup={() => this.createBackupConfig(activeTab)}
+                    onEditConfig={(row) => this.editBackupConfig(row, activeTab)}
+                    deleteStorageConfig={(row) => this.deleteStorageConfig(row)}
+                  />
+                )}
 
-              {configs}
-            </YBTabsPanel>
+                {configs}
+              </YBTabsPanel>
 
-            <ConfigControls
-              {...this.state}
-              activeTab={activeTab}
-              showListView={() => this.showListView(activeTab)}
-            />
-          </form>
+              <ConfigControls
+                {...this.state}
+                activeTab={activeTab}
+                showListView={() => this.showListView(activeTab)}
+              />
+            </form>
+          </Formik>
         </div>
       );
     }

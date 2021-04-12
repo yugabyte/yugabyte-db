@@ -9,7 +9,6 @@ import { Field } from 'redux-form';
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { isEmptyObject } from '../../../utils/ObjectUtils';
 
 /**
  * This method will handle the validation for current
@@ -28,15 +27,15 @@ const required = (value) => (value ? undefined : 'This field is required.');
  * @param {string} configName Input field name.
  * @returns inUse ? true : false;
  */
-const disableFields = (data, fieldId, configName) => {
-  const fieldName = `${configName}_CONFIGURATION_NAME`;
-  if (!isEmptyObject(data) && fieldId !== fieldName) {
+const disableFields = (isEdited, fieldId, configName) => {
+  const fieldName = `${configName}_BACKUP_LOCATION`;
+  if (isEdited && fieldId === fieldName) {
     return true;
   }
 };
 
 export const BackupConfigField = (props) => {
-  const { configName, data, field } = props;
+  const { configName, isEdited, field } = props;
 
   // This is the tool tip for all the backup configuration names.
   const configNameToolTip = field.label === "Configuration Name"
@@ -58,7 +57,7 @@ export const BackupConfigField = (props) => {
           placeHolder={field.placeHolder}
           component={field.component}
           validate={required}
-          isReadOnly={disableFields(data, field.id, configName)}
+          isReadOnly={disableFields(isEdited, field.id, configName)}
         />
       </Col>
       {configNameToolTip}
