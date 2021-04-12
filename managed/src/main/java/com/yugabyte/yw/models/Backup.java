@@ -4,6 +4,8 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.helpers.TaskType;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
