@@ -2580,19 +2580,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	relation = RelationIdGetRelation(relid);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
-	/*
-	 * Cannot allow check constraints for single-row update as we will need
-	 * to ensure we read all columns they reference to check them correctly.
-	 */
-	TupleDesc tupDesc = RelationGetDescr(relation);
-	if (path->operation == CMD_UPDATE &&
-	    tupDesc->constr &&
-	    tupDesc->constr->num_check > 0)
-	{
-		RelationClose(relation);
-		return false;
-	}
-
 	subroot = linitial_node(PlannerInfo, path->subroots);
 	subpath = (Path *) linitial(path->subpaths);
 	index_path = (IndexPath *) subpath;
@@ -2691,6 +2678,19 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * update/delete from the index, requiring the scan.
 	 */
 	if (has_applicable_indices(relation, update_attrs, no_update_index_list))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Cannot allow check constraints for single-row update as we will need
+	 * to ensure we read all columns they reference to check them correctly.
+	 */
+	TupleDesc tupDesc = RelationGetDescr(relation);
+	if (path->operation == CMD_UPDATE &&
+		tupDesc->constr &&
+		tupDesc->constr->num_check > 0)
 	{
 		RelationClose(relation);
 		return false;
