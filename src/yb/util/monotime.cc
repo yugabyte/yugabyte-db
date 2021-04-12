@@ -72,20 +72,27 @@ const MonoDelta MonoDelta::kMin = MonoDelta(std::numeric_limits<NanoDeltaType>::
 const MonoDelta MonoDelta::kMax = MonoDelta(std::numeric_limits<NanoDeltaType>::max());
 const MonoDelta MonoDelta::kZero = MonoDelta(0);
 
+template <class V>
+MonoDelta MonoDeltaByMultiplication(V value, int64_t mul) {
+  CHECK_LE(value, std::numeric_limits<int64_t>::max() / mul);
+  int64_t delta = value * mul;
+  return MonoDelta::FromNanoseconds(delta);
+}
+
+MonoDelta MonoDelta::FromMinutes(double minutes) {
+  return MonoDeltaByMultiplication(minutes, MonoTime::kNanosecondsPerMinute);
+}
+
 MonoDelta MonoDelta::FromSeconds(double seconds) {
-  CHECK_LE(seconds, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerSecond);
-  int64_t delta = seconds * MonoTime::kNanosecondsPerSecond;
-  return MonoDelta(delta);
+  return MonoDeltaByMultiplication(seconds, MonoTime::kNanosecondsPerSecond);
 }
 
 MonoDelta MonoDelta::FromMilliseconds(int64_t ms) {
-  CHECK_LE(ms, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerMillisecond);
-  return MonoDelta(ms * MonoTime::kNanosecondsPerMillisecond);
+  return MonoDeltaByMultiplication(ms, MonoTime::kNanosecondsPerMillisecond);
 }
 
 MonoDelta MonoDelta::FromMicroseconds(int64_t us) {
-  CHECK_LE(us, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
-  return MonoDelta(us * MonoTime::kNanosecondsPerMicrosecond);
+  return MonoDeltaByMultiplication(us, MonoTime::kNanosecondsPerMicrosecond);
 }
 
 MonoDelta MonoDelta::FromNanoseconds(int64_t ns) {

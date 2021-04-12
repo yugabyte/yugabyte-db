@@ -11,10 +11,7 @@ import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -250,5 +247,24 @@ public class BackupTest extends FakeDBApplication {
     b.setTaskUUID(UUID.randomUUID());
     Set<Universe> universes = Backup.getAssociatedUniverses(s3StorageConfig.configUUID);
     assertEquals(1, universes.size());
+  }
+  
+  public void testGetAllCompletedBackupsWithExpiryForDelete() {
+    UUID universeUUID = UUID.randomUUID();
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup backup1 = ModelFactory.createBackupWithExpiry(
+      defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    Backup backup2 = ModelFactory.createBackupWithExpiry(
+      defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    Backup backup3 = ModelFactory.createBackupWithExpiry(
+      defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+
+    backup1.transitionState(Backup.BackupState.Completed);
+    backup2.transitionState(Backup.BackupState.Completed);
+    backup3.transitionState(Backup.BackupState.Completed);
+
+    Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
+    // assert to 2 as backup3's universe is not found.
+    assertEquals(String.valueOf(expiredBackups), 2, expiredBackups.get(defaultCustomer).size());
   }
 }

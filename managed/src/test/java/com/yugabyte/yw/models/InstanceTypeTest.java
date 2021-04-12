@@ -2,32 +2,30 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.InstanceType.VolumeType;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.when;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.InstanceType.VolumeType;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class InstanceTypeTest extends FakeDBApplication {
@@ -54,9 +52,9 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
+    InstanceType i1 = InstanceType.upsert(defaultProvider.uuid, "foo", 3, 10.0, defaultDetails);
     assertNotNull(i1);
-    assertEquals("aws", i1.getProviderCode());
+    assertEquals("aws", i1.getProvider().code);
     assertEquals("foo", i1.getInstanceTypeCode());
   }
 
@@ -94,13 +92,13 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testFindByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
-    InstanceType.upsert(defaultProvider.code, "c3.medium", 3, 10.0, defaultDetails);
-    InstanceType.upsert(defaultProvider.code, "c3.large", 3, 10.0, defaultDetails);
-    InstanceType.upsert(defaultProvider.code, "c3.xlarge", 3, 10.0, defaultDetails);
-    InstanceType instanceType = InstanceType.get(defaultProvider.code, "c3.xlarge");
+    InstanceType.upsert(defaultProvider.uuid, "c3.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.uuid, "c3.large", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.uuid, "c3.xlarge", 3, 10.0, defaultDetails);
+    InstanceType instanceType = InstanceType.get(defaultProvider.uuid, "c3.xlarge");
     instanceType.setActive(false);
     instanceType.save();
-    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    InstanceType.upsert(newProvider.uuid, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
     assertNotNull(instanceTypeList);
     assertEquals(2, instanceTypeList.size());
@@ -116,7 +114,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testFindByProviderOnprem() {
     Provider newProvider = ModelFactory.onpremProvider(defaultCustomer);
-    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    InstanceType.upsert(newProvider.uuid, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
     assertEquals(1, instanceTypeList.size());
 
@@ -128,8 +126,8 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProviderWithUnSupportedInstances() {
-    InstanceType.upsert(defaultProvider.code, "t2.medium", 3, 10.0, defaultDetails);
-    InstanceType.upsert(defaultProvider.code, "c3.medium", 2, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.uuid, "t2.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.uuid, "c3.medium", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
@@ -139,7 +137,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProviderWithEmptyInstanceTypeDetails() {
-    InstanceType.upsert(defaultProvider.code, "c5.medium", 3, 10.0,
+    InstanceType.upsert(defaultProvider.uuid, "c5.medium", 3, 10.0,
       new InstanceType.InstanceTypeDetails());
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY))
       .thenReturn(1);
@@ -161,7 +159,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProviderWithNullInstanceTypeDetails() {
-    InstanceType.upsert(defaultProvider.code, "c5.medium", 3, 10.0, null);
+    InstanceType.upsert(defaultProvider.uuid, "c5.medium", 3, 10.0, null);
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY))
       .thenReturn(1);
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY))
@@ -183,7 +181,7 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
-    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
+    InstanceType.upsert(newProvider.uuid, "bar", 2, 10.0, defaultDetails);
     InstanceType.deleteInstanceTypesForProvider(newProvider, mockConfig);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
     assertEquals(0, instanceTypeList.size());
@@ -204,10 +202,10 @@ public class InstanceTypeTest extends FakeDBApplication {
     metaData.put("longitude", -119.417932);
     metaData.put("ybImage", "yb-image-1");
     metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
-    InstanceType it = InstanceType.createWithMetadata(defaultProvider, "it-1", metaData);
+    InstanceType it = InstanceType.createWithMetadata(defaultProvider.uuid, "it-1", metaData);
     assertNotNull(it);
     JsonNode itJson = Json.toJson(it);
-    assertValue(itJson, "providerCode", "aws");
+    assertValue(itJson, "providerUuid", defaultProvider.uuid.toString());
     assertValue(itJson, "instanceTypeCode", "it-1");
     assertValue(itJson, "numCores", "4.0");
     assertValue(itJson, "memSizeGB", "300.0");

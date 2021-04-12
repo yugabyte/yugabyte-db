@@ -24,7 +24,7 @@ CREATE TABLE tab_key (a INT PRIMARY KEY);
 --------+---------+-----------+----------+---------
  a      | integer |           | not null |
 Indexes:
-    "tab_key_pkey" PRIMARY KEY, lsm (a)
+    "tab_key_pkey" PRIMARY KEY, lsm (a ASC)
 
 CREATE TABLE tab_range (a INT, PRIMARY KEY (a ASC));
 CREATE TABLE tab_range_nonkey (a INT, b INT, PRIMARY KEY (a ASC));
@@ -136,8 +136,8 @@ CREATE INDEX idx_range ON tab_range_nonkey2 (a);
  a      | integer |           | not null |
  b      | integer |           |          |
 Indexes:
-    "tab_range_nonkey2_pkey" PRIMARY KEY, lsm (a)
-    "idx_range" lsm (a)
+    "tab_range_nonkey2_pkey" PRIMARY KEY, lsm (a ASC)
+    "idx_range" lsm (a ASC)
 
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a = 1;

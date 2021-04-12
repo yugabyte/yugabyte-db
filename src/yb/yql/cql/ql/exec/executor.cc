@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
@@ -89,6 +90,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
                             StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   auto read_time = params.read_time();
   if (read_time) {
@@ -103,6 +105,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   session_->SetReadPoint(client::Restart::kFalse);
 
@@ -253,7 +256,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
   if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
     tnode_context = exec_context_->AddTnode(tnode);
     if (tnode->IsDml() && static_cast<const PTDmlStmt *>(tnode)->RequiresTransaction()) {
-      RETURN_NOT_OK(exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_));
+      RETURN_NOT_OK(exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_, rescheduler_));
     }
   }
   switch (tnode->opcode()) {
@@ -1335,7 +1338,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTStartTransaction *tnode) {
-  return exec_context_->StartTransaction(tnode->isolation_level(), ql_env_);
+  return exec_context_->StartTransaction(tnode->isolation_level(), ql_env_, rescheduler_);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1500,6 +1503,10 @@ bool NeedsRestart(const Status& s) {
   return s.IsTryAgain() || s.IsExpired();
 }
 
+bool ShouldRestart(const Status& s, Rescheduler* rescheduler) {
+  return NeedsRestart(s) && (CoarseMonoClock::now() < rescheduler->GetDeadline());
+}
+
 // Process TnodeContexts and their children under an ExecContext.
 Status ProcessTnodeContexts(ExecContext* exec_context,
                             const std::function<Result<bool>(TnodeContext*)>& processor) {
@@ -1568,9 +1575,10 @@ void Executor::FlushAsync() {
   num_flushes_ += flush_sessions.size();
   async_status_ = Status::OK();
   for (auto* exec_context : commit_contexts) {
-    exec_context->CommitTransaction([this, exec_context](const Status& s) {
-        CommitDone(s, exec_context);
-      });
+    exec_context->CommitTransaction(
+        rescheduler_->GetDeadline(), [this, exec_context](const Status& s) {
+      CommitDone(s, exec_context);
+    });
   }
   // Use the same score on each tablet. So probability of rejecting write should be related
   // to used capacity.
@@ -1674,7 +1682,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
       ql_metrics_->ql_transaction_->Increment(delta_usec);
     }
   } else {
-    if (NeedsRestart(s)) {
+    if (ShouldRestart(s, rescheduler_)) {
       exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
       std::lock_guard<std::mutex> lock(status_mutex_);
@@ -1876,13 +1884,13 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     }
 
     // If the transaction is ready to commit, apply child transaction results if any.
-    if (exec_context_->HasTransaction() && !exec_context_->HasPendingOperations()) {
+    if (exec_context_->HasTransaction() && !tnode_context->HasPendingOperations()) {
       const QLResponsePB& response = op->response();
       if (response.has_child_transaction_result()) {
         const auto& result = response.child_transaction_result();
         const Status s = exec_context_->ApplyChildTransactionResult(result);
         // If restart is needed, reset the current context and return immediately.
-        if (NeedsRestart(s)) {
+        if (ShouldRestart(s, rescheduler_)) {
           exec_context_->Reset(client::Restart::kTrue, rescheduler_);
           return false;
         }
@@ -2051,16 +2059,23 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   // For update/delete, check if it just deletes some columns. If so, add the rest columns to be
-  // read so that tserver can check if they are all null also, in which case the row will be
-  // removed after the DML.
+  // read so that tserver can check if they are all null also. We require this information (whether
+  // all columns are null) for rows which don't have a liveness column - for such a row (i.e.,
+  // without liveness column, if all columns are null, the row is as good as deleted. And in this
+  // case, the tserver will have to remove the corresponding index entries from indexes.
   if ((req->type() == QLWriteRequestPB::QL_STMT_UPDATE ||
        req->type() == QLWriteRequestPB::QL_STMT_DELETE) &&
       !req->column_values().empty()) {
     bool all_null = true;
     std::set<int32> column_dels;
+    const Schema& schema = tnode->table()->InternalSchema();
     for (const QLColumnValuePB& column_value : req->column_values()) {
+      const ColumnSchema& col_desc = VERIFY_RESULT(
+        schema.column_by_id(ColumnId(column_value.column_id())));
+
       if (column_value.has_expr() &&
           column_value.expr().has_value() &&
+          !col_desc.is_static() && // Don't consider static column values.
           !IsNull(column_value.expr().value())) {
         all_null = false;
         break;
@@ -2068,13 +2083,13 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
       column_dels.insert(column_value.column_id());
     }
     if (all_null) {
-      const Schema& schema = tnode->table()->InternalSchema();
+      // Ensure all columns of row are read by docdb layer before performing the write operation.
       const MCSet<int32>& column_refs = tnode->column_refs();
       for (size_t idx = schema.num_key_columns(); idx < schema.num_columns(); idx++) {
         const int32 column_id = schema.column_id(idx);
         if (!schema.column(idx).is_static() &&
-            column_refs.count(column_id) != 0 &&
-            column_dels.count(column_id) != 0) {
+            column_refs.count(column_id) == 0 && // Add col only if not already in column_refs.
+            column_dels.count(column_id) == 0) { // If col is already in delete list, don't add it.
           req->mutable_column_refs()->add_ids(column_id);
         }
       }
@@ -2082,7 +2097,8 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
   }
 
   if (!req->update_index_ids().empty() && tnode->RequiresTransaction()) {
-    RETURN_NOT_OK(exec_context_->PrepareChildTransaction(req->mutable_child_transaction_data()));
+    RETURN_NOT_OK(exec_context_->PrepareChildTransaction(
+        rescheduler_->GetDeadline(), req->mutable_child_transaction_data()));
   }
   return Status::OK();
 }
@@ -2328,7 +2344,7 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
             DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
             s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
           }
-          if (NeedsRestart(s)) {
+          if (ShouldRestart(s, rescheduler_)) {
             exec_context->Reset(client::Restart::kTrue, rescheduler_);
             return true; // done
           }

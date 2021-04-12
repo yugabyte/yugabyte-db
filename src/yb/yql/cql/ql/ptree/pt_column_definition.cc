@@ -18,6 +18,9 @@
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DEFINE_bool(cql_allow_static_column_index, false,
+            "Raise unsupported error when creating an index on static columns");
+
 namespace yb {
 namespace ql {
 
@@ -141,6 +144,9 @@ CHECKED_STATUS PTIndexColumn::Analyze(SemContext *sem_context) {
     // Transfer information from indexed_table::column_desc to this index::column_def.
     const ColumnDesc *coldesc = sem_context->GetColumnDesc(*name_);
     is_static_ = coldesc->is_static();
+    if(!FLAGS_cql_allow_static_column_index && is_static_)
+      return sem_context->Error(this, "Static columns cannot be indexed.",
+                                ErrorCode::SQL_STATEMENT_INVALID);
 
   } else if (colexpr_->opcode() != TreeNodeOpcode::kPTJsonOp) {
     // Currently only JSon refereence is allowed for indexing.

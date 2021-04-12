@@ -170,7 +170,7 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Precheck)
+      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -180,8 +180,14 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--precheck_type");
         if (keyInfo.skipProvisioning) {
           subCommand.add("configure");
+          subCommand.add("--ssh_user");
+          subCommand.add("yugabyte");
         } else {
           subCommand.add("provision");
+          if (keyInfo.sshUser != null) {
+            subCommand.add("--ssh_user");
+            subCommand.add(keyInfo.sshUser);
+          }
         }
 
         if (keyInfo.airGapInstall) {

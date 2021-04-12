@@ -381,6 +381,23 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
+   * Function to Trim keys and values of the passed map.
+   * @param data key value pairs.
+   * @return key value pairs with trim keys and values.
+   */
+  @VisibleForTesting
+  static Map<String, String> trimFlags(Map<String, String> data)
+  {
+    Map<String, String> trimData = new HashMap<>();
+    for (Map.Entry<String, String> intent : data.entrySet()) {
+      String key  = intent.getKey();
+      String value = intent.getValue();
+      trimData.put(key.trim(), value.trim());
+    }
+    return trimData;
+  }
+
+  /**
    * API that binds the UniverseDefinitionTaskParams class by merging
    * the UserIntent with the generated taskParams.
    *
@@ -413,6 +430,9 @@ public class UniverseController extends AuthenticatedController {
       //  uuid.
       Cluster c = taskParams.currentClusterType.equals(ClusterType.PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
+      UserIntent primaryIntent = c.userIntent;
+      primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+      primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid,
           clusterOpType);
@@ -556,6 +576,9 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
       if (primaryCluster != null) {
+        UserIntent primaryIntent = primaryCluster.userIntent;
+        primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+        primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
@@ -1454,6 +1477,8 @@ public class UniverseController extends AuthenticatedController {
       // instead of top level task param, for now just copy the master flag and tserver flag
       // from primary cluster.
       UserIntent primaryIntent = taskParams.getPrimaryCluster().userIntent;
+      primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+      primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
       taskParams.masterGFlags = primaryIntent.masterGFlags;
       taskParams.tserverGFlags = primaryIntent.tserverGFlags;
     } catch (Throwable t) {

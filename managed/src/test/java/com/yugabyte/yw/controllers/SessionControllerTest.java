@@ -522,7 +522,7 @@ public class SessionControllerTest {
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(provider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(provider.uuid, "c3.xlarge",
       10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -550,7 +550,7 @@ public class SessionControllerTest {
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(provider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(provider.uuid, "c3.xlarge",
       10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -581,7 +581,7 @@ public class SessionControllerTest {
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(provider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(provider.uuid, "c3.xlarge",
       10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, provider, i, 3);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());

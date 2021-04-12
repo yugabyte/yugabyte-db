@@ -59,14 +59,13 @@ public class TestIndex extends BaseCQLTest {
     return super.getTestMethodTimeoutSec()*10;
   }
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
-    BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=1000");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_wait_for_old_txns_ms=100");
-    BaseCQLTest.setUpBeforeClass();
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allow_index_table_read_write", "true");
+    flagMap.put("index_backfill_upperbound_for_user_enforced_txn_duration_ms", "1000");
+    flagMap.put("index_backfill_wait_for_old_txns_ms", "100");
+    return flagMap;
   }
 
   @Test
@@ -512,6 +511,47 @@ public class TestIndex extends BaseCQLTest {
                 "");
   }
 
+  private void testIndexUpdateMisc(boolean strongConsistency) throws Exception {
+    // #7641: UPDATE a row without liveness column. Set some columns with only null values
+    // (so it actually seems like a delete until we discover an existing non-null column).
+    // A row without liveness column can be achieved by inserting a row using UPDATE (upsert
+    // semantics). There should be no deletion of index entry.
+    createTable("create table test_update (h1 int, r1 int, v1 int, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1, r1");}};
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+      put("i1", "\"C$_v3\", \"C$_h1\", \"C$_r1\"");
+    }};
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update as described in #7641. Assert that index entry isn't removed spuriously.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v2=null where h1=1 and r1=2");
+
+    // Follow-up test case: Apart from actual bug in #7641, we also test below case:
+    //   - UPDATE a row without liveness column. Set only null values on regular columns except a
+    //     non-null value on a static column. Index entry should get deleted.
+    session.execute("drop table test_update");
+    createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set s1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update - index entry should be removed since tuple is removed in main table.
+    session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
+    // assertQuery("select * from test_update where v3=null", "");
+    Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
+    assertTrue(index_tuples.size() == 0);
+  }
+
   @Test
   public void testIndexUpdate() throws Exception {
     testIndexUpdate(true);
@@ -520,6 +560,16 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
+  }
+
+  @Test
+  public void testIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(true);
+  }
+
+  @Test
+  public void testWeakIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(false);
   }
 
   @Test
@@ -695,7 +745,7 @@ public class TestIndex extends BaseCQLTest {
     }
 
     // Restart the cluster
-    miniCluster.restart();
+    restartYcqlMiniCluster();
     setUpCqlClient();
 
     // Update half of the rows. Query them back and verify the unmodified rows still can still
@@ -916,6 +966,148 @@ public class TestIndex extends BaseCQLTest {
                  .one().getLong("writetime(v)"),
                  session.execute("select writetime(v) from test_txn2 where k = 'k1';")
                  .one().getLong("writetime(v)"));
+  }
+
+  @Test
+  public void testDMLInTranactionWith2Indexes() throws Exception {
+    // Create table with 2 secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn (k int primary key, v1 int, v2 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_txn_by_v1 on test_txn (v1);");
+    session.execute("create index test_txn_by_v2 on test_txn (v2);");
+
+    session.execute("begin transaction" +
+                    "  insert into test_txn (k, v1) values (1, 101);" +
+                    "  insert into test_txn (k, v2) values (1, 201);" +
+                    "end transaction;");
+    // Verify the rows.
+    assertQuery("select * from test_txn;", "Row[1, 101, 201]");
+    assertQuery("select * from test_txn_by_v1;", "Row[1, 101]");
+    assertQuery("select * from test_txn_by_v2;", "Row[1, 201]");
+    // Verify rows can be selected by the index columns.
+    assertQuery("select * from test_txn where v1 = 101;", "Row[1, 101, 201]");
+    assertQuery("select * from test_txn where v2 = 201;", "Row[1, 101, 201]");
+  }
+
+  @Test
+  public void testTransactionWithPKCrossing() throws Exception {
+    // Create 2 tables with a secondary index and verify they can be updated in the one transaction.
+    session.execute("CREATE TABLE tbl_many_to_one (id TEXT, type TEXT, value TEXT, " +
+                    "ts TIMESTAMP, ver BIGINT, PRIMARY KEY (id, type)) " +
+                    "WITH CLUSTERING ORDER BY (type ASC) " +
+                    "AND default_time_to_live = 0 AND transactions = {'enabled': 'true'};");
+    session.execute("CREATE INDEX inx_many_to_one ON tbl_many_to_one (value, type, id) " +
+                    "WITH CLUSTERING ORDER BY (type ASC, id ASC);");
+
+    session.execute("CREATE TABLE tbl_one_to_one (id TEXT, type TEXT, value TEXT, " +
+                    "ts TIMESTAMP, ver BIGINT, PRIMARY KEY (id, type)) " +
+                    "WITH CLUSTERING ORDER BY (type ASC) " +
+                    "AND default_time_to_live = 0 AND transactions = {'enabled': 'true'};");
+    session.execute("CREATE UNIQUE INDEX inx_one_to_one ON tbl_one_to_one (value, type) " +
+                    "INCLUDE (id) WITH CLUSTERING ORDER BY (type ASC);");
+
+    session.execute(
+        "BEGIN TRANSACTION" +
+        // Update tbl_many_to_one & inx_many_to_one.
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('000', 'TP1', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('000', 'TP1', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "  INSERT INTO tbl_many_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('111', 'TP2', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        // Update tbl_one_to_one & inx_one_to_one.
+        "  INSERT INTO tbl_one_to_one (id, type, value, ts, ver) " +
+        "      VALUES ('222', 'TP3', 'V', NULL, 1616617181129) " +
+        "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
+        "END TRANSACTION;");
+    // Verify the rows in the indexes.
+    assertQuery("SELECT * FROM inx_many_to_one;",
+                "Row[000, TP1, V]Row[111, TP2, V]");
+    assertQuery("SELECT * FROM inx_one_to_one;",
+                "Row[222, TP3, V]");
+    // Verify the rows in the tables.
+    assertQuery("SELECT * FROM tbl_many_to_one;",
+                "Row[111, TP2, V, NULL, 1616617181129]Row[000, TP1, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_one_to_one;",
+                "Row[222, TP3, V, NULL, 1616617181129]");
+    // Verify rows can be selected by the index columns.
+    assertQuery("SELECT * FROM tbl_many_to_one WHERE value = 'V' AND type = 'TP1' AND id = '000';",
+                "Row[000, TP1, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_many_to_one WHERE value = 'V' AND type = 'TP2' AND id = '111';",
+                "Row[111, TP2, V, NULL, 1616617181129]");
+    assertQuery("SELECT * FROM tbl_one_to_one WHERE value = 'V' AND type = 'TP3';",
+                "Row[222, TP3, V, NULL, 1616617181129]");
+  }
+
+  protected String getInsertIntoIndexesStr(int baseValue) throws Exception {
+    String s = "";
+    for (int i = 1; i <= 9; ++i) {
+      s += String.format("  insert into test_txn (k, v%d) values (%d, %d);", i, 1, baseValue + i);
+    }
+    return s;
+  }
+
+  protected void verifyRows(int baseValue) throws Exception {
+    String resultStr = "Row[1";
+    for (int i = 1; i <= 9; ++i) {
+      resultStr += String.format(", %d", baseValue + i);
+      // Verify rows in the indexes.
+      assertQuery(String.format("select * from test_txn_by_v%d;", i),
+                  String.format("Row[%d, %d]", 1, baseValue + i));
+    }
+    resultStr += "]";
+
+    // Verify the main table.
+    assertQuery("select * from test_txn;", resultStr);
+
+    for (int i = 1; i <= 9; ++i) {
+      // Verify rows can be selected by the index columns.
+      assertQuery(String.format("select * from test_txn where v%d = %d;", i, baseValue + i),
+                  resultStr);
+    }
+  }
+
+  protected void doTestDMLInTranactionWith9Indexes(boolean testAbort) throws Exception {
+    // Create table with secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn (k int primary key, " +
+                    "v1 int, v2 int, v3 int, v4 int, v5 int, v6 int, v7 int, v8 int, v9 int) " +
+                    "with transactions = {'enabled' : true}");
+    for (int i = 1; i <= 9; ++i) {
+      session.execute(String.format("create index test_txn_by_v%d on test_txn (v%d)", i, i));
+    }
+
+    session.execute("begin transaction" +
+                    getInsertIntoIndexesStr(10) +
+                    "end transaction;");
+    verifyRows(10);
+
+    String transStr = "begin transaction" +
+                      getInsertIntoIndexesStr(10) +
+                      // Repeat again for different values.
+                      getInsertIntoIndexesStr(20);
+    if (testAbort) {
+      // ABORT the transaction.
+      transStr += "  insert into test_txn (k, v1) values (1, 101) if not exists else error;";
+      runInvalidStmt(transStr + "end transaction;",
+                     "Execution Error. Condition on table test_txn was not satisfied.");
+      verifyRows(10);
+    } else {
+      session.execute(transStr + "end transaction;");
+      verifyRows(20);
+    }
+  }
+
+  @Test
+  public void testDMLInTranactionWith9Indexes() throws Exception {
+    doTestDMLInTranactionWith9Indexes(false);
+  }
+
+  @Test
+  public void testDMLInAbortedTranactionWith9Indexes() throws Exception {
+    doTestDMLInTranactionWith9Indexes(true);
   }
 
   @Test
@@ -1952,5 +2144,28 @@ public class TestIndex extends BaseCQLTest {
   public void testInKeywordInPrepared_Transactional() throws Exception {
     doTestInKeyword(new TableProperties(
         TableProperties.TP_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
+  }
+
+  @Test
+  public void testCreateIndexOnStaticCol() throws Exception {
+    // Create test table.
+    session.execute("create table test_create_index " +
+                    "(h1 int, r1 int, s1 int static, v1 int, " +
+                    "primary key (h1, r1)) with transactions = {'enabled' : true};");
+
+    // Index creation on static column should fail.
+    runInvalidStmt("create index i1 on test_create_index (s1)");
+
+    // Index creation should work if --cql_allow_static_column_index=true.
+    destroyMiniCluster();
+    BaseMiniClusterTest.tserverArgs.add("--cql_allow_static_column_index=true");
+    createMiniCluster();
+    setUpCqlClient();
+
+    session.execute("create table test_create_index " +
+                    "(h1 int, r1 int, s1 int static, v1 int, " +
+                    "primary key (h1, r1)) with transactions = {'enabled' : true};");
+
+    session.execute("create index i1 on test_create_index (s1)");
   }
 }
