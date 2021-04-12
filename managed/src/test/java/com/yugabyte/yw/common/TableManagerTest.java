@@ -250,10 +250,6 @@ import static org.mockito.Mockito.when;
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(namespaceToConfig)));
     } else {
-      if (accessKey.getKeyInfo().sshUser != null) {
-        cmd.add("--ssh_user");
-        cmd.add(accessKey.getKeyInfo().sshUser);
-      }
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());
       cmd.add("--ssh_key_path");
