@@ -29,6 +29,16 @@ Apache AGE is a PostgreSQL Extension that provides graph database functionality.
 - [Use a docker image - alpine ver.](https://hub.docker.com/r/sorrell/agensgraph-extension-alpine)
 - [Installing from source](https://age.apache.org/#)
 
+## Viewer Tools in AGE
+
+### AGViewer : https://github.com/bitnine-oss/AGViewer.git
+
+- This is a visualization tool.
+After AGE Extension Installation
+You can use this tool to use the visualization features.
+- Follow the instructions on the link to run it.
+Under Connect to Database , select database type as "Apache AGE"
+
 ## Documentation
 
 Here is the link to the latest [Apache AGE documentation](http://age.incubator.apache.org/docs/Apache_AGE_Guide.pdf).
