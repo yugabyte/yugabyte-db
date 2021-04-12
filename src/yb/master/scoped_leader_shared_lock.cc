@@ -40,7 +40,7 @@
 using namespace std::literals;
 
 constexpr int32_t kMasterLogLockWarningMsDefault =
-    ::yb::RegularBuildVsSanitizers<int32_t>(100, 750);
+    ::yb::RegularBuildVsSanitizers<int32_t>(1000, 3000);
 
 DEFINE_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
              "Print warnings if the master leader shared lock is held for longer than this amount "
@@ -49,7 +49,7 @@ DEFINE_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
              "master leader.");
 
 constexpr int32_t kMasterLeaderLockStackTraceMsDefault =
-    ::yb::RegularBuildVsSanitizers<int32_t>(1000, 3000);
+    ::yb::RegularBuildVsSanitizers<int32_t>(3000, 9000);
 
 DEFINE_int32(master_leader_lock_stack_trace_ms, kMasterLeaderLockStackTraceMsDefault,
              "Dump a stack trace if the master leader shared lock is held for longer than this "
