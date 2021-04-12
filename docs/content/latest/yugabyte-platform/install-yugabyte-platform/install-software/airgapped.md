@@ -13,12 +13,15 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
       <i class="fas fa-cloud"></i>
       Default
     </a>
+  </li>
+  <li >
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
+      <i class="fas fa-cubes"></i> OpenShift </a>
   </li>
 
   <li>

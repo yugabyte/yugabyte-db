@@ -181,6 +181,8 @@ class Rescheduler {
  public:
   virtual bool NeedReschedule() = 0;
   virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
+  virtual CoarseTimePoint GetDeadline() const = 0;
+
  protected:
   ~Rescheduler() {}
 };
@@ -225,7 +227,8 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Start a distributed transaction.
-  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level, QLEnv* ql_env);
+  CHECKED_STATUS StartTransaction(
+      IsolationLevel isolation_level, QLEnv* ql_env, Rescheduler* rescheduler);
 
   // Is a transaction currently in progress?
   bool HasTransaction() const {
@@ -238,13 +241,13 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Prepare a child distributed transaction.
-  CHECKED_STATUS PrepareChildTransaction(ChildTransactionDataPB* data);
+  CHECKED_STATUS PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
 
   // Apply the result of a child distributed transaction.
   CHECKED_STATUS ApplyChildTransactionResult(const ChildTransactionResultPB& result);
 
   // Commit the current distributed transaction.
-  void CommitTransaction(client::CommitCallback callback);
+  void CommitTransaction(CoarseTimePoint deadline, client::CommitCallback callback);
 
   // Abort the current distributed transaction.
   void AbortTransaction();

@@ -45,6 +45,7 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
@@ -617,6 +618,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // must have updated the config in the meantime.
   CHECKED_STATUS GetClusterConfig(GetMasterClusterConfigResponsePB* resp);
   CHECKED_STATUS GetClusterConfig(SysClusterConfigEntryPB* config);
+
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 
@@ -1228,6 +1230,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual void Started() {}
 
+  virtual void SysCatalogLoaded(int64_t term) {}
+
   // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
@@ -1445,6 +1449,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  ServerRegistrationPB server_registration_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

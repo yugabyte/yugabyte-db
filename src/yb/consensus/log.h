@@ -112,7 +112,8 @@ class Log : public RefCountedThreadSafe<Log> {
                              const std::string& peer_uuid,
                              const Schema& schema,
                              uint32_t schema_version,
-                             const scoped_refptr<MetricEntity>& metric_entity,
+                             const scoped_refptr<MetricEntity>& table_metric_entity,
+                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              ThreadPool *append_thread_pool,
                              ThreadPool* allocation_thread_pool,
                              int64_t cdc_min_replicated_index,
@@ -259,7 +260,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // On timeout returns default constructed OpId.
   yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id, MonoDelta duration = MonoDelta());
 
-  // Return a readable segment with the given sequence number, or NULL if it
+  // Return a readable segment with the given sequence number, or nullptr if it
   // cannot be found (e.g. if it has already been GCed).
   scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
 
@@ -334,7 +335,8 @@ class Log : public RefCountedThreadSafe<Log> {
       std::string peer_uuid,
       const Schema& schema,
       uint32_t schema_version,
-      const scoped_refptr<MetricEntity>& metric_entity,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
@@ -512,7 +514,8 @@ class Log : public RefCountedThreadSafe<Log> {
   std::atomic<SegmentAllocationState> allocation_state_;
   bool allocation_requested_ GUARDED_BY(allocation_mutex_) = false;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.

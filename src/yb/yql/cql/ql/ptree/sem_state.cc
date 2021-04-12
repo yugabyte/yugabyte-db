@@ -36,9 +36,26 @@ SemState::SemState(SemContext *sem_context,
       lhs_col_(lhs_col) {
   // Passing down state variables that stay the same until they are set or reset.
   if (sem_context->sem_state() != nullptr) {
+    // Must forward "current_dml_stmt_", so we always know what tree is being analyzed.
+    //
+    // TODO(neil) Change this name to root_node_ and use it for all statements including DML.
+    // Currently, the statement roots are set in SemContext and should have been moved to SemState
+    // to support "nested / index" statement.
+    current_dml_stmt_ = sem_context->current_dml_stmt();
+
+    // Index analysis states.
+    scan_state_ = sem_context->scan_state();
     selecting_from_index_ = sem_context_->selecting_from_index();
+    void_primary_key_condition_ = sem_context_->void_primary_key_condition();
+
+    // Clause analysis states.
+    // TODO(neil) Need to find reason why WhereExprState and IfExprState are not passed forward
+    // and add comments on that here.
     processing_if_clause_ = sem_context_->processing_if_clause();
+    validate_orderby_expr_ = sem_context->validate_orderby_expr();
     processing_set_clause_ = sem_context_->processing_set_clause();
+
+    // Operator states.
     processing_assignee_ = sem_context_->processing_assignee();
     allowing_column_refs_ = sem_context_->allowing_column_refs();
   }
@@ -96,13 +113,17 @@ void SemState::set_bindvar_name(string name) {
 }
 
 void SemState::add_index_column_ref(int32_t col_id) {
-  if (index_column_) {
-    index_column_->AddIndexedRef(col_id);
-  }
+  index_column_->AddIndexedRef(col_id);
 }
 
 bool SemState::is_uncovered_index_select() const {
-  return DCHECK_NOTNULL(sem_context_)->IsUncoveredIndexSelect();
+  if (current_dml_stmt_ == nullptr ||
+      current_dml_stmt_->opcode() != TreeNodeOpcode::kPTSelectStmt) {
+    return false;
+  }
+  // Applicable to SELECT statement only.
+  const auto* select_stmt = static_cast<const PTSelectStmt*>(current_dml_stmt_);
+  return !select_stmt->index_id().empty() && !select_stmt->covers_fully();
 }
 
 }  // namespace ql}  // namespace ql

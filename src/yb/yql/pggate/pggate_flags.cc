@@ -114,13 +114,3 @@ DEFINE_int32(ysql_max_write_restart_attempts, 20,
 
 DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
-
-// Default to a 1s delay because commits currently aren't guaranteed to be visible across tservers.
-// Commits cause master to update catalog version, but that version is _pulled_ from tservers using
-// heartbeats.  In the common case, tservers will be behind by at most one heartbeat.  However, it
-// is possible that some network delays may cause it to not successfully heartbeat for times, so use
-// 1s as a decently safe wait time without causing user frustration waiting on CREATE INDEX.
-// TODO(jason): change to 0 once commits are reliably propagated to tservers.
-DEFINE_test_flag(int32, ysql_index_state_flags_update_delay_ms, 1000,
-                 "Time to delay after changing the pg_index state flags.  Currently default 1s "
-                 "because pg_index commits need time to propagate to all tservers");

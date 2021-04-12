@@ -31,6 +31,7 @@ public class NodeActionTypeTest {
     assertEquals("Released", NodeActionType.RELEASE.toString(true));
     assertEquals("Starting Master", NodeActionType.START_MASTER.toString(false));
     assertEquals("Started Master", NodeActionType.START_MASTER.toString(true));
+    assertEquals("Queries", NodeActionType.QUERY.toString(false));
   }
 
   @Test

@@ -925,10 +925,6 @@ bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
 
-int32_t YBCGetTestIndexStateFlagsUpdateDelayMs() {
-  return FLAGS_TEST_ysql_index_state_flags_update_delay_ms;
-}
-
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
