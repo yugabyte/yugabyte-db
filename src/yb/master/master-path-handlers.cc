@@ -1544,7 +1544,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
     string raft_role = master.has_role() ? RaftPeerPB_Role_Name(master.role()) : "N/A";
-    string uptime = UptimeString((Env::Default()->NowMicros() - master.instance_id().start_time()) / 1000000);
+    auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
+    string uptime = UptimeString(MonoDelta::FromMicroseconds(delta).ToSeconds());
     string cloud = reg.cloud_info().placement_cloud();
     string region = reg.cloud_info().placement_region();
     string zone = reg.cloud_info().placement_zone();
