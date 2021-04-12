@@ -86,19 +86,19 @@ You'll be able to see all the resources managed by Yugabyte Platform in your res
 
 **Provider name** is an internal tag used for organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
-**Client ID** is the client ID of an application registered in your Azure Active Directory.
-
-**Client secret** is the client secret of an application registered in your Azure Active Directory.
-
-**Tenant ID** is the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow the instructions on [this Microsoft Azure page](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
-
 **Subscription ID**. You need an Azure subscription ID for cost management. The virtual machine resources managed by the Platform will be tagged with this subscription.
 
 **Resource group** is the group in which YugabyteDB nodes compute and network resources will be created. Your Azure active directory application (clientId and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 
+**Tenant ID** is the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow the instructions on [this Microsoft Azure page](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
+
+**Client ID** is the client ID of an application registered in your Azure Active Directory.
+
+**Client secret** is the client secret of an application registered in your Azure Active Directory.
+
 **Private DNS zone** lets you use a custom domain name for the nodes in your universe. Refer to [Set a private DNS zone](#set-a-private-dns-zone-optional) for instructions on how to set this up.
 
-**Virtual private network**. Using your custom Virtual Network is supported. This allows you the highest level of customization for your network setup.
+**Virtual network setup**. Using your custom Virtual Network is supported. This allows you the highest level of customization for your network setup.
 
 {{< tip title="Getting Azure resource IDs" >}}
 
