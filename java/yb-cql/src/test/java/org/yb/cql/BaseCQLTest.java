@@ -473,19 +473,22 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return runSelect(String.format(select_stmt, args));
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(Statement stmt) {
-    try {
-      session.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
-      return null; // Never happens, but keeps compiler happy
-    } catch (QueryValidationException qv) {
-      LOG.info("Expected exception", qv);
-      return qv.getCause().getMessage();
-    }
+    return runInvalidStmt(stmt);
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(String stmt) {
-    return runInvalidQuery(new SimpleStatement(stmt));
+    return runInvalidStmt(new SimpleStatement(stmt));
   }
 
   protected String runInvalidStmt(Statement stmt, Session s) {
@@ -508,22 +511,45 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return result;
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(Statement stmt) {
     return runInvalidStmt(stmt, session);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, Session s, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt, Session s) {
     return runInvalidStmt(new SimpleStatement(stmt), s);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt) {
     return runInvalidStmt(stmt, session);
   }
 
-  protected void runInvalidStmt(String stmt, String errorSubstring) {
-    String errorMsg = runInvalidStmt(stmt);
+  protected void runInvalidStmt(Statement stmt, Session s, String errorSubstring) {
+    String errorMsg = runInvalidStmt(stmt, s);
     assertTrue("Error message '" + errorMsg + "' should contain '" + errorSubstring + "'",
                errorMsg.contains(errorSubstring));
+  }
+
+  protected void runInvalidStmt(Statement stmt, String errorSubstring) {
+    runInvalidStmt(stmt, session, errorSubstring);
+  }
+
+  protected void runInvalidStmt(String stmt, String errorSubstring) {
+    runInvalidStmt(new SimpleStatement(stmt), errorSubstring);
   }
 
   protected void assertNoRow(String select_stmt) {

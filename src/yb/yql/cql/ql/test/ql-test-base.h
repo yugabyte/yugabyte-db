@@ -17,6 +17,7 @@
 #define YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
 
 #include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -118,7 +119,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
 
   void RunAsyncDone(
       Callback<void(const Status&)> cb, const Status& s,
-      const ExecutedResult::SharedPtr& result = nullptr) {
+      const ExecutedResult::SharedPtr& result) {
     result_ = result;
     cb.Run(s);
   }
@@ -127,6 +128,8 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
       const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
     result_ = nullptr;
     parse_tree.reset(); // Delete previous parse tree.
+    // RunAsyncInternal() works through Reschedule() loop via RunAsyncTask in QLProcessor class.
+    // It calls Prepare(string& stmt) on every loop iteration.
     RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
   }
 
@@ -134,7 +137,18 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   CHECKED_STATUS Run(
       const std::string& stmt, const StatementParameters& params = StatementParameters()) {
     Synchronizer s;
-    RunAsync(stmt, params, Bind(&Synchronizer::StatusCB, Unretained(&s)));
+    RunAsync(stmt, params, s.AsStatusCallback());
+    return s.Wait();
+  }
+
+  CHECKED_STATUS Run(const Statement& stmt, const StatementParameters& params) {
+    result_ = nullptr;
+    parse_tree.reset(); // Delete previous parse tree.
+
+    Synchronizer s;
+    // Reschedule() loop in QLProcessor class is not used here.
+    RETURN_NOT_OK(stmt.ExecuteAsync(this, params,
+        Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), s.AsStatusCallback())));
     return s.Wait();
   }
 
@@ -174,6 +188,8 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
  private:
   void RunAsyncInternal(const std::string& stmt, const StatementParameters& params,
                         StatementExecutedCallback cb, bool reparsed = false) {
+    // This method mainly duplicates QLProcessor::RunAsync(), but uses local ParseTree object
+    // to make it available for checks in the test after the statement execution.
     const Status s = Prepare(stmt, &parse_tree, reparsed);
     if (PREDICT_FALSE(!s.ok())) {
       return cb.Run(s, nullptr /* result */);

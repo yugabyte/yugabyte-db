@@ -192,6 +192,7 @@ class CQLMessage {
 
   // Query parameters for QUERY, EXECUTE and BATCH requests
   struct QueryParameters : ql::StatementParameters {
+    typedef std::unordered_map<std::string, std::vector<Value>::size_type> NameToIndexMap;
     using Flags = uint8_t;
     static constexpr Flags kWithValuesFlag            = 0x01;
     static constexpr Flags kSkipMetadataFlag          = 0x02;
@@ -204,7 +205,7 @@ class CQLMessage {
     Consistency consistency = Consistency::ANY;
     Flags flags = 0;
     std::vector<Value> values;
-    std::unordered_map<std::string, std::vector<Value>::size_type> value_map;
+    NameToIndexMap value_map;
     Consistency serial_consistency = Consistency::ANY;
     int64_t default_timestamp = 0;
 
