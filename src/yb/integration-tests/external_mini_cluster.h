@@ -230,6 +230,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
+  Result<int> GetTabletLeaderIndex(const std::string& tablet_id);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
