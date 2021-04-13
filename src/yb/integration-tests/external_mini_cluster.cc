@@ -1447,6 +1447,22 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   return master(idx);
 }
 
+Result<int> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
+  for (int i = 0; i < num_tablet_servers(); ++i) {
+    auto tserver = tablet_server(i);
+    if (tserver->IsProcessAlive()) {
+      auto tablets = VERIFY_RESULT(GetTablets(tserver));
+      for (const auto& tablet : tablets) {
+        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+          return i;
+        }
+      }
+    }
+  }
+  return STATUS(
+      NotFound, Format("Could not find leader of tablet $0 among live tservers.", tablet_id));
+}
+
 ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::string& uuid) const {
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     if (ts->instance_id().permanent_uuid() == uuid) {

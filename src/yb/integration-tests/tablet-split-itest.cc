@@ -1360,6 +1360,46 @@ TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
   ASSERT_OK(WaitForTablets(3));
 }
 
+TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("unresponsive_ts_rpc_retry_limit", "0"));
+
+  CreateSingleTablet();
+  CHECK_OK(WriteRows());
+  const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+
+  // We will fault one of the non-leader servers after it performs a WAL Log copy from parent to
+  // the first child, but before it can mark the child as TABLET_DATA_READY.
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto faulted_follower_idx = (leader_idx + 2) % 3;
+  const auto non_faulted_follower_idx = (leader_idx + 1) % 3;
+
+  auto faulted_follower = cluster_->tablet_server(faulted_follower_idx);
+  CHECK_OK(cluster_->SetFlag(
+      faulted_follower, "TEST_fault_crash_in_split_after_log_copied", "1.0"));
+
+  CHECK_OK(SplitTablet(tablet_id));
+  CHECK_OK(cluster_->WaitForTSToCrash(faulted_follower));
+
+  CHECK_OK(faulted_follower->Restart());
+
+  ASSERT_OK(cluster_->WaitForTabletsRunning(faulted_follower, 20s * kTimeMultiplier));
+  ASSERT_OK(WaitForTablets(3));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after faulted follower resurrection."));
+
+  auto non_faulted_follower = cluster_->tablet_server(non_faulted_follower_idx);
+  non_faulted_follower->Shutdown();
+  CHECK_OK(cluster_->WaitForTSToCrash(non_faulted_follower));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows().ok();
+  }, 20s * kTimeMultiplier, "Write rows after requiring bootstraped node consensus."));
+
+  CHECK_OK(non_faulted_follower->Restart());
+}
+
 namespace {
 
 PB_ENUM_FORMATTERS(IsolationLevel);

@@ -158,7 +158,12 @@ DEFINE_test_flag(double, fault_crash_after_cmeta_deleted, 0.0,
 DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
                  "after fetching the files during a remote bootstrap but before "
-                 "marking the superblock as TABLET_DATA_READY.")
+                 "marking the superblock as TABLET_DATA_READY.");
+
+DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
+                 "Fraction of the time when the tablet will crash immediately after initiating a "
+                 "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
+                 "TABLET_DATA_READY.");
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
@@ -327,6 +332,7 @@ using tablet::RaftGroupStatePB;
 using tablet::RUNNING;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
+using tablet::TABLET_DATA_INIT_STARTED;
 using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_SPLIT_COMPLETED;
 using tablet::TABLET_DATA_TOMBSTONED;
@@ -1044,6 +1050,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
     RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir));
+
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_after_log_copied);
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
@@ -2135,13 +2143,20 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
   TabletDataState data_state = meta->tablet_data_state();
   CHECK(data_state == TABLET_DATA_DELETED ||
         data_state == TABLET_DATA_TOMBSTONED ||
-        data_state == TABLET_DATA_COPYING)
+        data_state == TABLET_DATA_COPYING ||
+        data_state == TABLET_DATA_INIT_STARTED)
       << "Unexpected TabletDataState in tablet " << tablet_id << ": "
       << TabletDataState_Name(data_state) << " (" << data_state << ")";
 
   if (data_state == TABLET_DATA_COPYING) {
     // We tombstone tablets that failed to remotely bootstrap.
     data_state = TABLET_DATA_TOMBSTONED;
+  }
+
+  if (data_state == TABLET_DATA_INIT_STARTED) {
+    // We delete tablets that failed to completely initialize after a split.
+    // TODO(tsplit): https://github.com/yugabyte/yugabyte-db/issues/8013
+    data_state = TABLET_DATA_DELETED;
   }
 
   const string kLogPrefix = TabletLogPrefix(tablet_id);

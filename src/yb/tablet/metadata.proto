@@ -76,6 +76,11 @@ enum TabletDataState {
   // - add integration test for remote bootstrap from source split tablet before/after
   // follower_unavailable_considered_failed_sec.
   TABLET_DATA_SPLIT_COMPLETED = 4;
+
+  // This tablet has been initialized as a subtablet of another tablet undergoing a split. Once this
+  // tablet is ready to assume responsibility for it's portion of the split keyspace, it will be
+  // moved to the TABLET_DATA_READY state.
+  TABLET_DATA_INIT_STARTED = 5;
 }
 
 // Table information.
