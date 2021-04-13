@@ -292,17 +292,18 @@
 #define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
     METRIC_DEFINE_counter(entity, name, label, unit, label)
 
-#define METRIC_DEFINE_lag_with_level(entity, name, label, desc, level) \
+#define METRIC_DEFINE_lag_with_level(entity, name, label, desc, level, ...) \
   ::yb::MillisLagPrototype BOOST_PP_CAT(METRIC_, name)( \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
                                       BOOST_PP_STRINGIZE(name), \
                                       label, \
                                       yb::MetricUnit::kMilliseconds, \
                                       desc, \
-                                      level))
+                                      level, \
+                                      ## __VA_ARGS__))
 
-#define METRIC_DEFINE_lag(entity, name, label, desc) \
-  METRIC_DEFINE_lag_with_level(entity, name, label, desc, yb::MetricLevel::kInfo)
+#define METRIC_DEFINE_lag(entity, name, label, desc, ...) \
+  METRIC_DEFINE_lag_with_level(entity, name, label, desc, yb::MetricLevel::kInfo, ## __VA_ARGS__)
 
 #define METRIC_DEFINE_gauge(type, entity, name, label, unit, desc, level, ...) \
   ::yb::GaugePrototype<type> BOOST_PP_CAT(METRIC_, name)(         \
@@ -555,6 +556,11 @@ class MetricEntityPrototype {
   DISALLOW_COPY_AND_ASSIGN(MetricEntityPrototype);
 };
 
+enum AggregationFunction {
+  kSum,
+  kMax
+};
+
 class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
   typedef std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
@@ -684,7 +690,8 @@ class PrometheusWriter {
 
   template<typename T>
   CHECKED_STATUS WriteSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
+      AggregationFunction aggregation_function) {
     auto it = attr.find("table_id");
     if (it != attr.end()) {
       // For tablet level metrics, we roll up on the table level.
@@ -693,14 +700,17 @@ class PrometheusWriter {
         per_table_attributes_[it->second] = attr;
         per_table_values_[it->second][name] = value;
       } else {
-        auto type_it = attr.find("metric_type");
-        if (type_it != attr.end() && type_it->second == "cdc") {
-          // Todo(Rahul): Tag metrics so we can choose the aggregation function instead of
-          // doing a max for all cdc metrics.
-          per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
-                                                         static_cast<double>(value));
-        } else {
-          per_table_values_[it->second][name] += value;
+        switch (aggregation_function) {
+          case kSum:
+            per_table_values_[it->second][name] += value;
+            break;
+          case kMax:
+            per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
+                                                           static_cast<double>(value));
+            break;
+          default:
+            FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
+            break;
         }
       }
     } else {
@@ -728,6 +738,7 @@ class PrometheusWriter {
   }
 
  private:
+  friend class MetricsTest;
   // FlushSingleEntry() was a function template with type of "value" as template
   // var T. To allow NMSWriter to override FlushSingleEntry(), the type of "value"
   // has been instantiated to int64_t.
@@ -976,6 +987,17 @@ enum PrototypeFlags {
 
 class MetricPrototype {
  public:
+  struct OptionalArgs {
+    OptionalArgs(uint32_t flags = 0,
+                 AggregationFunction aggregation_function = AggregationFunction::kSum)
+      : flags_(flags),
+        aggregation_function_(aggregation_function) {
+    }
+
+    const uint32_t flags_;
+    const AggregationFunction aggregation_function_;
+  };
+
   // Simple struct to aggregate the arguments common to all prototypes.
   // This makes constructor chaining a little less tedious.
   struct CtorArgs {
@@ -985,14 +1007,15 @@ class MetricPrototype {
              MetricUnit::Type unit,
              const char* description,
              MetricLevel level,
-             uint32_t flags = 0)
+             OptionalArgs optional_args = OptionalArgs())
       : entity_type_(entity_type),
         name_(name),
         label_(label),
         unit_(unit),
         description_(description),
         level_(level),
-        flags_(flags) {
+        flags_(optional_args.flags_),
+        aggregation_function_(optional_args.aggregation_function_) {
     }
 
     const char* const entity_type_;
@@ -1002,6 +1025,7 @@ class MetricPrototype {
     const char* const description_;
     const MetricLevel level_;
     const uint32_t flags_;
+    const AggregationFunction aggregation_function_;
   };
 
   const char* entity_type() const { return args_.entity_type_; }
@@ -1010,6 +1034,7 @@ class MetricPrototype {
   MetricUnit::Type unit() const { return args_.unit_; }
   const char* description() const { return args_.description_; }
   MetricLevel level() const { return args_.level_; }
+  AggregationFunction aggregation_function() const { return args_.aggregation_function_; }
   virtual MetricType::Type type() const = 0;
 
   // Writes the fields of this prototype to the given JSON writer.
@@ -1137,7 +1162,8 @@ class AtomicGauge : public Gauge {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), value());
+    return writer->WriteSingleEntry(attr, prototype_->name(), value(),
+                                    prototype()->aggregation_function());
   }
 
  protected:
@@ -1276,7 +1302,8 @@ class FunctionGauge : public Gauge {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), value());
+    return writer->WriteSingleEntry(attr, prototype_->name(), value(),
+                                    prototype()->aggregation_function());
   }
 
  private:
@@ -1405,7 +1432,8 @@ class AtomicMillisLag : public MillisLag {
       return Status::OK();
     }
 
-    return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms());
+    return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
+                                    prototype()->aggregation_function());
   }
 
  protected:
