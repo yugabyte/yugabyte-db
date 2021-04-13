@@ -198,6 +198,11 @@ class SemContext : public ProcessContext {
     return sem_state_->expected_ql_type();
   }
 
+  NullIsAllowed expected_ql_type_accepts_null() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->expected_ql_type_accepts_null();
+  }
+
   InternalType expr_expected_internal_type() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->expected_internal_type();

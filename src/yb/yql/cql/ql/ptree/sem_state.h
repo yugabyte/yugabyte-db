@@ -21,6 +21,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 #define YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -34,6 +35,8 @@ class IfExprState;
 class IdxPredicateState;
 class PTColumnDefinition;
 class PTDmlStmt;
+
+YB_STRONGLY_TYPED_BOOL(NullIsAllowed);
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -62,7 +65,8 @@ class SemState {
                     const std::shared_ptr<QLType>& expected_ql_type = QLType::Create(UNKNOWN_DATA),
                     InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
 
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
@@ -116,7 +120,8 @@ class SemState {
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
 
   // Update state variable for index predicate clause i.e, where clause.
   void SetIdxPredicateState(IdxPredicateState *idx_predicate_state) {
@@ -135,6 +140,7 @@ class SemState {
 
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
+  NullIsAllowed expected_ql_type_accepts_null() const { return allow_null_ql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
 
   // Return the hash column descriptor on LHS if available.
@@ -211,7 +217,8 @@ class SemState {
 
   // States to process an expression node.
   std::shared_ptr<QLType> expected_ql_type_; // The expected sql type of an expression.
-  InternalType expected_internal_type_;        // The expected internal type of an expression.
+  NullIsAllowed allow_null_ql_type_;         // Does the expected type accept NULL?
+  InternalType expected_internal_type_;      // The expected internal type of an expression.
 
   MCSharedPtr<MCString> bindvar_name_ = nullptr;
 

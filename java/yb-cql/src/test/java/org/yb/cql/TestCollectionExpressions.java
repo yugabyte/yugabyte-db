@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
@@ -22,13 +23,18 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCollectionExpressions extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCollectionExpressions.class);
+
   private String createTableStmt(String tableName, String keyType, String elemType)
       throws Exception {
     return String.format("CREATE TABLE %s (h int, r int, " +
@@ -1188,5 +1194,143 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y", list.get(1));
       assertEquals("w", list.get(2));
     }
+  }
+
+  @Test
+  public void testNull() throws Exception {
+    String tableName = "test_coll_exp";
+    session.execute(createTableStmt(tableName, "int", "text"));
+
+    String insertTemplate = "INSERT INTO " + tableName +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s)";
+    session.execute(String.format(insertTemplate, 1, 1, "{2 : 'b', 3: 'c'}",
+        "{1, 2}", "['x', 'y']"));
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
+                "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Map.
+    //----------------------------------------------------------------------------------------------
+    session.execute("UPDATE " + tableName + " SET vm = {1 : 'a'} WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE " + tableName + " SET vm = {1 : null} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+    runInvalidStmt("UPDATE " + tableName + " SET vm = {null : 'a'} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Set.
+    //----------------------------------------------------------------------------------------------
+    session.execute("UPDATE " + tableName + " SET vs = {3} WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE " + tableName + " SET vs = {null} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing List.
+    //----------------------------------------------------------------------------------------------
+    session.execute("UPDATE " + tableName + " SET vl = ['z'] WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE " + tableName + " SET vl = [null] WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
+                "Row[1, 1, {1=a}, [3], [z]]");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Frozen.
+    //----------------------------------------------------------------------------------------------
+    session.execute("CREATE TABLE test_frozen (h int, r int, " +
+        "vm frozen<map<int, text>>, vs frozen<set<int>>, vl frozen<list<text>>," +
+        "primary key((h), r))");
+
+    session.execute("UPDATE test_frozen SET vm = {1 : 'a'} WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE test_frozen SET vm = {1 : null} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+    runInvalidStmt("UPDATE test_frozen SET vm = {null : 'a'} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    session.execute("UPDATE test_frozen SET vs = {3} WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE test_frozen SET vs = {null} WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    session.execute("UPDATE test_frozen SET vl = ['z'] WHERE h = 1 AND r = 1");
+    runInvalidStmt("UPDATE test_frozen SET vl = [null] WHERE h = 1 AND r = 1",
+                   "null is not supported inside collections");
+
+    assertQuery("SELECT * FROM test_frozen WHERE h = 1 AND r = 1",
+                "Row[1, 1, {1=a}, [3], [z]]");
+  }
+
+  @Test
+  public void testNullInPrepared() throws Exception {
+    String tableName = "test_coll_exp";
+    session.execute(createTableStmt(tableName, "int", "text"));
+
+    String insertTemplate = "INSERT INTO " + tableName +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s)";
+    session.execute(String.format(insertTemplate, 1, 1, "{2 : 'b', 3: 'c'}",
+        "{1, 2}", "['x', 'y']"));
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
+                "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Map.
+    //----------------------------------------------------------------------------------------------
+    String insertStmt = "INSERT INTO " + tableName + " (h, r, vm) VALUES (?, ?, ?)";
+    PreparedStatement stmt = session.prepare(insertStmt);
+
+    Map<Integer, String> mapWithNullValue = new HashMap<Integer, String>();
+    mapWithNullValue.put(1, null);
+    try {
+      session.execute(stmt.bind(new Integer(1), new Integer(1), mapWithNullValue));
+      fail("Statement \"" + insertStmt + "\" did not fail with Null value in Map");
+    } catch (java.lang.NullPointerException e) {
+      LOG.info("Expected exception", e);
+      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    }
+
+    Map<Integer, String> mapWithNullKey = new HashMap<Integer, String>();
+    mapWithNullKey.put(null, "a");
+    try {
+      session.execute(stmt.bind(new Integer(1), new Integer(1), mapWithNullKey));
+      fail("Statement \"" + insertStmt + "\" did not fail with Null key in Map");
+    } catch (java.lang.NullPointerException e) {
+      LOG.info("Expected exception", e);
+      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Testing Set.
+    //----------------------------------------------------------------------------------------------
+    insertStmt = "INSERT INTO " + tableName + " (h, r, vs) VALUES (?, ?, ?)";
+    stmt = session.prepare(insertStmt);
+
+    Set<Integer> setWithNull = new HashSet<Integer>();
+    setWithNull.add(null);
+    try {
+      session.execute(stmt.bind(new Integer(1), new Integer(1), setWithNull));
+      fail("Statement \"" + insertStmt + "\" did not fail with Null value in Set");
+    } catch (java.lang.NullPointerException e) {
+      LOG.info("Expected exception", e);
+      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Testing List.
+    //----------------------------------------------------------------------------------------------
+    insertStmt = "INSERT INTO " + tableName + " (h, r, vl) VALUES (?, ?, ?)";
+    stmt = session.prepare(insertStmt);
+
+    List<String> listWithNull = new LinkedList<>();
+    listWithNull.add(null);
+    try {
+      session.execute(stmt.bind(new Integer(1), new Integer(1), listWithNull));
+      fail("Statement \"" + insertStmt + "\" did not fail with Null value in List");
+    } catch (java.lang.NullPointerException e) {
+      LOG.info("Expected exception", e);
+      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    }
+
+    // Check the row was not changed.
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
+                "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
   }
 }
