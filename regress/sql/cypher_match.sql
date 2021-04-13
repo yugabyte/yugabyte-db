@@ -430,6 +430,31 @@ SELECT * FROM cypher('cypher_match', $$
 	RETURN DISTINCT p
 $$) AS (i agtype);
 
+--
+-- Limit
+--
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN u
+$$) AS (i agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN u LIMIT 3
+$$) AS (i agtype);
+
+--
+-- Skip
+--
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN u SKIP 7
+$$) AS (i agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (u)
+	RETURN u SKIP 7 LIMIT 3
+$$) AS (i agtype);
 
 --
 -- Clean up

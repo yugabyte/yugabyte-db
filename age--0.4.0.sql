@@ -2545,7 +2545,8 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype AS bigint)
-WITH FUNCTION ag_catalog.agtype_to_int8(variadic "any");
+WITH FUNCTION ag_catalog.agtype_to_int8(variadic "any")
+AS ASSIGNMENT;
 
 -- agtype -> int4
 CREATE FUNCTION ag_catalog.agtype_to_int4(variadic "any")
