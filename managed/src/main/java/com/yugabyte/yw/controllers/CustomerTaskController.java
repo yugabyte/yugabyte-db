@@ -201,19 +201,10 @@ public class CustomerTaskController extends AuthenticatedController {
     }
 
     JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
-    if (oldTaskParams == null) {
-      return ApiResponse.error(
-        BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
-    }
-
     UniverseDefinitionTaskParams params = Json.fromJson(
       oldTaskParams, UniverseDefinitionTaskParams.class);
     params.firstTry = false;
     Universe universe = Universe.get(params.universeUUID);
-    if (universe == null) {
-      return ApiResponse.error(
-        BAD_REQUEST, "Did not find failed universe with uuid: " + params.universeUUID);
-    }
 
     UUID newTaskUUID = commissioner.submit(taskInfo.getTaskType(), params);
     LOG.info("Submitted retry task to create universe for {}:{}, task uuid = {}.",
