@@ -1,8 +1,8 @@
 ---
-title: Cursor
-linkTitle: Cursor
-description: Cursor in YSQL
-headcontent: Cursor in YSQL
+title: Cursors
+linkTitle: Cursors
+description: Using Cursors in YSQL
+headcontent: Cursors in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
@@ -21,7 +21,7 @@ A cursor represents a pointer with read-only access to the result set of a `SELE
 
 You can create a function that returns a reference to a cursor, therefore returning a large result set ready to be processed by the caller of the function. You can also use cursors in procedures.
 
-The following commands, in order, are associated with YSQL cursors:
+The following statements, in order, are associated with YSQL cursors:
 
 - `DECLARE` – Allows you to create and execute the cursor inside a transaction.
 
@@ -45,15 +45,15 @@ Operations involving cursors must be performed inside transactions.
 
 You need to declare a cursor  before you can open and use it. There are two ways to declare a cursor:
 
-- As a variable of type `refcursor` placed within the YSQL block's declaration section, as follows:
+- As a variable of type `refcursor` placed within the YSQL block's declaration section, as demonstrated by the following syntax:
 
-  ```sql
+  ```
   DECLARE new_cursor refcursor;
   ```
   
-- As an element bounded to a query, based on the following syntax:
+- As an element bound to a query, based on the following syntax:
 
-  ```sql
+  ```
   new_cursor CURSOR [( arguments )] FOR a_query;
   ```
 
@@ -146,8 +146,6 @@ FETCH LAST FROM employees_row INTO employee_no, name, department;
 
 ### How to Move a Cursor
 
-NOT SUPPORTED ??
-
 The `MOVE` statement allows you to shift the position of the cursor without retrieving any row. You can direct the shift by using the same values as you would use with the [`FETCH` statement](#how-to-fetch-a-row).
 
 The following examples show how to move a cursor:
@@ -174,8 +172,6 @@ The following example shows how to update a row:
 UPDATE employees SET department = section 
   WHERE CURRENT OF employees_cursor_1;
 ```
-
-THIS IS SUPPORTED
 
 ```sql
 DELETE FROM employees_cursor_2;
