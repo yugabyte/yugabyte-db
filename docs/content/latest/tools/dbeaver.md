@@ -12,99 +12,97 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[DBeaver](https://dbeaver.io/) is a free (and [open source](https://github.com/dbeaver/dbeaver)) multi-platform, cross-platform database tool for developers, SQL programmers, database administrators, and analysts. DBeaver is written in Java, based on the [Eclipse](https://www.eclipse.org/) platform, and supports supports any database that has a JDBC driver, including PostgreSQL, MariaDB, and MySQL. And, using the PostgreSQL JDBC driver, you can use DBeaver with YugabyteDB.
+[DBeaver](https://dbeaver.io/) is a free [open source](https://github.com/dbeaver/dbeaver) multi-platform, cross-platform database tool for developers, SQL programmers, and database administrators. DBeaver supports various databases including PostgreSQL, MariaDB, MySQL, YugabyteDB. In addition, there are plugins and extensions for other databases that support the JDBC driver. [DBeaver Enterprise Edition](https://dbeaver.com/) supports non-JDBC data sources and allows you to explore Yugabyte YCQL tables.
 
-The [DBeaver Community Edition](https://dbeaver.io/) includes these features:
+![img](/images/develop/tools/dbeaver/dbeaver-view.png)
 
-- [Open source](https://github.com/dbeaver/dbeaver)
-- Connection and metadata browser
-- SQL query editor and executor
-- Rich in-line data editor
-- Entity relationship (ER) diagrams
+## Using DBeaver with YSQL
 
-The [DBeaver Enterprise Edition](https://dbeaver.com/) adds support for non-JDBC data sources, including MongoDB, Cassandra, and Redis.
+Before you can start using DBeaver with YSQL, you need to perform the following:
 
-![DBeaver application](/images/develop/tools/dbeaver/dbeaver-screenshot.png)
+- Start YugabyteDB. 
 
-## Before you begin
+  For more information, see [Quick Start](https://docs.yugabyte.com/quick-start/install).
 
-Before getting started with DBeaver, make sure you meet the following prerequisites.
+- Install JRE or JDK for Java 8 or later. 
 
-### YugabyteDB
+  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver. 
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install).
+- Install DBeaver as follows:
+  - Download the distribution package for your OS from [DBeaver Downloads](https://dbeaver.io/download/).
+  - Start the installation by following instructions in [DBeaver Installation](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
-### Java Runtime Environment (JRE)
+### How to Create a YugabyteDB YSQL Connection
 
-DBeaver requires a Java runtime (or JDK) for Java 8 or later. Some of the installers include a JRE, accessible only to DBeaver.
+You can create a connection as follows:
 
-JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- Launch DBeaver.
+- Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
+- In the **Select your databas**e list, select **YugabyteDB**, and then click **Next**.
 
-### PostgreSQL JDBC driver
+![img](/images/develop/tools/dbeaver/dbeaver-select-db.png)
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) can be used with DBeaver to work with YugabyteDB databases. 
+- Use **Connection Settings** to specify the following:
+  - **Host**: localhost
+  - **Port**: 5433
+  - **Database**: replace the default value postgres with yugabyte .
+  - **User**: yugabyte 
+  - **Password**: leave blank if YSQL authentication is not enabled. If enabled, add the password for yugabyte (default is yugabyte).
+  - Select **Show all databases**.
 
-To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
+- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
 
-## Install DBeaver
+![img](/images/develop/tools/dbeaver/dbeaver-connected.png)
 
-1. Download the distribution package for the operating system on your client computer from the [DBeaver downloads page](https://dbeaver.io/download/).
-2. Install DBeaver following the steps on the [DBeaver Installation page](https://github.com/dbeaver/dbeaver/wiki/Installation).
+DBeaver's **Database Navigator** should display **Yugabyte - localhost**.
 
-## Configure DBeaver
+You can expand the list to see all databases available to the Yugabyte User, as shown in the following illustration:
 
-### Configure the JDBC driver
+![img](/images/develop/tools/dbeaver/dbeaver-localhost.png)
 
-1. Start the DBeaver application. The DBeaver application window appears.
-2. On the menu, select **Database > Driver Manager**. The **Driver Manager** window appears.
+For sample databases to explore YugabyteDB using DBeaver, see [Sample data](https://docs.yugabyte.com/latest/sample-data/).
 
-![Driver Manager](/images/develop/tools/dbeaver/dbeaver-driver-manager.png)
+## Using DBeaver with YCQL
 
-3. Select **PostgreSQL** and then click **Copy**. The **Create new driver** window appears with a copy of the default PostgreSQL driver settings.
+Before you can start using DBeaver with YCQL, you need to perform the following:
 
-![Create new driver](/images/develop/tools/dbeaver/dbeaver-create-new-driver.png)
+- Start YugabyteDB. 
 
-4. Make the following changes in the **Settings**:
+  For more information, see [Quick Start](https://docs.yugabyte.com/quick-start/install).
 
-    - **DriverName**: `YugabyteDB` — Default name is "PostgreSQL", but using "YugabyteDB" might help you not confuse this driver's settings with PostgreSQL connections using the PostgreSQL port of `5432`.
-    - **Driver Type**: `PostgreSQL` (selected)
-    - **Class Name**: `org.postgresql.Driver`
-    - **URL Template**: `jdbc.postgresql://{host}[:{port}/[{database}]` (read-only)
-    - **Default Port**: `5433` (Default is `5432`)
+- Install JRE or JDK for Java 8 or later. 
 
-5. In the **Libraries** tab, select the PostgreSQL JDBC driver JAR file to be used.
+  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver. 
 
-6. Click **OK**. The **Create new driver** window closes. 
+- Install [DBeaver Enterprise Edition](https://dbeaver.com/download/enterprise/).
 
-7. Verify that the new "YugabyteDB" driver appears in the **Driver Manager** listing and then click **Close**.
 
-## Create a database connection
+### How to Create a YugabyteDB YCQL Connection
 
-1. On the DBeaver menu, select **Database > New Connection**. The **Connect to database** window appears.
+You can create a connection as follows:
 
-2. In the **Select your database** listing, select **YugabyteDB** and then click **Next**.
+- Launch DBeaver.
+- Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
+- In the **Select your databas**e list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
 
-3. In the **Connection Settings**, add the following settings:
+![img](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
 
-    - **Host**: `localhost`
-    - **Port**: `5433`
-    - **Database**: Clear the default value (`postgres`)
-    - **User**: `yugabyte` (default is `postgres`)
-    - **Password**: Leave blank if YSQL authentication is not enabled. If enabled, add the password for `yugabyte` (default is `yugabyte`).
-    - **Show all databases**: Select this option.
+- Use **Connection Settings** to specify the following:
+  - **Host**: localhost
+  - **Port**: 9042
+  - **Keyspace**: system
+  - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username. 
+  - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
+  - Select **Show all databases**.
 
-4. Click **Test Connection** to verify that the connection is successful.
+- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
 
-5. Click **Finish**.
+![img](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
 
-6. In the DBeaver application, you should now see "Yugabyte - localhost" in the **Database Navigator** panel.
+DBeaver's **Database Navigator** should display system.
 
-You can now expand the listing and see a listing of all databases available to the `yugabyte` user.
+You can expand the list to see all keyspaces available in YugabyteDB cluster, as shown in the following illustration:
 
- ![Listing of databases](/images/develop/tools/dbeaver/dbeaver-list-of-databases.png)
+![img](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
-## What's next
-
-DBeaver has lots of features for developers and administrators to explore. For help using DBeaver, see the [DBeaver.io](https://dbeaver.io/) website and the [DBeaver documentation](https://github.com/dbeaver/dbeaver/wiki).
-
-If you're looking for sample databases to explore YugabyteDB using DBeaver, see [Sample data](../../sample-data/).
+For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](https://docs.yugabyte.com/latest/explore/json-support/jsonb-ycql/#root).
