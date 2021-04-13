@@ -13,6 +13,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -26,6 +27,8 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
 
 import play.libs.Json;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class Commissioner {
@@ -119,7 +122,8 @@ public class Commissioner {
       // Get the percentage of subtasks that ran and completed
       responseJson.put("percent", taskInfo.getPercentCompleted());
       // Get subtask groups
-      responseJson.set("details", Json.toJson(taskInfo.getUserTaskDetails()));
+      UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
+      responseJson.set("details", Json.toJson(userTaskDetails));
       return responseJson;
     }
 
@@ -133,7 +137,9 @@ public class Commissioner {
     if (taskInfo != null) {
       return taskInfo.getTaskDetails();
     } else {
-      return null;
+      // TODO: push this down to TaskInfo
+      throw new YWServiceException(BAD_REQUEST,
+        "Failed to retrieve task params for Task UUID: " + taskUUID);
     }
   }
 

@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -43,6 +44,7 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams {
     return null;
   }
 
+  @JsonIgnore
   public Provider getProvider() {
     if (getAZ() != null) {
       return getAZ().getProvider();
