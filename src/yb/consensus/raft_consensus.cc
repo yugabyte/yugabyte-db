@@ -156,7 +156,7 @@ METRIC_DEFINE_gauge_int64(tablet, raft_term,
 METRIC_DEFINE_lag(tablet, follower_lag_ms,
                   "Follower lag from leader",
                   "The amount of time since the last UpdateConsensus request from the "
-                  "leader.");
+                  "leader.", {0, yb::AggregationFunction::kMax} /* optional_args */);
 
 METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
                           "Is tablet raft leader",

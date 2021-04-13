@@ -370,11 +370,12 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
   // Emit all the ticker (gauge) metrics.
   for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
     RETURN_NOT_OK(writer->WriteSingleEntry(
-        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first)));
+        attrs, entry.second, regulardb_statistics->getTickerCount(entry.first),
+        AggregationFunction::kSum));
     if (export_intentdb_metrics) {
       RETURN_NOT_OK(writer->WriteSingleEntry(
           attrs, Format("intentsdb_$0", entry.second),
-          intentsdb_statistics->getTickerCount(entry.first)));
+          intentsdb_statistics->getTickerCount(entry.first), AggregationFunction::kSum));
     }
   }
   // Emit all the histogram metrics.
@@ -385,9 +386,9 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
     auto copy_of_attr = attrs;
     const std::string hist_name = entry.second;
     RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", histogram_data.sum));
+        copy_of_attr, hist_name + "_sum", histogram_data.sum, AggregationFunction::kSum));
     RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", histogram_data.count));
+        copy_of_attr, hist_name + "_count", histogram_data.count, AggregationFunction::kSum));
   }
   return Status::OK();
 }
