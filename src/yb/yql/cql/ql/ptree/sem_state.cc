@@ -29,9 +29,11 @@ SemState::SemState(SemContext *sem_context,
                    const std::shared_ptr<QLType>& expected_ql_type,
                    InternalType expected_internal_type,
                    const MCSharedPtr<MCString>& bindvar_name,
-                   const ColumnDesc *lhs_col)
+                   const ColumnDesc *lhs_col,
+                   NullIsAllowed allow_null)
     : sem_context_(sem_context),
       expected_ql_type_(expected_ql_type),
+      allow_null_ql_type_(allow_null),
       expected_internal_type_(expected_internal_type),
       bindvar_name_(bindvar_name),
       lhs_col_(lhs_col) {
@@ -83,8 +85,10 @@ void SemState::ResetContextState() {
 void SemState::SetExprState(const std::shared_ptr<QLType>& ql_type,
                             InternalType internal_type,
                             const MCSharedPtr<MCString>& bindvar_name,
-                            const ColumnDesc *lhs_col) {
+                            const ColumnDesc *lhs_col,
+                            NullIsAllowed allow_null) {
   expected_ql_type_ = ql_type;
+  allow_null_ql_type_ = allow_null;
   expected_internal_type_ = internal_type;
   bindvar_name_ = bindvar_name;
   lhs_col_ = lhs_col;
@@ -93,6 +97,7 @@ void SemState::SetExprState(const std::shared_ptr<QLType>& ql_type,
 void SemState::CopyPreviousStates() {
   if (previous_state_ != nullptr) {
     expected_ql_type_ = previous_state_->expected_ql_type_;
+    allow_null_ql_type_ = previous_state_->allow_null_ql_type_;
     expected_internal_type_ = previous_state_->expected_internal_type_;
     bindvar_name_ = previous_state_->bindvar_name_;
     where_state_ = previous_state_->where_state_;
