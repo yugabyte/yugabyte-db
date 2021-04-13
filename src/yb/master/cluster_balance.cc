@@ -469,13 +469,13 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   // Update state.
   is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
 
-  // Two interesting cases when updating can_balance_global_load_ state:
+  // Two interesting cases when updating can_perform_global_operations_ state:
   // If we previously couldn't balance global load, but now the LB is idle, enable global balancing.
   // If we previously could balance global load, but now the LB is busy, then it is busy balancing
   // global load or doing other operations (remove, etc.). In this case, we keep global balancing
   // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
-  can_balance_global_load_ = can_balance_global_load_ || ai.IsIdle();
+  can_perform_global_operations_ = can_perform_global_operations_ || ai.IsIdle();
 }
 
 Status ClusterLoadBalancer::IsIdle() const {
@@ -490,7 +490,7 @@ Status ClusterLoadBalancer::IsIdle() const {
 }
 
 bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
-  return FLAGS_enable_global_load_balancing && can_balance_global_load_;
+  return FLAGS_enable_global_load_balancing && can_perform_global_operations_;
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
@@ -795,7 +795,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         RETURN_NOT_OK(MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
         // Update global state if necessary.
         if (!is_global_balancing_move) {
-          can_balance_global_load_ = false;
+          can_perform_global_operations_ = false;
         }
         return true;
       }
@@ -928,6 +928,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
     } else {
       if (state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_[right])) {
         // Non-leader blacklisted tserver with not too many leader replicas.
+        // TODO(Sanket): Even though per table load is below the configured threshold,
+        // we might want to do global leader balancing above a certain threshold that is lower
+        // than the per table threshold. Can add another gflag/knob here later.
         return false;
       } else {
         // Non-leader blacklisted tserver with too many leader replicas.
@@ -975,13 +978,29 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
       int load_variance =
           state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
 
+      bool is_global_balancing_move = false;
+
       // Check for state change or end conditions.
       if (left == right || (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
             !high_leader_blacklisted)) {
-        // Either both left and right are at the end, or our load_variance is already too small,
-        // which means it will be too small for any TSs between left and right, so we can return.
-        if (right == last_pos) {
+        // Global leader balancing only if per table variance is > 0.
+        // If both left and right are same (i.e. load_variance is 0) and right is last_pos
+        // or right is last_pos and load_variance is 0 then we can return as we don't
+        // have any other moves to make.
+        if (load_variance == 0 && right == last_pos) {
           return false;
+        }
+        // Check if we can benefit from global leader balancing.
+        // If we have > 0 load_variance and there are no per table moves left.
+        if (load_variance > 0 && CanBalanceGlobalLoad()) {
+          int global_load_variance = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid) -
+                                        state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
+          // Already globally balanced. Since we are sorted by global load, we can return here as
+          // there are no other moves for us to make.
+          if (global_load_variance < state_->options_->kMinGlobalLeaderLoadVarianceToBalance) {
+            return false;
+          }
+          is_global_balancing_move = true;
         } else {
           break;
         }
@@ -1027,6 +1046,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
           state_->LogSortedLeaderLoad();
           LOG(INFO) << "Move tablet " << tablet_id << " leader from leader blacklisted TS "
             << *from_ts << " to TS " << *to_ts;
+        }
+        if (!is_global_balancing_move) {
+          can_perform_global_operations_ = false;
         }
         return true;
       }

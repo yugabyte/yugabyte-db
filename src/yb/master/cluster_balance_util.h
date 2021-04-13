@@ -198,6 +198,9 @@ struct Options {
   // If variance between leader load on TS goes past this number, we should try to balance.
   double kMinLeaderLoadVarianceToBalance = 2.0;
 
+  // If variance between global leader load on TS goes past this number, we should try to balance.
+  double kMinGlobalLeaderLoadVarianceToBalance = 2.0;
+
   // Whether to limit the number of tablets being spun up on the cluster at any given time.
   bool kAllowLimitStartingTablets = true;
 
@@ -248,6 +251,12 @@ class GlobalLoadState {
   int GetGlobalLoad(const TabletServerId& ts_uuid) const {
     const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
     return ts_meta.starting_tablets_count + ts_meta.running_tablets_count;
+  }
+
+  // Get global leader load for a certain TS.
+  int GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const {
+    const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
+    return ts_meta.leaders_count;
   }
 
   TSDescriptorVector ts_descs_;
@@ -309,8 +318,18 @@ class PerTableLoadState {
         return !a_leader_blacklisted;
       }
 
+      // Use global leader load as tie-breaker.
+      int a_load = state_->GetLeaderLoad(a);
+      int b_load = state_->GetLeaderLoad(b);
+      if (a_load == b_load) {
+        a_load = state_->global_state_->GetGlobalLeaderLoad(a);
+        b_load = state_->global_state_->GetGlobalLeaderLoad(b);
+        if (a_load == b_load) {
+          return a < b;
+        }
+      }
       // Secondary criteria: tserver leader load.
-      return state_->GetLeaderLoad(a) < state_->GetLeaderLoad(b);
+      return a_load < b_load;
     }
     PerTableLoadState* state_;
   };

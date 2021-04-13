@@ -374,7 +374,7 @@ class ClusterLoadBalancer {
   // global load balancing once all tables are themselves balanced.
   // This value is only set to true once is_idle_ becomes true, and this value is only set to false
   // once we perform a non-global move.
-  bool can_balance_global_load_ = false;
+  bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
   void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->lock_);
