@@ -2088,15 +2088,12 @@ public class TestIndex extends BaseCQLTest {
 
     // Cannot pass NULL into IN-list via PreparedStatement API.
     if (!tp.usePreparedQueries()) {
-      assertQuery(tp, "SELECT * FROM test_in WHERE name IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a80310, NULL, NULL]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN ('', null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
-
-      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN (null)",
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e3, , ]" +
-                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
+      runInvalidStmt("SELECT * FROM test_in WHERE name IN (null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN ('', null)",
+                     "null is not supported inside collections");
+      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN (null)",
+                     "null is not supported inside collections");
     }
 
     // Create test table and index.
