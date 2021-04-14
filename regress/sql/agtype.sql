@@ -133,6 +133,13 @@ SELECT agtype_div('4', '-3.0::numeric');
 SELECT agtype_div('-4.0', '3::numeric');
 SELECT agtype_div('4.0::numeric', '-3::numeric');
 
+SELECT agtype_mod('-11', '3');
+SELECT agtype_mod('11', '-3.0');
+SELECT agtype_mod('-11.0', '3');
+SELECT agtype_mod('11.0', '-3.0');
+SELECT agtype_mod('11', '-3.0::numeric');
+SELECT agtype_mod('-11.0', '3::numeric');
+SELECT agtype_mod('11.0::numeric', '-3::numeric');
 
 SELECT agtype_pow('-2', '3');
 SELECT agtype_pow('2', '-1.0');
@@ -148,7 +155,6 @@ SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 -- Test overloaded agtype any mathematical operator functions
 -- +, -, *, /, and %
 --
-
 SELECT agtype_any_add('1', -1);
 SELECT agtype_any_add('1.0', -1);
 SELECT agtype_any_add('1::numeric', 1);
@@ -168,6 +174,11 @@ SELECT agtype_any_div('-4', 3);
 SELECT agtype_any_div('4.0', -3);
 SELECT agtype_any_div('-4::numeric', 3);
 SELECT agtype_any_div('-4.0::numeric', 3);
+
+SELECT agtype_any_mod('-11', 3);
+SELECT agtype_any_mod('11.0', -3);
+SELECT agtype_any_mod('-11::numeric', 3);
+SELECT agtype_any_mod('-11.0::numeric', 3);
 --
 -- Should fail with divide by zero
 --
@@ -220,7 +231,6 @@ SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
 --
 -- Test overloaded agytype any operators +, -, *, /, %
 --
-
 SELECT '3'::agtype + 3;
 SELECT '3.14'::agtype + 3;
 SELECT '3.14::numeric'::agtype + 3;
@@ -255,6 +265,42 @@ SELECT '3.14::numeric'::agtype % 3;
 SELECT 3 % '3'::agtype;
 SELECT 3 % '3.14'::agtype;
 SELECT 3 % '3.14::numeric'::agtype;
+
+--
+-- Test overloaded agytype any functions and operators for NULL input 
+-- +, -, *, /, %, =, <>, <, >, <=, >=
+-- These should all return null
+SELECT agtype_any_add('null'::agtype, 1);
+SELECT agtype_any_sub('null'::agtype, 1);
+SELECT agtype_any_mul('null'::agtype, 1);
+SELECT agtype_any_div('null'::agtype, 1);
+SELECT agtype_any_mod('null'::agtype, 1);
+
+SELECT 1 + 'null'::agtype;
+SELECT 1 - 'null'::agtype;
+SELECT 1 * 'null'::agtype;
+SELECT 1 / 'null'::agtype;
+SELECT 1 % 'null'::agtype;
+
+SELECT agtype_any_add('null'::agtype, 1);
+SELECT agtype_any_sub('null'::agtype, 1);
+SELECT agtype_any_mul('null'::agtype, 1);
+SELECT agtype_any_div('null'::agtype, 1);
+SELECT agtype_any_mod('null'::agtype, 1);
+
+SELECT 1 = 'null'::agtype;
+SELECT 1 <> 'null'::agtype;
+SELECT 1 < 'null'::agtype;
+SELECT 1 > 'null'::agtype;
+SELECT 1 <= 'null'::agtype;
+SELECT 1 >= 'null'::agtype;
+
+SELECT agtype_any_eq('null'::agtype, 1);
+SELECT agtype_any_ne('null'::agtype, 1);
+SELECT agtype_any_lt('null'::agtype, 1);
+SELECT agtype_any_gt('null'::agtype, 1);
+SELECT agtype_any_le('null'::agtype, 1);
+SELECT agtype_any_ge('null'::agtype, 1);
 
 --
 -- Test orderability of comparison operators =, <>, <, >, <=, >=

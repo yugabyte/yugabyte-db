@@ -339,6 +339,48 @@ SELECT agtype_div('4.0::numeric', '-3::numeric');
  -1.3333333333333333::numeric
 (1 row)
 
+SELECT agtype_mod('-11', '3');
+ agtype_mod 
+------------
+ -2
+(1 row)
+
+SELECT agtype_mod('11', '-3.0');
+ agtype_mod 
+------------
+ 2.0
+(1 row)
+
+SELECT agtype_mod('-11.0', '3');
+ agtype_mod 
+------------
+ -2.0
+(1 row)
+
+SELECT agtype_mod('11.0', '-3.0');
+ agtype_mod 
+------------
+ 2.0
+(1 row)
+
+SELECT agtype_mod('11', '-3.0::numeric');
+  agtype_mod  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_mod('-11.0', '3::numeric');
+ agtype_mod  
+-------------
+ -2::numeric
+(1 row)
+
+SELECT agtype_mod('11.0::numeric', '-3::numeric');
+  agtype_mod  
+--------------
+ 2.0::numeric
+(1 row)
+
 SELECT agtype_pow('-2', '3');
  agtype_pow 
 ------------
@@ -491,6 +533,30 @@ SELECT agtype_any_div('-4.0::numeric', 3);
         agtype_any_div        
 ------------------------------
  -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_any_mod('-11', 3);
+ agtype_any_mod 
+----------------
+ -2
+(1 row)
+
+SELECT agtype_any_mod('11.0', -3);
+ agtype_any_mod 
+----------------
+ 2.0
+(1 row)
+
+SELECT agtype_any_mod('-11::numeric', 3);
+ agtype_any_mod 
+----------------
+ -2::numeric
+(1 row)
+
+SELECT agtype_any_mod('-11.0::numeric', 3);
+ agtype_any_mod 
+----------------
+ -2.0::numeric
 (1 row)
 
 --
@@ -806,6 +872,172 @@ SELECT 3 % '3.14::numeric'::agtype;
    ?column?    
 ---------------
  3.00::numeric
+(1 row)
+
+--
+-- Test overloaded agytype any functions and operators for NULL input 
+-- +, -, *, /, %, =, <>, <, >, <=, >=
+-- These should all return null
+SELECT agtype_any_add('null'::agtype, 1);
+ agtype_any_add 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_sub('null'::agtype, 1);
+ agtype_any_sub 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mul('null'::agtype, 1);
+ agtype_any_mul 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_div('null'::agtype, 1);
+ agtype_any_div 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mod('null'::agtype, 1);
+ agtype_any_mod 
+----------------
+ 
+(1 row)
+
+SELECT 1 + 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 - 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 * 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 / 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 % 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT agtype_any_add('null'::agtype, 1);
+ agtype_any_add 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_sub('null'::agtype, 1);
+ agtype_any_sub 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mul('null'::agtype, 1);
+ agtype_any_mul 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_div('null'::agtype, 1);
+ agtype_any_div 
+----------------
+ 
+(1 row)
+
+SELECT agtype_any_mod('null'::agtype, 1);
+ agtype_any_mod 
+----------------
+ 
+(1 row)
+
+SELECT 1 = 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 <> 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 < 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 > 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 <= 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 1 >= 'null'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT agtype_any_eq('null'::agtype, 1);
+ agtype_any_eq 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ne('null'::agtype, 1);
+ agtype_any_ne 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_lt('null'::agtype, 1);
+ agtype_any_lt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_gt('null'::agtype, 1);
+ agtype_any_gt 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_le('null'::agtype, 1);
+ agtype_any_le 
+---------------
+ 
+(1 row)
+
+SELECT agtype_any_ge('null'::agtype, 1);
+ agtype_any_ge 
+---------------
+ 
 (1 row)
 
 --

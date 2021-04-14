@@ -247,6 +247,11 @@ Datum agtype_any_add(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_add, AGTYPE_P_GET_DATUM(lhs),
                                              AGTYPE_P_GET_DATUM(rhs));
 
@@ -331,6 +336,11 @@ Datum agtype_any_sub(PG_FUNCTION_ARGS)
 
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     result = DirectFunctionCall2(agtype_sub, AGTYPE_P_GET_DATUM(lhs),
                                              AGTYPE_P_GET_DATUM(rhs));
@@ -465,6 +475,11 @@ Datum agtype_any_mul(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_mul, AGTYPE_P_GET_DATUM(lhs),
                                              AGTYPE_P_GET_DATUM(rhs));
 
@@ -578,6 +593,11 @@ Datum agtype_any_div(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_div, AGTYPE_P_GET_DATUM(lhs),
                                              AGTYPE_P_GET_DATUM(rhs));
 
@@ -662,6 +682,11 @@ Datum agtype_any_mod(PG_FUNCTION_ARGS)
 
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     result = DirectFunctionCall2(agtype_mod, AGTYPE_P_GET_DATUM(lhs),
                                              AGTYPE_P_GET_DATUM(rhs));
@@ -764,6 +789,11 @@ Datum agtype_any_eq(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_eq, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
 
@@ -797,6 +827,11 @@ Datum agtype_any_ne(PG_FUNCTION_ARGS)
 
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     result = DirectFunctionCall2(agtype_ne, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
@@ -832,6 +867,11 @@ Datum agtype_any_lt(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_lt, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
 
@@ -865,6 +905,11 @@ Datum agtype_any_gt(PG_FUNCTION_ARGS)
 
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     result = DirectFunctionCall2(agtype_gt, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
@@ -900,6 +945,11 @@ Datum agtype_any_le(PG_FUNCTION_ARGS)
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
 
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     result = DirectFunctionCall2(agtype_le, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
 
@@ -933,6 +983,11 @@ Datum agtype_any_ge(PG_FUNCTION_ARGS)
 
     lhs = get_one_agtype_from_variadic_args(fcinfo, 0, 2);
     rhs = get_one_agtype_from_variadic_args(fcinfo, 1, 1);
+
+    if (lhs == NULL || rhs == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     result = DirectFunctionCall2(agtype_ge, AGTYPE_P_GET_DATUM(lhs),
                                             AGTYPE_P_GET_DATUM(rhs));
