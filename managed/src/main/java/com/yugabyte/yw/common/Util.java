@@ -28,6 +28,8 @@ import java.util.*;
 import java.text.SimpleDateFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -341,5 +343,39 @@ public class Util {
       details.add(universePayload);
     }
     return details;
+  }
+
+  public static int compareYbVersions(String v1, String v2) {
+    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    Matcher v1Matcher = versionPattern.matcher(v1);
+    Matcher v2Matcher = versionPattern.matcher(v2);
+
+    if (v1Matcher.find() && v2Matcher.find()) {
+      String[] v1Numbers = v1Matcher.group(1).split("\\.");
+      String[] v2Numbers = v2Matcher.group(1).split("\\.");
+      for (int i = 0; i < 4; i++) {
+        int a = Integer.parseInt(v1Numbers[i]);
+        int b = Integer.parseInt(v2Numbers[i]);
+        if (a != b) {
+          return a - b;
+        }
+      }
+
+      String v1BuildNumber = v1Matcher.group(4);
+      String v2BuildNumber = v2Matcher.group(4);
+      // If one of the build number is null (i.e local build) then consider
+      // versions as equal as we cannot compare between local builds
+      // e.g: 2.5.2.0-b15 and 2.5.2.0-custom are considered equal
+      // 2.5.2.0-custom1 and 2.5.2.0-custom2 are considered equal too
+      if (v1BuildNumber != null && v2BuildNumber != null) {
+        int a = Integer.parseInt(v1BuildNumber);
+        int b = Integer.parseInt(v2BuildNumber);
+        return a - b;
+      }
+
+      return 0;
+    }
+
+    throw new RuntimeException("Unable to parse YB version strings");
   }
 }

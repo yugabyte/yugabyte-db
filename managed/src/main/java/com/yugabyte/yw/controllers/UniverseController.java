@@ -560,6 +560,13 @@ public class UniverseController extends AuthenticatedController {
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
+      if (taskParams.getPrimaryCluster() != null) {
+        UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+        if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
+          taskParams.setTxnTableWaitCountFlag = true;
+        }
+      }
+
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(taskParams, customer.getCustomerId());
@@ -1797,6 +1804,28 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
       LOG.error("Error retrieving queries for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = queryHelper.resetQueries(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+        "Failed reach node, invalid IP or DNS.");
+    } catch (Throwable t) {
+      LOG.error("Error resetting slow queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
