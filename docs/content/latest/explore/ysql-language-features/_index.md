@@ -41,7 +41,7 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Tablespaces](tablespaces)</span> | Definition of tablespaces in YSQL |
 | <span style="font-size:16px">[Triggers](triggers/)</span> | Triggers (on data modification) and event triggers (on schema changes) |
 | <span style="font-size:16px">[Views](views/)</span> | Views and updatable views |
-
+| <span style="font-size:16px">[Cursor](cursor/)</span> | Declaration of cursors in YSQL |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
