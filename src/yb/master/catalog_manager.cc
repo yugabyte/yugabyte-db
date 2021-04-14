@@ -2665,7 +2665,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
-      // int colidx = 0;
       for (int colidx = 0; colidx < schema.num_columns(); colidx++) {
         index_info.mutable_columns(colidx)->set_column_id(schema.column_id(colidx));
       }

@@ -457,6 +457,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     index_info->set_indexed_table_id(index_node->indexed_table_id());
     index_info->set_is_local(index_node->is_local());
     index_info->set_is_unique(index_node->is_unique());
+    index_info->set_is_backfill_deferred(index_node->is_backfill_deferred());
     index_info->set_hash_column_count(tnode->hash_columns().size());
     index_info->set_range_column_count(tnode->primary_columns().size());
     index_info->set_use_mangled_column_name(true);
@@ -530,6 +531,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     table_creator->indexed_table_id(index_node->indexed_table_id());
     table_creator->is_local_index(index_node->is_local());
     table_creator->is_unique_index(index_node->is_unique());
+    table_creator->is_backfill_deferred(index_node->is_backfill_deferred());
   }
 
   // Clean-up table cache BEFORE op (the cache is used by other processor threads).

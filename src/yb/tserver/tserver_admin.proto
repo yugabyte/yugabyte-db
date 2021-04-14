@@ -140,6 +140,9 @@ message BackfillIndexResponsePB {
   // the backfill has completed, so that it can be resumed.
   // Encoded as the DocKey for the next row to be backfilled.
   optional bytes backfilled_until = 3;
+
+  // In case of a partial error, list of indexes that failed.
+  repeated bytes failed_index_ids = 4;
 }
 
 message CopartitionTableRequestPB {
