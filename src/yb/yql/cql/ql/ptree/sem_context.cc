@@ -257,6 +257,11 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
     sem_state_->add_index_column_ref(entry->column_desc_->id());
   }
 
+  if (sem_state_ && sem_state_->idx_predicate_state()) {
+    // We are in CREATE INDEX path of a partial index. Save column ids referenced in the predicate.
+    sem_state_->idx_predicate_state()->column_refs()->insert(entry->column_desc_->id());
+  }
+
   return entry->column_desc_;
 }
 

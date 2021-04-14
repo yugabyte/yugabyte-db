@@ -22,7 +22,12 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/index.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/flag_tags.h"
 
@@ -89,12 +94,15 @@ class Selectivity {
   Selectivity(MemoryContext *memctx,
               const PTSelectStmt& stmt,
               const IndexInfo& index_info,
-              bool is_forward_scan)
+              bool is_forward_scan,
+              int predicate_len,
+              const MCUnorderedMap<int32, uint16> &column_ref_cnts)
       : index_id_(index_info.table_id()),
         is_local_(index_info.is_local()),
-        covers_fully_(stmt.CoversFully(index_info)),
+        covers_fully_(stmt.CoversFully(index_info, column_ref_cnts)),
         index_info_(&index_info),
-        is_forward_scan_(is_forward_scan) {
+        is_forward_scan_(is_forward_scan),
+        predicate_len_(predicate_len) {
 
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < index_info.key_column_count(); i++) {
@@ -117,8 +125,39 @@ class Selectivity {
 
   bool supporting_orderby() const { return !full_table_scan_; }
 
+  int prefix_length() const { return prefix_length_; }
+
   // Comparison operator to sort the selectivity of an index.
   bool operator>(const Selectivity& other) const {
+    // Preference of properties:
+    // - If both indexes have that property, check the sub-bullets for finer checks. If all
+    // sub-bullets match, move to next point.
+    // - If both indexes don't have that property, check next point.
+    // - If one of them has and the other doesn't, pick the one that has the property.
+    //
+    //   1. Single key read
+    //      i) Primary index
+    //
+    //   2. Single tserver scan
+    //      i) Partial index
+    //        a) Choose one with larger predicate len
+    //      ii) Prefix length
+    //      iii) Ends with range
+    //      iv) Num non-key ops
+    //      v) Covers fully
+    //      vi) Local
+    //      vii) Primary index
+    //
+    //   3. Reaching here means both are full scans
+    //      i) Partial index
+    //        a) Choose one with larger predicate len
+    //      ii) Primary index
+    //      iii) Prefix length
+    //      iv) Ends with range
+    //      v) Num non-key ops
+    //      vi) Covers fully
+    //      vii) Local
+
     // If one is a single-key read and the other is not, prefer the one that is.
     if (single_key_read_ != other.single_key_read_) {
       return single_key_read_ > other.single_key_read_;
@@ -133,6 +172,12 @@ class Selectivity {
     if (full_table_scan_ != other.full_table_scan_) {
       return full_table_scan_ < other.full_table_scan_;
     }
+
+    // If one of the indexes is partial pick that index.
+    // If both are partial, pick one which has a longer predicate.
+    // If both are partial and have same predicate len, we defer to non-partial index rules.
+    if (predicate_len_ != other.predicate_len_)
+      return predicate_len_ > other.predicate_len_;
 
     if (false) {
       // TODO(Piyush) There are tests that expect secondary index to be chosen in this case, so
@@ -188,15 +233,16 @@ class Selectivity {
   string ToString() const {
     return strings::Substitute("Selectivity: index_id $0 is_local $1 prefix_length $2 "
                                "single_key_read $3 full_table_scan $4 ends_with_range $5 "
-                               "covers_fully $6", index_id_, is_local_, prefix_length_,
-                               single_key_read_, full_table_scan_, ends_with_range_,
-                               covers_fully_);
+                               "covers_fully $6 predicate_len $7", index_id_, is_local_,
+                               prefix_length_, single_key_read_, full_table_scan_, ends_with_range_,
+                               covers_fully_, predicate_len_);
   }
 
  private:
   // Analyze selectivity, currently defined as length of longest fully specified prefix and
   // whether there is a range operator immediately after the prefix.
   using MCIdToIndexMap = MCUnorderedMap<int, size_t>;
+
   void Analyze(MemoryContext *memctx,
                const PTSelectStmt& stmt,
                const MCIdToIndexMap& id_to_idx,
@@ -267,6 +313,7 @@ class Selectivity {
   bool covers_fully_ = false;  // Does the index cover the read fully? (true for indexed table)
   const IndexInfo* index_info_ = nullptr;
   bool is_forward_scan_ = true;
+  int predicate_len_ = 0; // Length of index predicate. 0 if not a partial index.
 };
 
 } // namespace
@@ -654,8 +701,23 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanS
       if (!index.second.HasReadPermission()) {
         continue;
       }
+
+      int predicate_len = 0;
+      MCUnorderedMap<int32, uint16> column_ref_cnts = column_ref_cnts_;
+      // TODO(Piyush): We don't support json/collection cols with subscripted args in partial index
+      // predicates yet. They are blocked on index creation.
+      if (index.second.where_predicate_spec() &&
+          !VERIFY_RESULT(WhereClauseImpliesPred(select_scan_info_->col_ops(),
+            index.second.where_predicate_spec()->where_expr(), &predicate_len,
+            &column_ref_cnts))) {
+        // For a partial index, if WHERE clause doesn't imply index predicate, don't use this index.
+        VLOG(3) << "where_clause_implies_predicate_=false for index_id=" << index.second.table_id();
+        continue;
+      }
+
       if (AnalyzeOrderByClause(sem_context, index.second.table_id(), &is_forward_scan).ok()) {
-        Selectivity sel(sem_context->PTempMem(), *this, index.second, is_forward_scan);
+        Selectivity sel(sem_context->PTempMem(), *this, index.second,
+          is_forward_scan, predicate_len, column_ref_cnts);
         if (!order_by_clause_ || sel.supporting_orderby()) {
           selectivities.push_back(std::move(sel));
         }
@@ -686,6 +748,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanS
       scan_spec->set_index_id(selectivity.index_id());
       scan_spec->set_covers_fully(selectivity.covers_fully());
       scan_spec->set_is_forward_scan(selectivity.is_forward_scan());
+      scan_spec->set_prefix_length(selectivity.prefix_length());
       break;
     }
   }
@@ -735,6 +798,7 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
   SemState select_state(sem_context);
   child_select_ = MakeShared(memctx, *this, selected_exprs, scan_spec);
   select_state.set_selecting_from_index(true);
+  select_state.set_index_select_prefix_length(scan_spec.prefix_length());
 
   // Analyze whether or not the INDEX scan should execute LIMIT & OFFSET clause execution.
   if (scan_spec.covers_fully()) {
@@ -764,10 +828,16 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
 // - Use ColumnID to check if a column in a query is covered by the index.
 // - The list "column_refs_" contains IDs of all columns that are referred to by SELECT.
 // - The list "IndexInfo::columns_" contains the IDs of all columns in the INDEX.
-bool PTSelectStmt::CoversFully(const IndexInfo& index_info) const {
+bool PTSelectStmt::CoversFully(const IndexInfo& index_info,
+                               const MCUnorderedMap<int32, uint16> &column_ref_cnts) const {
   // First, check covering by ID.
   bool all_ref_id_covered = true;
   for (const int32 table_col_id : column_refs_) {
+    DCHECK(column_ref_cnts.find(table_col_id) != column_ref_cnts.end());
+    if (column_ref_cnts.find(table_col_id) == column_ref_cnts.end() ||
+        column_ref_cnts.at(table_col_id) == 0)
+      continue; // All occurrences of the column's ref were part of the partial index predicate.
+
     if (!index_info.IsColumnCovered(ColumnId(table_col_id))) {
       all_ref_id_covered = false;
     }

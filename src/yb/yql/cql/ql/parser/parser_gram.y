@@ -8017,7 +8017,7 @@ IndexStmt:
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $15, $12);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $15, $12, $14);
   }
   | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
@@ -8026,7 +8026,7 @@ IndexStmt:
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $18, $15);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $18, $15, $17);
   }
 ;
 
