@@ -366,6 +366,10 @@ class PTDmlStmt : public PTCollection {
     } else {
       column_refs_.insert(col_desc.id());
     }
+
+    if (column_ref_cnts_.find(col_desc.id()) == column_ref_cnts_.end())
+      column_ref_cnts_[col_desc.id()] = 0;
+    column_ref_cnts_[col_desc.id()]++;
   }
 
   // Add column ref to be read.
@@ -558,6 +562,11 @@ class PTDmlStmt : public PTCollection {
   // must be sent back to the proxy from the tservers.
   MCSet<int32> column_refs_;
   MCSet<int32> static_column_refs_;
+
+  // Ref count of occurrences of cols in where/if clauses. This is used to check, in case of a
+  // partial index scan, if there are more refs of a column after partial index predicate covers
+  // some refs of the col.
+  MCUnorderedMap<int32, uint16> column_ref_cnts_;
 
   // TODO(neil) This should have been a resultset's row descriptor. However, because rowblock is
   // using schema, this must be declared as vector<ColumnSchema>.

@@ -228,9 +228,19 @@ class SemContext : public ProcessContext {
     return sem_state_->validate_orderby_expr();
   }
 
+  IdxPredicateState *idx_predicate_state() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->idx_predicate_state();
+  }
+
   bool selecting_from_index() const {
     DCHECK(sem_state_) << "State variable is not set";
     return sem_state_->selecting_from_index();
+  }
+
+  int index_select_prefix_length() const {
+    DCHECK(sem_state_) << "State variable is not set";
+    return sem_state_->index_select_prefix_length();
   }
 
   bool processing_column_definition() const {
@@ -337,6 +347,10 @@ class SemContext : public ProcessContext {
 
   bool IsUncoveredIndexSelect() const {
     return sem_state_->is_uncovered_index_select();
+  }
+
+  bool IsPartialIndexSelect() const {
+    return sem_state_->is_partial_index_select();
   }
 
  private:

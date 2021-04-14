@@ -1148,17 +1148,51 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
+    bool index_pred_existing_row = true;
+    bool index_pred_new_row = true;
     bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
+
+    if (index->where_predicate_spec()) {
+      RETURN_NOT_OK(EvalCondition(
+        index->where_predicate_spec()->where_expr().condition(), existing_row,
+        &index_pred_existing_row));
+    }
+
     if (is_row_deleted) {
+      // If it is a partial index and predicate wasn't satisfied for the existing row
+      // which is being deleted, we need to do nothing.
+      if (index->where_predicate_spec() && !index_pred_existing_row) {
+        VLOG(3) << "Skip index entry delete for index_id=" << index->table_id() <<
+          " since predicate not satisfied";
+        continue;
+      }
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
           this, index->HasWritePermission(), existing_row, new_row, index,
-          &index_requests_, &index_key_changed));
+          &index_requests_, &index_key_changed, &index_pred_new_row, index_pred_existing_row));
     }
 
+    bool index_pred_switched_to_false = false;
+    if (index->where_predicate_spec() &&
+        !existing_row.IsEmpty() && index_pred_existing_row && !index_pred_new_row)
+      index_pred_switched_to_false = true;
+
     // If the index key is changed, delete the current key.
-    if (index_key_changed && index->HasDeletePermission()) {
+    if ((index_key_changed || index_pred_switched_to_false) && index->HasDeletePermission()) {
+      if (!index_pred_switched_to_false) {
+        // 1. In case of a switch of predicate satisfiability to false, we surely have to delete the
+        // row. (Even if there wasn't any index key change).
+        // 2. But in case of an index key change without predicate satisfiability switch, if the
+        // index predicate was already false for the existing row, we have to do nothing.
+        // TODO(Piyush): Ensure EvalCondition returns an error if some column is missing.
+        if (!index_pred_existing_row) {
+          VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
+            " since predicate not satisfied";
+          return Status::OK();
+        }
+      }
+
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
@@ -1192,7 +1226,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& new_row,
     const IndexInfo* index,
     vector<pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    bool* has_index_key_changed) {
+    bool* has_index_key_changed,
+    bool* index_pred_new_row,
+    bool index_pred_existing_row) {
   bool index_key_changed = false;
   bool update_this_index = false;
   unordered_map<size_t, QLValuePB> values;
@@ -1219,6 +1255,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
             index_key_changed = true;
           }
         } else {
+          // TODO(Piyush): This else is possibly dead code. It can never happen that the new_row
+          // doesn't have some column but the existing one does because we copy the existing one
+          // into the new one before this function call.
           result = existing_row.GetValue(index_column.indexed_column_id);
         }
       }
@@ -1245,6 +1284,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
             index_key_changed = true;
           }
         } else {
+          // TODO(Piyush): This else is possibly dead code.
           RETURN_NOT_OK(expr_executor->EvalExpr(
               index_column.colexpr, existing_row, result.Writer()));
         }
@@ -1268,6 +1308,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     // current value.
     if (index_key_changed) {
       if (!result) {
+        // TODO(Piyush): This if is possibly dead code.
         result = existing_row.GetValue(index_column.indexed_column_id);
       }
     } else if (!FLAGS_ycql_disable_index_updating_optimization &&
@@ -1287,8 +1328,35 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     *has_index_key_changed = index_key_changed;
   }
 
+  bool new_row_satisfies_idx_pred = true;
+  if (index->where_predicate_spec()) {
+    // TODO(Piyush): Ensure EvalCondition returns an error if some column is missing.
+    RETURN_NOT_OK(expr_executor->EvalCondition(
+      index->where_predicate_spec()->where_expr().condition(), new_row,
+      &new_row_satisfies_idx_pred));
+    if (index_pred_new_row) {
+      *index_pred_new_row = new_row_satisfies_idx_pred;
+    }
+
+    if (new_row_satisfies_idx_pred && !index_pred_existing_row) {
+      // In case the row is unchanged but the predicate switches to true (can happen if the
+      // predicate involves no indexed/covering cols).
+      if (!update_this_index)
+        VLOG(3) << "Indexed/covering cols unchanged but predicate switched to true for index_id=" <<
+          index->table_id();
+      update_this_index = true;
+    }
+  }
+
   if (index_has_write_permission &&
       (update_this_index || FLAGS_ycql_disable_index_updating_optimization)) {
+    // If this is a partial index and the index predicate is false for the new row, skip the insert.
+    if (index->where_predicate_spec() && !new_row_satisfies_idx_pred) {
+      VLOG(3) << "Skip index entry write for index_id=" << index->table_id() <<
+        " since predicate not satisfied";
+      return nullptr;
+    }
+
     QLWriteRequestPB* const index_request =
         NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
 

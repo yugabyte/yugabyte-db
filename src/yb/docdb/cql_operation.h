@@ -182,7 +182,9 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& new_row,
     const IndexInfo* index,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    bool* has_index_key_changed = nullptr);
+    bool* has_index_key_changed = nullptr,
+    bool* index_pred_new_row = nullptr,
+    bool index_pred_existing_row = true);
 
 class QLReadOperation : public DocExprExecutor {
  public:

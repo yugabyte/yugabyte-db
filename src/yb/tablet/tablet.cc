@@ -2256,7 +2256,23 @@ Status Tablet::BackfillIndexes(
         }
       }
     }
+    if (idx.where_predicate_spec()) {
+      for (const auto col_in_pred : idx.where_predicate_spec()->column_ids()) {
+        ColumnId col_id_in_pred(col_in_pred);
+        if (col_ids_set.find(col_id_in_pred) == col_ids_set.end()) {
+          col_ids_set.insert(col_id_in_pred);
+          auto res = schema()->column_by_id(col_id_in_pred);
+          if (res) {
+            columns.push_back(*res);
+          } else {
+            LOG(DFATAL) << "Unexpected: cannot find the column in the main table for " <<
+              col_id_in_pred;
+          }
+        }
+      }
+    }
   }
+
   Schema projection(columns, {}, schema()->num_key_columns());
   auto iter =
       VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
@@ -2329,7 +2345,8 @@ Status Tablet::UpdateIndexInBatches(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
             kEmptyRow, row, &index, index_requests));
-    index_request->set_is_backfill(true);
+    if (index_request)
+      index_request->set_is_backfill(true);
   }
 
   // Update the index write op.

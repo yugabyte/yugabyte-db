@@ -47,6 +47,7 @@ import org.yb.util.StringUtil;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -780,4 +781,13 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     waitForYcqlConnectivity();
   }
 
+  protected boolean doesQueryPlanContainSubstring(String query, String substring)
+      throws SQLException {
+    ResultSet rs = session.execute("EXPLAIN " + query);
+
+    for (Row row : rs) {
+      if (row.toString().contains(substring)) return true;
+    }
+    return false;
+  }
 }

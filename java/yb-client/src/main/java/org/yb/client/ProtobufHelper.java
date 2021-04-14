@@ -138,6 +138,21 @@ public class ProtobufHelper {
   }
 
   /**
+   * Deserializes a list of IndexInfoPB protobufs into a list of IndexInfo java objects.
+   *
+   * @param indexes_pb
+   * @return list of IndexInfo objects
+   */
+  public static List<IndexInfo> pbToIndexes(List<Common.IndexInfoPB> indexes_pb) {
+    List<IndexInfo> indexes = new ArrayList<IndexInfo>();
+    for (Common.IndexInfoPB index : indexes_pb) {
+      indexes.add(new IndexInfo(index));
+    }
+
+    return indexes;
+  }
+
+  /**
    * Factory method for creating a {@code PartitionSchema} from a protobuf message.
    *
    * @param pb the partition schema protobuf message

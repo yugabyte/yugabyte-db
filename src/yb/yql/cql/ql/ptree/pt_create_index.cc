@@ -9,10 +9,11 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 
-DEFINE_bool(cql_raise_index_where_clause_error, true,
+DEFINE_bool(cql_raise_index_where_clause_error, false,
             "Raise unsupported error if where clause is specified for create index");
 
 namespace yb {
@@ -35,7 +36,8 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
                              const PTListNode::SharedPtr& columns,
                              const bool create_if_not_exists,
                              const PTTablePropertyListNode::SharedPtr& ordering_list,
-                             const PTListNode::SharedPtr& covering)
+                             const PTListNode::SharedPtr& covering,
+                             const PTExpr::SharedPtr& where_clause)
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
       is_unique_(is_unique),
       is_backfill_deferred_(is_backfill_deferred),
@@ -43,7 +45,9 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
       covering_(covering),
       is_local_(false),
       column_descs_(memctx),
-      auto_includes_(memctx) {
+      auto_includes_(memctx),
+      where_clause_(where_clause),
+      where_clause_column_refs_(nullptr) {
 }
 
 PTCreateIndex::~PTCreateIndex() {
@@ -188,6 +192,16 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
     LOG(WARNING) << "Creating local secondary index " << yb_table_name().ToString()
                  << " as global index.";
     is_local_ = false;
+  }
+
+  // If partial index (i.e., where clause predicate present in CREATE INDEX), analyze the index's
+  // predicate.
+  if (where_clause_.get()) {
+    IdxPredicateState idx_predicate_state(sem_context->PTempMem(), opcode());
+    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    sem_state.SetIdxPredicateState(&idx_predicate_state);
+    RETURN_NOT_OK(where_clause_->Analyze(sem_context));
+    where_clause_column_refs_ = idx_predicate_state.column_refs();
   }
 
   // Restore the context value as we are done with this table.

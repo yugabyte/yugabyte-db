@@ -31,6 +31,7 @@ namespace ql {
 class SelectScanInfo;
 class WhereExprState;
 class IfExprState;
+class IdxPredicateState;
 class PTColumnDefinition;
 class PTDmlStmt;
 
@@ -117,6 +118,12 @@ class SemState {
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
                     const ColumnDesc *lhs_col = nullptr);
 
+  // Update state variable for index predicate clause i.e, where clause.
+  void SetIdxPredicateState(IdxPredicateState *idx_predicate_state) {
+    idx_predicate_state_ = idx_predicate_state;
+  }
+  IdxPredicateState *idx_predicate_state() const { return idx_predicate_state_; }
+
   // Set the current state using previous state's values.
   void CopyPreviousStates();
 
@@ -153,6 +160,9 @@ class SemState {
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
 
+  void set_index_select_prefix_length(int val) { index_select_prefix_length_ = val; }
+  int index_select_prefix_length() const { return index_select_prefix_length_; }
+
   void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
   bool selecting_from_index() const { return selecting_from_index_; }
 
@@ -185,6 +195,8 @@ class SemState {
   void add_index_column_ref(int32_t col_id);
 
   bool is_uncovered_index_select() const;
+
+  bool is_partial_index_select() const;
 
  private:
   // Context that owns this SemState.
@@ -223,8 +235,14 @@ class SemState {
   // State variables for orderby expression.
   bool validate_orderby_expr_ = false;
 
+  // State variables for index predicate expression i.e., where clause in case of partial indexes.
+  IdxPredicateState *idx_predicate_state_ = nullptr;
+
   // Predicate for selecting data from an index instead of a user table.
   bool selecting_from_index_ = false;
+
+  // Length of prefix of cols in index table that have a sub-clause in WHERE with =/IN operator.
+  int index_select_prefix_length_ = 0;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;

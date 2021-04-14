@@ -236,10 +236,19 @@ class SelectScanSpec {
     is_forward_scan_ = val;
   }
 
+  void set_prefix_length(int prefix_length) {
+    prefix_length_ = prefix_length;
+  }
+
+  int prefix_length() const {
+    return prefix_length_;
+  }
+
  private:
   TableId index_id_;
   bool covers_fully_ = false;
   bool is_forward_scan_ = true;
+  int prefix_length_ = 0;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -300,7 +309,8 @@ class PTSelectStmt : public PTDmlStmt {
   // in CQL, so we will keep it that way for now to avoid new bugs and extra work. If the CQL
   // language is extended further toward SQL, we can change this design.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-  bool CoversFully(const IndexInfo& index_info) const;
+  bool CoversFully(const IndexInfo& index_info,
+                   const MCUnorderedMap<int32, uint16> &column_ref_cnts) const;
 
   // Explain scan path.
   void PrintSemanticAnalysisResult(SemContext *sem_context);
@@ -389,6 +399,10 @@ class PTSelectStmt : public PTDmlStmt {
 
   const std::shared_ptr<client::YBTable>& bind_table() const override {
     return child_select_ ? child_select_->bind_table() : PTDmlStmt::bind_table();
+  }
+
+  const std::shared_ptr<client::YBTable>& table() const {
+    return PTDmlStmt::bind_table();
   }
 
   const MCVector<PTBindVar*> &bind_variables() const override {

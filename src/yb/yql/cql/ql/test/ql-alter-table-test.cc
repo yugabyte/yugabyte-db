@@ -34,11 +34,11 @@ TEST_F(QLTestBase, TestQLAlterTableRemoveIndexedColumn) {
       "Alter key column. Can't alter key column");
   // Check indexed range key column can't be dropped
   EXEC_INVALID_STMT_WITH_ERROR("ALTER TABLE t DROP r;",
-      "Feature Not Yet Implemented. Can't drop indexed column. "
+      "Feature Not Yet Implemented. Can't drop column used in an index. "
       "Remove 't_idx' index first and try again");
   // Check indexed column can't be dropped
   EXEC_INVALID_STMT_WITH_ERROR("ALTER TABLE t DROP v;",
-      "Feature Not Yet Implemented. Can't drop indexed column. "
+      "Feature Not Yet Implemented. Can't drop column used in an index. "
       "Remove 't_idx' index first and try again");
   EXEC_VALID_STMT("DROP INDEX t_idx;");
   // Check range key column can't be dropped
@@ -59,11 +59,11 @@ TEST_F(QLTestBase, TestQLAlterTableRemoveIndexedColumnExpr) {
   EXEC_VALID_STMT("CREATE INDEX t_idx ON t(v->>'b') INCLUDE (r);");
   // Check indexed range key column can't be dropped
   EXEC_INVALID_STMT_WITH_ERROR("ALTER TABLE t DROP r;",
-      "Feature Not Yet Implemented. Can't drop indexed column. "
+      "Feature Not Yet Implemented. Can't drop column used in an index. "
       "Remove 't_idx' index first and try again");
   // Check indexed column can't be dropped
   EXEC_INVALID_STMT_WITH_ERROR("ALTER TABLE t DROP v;",
-      "Feature Not Yet Implemented. Can't drop indexed column. "
+      "Feature Not Yet Implemented. Can't drop column used in an index. "
       "Remove 't_idx' index first and try again");
   EXEC_VALID_STMT("DROP INDEX t_idx;");
   // Check range key column can't be dropped
