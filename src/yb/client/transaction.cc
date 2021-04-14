@@ -307,7 +307,7 @@ class YBTransaction::Impl final {
 
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) EXCLUDES(mutex_) {
+            const Status& status) EXCLUDES(mutex_) {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -1123,8 +1123,17 @@ class YBTransaction::Impl final {
   std::vector<Waiter> waiters_;
   std::promise<Result<TransactionMetadata>> metadata_promise_;
   std::shared_future<Result<TransactionMetadata>> metadata_future_ GUARDED_BY(mutex_);
+  // As of 2021-04-05 running_requests_ reflects number of ops in progress within this transaction
+  // only if no in-transaction operations have failed.
+  // If in-transaction operation has failed during tablet lookup or it has failed and will be
+  // retried by YBSession inside the same transaction - Transaction::Flushed is not getting called
+  // and running_requests_ is not updated.
+  // For YBSession-level retries Transaction::Flushed will be called when operation is finally
+  // successfully flushed, if operation fails after retry - Transaction::Flushed is not getting
+  // called.
+  // We might need to fix this before turning on transactions sealing.
+  // https://github.com/yugabyte/yugabyte-db/issues/7984.
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
-
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ = false;
 };

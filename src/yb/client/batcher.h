@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "yb/client/async_rpc.h"
+#include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -100,12 +101,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
  public:
   // Create a new batcher associated with the given session.
   //
-  // Any errors which come back from operations performed by this batcher are posted to
-  // the provided ErrorCollector.
-  //
-  // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
+  // Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
-          ErrorCollector* error_collector,
           const YBSessionPtr& session,
           YBTransactionPtr transaction,
           ConsistentReadPoint* read_point,
@@ -144,7 +141,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // then the callback will receive Status::OK. Otherwise, it will receive IOError,
   // and the caller must inspect the ErrorCollector to retrieve more detailed
   // information on which operations failed.
-  void FlushAsync(StatusFunctor callback);
+  // If is_within_transaction_retry is true, all operations to be flushed by this batcher have
+  // been already flushed, meaning we are now retrying them within the same session and the
+  // associated transaction (if any) already expects them.
+  void FlushAsync(StatusFunctor callback, IsWithinTransactionRetry is_within_transaction_retry);
 
   CoarseTimePoint deadline() const {
     return deadline_;
@@ -193,6 +193,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   }
 
   double RejectionScore(int attempt_num);
+
+  // Returns errors occurred due tablet resolution or flushing operations to tablet server(s).
+  // Caller takes ownership of the returned errors.
+  CollectedErrors GetAndClearPendingErrors();
 
   std::string LogPrefix() const;
 
@@ -267,7 +271,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   std::weak_ptr<YBSession> weak_session_;
 
   // Errors are reported into this error collector.
-  scoped_refptr<ErrorCollector> const error_collector_;
+  ErrorCollector error_collector_;
 
   // Set to true if there was at least one error from this Batcher.
   std::atomic<bool> had_errors_{false};

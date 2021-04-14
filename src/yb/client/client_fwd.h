@@ -113,6 +113,8 @@ typedef scoped_refptr<Batcher> BatcherPtr;
 struct AsyncRpcMetrics;
 typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 
+YB_STRONGLY_TYPED_BOOL(IsWithinTransactionRetry);
+
 } // namespace internal
 
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;

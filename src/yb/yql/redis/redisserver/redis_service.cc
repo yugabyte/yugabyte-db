@@ -433,7 +433,19 @@ class Block : public std::enable_shared_from_this<Block> {
  private:
   class BlockCallback {
    public:
-    explicit BlockCallback(BlockPtr block) : block_(std::move(block)) {}
+    explicit BlockCallback(BlockPtr block) : block_(std::move(block)) {
+      // We remember block_->context_ to avoid issues with having multiple instances referring the
+      // same block (that is allocated in arena and one of them calling block_->Done while another
+      // still have reference to block and trying to update ref counter for it in destructor.
+      context_ = block_ ? block_->context_ : nullptr;
+    }
+
+    ~BlockCallback() {
+      // We only reset context_ after block_, because resetting context_ could free Arena memory
+      // on which block_ is allocated together with its ref counter.
+      block_.reset();
+      context_.reset();
+    }
 
     void operator()(const Status& status) {
       // Block context owns the arena upon which this block is created.
@@ -447,6 +459,7 @@ class Block : public std::enable_shared_from_this<Block> {
     }
    private:
     BlockPtr block_;
+    BatchContextPtr context_;
   };
 
   friend class BlockCallback;

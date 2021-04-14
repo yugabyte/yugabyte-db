@@ -25,7 +25,10 @@ YB_DEFINE_ENUM(
     // Special value used to indicate no error of this type.
     (kNone)
     (kTablePartitionListIsStale)
-    (kGotOldTablePartitionList));
+    (kExpiredRequestToBeRetried)
+    (kTabletNotYetRunning)
+    (kAbortedBatchDueToFailedTabletLookup)
+    );
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
@@ -37,6 +40,10 @@ struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
 };
 
 typedef StatusErrorCodeImpl<ClientErrorTag> ClientError;
+
+// Returns whether status is a client error that should be retried at YBSession level internally.
+// If status is OK, also returns false.
+bool IsRetryableClientError(const Status& status);
 
 } // namespace client
 } // namespace yb

@@ -90,6 +90,10 @@ void YBOperation::SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet)
   tablet_ = tablet;
 }
 
+void YBOperation::ResetTablet() {
+  tablet_.reset();
+}
+
 void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
   table_.reset();
   table_ = new_table;
