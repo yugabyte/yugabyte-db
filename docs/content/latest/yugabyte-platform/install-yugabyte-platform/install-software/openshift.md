@@ -136,6 +136,14 @@ You can create an instance of Yugabyte Platform via he OpenShift web console as 
 - Click **Create Instance** to open the **Create YBPlatform** page. 
 - Review the default settings without modifying them and click **Create**. Ensure that the **yb-platform** project is selected.
 
+{{< note title="A note on StorageClass" >}}
+If your cluster has a different StorageClass than `standard`, then do the following when you are at the **Create YBPlatform** page:
+- Go to **YAML View**.
+- Change the value of `spec.yugaware.storageClass` to correct StorageClass name.
+
+You can find the StorageClass by going to **Storage > Storage Classes** on the OpenShift Web Console using admin user.
+{{< /note >}}
+
 Shortly, you should expect the **Status** column in the **Yugabyte Platform** tab to display **Deployed**, as shown in the following illustration:
 
 ![Yugabyte Platform Installed Operator](/images/ee/openshift-yp-operator-platforms.png)
@@ -156,26 +164,32 @@ Now using project "yb-platform" on server "web-console-address"
 To create an instance of Yugabyte Platform in the yb-platform project, execute the following command:
 
 ```shell
-oc apply \  
-  -n yb-platform \  
+oc apply \
+  -n yb-platform \
   -f - <<EOF
 apiVersion: yugabyte.com/v1alpha1
 kind: YBPlatform
-metadata: 
+metadata:
   name: ybplatform-sample
-spec: 
-  image:  
-    repository: registry.connect.redhat.com/yugabytedb/yugabyte-platform  
-    tag: latest 
-  ocpCompatibility:  
-    enabled: true 
-  rbac:  
+spec:
+  image:
+    repository: registry.connect.redhat.com/yugabytedb/yugabyte-platform
+    tag: latest
+  ocpCompatibility:
+    enabled: true
+  rbac:
     create: false
 EOF
 
 # output
 ybplatform.yugabyte.com/ybplatform-sample created
 ```
+
+{{< note title="A note on StorageClass" >}}
+If your cluster has a different StorageClass than `standard`, then change the value of `spec.yugaware.storageClass` to the correct StorageClass name in the preceding command.
+
+You can find the StorageClass by executing `oc get storageclass` with admin user.
+{{< /note >}}
 
 To verify that the pods of the Yugabyte Platform instance are in Running state, execute the following:
 
@@ -293,6 +307,12 @@ To create a Yugabyte Platform instance, perform the following:
 
   Expect to see a message notifying you whether or not the deployment is successful.
 
+  {{< note title="A note on StorageClass" >}}
+  If your cluster has a different StorageClass than `standard`, then add `--set yugaware.storageClass=<storage-class-name>` to the preceding command.  
+
+  You can find the StorageClass by executing `oc get storageclass` with admin user.
+  {{< /note >}}
+
   Note that if you are executing the preceding command as an admin user, then you can set `rabc.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
 
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
@@ -313,7 +333,7 @@ To create a Yugabyte Platform instance, perform the following:
       kind: ClusterRole
       name: cluster-monitoring-view
       apiGroup: rbac.authorization.k8s.io
-  EOF 
+  EOF
   ```
 
 ### Deleting the Helm Installation of Yugabyte Platform
@@ -351,8 +371,8 @@ You start by configuring oc with an admin account (kube:admin) and following the
 To find the region and zone labels, execute the following command:
 
 ```shell
-oc get machinesets \  
-  -n openshift-machine-api \  
+oc get machinesets \
+  -n openshift-machine-api \
   -ojsonpath='{range .items[*]}{.metadata.name}{", region: "}{.spec.template.spec.providerSpec.value.region}{", zone: "}{.spec.template.spec.providerSpec.value.zone}{"\n"}{end}'
 # output
   ocp-dev4-l5ffp-worker-a, region: us-east4, zone: us-east4-a
@@ -392,8 +412,8 @@ Alternatively, you can obtain the information about the IP address via the comma
 In case of the Operator-based installation of Yugabyte Platform, execute the following command: 
 
 ```shell
-oc get services \ 
-  ybplatform-sample-yugaware-ui \ 
+oc get services \
+  ybplatform-sample-yugaware-ui \
   -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
 # output
 12.34.56.78
@@ -402,8 +422,8 @@ oc get services \
 In case of the Helm-based installation, execute the following command: 
 
 ```shell
-oc get services \ 
-   yw-test-yugaware-ui \ 
+oc get services \
+   yw-test-yugaware-ui \
   -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
 # output
 12.34.56.78
