@@ -470,6 +470,19 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
         index_info->add_indexed_range_column_ids(col_desc.id());
       }
     }
+
+    if (index_node->where_clause()) {
+      // TODO (Piyush): Add a ToString method for PTExpr and log the where clause.
+      IndexInfoPB::WherePredicateSpecPB *where_predicate_spec =
+        index_info->mutable_where_predicate_spec();
+
+      RETURN_NOT_OK(PTExprToPB(index_node->where_clause(),
+        where_predicate_spec->mutable_where_expr()));
+
+      for (auto column_id : *(index_node->where_clause_column_refs())) {
+        where_predicate_spec->add_column_ids(column_id);
+      }
+    }
   }
 
   for (const auto& column : tnode->hash_columns()) {
