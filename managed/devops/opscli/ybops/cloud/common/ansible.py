@@ -123,7 +123,8 @@ class AnsibleProcess(object):
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
         logging.info("Running ansible command {}".format(json.dumps(process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(
+            process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ)
         stdout, stderr = p.communicate()
         if print_output:
             print(stdout)
