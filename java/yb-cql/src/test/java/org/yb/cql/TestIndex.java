@@ -694,24 +694,22 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testCreateIndexWithWhereClause() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
+  public void testBlockCreateIndexWithWhereClause() throws Exception {
     destroyMiniCluster();
+
+    // cql_raise_index_where_clause_error=false by default.
     createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap("cql_raise_index_where_clause_error", "false"));
+      Collections.emptyMap(),
+      Collections.singletonMap("cql_raise_index_where_clause_error", "true"));
     setUpCqlClient();
 
     // Create test table.
-    LOG.info("create test table");
     session.execute("create table test_create_index " +
-                    "(h1 int, h2 text, r1 int, r2 text, " +
-                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, " +
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     LOG.info("create test index");
-    session.execute("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
-    LOG.info("End test: " + getCurrentTestMethodName());
+    runInvalidStmt("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
   }
 
   @Test
