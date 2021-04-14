@@ -62,46 +62,71 @@ First, we create the parent table that contains a `geo_partition` column which i
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-1.png)
 
-This can be achieved by creating the parent table as shown below.
+1. Create the parent table.
 
-```sql
-CREATE TABLE transactions (
-    user_id   INTEGER NOT NULL,
-    account_id INTEGER NOT NULL,
-    geo_partition VARCHAR,
-    account_type VARCHAR NOT NULL,
-    amount NUMERIC NOT NULL,
-    txn_type VARCHAR NOT NULL, 
-    created_at TIMESTAMP DEFAULT NOW()
-) PARTITION BY LIST (geo_partition);
-```
+    ```sql
+    CREATE TABLE transactions (
+        user_id   INTEGER NOT NULL,
+        account_id INTEGER NOT NULL,
+        geo_partition VARCHAR,
+        account_type VARCHAR NOT NULL,
+        amount NUMERIC NOT NULL,
+        txn_type VARCHAR NOT NULL, 
+        created_at TIMESTAMP DEFAULT NOW()
+    ) PARTITION BY LIST (geo_partition);
+    ```
 
-Next, we create one partition per desired geography under the parent table. In the example below, we create three table partitions – one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
+1. Create tablespaces for each region.
 
-```sql
-CREATE TABLE transactions_eu 
-    PARTITION OF transactions 
-      (user_id, account_id, geo_partition, account_type, 
-       amount, txn_type, created_at,
-       PRIMARY KEY (user_id HASH, account_id, geo_partition))
-    FOR VALUES IN ('EU');
+    ```sql
+    CREATE TABLESPACE eu_central_1_tablespace WITH (
+      replica_placement='{"num_replicas": 3, "placement_blocks":
+      [{"cloud":"aws","region":"eu-central-1","zone":"eu-central-1a","min_num_replicas":1},
+      {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1b","min_num_replicas":1},
+      {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1c","min_num_replicas":1}]}'
+    );
 
-CREATE TABLE transactions_india 
-    PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
-       amount, txn_type, created_at,
-       PRIMARY KEY (user_id HASH, account_id, geo_partition))
-    FOR VALUES IN ('India');
+    CREATE TABLESPACE us_west_2_tablespace WITH (
+      replica_placement='{"num_replicas": 3, "placement_blocks":
+      [{"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1},
+      {"cloud":"aws","region":"us-west-2","zone":"us-west-2b","min_num_replicas":1},
+      {"cloud":"aws","region":"us-west-2","zone":"us-west-2c","min_num_replicas":1}]}'
+    );
 
-CREATE TABLE transactions_default 
-    PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
-       amount, txn_type, created_at,
-       PRIMARY KEY (user_id HASH, account_id, geo_partition))
-    DEFAULT;
-```
+    CREATE TABLESPACE ap_south_1_tablespace WITH (
+      replica_placement='{"num_replicas": 3, "placement_blocks":
+      [{"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1},
+      {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1b","min_num_replicas":1},
+      {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
+    );
+    ```
 
-Note that these statements above will create the partitions, but will not pin them to the desired  geographical locations. This is done in the next step. The table and partitions created so far can be viewed using the `\d` command.
+1. Next, create one partition per desired geography under the parent table. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
+
+    ```sql
+    CREATE TABLE transactions_eu 
+        PARTITION OF transactions 
+          (user_id, account_id, geo_partition, account_type, 
+          amount, txn_type, created_at,
+          PRIMARY KEY (user_id HASH, account_id, geo_partition))
+        FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;;
+
+    CREATE TABLE transactions_india 
+        PARTITION OF transactions
+          (user_id, account_id, geo_partition, account_type, 
+          amount, txn_type, created_at,
+          PRIMARY KEY (user_id HASH, account_id, geo_partition))
+        FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
+
+    CREATE TABLE transactions_default 
+        PARTITION OF transactions
+          (user_id, account_id, geo_partition, account_type, 
+          amount, txn_type, created_at,
+          PRIMARY KEY (user_id HASH, account_id, geo_partition))
+        DEFAULT TABLESPACE us_west_2_tablespace;
+    ```
+
+So far, you've created the partitions, but haven't pinned them to the desired  geographical locations. You'll do this in the next section. Use the `\d` command to view the table and partitions you've created so far.
 
 ```sql
 yugabyte=# \d
