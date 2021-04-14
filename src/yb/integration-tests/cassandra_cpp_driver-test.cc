@@ -206,7 +206,7 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
 
  protected:
   friend Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
-      CppCassandraDriverTestIndex* test, IndexPermissions target_permission);
+      CppCassandraDriverTestIndex* test, bool deferred, IndexPermissions target_permission);
 
   friend void TestBackfillIndexTable(CppCassandraDriverTestIndex* test,
                                      PKOnlyIndex is_pk_only, IsUnique is_unique,
@@ -217,13 +217,6 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
       CppCassandraDriverTestIndex* test, bool delete_before_insert);
 
   void TestUniqueIndexCommitOrder(bool commit_txn1, bool use_txn2);
-};
-
-class CppCassandraDriverTestIndexDeferred : public CppCassandraDriverTestIndex {
- public:
-  std::vector<std::string> ExtraMasterFlags() override {
-    return {"--defer_index_backfill=true"};
-  }
 };
 
 class CppCassandraDriverTestIndexSlow : public CppCassandraDriverTestIndex {
@@ -806,11 +799,11 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
 
 Result<IndexPermissions> TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex* test) {
   return TestBackfillCreateIndexTableSimple(
-      test, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+      test, false, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
 Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
-    CppCassandraDriverTestIndex* test, IndexPermissions target_permission) {
+    CppCassandraDriverTestIndex* test, bool deferred, IndexPermissions target_permission) {
   TestTable<cass_int32_t, string> table;
   RETURN_NOT_OK(table.CreateTable(&test->session_, "test.test_table",
                                   {"k", "v"}, {"(k)"}, true));
@@ -819,8 +812,9 @@ Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
   RETURN_NOT_OK(test->session_.ExecuteQuery(
       "insert into test_table (k, v) values (1, 'one');"));
   LOG(INFO) << "Creating index";
-  WARN_NOT_OK(test->session_.ExecuteQuery(
-                  "create index test_table_index_by_v on test_table (v);"),
+  WARN_NOT_OK(test->session_.ExecuteQuery(yb::Format(
+                  "create $0 index test_table_index_by_v on test_table (v);",
+                  (deferred ? "deferred" : ""))),
               "create-index failed.");
 
   LOG(INFO) << "Inserting two rows";
@@ -841,24 +835,22 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndex, CppCassandraDriverTestIndexSl
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
-TEST_F_EX(CppCassandraDriverTest, TestCreateIndexDeferred, CppCassandraDriverTestIndexDeferred) {
-  constexpr auto kNamespace = "test";
-  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
-  const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
-
+TEST_F_EX(CppCassandraDriverTest, TestCreateIndexDeferred, CppCassandraDriverTestIndex) {
   IndexPermissions perm = ASSERT_RESULT(
-      TestBackfillCreateIndexTableSimple(this, IndexPermissions::INDEX_PERM_DO_BACKFILL));
+      TestBackfillCreateIndexTableSimple(this, true, IndexPermissions::INDEX_PERM_DO_BACKFILL));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
 
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
   // Sleep a little and check again. We expect no further progress.
   const size_t kSleepTimeMs = 10000;
   SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
   perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
 
-  // Disable deferral, and then create another index. Both the indexes should backfill
-  // and go to completion.
-  ASSERT_OK(cluster_->SetFlagOnMasters("defer_index_backfill", "false"));
+  // create another index without backfill being deferred. Both the indexes should backfill
+  // and go to INDEX_PERM_READ_WRITE_AND_DELETE.
   auto s = session_.ExecuteQuery("create index test_table_index_by_v_2 on test_table(v);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, "test", "test_table_index_by_v_2");
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
@@ -1544,6 +1536,97 @@ TEST_F_EX(
       ASSERT_NOK(result);
     }
   }
+}
+
+class CppCassandraDriverTestSlowTServer : public CppCassandraDriverTest {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTest::ExtraTServerFlags();
+    flags.push_back("--TEST_slowdown_backfill_by_ms=5000");
+    flags.push_back("--TEST_yb_num_total_tablets=1");
+    return flags;
+  }
+};
+
+TEST_F_EX(
+    CppCassandraDriverTest,
+    DeleteIndexWhileBackfilling,
+    CppCassandraDriverTestSlowTServer) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Creating index";
+  auto session2 = ASSERT_RESULT(EstablishSession());
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "CREATE INDEX test_table_index_by_v ON test_table (v)");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  auto res = client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_DO_BACKFILL, 50ms /* max_wait */);
+  // Allow backfill to get past GetSafeTime
+  SleepFor(MonoDelta::FromMilliseconds(50));
+
+  ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v"));
+
+  // Wait for the backfill to actually run to completion/failure.
+  SleepFor(MonoDelta::FromSeconds(10));
+  res = client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
+  ASSERT_TRUE(!res.ok());
+  ASSERT_TRUE(res.status().IsNotFound());
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestPartialFailureDeferred, CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (3, 'three');"));
+  LOG(INFO) << "Inserting one more to violate uniqueness";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (-2, 'two');"));
+  LOG(INFO) << "Creating index";
+
+  auto s =
+      session_.ExecuteQuery("create deferred index test_table_index_by_v_1 on test_table (v);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  s = session_.ExecuteQuery(
+      "create deferred unique index test_table_index_by_v_unq on test_table (v);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  // Non deferred index.
+  s = session_.ExecuteQuery("create unique index test_table_index_by_k on test_table (k);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name_1(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v_1");
+  const YBTableName index_table_name_2(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_k");
+  const YBTableName index_table_name_unq(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v_unq");
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name,
+      index_table_name_2,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
+      50ms /* max_wait */));
+
+  auto res = client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name_unq, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
+  ASSERT_TRUE(!res.ok());
+  ASSERT_TRUE(res.status().IsNotFound());
+
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name,
+      index_table_name_1,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
+      50ms /* max_wait */));
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriverTestIndexSlow) {

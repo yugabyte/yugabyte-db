@@ -28,7 +28,8 @@ using client::YBTableName;
 
 PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
-                             const bool is_unique,
+                             bool is_backfill_deferred,
+                             bool is_unique,
                              const MCSharedPtr<MCString>& name,
                              const PTQualifiedName::SharedPtr& table_name,
                              const PTListNode::SharedPtr& columns,
@@ -37,6 +38,7 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
                              const PTListNode::SharedPtr& covering)
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
       is_unique_(is_unique),
+      is_backfill_deferred_(is_backfill_deferred),
       name_(name),
       covering_(covering),
       is_local_(false),

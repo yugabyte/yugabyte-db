@@ -325,6 +325,7 @@ message IndexInfoPB {
 
   // When backfill fails with error, the first message that it failed with.
   optional string backfill_error_message = 31;
+  optional bool is_backfill_deferred = 32 [ default = false ]; // Should backfill be deferred.
 }
 
 message HostPortPB {

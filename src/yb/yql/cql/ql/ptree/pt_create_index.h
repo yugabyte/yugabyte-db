@@ -28,6 +28,7 @@ class PTCreateIndex : public PTCreateTable {
   // Constructor and destructor.
   PTCreateIndex(MemoryContext *memctx,
                 YBLocation::SharedPtr loc,
+                bool is_backfill_deferred,
                 bool is_unique,
                 const MCSharedPtr<MCString>& name,
                 const PTQualifiedName::SharedPtr& table_name,
@@ -79,6 +80,10 @@ class PTCreateIndex : public PTCreateTable {
     return is_local_;
   }
 
+  bool is_backfill_deferred() const {
+    return is_backfill_deferred_;
+  }
+
   const MCVector<ColumnDesc>& column_descs() const {
     return column_descs_;
   }
@@ -94,6 +99,8 @@ class PTCreateIndex : public PTCreateTable {
  private:
   // Is it a unique index?
   const bool is_unique_ = false;
+  // Should backfill be deferred
+  const bool is_backfill_deferred_ = false;
   // Index name.
   MCSharedPtr<MCString> name_;
   // Additional covering columns.
