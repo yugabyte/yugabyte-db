@@ -745,7 +745,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     if (all_past_backfill) {
       // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
       LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
-                   << " after all indexes moved past DO_BACKFILL. IndexMap is "
+                   << " after all indexes have moved past DO_BACKFILL. IndexMap is "
                    << ToString(index_map);
       // This is possible if this tablet completed the backfill. But the master failed over before
       // other tablets could complete.
@@ -768,7 +768,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  Result<string> resume_from = STATUS(InternalError, "placeholder");
+  Status backfill_status;
+  std::string backfilled_until;
+  std::unordered_set<TableId> failed_indexes;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -780,17 +782,30 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
-    resume_from = tablet.peer->tablet()->BackfillIndexesForYsql(
+    backfill_status = tablet.peer->tablet()->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
         deadline,
         read_at,
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
-        server_->GetSharedMemoryPostgresAuthKey());
+        server_->GetSharedMemoryPostgresAuthKey(),
+        &backfilled_until);
+    if (backfill_status.IsIllegalState()) {
+      DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
+      for (const auto& idx_info : indexes_to_backfill) {
+        failed_indexes.insert(idx_info.table_id());
+      }
+      DCHECK_EQ(failed_indexes.size(), 1) << "We don't support batching in YSQL yet";
+    }
   } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
-    resume_from = tablet.peer->tablet()->BackfillIndexes(
-        indexes_to_backfill, req->start_key(), deadline, read_at);
+    backfill_status = tablet.peer->tablet()->BackfillIndexes(
+        indexes_to_backfill,
+        req->start_key(),
+        deadline,
+        read_at,
+        &backfilled_until,
+        &failed_indexes);
   } else {
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -799,20 +814,28 @@ void TabletServiceAdminImpl::BackfillIndex(
         &context);
     return;
   }
-  DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
-           << " backfilled indexes " << yb::ToString(index_ids)
-           << " and got " << resume_from.ToString();
-  if (!resume_from) {
-    auto s = resume_from.status();
+  DVLOG(1) << "Tablet " << tablet.peer->tablet_id() << " backfilled indexes "
+           << yb::ToString(index_ids) << " and got " << backfill_status
+           << " backfilled until : " << backfilled_until;
+
+  resp->set_backfilled_until(backfilled_until);
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+
+  if (!backfill_status.ok()) {
+    VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
+    for (const auto& idx : failed_indexes) {
+      *resp->add_failed_index_ids() = idx;
+    }
     SetupErrorAndRespond(
-        resp->mutable_error(), s, (s.IsIllegalState() ? TabletServerErrorPB::OPERATION_NOT_SUPPORTED
-                                                      : TabletServerErrorPB::UNKNOWN_ERROR),
+        resp->mutable_error(),
+        backfill_status,
+        (backfill_status.IsIllegalState()
+            ? TabletServerErrorPB::OPERATION_NOT_SUPPORTED
+            : TabletServerErrorPB::UNKNOWN_ERROR),
         &context);
     return;
   }
 
-  resp->set_backfilled_until(*resume_from);
-  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   context.RespondSuccess();
 }
 
@@ -1503,6 +1526,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
+    LOG(INFO) << "Responding with a failure to " << req->DebugString();
     operation_state->set_completion_callback(nullptr);
     SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderHasNoLease, "TEST: Random failure"),
                          TabletServerErrorPB::UNKNOWN_ERROR, context_ptr.get());
