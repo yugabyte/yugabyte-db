@@ -586,7 +586,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Total memory.
   DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
+  DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
 }
