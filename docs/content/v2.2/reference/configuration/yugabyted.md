@@ -21,7 +21,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 - yugabyted currently supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, ability to create multi-node clusters is currently under BETA.
 
-- yugabytedb is not recommended for production deployments at this time. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly using the [Deploy](../../../deploy) docs.
+- yugabyted is not recommended for production deployments at this time. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly using the [Deploy](../../../deploy) docs.
 
 {{< /note >}}
 
