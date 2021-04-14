@@ -3,7 +3,6 @@ title: Spring Support for YugabyteDB
 linkTitle: Spring Framework
 description: Spring Support for YugabyteDB
 aliases:
-  - /develop/ecosystem-integrations/spring/
 menu:
   latest:
     identifier: spring
@@ -21,7 +20,7 @@ YCQL provides Cassandra wire-compatible query language for client applications t
 
 The following is a non-exhaustive list of supported features:
 
-- Yugabyte Java driver for YCQL 3.n and 4.n drivers.
+- Yugabyte Java driver for YCQL 3.x and 4.x drivers.
 - Automatic implementation of Repository interfaces including support for custom query methods.
 - Build repositories based on common Spring Data interfaces.
 - Synchronous, reactive, and asynchronous YCQL operations.
@@ -30,7 +29,7 @@ The following is a non-exhaustive list of supported features:
 
 Spring Data Cassandra projects are bundled with the Apache Cassandra Java driver. To enhance performance, it is recommended to replace this driver with the Yugabyte Java driver for YCQL.
 
-**Yugabyte Java Driver YCQL 3.n**
+**Yugabyte Java Driver YCQL 3.x**
 
 ```xml
 <dependency>
@@ -55,7 +54,7 @@ Spring Data Cassandra projects are bundled with the Apache Cassandra Java driver
 
 The following shows how to exclude and add dependencies via Gradle:
 
-```javascript
+```gradle
 dependencies {
   compile('org.springframework.data:spring-data-cassandra:2.2.12.RELEASE') { 
   exclude group: "com.datastax.cassandra", name: "cassandra-driver-core" 
@@ -64,7 +63,7 @@ dependencies {
 }
 ```
 
-**Yugabyte Java Driver YCQL 4.n**
+**Yugabyte Java Driver YCQL 4.x**
 
 ```xml
 <dependency>
@@ -89,7 +88,7 @@ dependencies {
 
 The following shows how to exclude and add dependencies via Gradle:
 
-```javascript
+```gradle
 dependencies {
   compile('org.springframework.data:spring-data-cassandra:3.0.6.RELEASE') { 
   exclude group: "com.datastax.oss", name: "java-driver-core" 
@@ -102,42 +101,42 @@ Yugabyte Java driver for YCQL provides support for single hop fetch which enable
 
 ### Sample Spring Boot Project
 
-A sample Spring boot project is available at https://github.com/yugabyte/spring-ycql-demo. The following steps show how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
+A sample Spring boot project is available at <https://github.com/yugabyte/spring-ycql-demo>. The following steps show how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
 
 #### Use Spring Initializer
 
-1. Navigate to [https://start.spring.io](https://start.spring.io/) to creating a new Spring boot project and select the following dependencies for implementing the Spring boot application:
-   - Spring Boot Data Cassandra
-   - Java 8
+1. Navigate to [https://start.spring.io](https://start.spring.io/) to create a new Spring boot project. Select the following dependencies for implementing the Spring boot application:
+    - Spring Boot Data Cassandra
+    - Java 8
 
-2. Update the Maven dependencies to use Yugabyte Java driver for YCQL, as follows:
+1. Update the Maven dependencies to use Yugabyte Java driver for YCQL, as follows:
 
-```xml
-   <dependency>
-     <groupId>org.springframework.boot</groupId>
-     <artifactId>spring-boot-starter-data-cassandra</artifactId>
-     <exclusions>
-   ​   <exclusion>
-   ​     <groupId>com.datastax.oss</groupId>
-   ​     <artifactId>java-driver-core</artifactId>
-   ​   </exclusion>
-     </exclusions>
-   </dependency>
-   <dependency>
-    <groupId>com.yugabyte</groupId>
-    <artifactId>java-driver-core</artifactId>
-    <version>4.6.0-yb-6</version>
-   </dependency>
-```
+    ```xml
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-cassandra</artifactId>
+        <exclusions>
+      ​   <exclusion>
+      ​     <groupId>com.datastax.oss</groupId>
+      ​     <artifactId>java-driver-core</artifactId>
+      ​   </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>com.yugabyte</groupId>
+        <artifactId>java-driver-core</artifactId>
+        <version>4.6.0-yb-6</version>
+      </dependency>
+    ```
 
-3. Configure the Spring boot application to connect to YugabyteDB cluster using following properties in `application.properties` file:
+1. Configure the Spring boot application to connect to YugabyteDB cluster using the following properties in the `application.properties` file:
 
-| Property                                | Description                                                  |
-| --------------------------------------- | ------------------------------------------------------------ |
-| spring.data.cassandra.keyspace-name=    | YCQL keyspace                                                |
-| spring.data.cassandra.contact-points=   | YugabyteDB T-servers. Comma separated list of ip-addresses or DNS |
-| spring.data.cassandra.port=             | YCQL port                                                    |
-| spring.data.cassandra.local-datacenter= | Datacenter that is considered "local". Contact points should be from this datacenter. |
+    | Property | Description |
+    | :------- | :---------- |
+    | spring.data.cassandra.keyspace-name | YCQL keyspace |
+    | spring.data.cassandra.contact-points | YugabyteDB T-servers. Comma-separated list of IP addresses or DNS |
+    | spring.data.cassandra.port | YCQL port |
+    | spring.data.cassandra.local-datacenter | Datacenter that is considered "local". Contact points should be from this datacenter. |
 
 #### Set Up Domain Objects and Repositories for YCQL Tables
 
@@ -248,7 +247,7 @@ public class YcqlDataAccesssApplication implements CommandLineRunner {
 }
 ```
 
-The `CustomerRespository` type is autowired in `YcqlDataAccesssApplication` which allows the insert of new records into the `customer` table using the `customerRepository.save()` method.
+The `CustomerRepository` type is autowired in `YcqlDataAccesssApplication` which allows the insert of new records into the `customer` table using the `customerRepository.save()` method.
 
 You can retrieve the data using the `customerRepository.findByFirstName()` method which returns records based on the `firstName` column. The implementation of the method is supplied by Spring at runtime.
 
@@ -274,7 +273,7 @@ java -jar target/ycqldataaccess-1.0.0.jar
 
 Expect the following output:
 
-```shell
+```output
 INFO 28010 --- [main] c.y.e.y.YcqlDataAccesssApplication    : Started YcqlDataAccesssApplication in 1.7 seconds (JVM running for 2.139)
 
 INFO 28010 --- [main] c.y.e.y.YcqlDataAccesssApplication    : Creating Keyspace
@@ -325,42 +324,43 @@ Spring Data Reactive Cassandra projects are bundled with the Apache Cassandra Ja
 
 ### Sample Spring Boot Project for Reactive
 
-A sample Spring boot project is available at https://github.com/yugabyte/spring-reactive-ycql-client. The following steps show how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
+A sample Spring boot project is available at <https://github.com/yugabyte/spring-reactive-ycql-client>. The following steps show how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
 
 #### Use Spring Initializer
 
-1. Navigate to [https://start.spring.io](https://start.spring.io/) to creating a new Spring boot project and select the following dependencies for implementing the Spring boot application:
-   - Spring Boot Data Cassandra Reactive
-   - Java 8
-2. Update the Maven dependencies to use Yugabyte Java driver for YCQL, as follows:
+1. Navigate to [https://start.spring.io](https://start.spring.io/) to create a new Spring boot project. Select the following dependencies for implementing the Spring boot application:
+    - Spring Boot Data Cassandra Reactive
+    - Java 8
 
-```xml
-<dependency>
-  <groupId>org.springframework.boot</groupId>
-  <artifactId>spring-boot-starter-data-cassandra-reactive</artifactId>
-  <exclusions>
-    <exclusion>
-      <groupId>com.datastax.oss</groupId>
+1. Update the Maven dependencies to use the Yugabyte Java driver for YCQL, as follows:
+
+    ```xml
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-cassandra-reactive</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>com.datastax.oss</groupId>
+          <artifactId>java-driver-core</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-    </exclusion>
-  </exclusions>
-</dependency>
+      <version>4.6.0-yb-6</version>
+    </dependency>
+    ```
 
-<dependency>
-  <groupId>com.yugabyte</groupId>
-  <artifactId>java-driver-core</artifactId>
-  <version>4.6.0-yb-6</version>
-</dependency>
-```
+1. Configure the Spring boot application to connect to YugabyteDB cluster using the following properties in the `application.properties` file:
 
-3. Configure the Spring boot application to connect to YugabyteDB cluster using following properties in `application.properties` file:
-
-| Property                                | Description                                                  |
-| --------------------------------------- | ------------------------------------------------------------ |
-| spring.data.cassandra.keyspace-name=    | YCQL keyspace                                                |
-| spring.data.cassandra.contact-points=   | YugabyteDB T-servers. Comma separated list of ip-addresses or DNS |
-| spring.data.cassandra.port=             | YCQL port                                                    |
-| spring.data.cassandra.local-datacenter= | Datacenter that is considered "local". Contact points should be from this datacenter. |
+    | Property | Description |
+    | :------- | :---------- |
+    | spring.data.cassandra.keyspace-name | YCQL keyspace |
+    | spring.data.cassandra.contact-points | YugabyteDB T-servers. Comma-separated list of IP addresses or DNS |
+    | spring.data.cassandra.port | YCQL port |
+    | spring.data.cassandra.local-datacenter | Datacenter that is considered "local". Contact points should be from this datacenter. |
 
 #### Set Up Domain Objects and Repositories for YugabyteDB Tables
 
@@ -478,8 +478,7 @@ public class YcqlReactiveDataAccessApplication implements CommandLineRunner {
 
 ## Compatibility Matrix
 
-| **YugabyteDB Java Driver** | **Spring Data Cassandra** |
-| -------------------------- | ------------------------- |
-| 3.8.0-yb-6                 | 2.2.12.RELEASE and latest |
-| 4.6.0-yb-6                 | 3.0.6.RELEASE and latest  |
-
+| YugabyteDB Java Driver | Spring Data Cassandra |
+| :--------------------- | :-------------------- |
+| 3.8.0-yb-6 | 2.2.12.RELEASE and later |
+| 4.6.0-yb-6 | 3.0.6.RELEASE and later |

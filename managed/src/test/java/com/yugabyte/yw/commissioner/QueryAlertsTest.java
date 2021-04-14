@@ -8,13 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertManager;
@@ -33,10 +36,15 @@ import com.yugabyte.yw.models.Alert.TargetType;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import scala.concurrent.ExecutionContext;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class QueryAlertsTest extends FakeDBApplication {
+
+  @Rule
+  public MockitoRule rule = MockitoJUnit.rule();
 
   @Mock
   private ExecutionContext executionContext;
@@ -102,7 +110,13 @@ public class QueryAlertsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testProcessAlertDefinitions_ReturnsAlreadyExistingAlert() {
+  // @formatter:off
+  @Parameters({ "ACTIVE, 1, true",
+                "CREATED, 1, true",
+                "RESOLVED, 0, false"})
+  // @formatter:on
+  public void testProcessAlertDefinitions(State alertState, int activeAlertsCount,
+      boolean alertReused) {
     ArrayList<Entry> queryHelperResult = new ArrayList<>();
     queryHelperResult.add(mock(MetricQueryResponse.Entry.class));
     when(queryHelper.queryDirect("query test")).thenReturn(queryHelperResult);
@@ -110,19 +124,26 @@ public class QueryAlertsTest extends FakeDBApplication {
 
     Alert alert = Alert.create(customer.uuid, universe.universeUUID, TargetType.UniverseType,
         "TEST_CHECK", "Warning", "Message", false, definition.uuid);
-    alert.setState(State.ACTIVE);
+    alert.setState(alertState);
     alert.save();
 
     assertEquals(1, Alert.list(customer.uuid).size());
-    assertEquals(alert, Alert.getActiveCustomerAlert(customer.uuid, definition.uuid));
+
+    List<Alert> activeAlerts = Alert.getActiveCustomerAlerts(customer.uuid, definition.uuid);
+    assertEquals(activeAlertsCount, activeAlerts.size());
+    assertEquals(alertReused, activeAlerts.contains(alert));
 
     Set<Alert> result = queryAlerts.processAlertDefinitions(customer.uuid);
+    assertEquals(activeAlertsCount, result.size());
+    assertEquals(alertReused, result.contains(alert));
 
-    // Returns the same alert.
-    assertEquals(1, result.size());
-    assertTrue(result.contains(alert));
-    // Doesn't create another alert.
-    assertEquals(1, Alert.list(customer.uuid).size());
+    // If a new alert has been created, we will receive it on the next call to
+    // processAlertDefinitions.
+    result = queryAlerts.processAlertDefinitions(customer.uuid);
+    assertEquals(1, result.size()); /* Always only one active alert for all current scenarios. */
+    assertEquals(alertReused, result.contains(alert));
+
+    assertEquals(1 /* initial */ + (alertReused ? 0 : 1), Alert.list(customer.uuid).size());
   }
 
 }

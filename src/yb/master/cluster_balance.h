@@ -26,6 +26,7 @@
 #include <boost/circular_buffer.hpp>
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/random.h"
 #include "yb/master/cluster_balance_util.h"
@@ -102,6 +103,9 @@ class ClusterLoadBalancer {
 
   // Get the list of all live TSDescriptors which reported their tablets.
   virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
+
+  // Get the list of all TSDescriptors.
+  virtual void GetAllDescriptors(TSDescriptorVector* ts_descs) const;
 
     // Get access to the tablet map across the cluster.
   virtual const TabletInfoMap& GetTabletMap() const REQUIRES_SHARED(catalog_manager_->lock_);

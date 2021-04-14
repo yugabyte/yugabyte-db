@@ -69,6 +69,7 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
 #include <google/protobuf/text_format.h>
+#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -2953,7 +2954,7 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
     } else {
       LOG(WARNING) << "Unknown RPC failure, removing transaction on table: " << table->ToString();
     }
-    // Commit the namespace in-memory state.
+    // Commit the in-memory state.
     l->Commit();
   } else {
     LOG(INFO) << "Table transaction failed, deleting: " << table->ToString();
@@ -8736,6 +8737,14 @@ Status CatalogManager::SetClusterConfig(
     if (!replication_info.read_replicas(i).has_placement_uuid()) {
       Status s = STATUS(IllegalState,
                         "All read-only clusters must have a placement uuid specified");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+    }
+  }
+
+  // Validate placement information according to rules defined.
+  if (replication_info.has_live_replicas()) {
+    Status s = CatalogManagerUtil::IsPlacementInfoValid(replication_info.live_replicas());
+    if (!s.ok()) {
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
   }

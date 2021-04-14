@@ -83,8 +83,8 @@ K8S_DATA_DIRS = ["/mnt/disk0", "/mnt/disk1"]
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
-
 DEFAULT_YB_USER = 'yugabyte'
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class BackupException(Exception):
@@ -1102,8 +1102,6 @@ class YBBackup:
                 logging.info(
                     "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
-            this_script_dir = os.path.dirname(os.path.realpath(__file__))
-
             output = self.create_remote_tmp_dir(server_ip)
             if self.is_k8s():
                 k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
@@ -1120,7 +1118,7 @@ class YBBackup:
                 if self.needs_change_user():
                     # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
                     # not args.remote_user.
-                    ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
+                    ssh_wrapper_path = os.path.join(SCRIPT_DIR, 'ssh_wrapper_with_sudo.sh')
                     output += self.run_program(
                         ['scp',
                          '-S', ssh_wrapper_path,

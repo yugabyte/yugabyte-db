@@ -244,6 +244,12 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a Tablet Server to the blacklist
   CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
+  // Returns the min_num_replicas corresponding to a PlacementBlockPB.
+  CHECKED_STATUS GetMinReplicaCountForPlacementBlock(
+    ExternalMaster* master,
+    const string& cloud, const string& region, const string& zone,
+    int* min_num_replicas);
+
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any

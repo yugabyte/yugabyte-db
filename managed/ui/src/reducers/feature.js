@@ -5,7 +5,7 @@ const initialStateFeatureInTest = {
 };
 
 const initialStateFeatureReleased = {
-  pausedUniverse: true
+  pausedUniverse: false
 };
 
 export const FeatureFlag = (
