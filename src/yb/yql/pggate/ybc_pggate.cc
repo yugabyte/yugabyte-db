@@ -28,6 +28,8 @@
 
 DECLARE_bool(client_suppress_created_logs);
 
+DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
+             "operations. Falls back on max(client_read_write_timeout_ms, 60s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
@@ -908,14 +910,19 @@ bool YBCPgIsYugaByteEnabled() {
 }
 
 void YBCSetTimeout(int timeout_ms, void* extra) {
-  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT, FLAGS_client_read_write_timeout_ms}.
+  const auto default_client_timeout_ms =
+      (FLAGS_ysql_client_read_write_timeout_ms < 0
+           ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
+           : FLAGS_ysql_client_read_write_timeout_ms);
+  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
+  // FLAGS(_ysql)?_client_read_write_timeout_ms}.
   if (timeout_ms <= 0) {
     // The timeout is not valid. Use the default GFLAG value.
     return;
   }
-  timeout_ms = std::min(timeout_ms, FLAGS_client_read_write_timeout_ms);
+  timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
 
-  // The statement timeout is lesser than FLAGS_client_read_write_timeout_ms, hence the rpcs would
+  // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
   pgapi->SetTimeout(timeout_ms);
 }
