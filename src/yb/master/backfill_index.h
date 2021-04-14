@@ -71,7 +71,7 @@ class MultiStageAlterTable {
   static Status
   StartBackfillingData(CatalogManager *catalog_manager,
                        const scoped_refptr<TableInfo> &indexed_table,
-                       const IndexInfoPB& idx_info,
+                       const std::vector<IndexInfoPB>& idx_infos,
                        boost::optional<uint32_t> expected_version);
 };
 
