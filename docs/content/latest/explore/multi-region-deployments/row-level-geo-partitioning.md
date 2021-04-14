@@ -22,11 +22,11 @@ showAsideToc: true
   </li>
 </ul>
 
-
 Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the database level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparently schema change propagation across the regions would benefit from this feature. 
 
 {{< tip title="" >}}
 Geo-partitioning makes it easy for developers to move data closer to users for:
+
 * Achieving lower latency and higher performance
 * Meeting data residency requirements to comply with regulations such as GDPR
 {{< /tip >}}
@@ -48,14 +48,13 @@ Let us look at this feature in the context of a use case. Say that a large but i
 
 The following attributes would be required in order to build such a service.
 
-*   **Transactional semantics with high availability:** Consistency of data is paramount in a banking application, hence the database should be ACID compliant. Additionally, users expect the service to always be available, making high availability and resilience to failures a critical requirement.
-*   **High performance:** The online transactions need to be processed with a low latency in order to ensure a good end-user experience. This requires that the data for a particular user is located in a nearby geographic region. Putting all the data in a single location in an RDBMS would mean the requests for users residing far away from that location would have very high latencies, leading to a poor user experience.
-*   **Data residency requirements for compliance:** Many countries have regulations around which geographic regions the personal data of their residents can be stored in, and bank transactions being personal data are subject to these requirements. For example, GDPR has a _data residency_ stipulation which effectively requires that the personal data of individuals in the EU be stored in the EU. Similarly, India has a requirement issued by the Reserve Bank of India (or RBI for short) making it mandatory for all banks, intermediaries, and other third parties to store all information pertaining to payments data in India – though in case of international transactions, the data on the foreign leg of the transaction can be stored in foreign locations.
+* **Transactional semantics with high availability:** Consistency of data is paramount in a banking application, hence the database should be ACID compliant. Additionally, users expect the service to always be available, making high availability and resilience to failures a critical requirement.
+* **High performance:** The online transactions need to be processed with a low latency in order to ensure a good end-user experience. This requires that the data for a particular user is located in a nearby geographic region. Putting all the data in a single location in an RDBMS would mean the requests for users residing far away from that location would have very high latencies, leading to a poor user experience.
+* **Data residency requirements for compliance:** Many countries have regulations around which geographic regions the personal data of their residents can be stored in, and bank transactions being personal data are subject to these requirements. For example, GDPR has a _data residency_ stipulation which effectively requires that the personal data of individuals in the EU be stored in the EU. Similarly, India has a requirement issued by the Reserve Bank of India (or RBI for short) making it mandatory for all banks, intermediaries, and other third parties to store all information pertaining to payments data in India – though in case of international transactions, the data on the foreign leg of the transaction can be stored in foreign locations.
 
 {{< note title="Note" >}}
 While this scenario has regulatory compliance requirements where data needs to be resident in certain geographies, the exact same technique applies for the goal of moving data closer to users in order to achieve low latency and high performance. Hence, high performance is listed above as a requirement.
 {{< /note >}}
-
 
 ## Step 1. Create table with partitions
 
@@ -78,7 +77,6 @@ CREATE TABLE transactions (
 ```
 
 Next, we create one partition per desired geography under the parent table. In the example below, we create three table partitions – one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
-
 
 ```sql
 CREATE TABLE transactions_eu 
@@ -109,7 +107,7 @@ Note that these statements above will create the partitions, but will not pin th
 yugabyte=# \d
 ```
 
-```
+```output
                 List of relations
  Schema |         Name         | Type  |  Owner
 --------+----------------------+-------+----------
@@ -127,7 +125,6 @@ Now that we have a table with the desired three partitions, the final step is to
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
 First, we pin the data of the EU partition `transactions_eu` to live across three zones of the Europe (Frankfurt) region `eu-central-1` as shown below.
-
 
 ```sh
 $ yb-admin --master_addresses <yb-master-addresses>           \
@@ -165,13 +162,13 @@ INSERT INTO transactions
     VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
 ```
 
-All of the rows above should be inserted into the `transactions_eu `partition, and not in any of the others. We can verify this as shown below. Note that we have turned on the expanded auto mode output formatting for better readability by running the statement shown below.
+All of the rows above should be inserted into the `transactions_eu` partition, and not in any of the others. We can verify this as shown below. Note that we have turned on the expanded auto mode output formatting for better readability by running the statement shown below.
 
 ```sql
 yugabyte=# \x auto
 ```
 
-```
+```output
 Expanded display is used automatically.
 ```
 
@@ -181,7 +178,7 @@ The row must be present in the `transactions` table, as seen below.
 yugabyte=# select * from transactions;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -198,7 +195,7 @@ Additionally, the row must be present only in the `transactions_eu` partition, w
 yugabyte=# select * from transactions_eu;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -213,7 +210,7 @@ created_at    | 2020-11-07 21:28:11.056236
 yugabyte=# select count(*) from transactions_india;
 ```
 
-```
+```output
  count
 -------
      0
@@ -244,7 +241,7 @@ These can be verified as follows:
 yugabyte=# select * from transactions_india;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 200
 account_id    | 20001
@@ -259,7 +256,7 @@ created_at    | 2020-11-07 21:45:26.011636
 yugabyte=# select * from transactions_default;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 300
 account_id    | 30001
@@ -287,7 +284,7 @@ Now, each of the transactions would be pinned to the appropriate geographic loca
 yugabyte=# select * from transactions_india where user_id=100;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -302,7 +299,7 @@ created_at    | 2020-11-07 21:56:26.760253
 yugabyte=# select * from transactions_default where user_id=100;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -319,7 +316,7 @@ All the transactions made by the user can efficiently be retrieved using the fol
 yugabyte=# select * from transactions where user_id=100 order by created_at desc;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 100
 account_id    | 10001
@@ -374,7 +371,7 @@ INSERT INTO transactions
 select * from transactions_brazil;
 ```
 
-```
+```output
 -[ RECORD 1 ]-+-------------------------
 user_id       | 400
 account_id    | 40001
