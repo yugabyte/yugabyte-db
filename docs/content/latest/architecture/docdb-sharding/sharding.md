@@ -18,7 +18,6 @@ showAsideToc: true
 
 Sharding is the process of breaking up large tables into smaller chunks called shards that are spread across multiple servers. A shard is essentially a horizontal data partition that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes. Sharding is also referred to as horizontal partitioning. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically — storing different table columns in a separate database, or horizontally — storing rows of the same table in multiple database nodes.
 
-
 User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the figure below.
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
@@ -70,7 +69,7 @@ CREATE TABLE customers (
 
 ```postgres
 CREATE TABLE items (
-	supplier_id INT,
+    supplier_id INT,
     item_id INT,
     supplier_name TEXT STATIC,
     item_name TEXT,
@@ -79,9 +78,11 @@ CREATE TABLE items (
 ```
 
 ### Pros
+
 This sharding strategy is ideal for massively scalable workloads because it distributes data evenly across all the nodes in the cluster, while retaining ease of adding nodes into the cluster. [Algorithmic hash sharding](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/) is very effective also at distributing data across nodes, but the distribution strategy depends on the number of nodes. With consistent hash sharding, there are many more shards than the number of nodes and there is an explicit mapping table maintained tracking the assignment of shards to nodes. When adding new nodes, a subset of shards from existing nodes can be efficiently moved into the new nodes without requiring a massive data reassignment.
 
 ### Cons
+
 Performing range queries could be inefficient. Examples of range queries are finding rows greater than a lower bound or less than an upper bound (as opposed to point lookups).
 
 ## Range sharding
@@ -110,9 +111,11 @@ CREATE TABLE order_details (
 - YCQL tables cannot be created with range sharding. They can be created with hash sharding only.
 
 ### Pros
+
 This type of sharding allows efficiently querying a range of rows by the primary key values. Examples of such a query is to look up all keys that lie between a lower bound and an upper bound.
 
 ### Cons
+
 Range sharding leads to a number of issues in practice at scale, some of which are similar to that of linear hash sharding.
 
 Firstly, when starting out with a single shard implies only a single node is taking all the user queries. This often results in a database “warming” problem, where all queries are handled by a single node even if there are multiple nodes in the cluster. The user would have to wait for enough splits to happen and these shards to get redistributed before all nodes in the cluster are being utilized. This can be a big issue in production workloads. This can be mitigated in some cases where the distribution is keys is known ahead of time by presplitting the table into multiple shards, however this is hard in practice.
@@ -128,5 +131,3 @@ Following blogs highlight additional details related to sharding.
 - [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
 
 - [Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
-
-
