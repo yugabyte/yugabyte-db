@@ -86,13 +86,13 @@ You'll be able to see all the resources managed by Yugabyte Platform in your res
 
 **Provider name** is an internal tag used for organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
-**Subscription ID**. You need an Azure subscription ID for cost management. The virtual machine resources managed by the Platform will be tagged with this subscription.
+**Subscription ID** is required for cost management. The virtual machine resources managed by the Platform will be tagged with this subscription.
 
-**Resource group** is the group in which YugabyteDB nodes compute and network resources will be created. Your Azure active directory application (clientId and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
+**Resource group** is the group in which YugabyteDB nodes compute and network resources will be created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 
 **Tenant ID** is the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow the instructions on [this Microsoft Azure page](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
 
-**Client ID** is the client ID of an application registered in your Azure Active Directory.
+**Client ID** is the client [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 
 **Client secret** is the client secret of an application registered in your Azure Active Directory.
 
