@@ -69,6 +69,7 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
 #include <google/protobuf/text_format.h>
+#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -2051,10 +2052,16 @@ Status CatalogManager::DoSplitTablet(
                             source_tablet_info->table()->id(), FLAGS_tablet_split_limit_per_table);
   }
 
-  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
-
   const auto source_table_lock = source_tablet_info->table()->LockForWrite();
   const auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+  if (source_tablet_info->table()->IsBackfilling()) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Backfill operation in progress, table_id: $0",
+                            source_tablet_info->table()->id());
+  }
+
+  LOG(INFO) << "Got tablet to split: " << source_tablet_info->ToString();
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
@@ -2947,7 +2954,7 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
     } else {
       LOG(WARNING) << "Unknown RPC failure, removing transaction on table: " << table->ToString();
     }
-    // Commit the namespace in-memory state.
+    // Commit the in-memory state.
     l->Commit();
   } else {
     LOG(INFO) << "Table transaction failed, deleting: " << table->ToString();
@@ -8730,6 +8737,14 @@ Status CatalogManager::SetClusterConfig(
     if (!replication_info.read_replicas(i).has_placement_uuid()) {
       Status s = STATUS(IllegalState,
                         "All read-only clusters must have a placement uuid specified");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+    }
+  }
+
+  // Validate placement information according to rules defined.
+  if (replication_info.has_live_replicas()) {
+    Status s = CatalogManagerUtil::IsPlacementInfoValid(replication_info.live_replicas());
+    if (!s.ok()) {
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
   }

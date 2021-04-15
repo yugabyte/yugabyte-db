@@ -18,6 +18,8 @@
 
 #include "yb/tablet/running_transaction_context.h"
 
+#include "yb/util/operation_counter.h"
+
 namespace yb {
 namespace tablet {
 
@@ -29,7 +31,7 @@ class ApplyIntentsTask : public rpc::StrandTask {
                    const TransactionApplyData* apply_data);
 
   // Returns true if task was successfully prepared and could be submitted to the thread pool.
-  bool Prepare(RunningTransactionPtr transaction);
+  bool Prepare(RunningTransactionPtr transaction, ScopedRWOperation* operation);
   void Run() override;
   void Done(const Status& status) override;
 
@@ -41,6 +43,7 @@ class ApplyIntentsTask : public rpc::StrandTask {
   TransactionIntentApplier& applier_;
   RunningTransactionContext& running_transaction_context_;
   const TransactionApplyData& apply_data_;
+  ScopedRWOperation operation_;
 
   // Whether this task was already in use or not.
   // Helps to avoid multiple submissions of the same task.

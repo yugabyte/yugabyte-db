@@ -114,6 +114,14 @@ ObsolescenceTracker ObsolescenceTracker::Child(
   return ObsolescenceTracker(new_write_time_watermark);
 }
 
+ObsolescenceTracker ObsolescenceTracker::Child(const DocHybridTime& write_time) const {
+  auto new_write_time_watermark = std::max(write_time, write_time_watermark_);
+  if (expiration_.has_value()) {
+    return ObsolescenceTracker(read_time_.value(), new_write_time_watermark, expiration_.get());
+  }
+  return ObsolescenceTracker(new_write_time_watermark);
+}
+
 boost::optional<uint64_t> ObsolescenceTracker::GetTtlRemainingSeconds(
     const HybridTime& ttl_write_time) const {
   if (!expiration_.has_value()) {
@@ -703,17 +711,12 @@ Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
   Slice value;
   DocHybridTime doc_ht = parent_obsolescence_tracker_.GetHighWriteTime();
   RETURN_NOT_OK(iter_->FindLatestRecord(parent_key_without_ht, &doc_ht, &value));
-  uint64_t merge_flags = 0;
-  MonoDelta value_ttl;
-  ValueType value_type;
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &value_ttl));
 
-  if (!iter_->valid() || value_type == ValueType::kInvalid) {
-    // TODO -- see if we can remove this (https://github.com/yugabyte/yugabyte-db/issues/7487).
+  if (!iter_->valid()) {
     return Status::OK();
   }
 
-  parent_obsolescence_tracker_ = parent_obsolescence_tracker_.Child(doc_ht, value_ttl);
+  parent_obsolescence_tracker_ = parent_obsolescence_tracker_.Child(doc_ht);
   return Status::OK();
 }
 

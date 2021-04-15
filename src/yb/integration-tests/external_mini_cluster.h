@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -243,6 +244,12 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a Tablet Server to the blacklist
   CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
+  // Returns the min_num_replicas corresponding to a PlacementBlockPB.
+  CHECKED_STATUS GetMinReplicaCountForPlacementBlock(
+    ExternalMaster* master,
+    const string& cloud, const string& region, const string& zone,
+    int* min_num_replicas);
+
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
@@ -357,6 +364,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Wait until all tablets on the given tablet server are in 'RUNNING'
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
+      ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 

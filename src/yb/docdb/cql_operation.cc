@@ -36,6 +36,7 @@
 
 #include "yb/util/bfpg/tserver_opcodes.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -619,14 +620,25 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
   QLExprResult temp;
+  rapidjson::Document document;
   RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
   const auto& ql_value = temp.Value();
-  if (IsNull(ql_value)) {
-    return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
+  if (!IsNull(ql_value)) {
+    Jsonb jsonb(std::move(ql_value.jsonb_value()));
+    RETURN_NOT_OK(jsonb.ToRapidJson(&document));
+  } else {
+    if (!is_insert && column_value.json_args_size() > 1) {
+      return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
+        column_value.ShortDebugString());
+    }
+    common::Jsonb empty_jsonb;
+    RETURN_NOT_OK(empty_jsonb.FromString("{}"));
+    QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
+    column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+
+    Jsonb jsonb(column.value.jsonb_value());
+    RETURN_NOT_OK(jsonb.ToRapidJson(&document));
   }
-  Jsonb jsonb(std::move(ql_value.jsonb_value()));
-  rapidjson::Document document;
-  RETURN_NOT_OK(jsonb.ToRapidJson(&document));
 
   // Deserialize the rhs.
   Jsonb rhs(std::move(column_value.expr().value().jsonb_value()));
@@ -1064,11 +1076,15 @@ ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
 
 } // namespace
 
-bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
-                                    const QLTableRow& new_row) const {
+Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
+                                            const QLTableRow& new_row) const {
   // Delete the whole row?
   if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
     return true;
+  }
+
+  if (existing_row.IsEmpty()) { // If the row doesn't exist, don't check further.
+    return false;
   }
 
   // For update/delete, if there is no liveness column, the row will be deleted after the DML unless
@@ -1089,9 +1105,14 @@ bool QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing: break;
+        case ValueState::kMissing:
+          // In case there exists a row with the same primary key, we definitely need to know if its
+          // columns have value NULL or not. Populate the column before executing this function.
+          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
+            "QLWriteRequestPB's column_refs.");
       }
     }
+
     return true;
   }
 
@@ -1127,7 +1148,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   for (const TableId& index_id : index_ids) {
     const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
-    if (IsRowDeleted(existing_row, new_row)) {
+    bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
+    if (is_row_deleted) {
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(

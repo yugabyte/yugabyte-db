@@ -19,12 +19,7 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperatio
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyList;
@@ -413,7 +408,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -468,7 +464,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -491,6 +488,59 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(json.get("universeUUID"));
     assertNotNull(json.get("universeDetails"));
     assertNotNull(json.get("universeConfig"));
+    // setTxnTableWaitCountFlag will be false as enableYSQL is false in this case
+    assertFalse(json.get("universeDetails").get("setTxnTableWaitCountFlag").asBoolean());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseCreateWithYsqlEnabled() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode)
+            .put("enableYSQL", "true");
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json.get("universeUUID"));
+    assertNotNull(json.get("universeDetails"));
+    assertNotNull(json.get("universeConfig"));
+    // setTxnTableWaitCountFlag should be true as enableYSQL is true in this case
+    assertTrue(json.get("universeDetails").get("setTxnTableWaitCountFlag").asBoolean());
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
@@ -512,7 +562,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "SingleUserUniverse")
@@ -556,7 +607,8 @@ public class UniverseControllerTest extends WithApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -594,7 +646,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     az1.setConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
-    InstanceType i = InstanceType.upsert(p.code, "small", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "small", 10, 5.5,
                                          new InstanceType.InstanceTypeDetails());
 
     ModelFactory.createUniverse("K8sUniverse1", customer.getCustomerId(), CloudType.kubernetes);
@@ -641,7 +693,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -687,7 +740,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -735,7 +789,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
@@ -966,7 +1021,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getCustomerId());
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     setInTransitNode(u.universeUUID);
 
@@ -1119,6 +1175,53 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithTrimParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \" master-flag \", \"value\": \" 123 \"}]");
+    JsonNode tserverGFlags = Json.parse("[{ \"name\": \" tserver-flag \", \"value\": \" 456 \"}]");
+    userIntentJson.set("masterGFlags", masterGFlags);
+    userIntentJson.set("tserverGFlags", tserverGFlags);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseTrimFlags() {
+    Map<String, String> data = new HashMap<>();
+    data.put(" Test ", " One ");
+    data.put(" Test 2 ", " Two ");
+
+    Map<String, String> result = UniverseController.trimFlags(data);
+    assertEquals(result.size(), 2);
+    assertEquals(result.get("Test"), "One");
+    assertEquals(result.get("Test 2"), "Two");
   }
 
   @Test
@@ -1381,7 +1484,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5,
         new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -1434,7 +1537,8 @@ public class UniverseControllerTest extends WithApplication {
     Region rReadOnly = Region.create(p, "region-readOnly-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(rReadOnly, "az-readOnly-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(rReadOnly, "az-readOnly-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univWithReadOnlyCreate";
@@ -1508,7 +1612,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
     utd.universeUUID= u.universeUUID;
@@ -1554,7 +1659,8 @@ public class UniverseControllerTest extends WithApplication {
 
   public UniverseDefinitionTaskParams setupOnPremTestData(int numNodesToBeConfigured, Provider p, Region r, List<AvailabilityZone> azList) {
     int numAZsToBeConfigured = azList.size();
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     for (int k = 0; k < numNodesToBeConfigured; ++k) {
       NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
@@ -1601,7 +1707,8 @@ public class UniverseControllerTest extends WithApplication {
     Provider p = ModelFactory.newProvider(customer, CloudType.onprem);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getTestUserIntent(r, p, i, 5);
     userIntent.providerType = CloudType.onprem;
@@ -1639,7 +1746,8 @@ public class UniverseControllerTest extends WithApplication {
     azList.add(az1);
     azList.add(az2);
 
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
@@ -1709,7 +1817,8 @@ public class UniverseControllerTest extends WithApplication {
 
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
-    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "type.small", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     taskParams.nodePrefix = "test_uni";
     UserIntent userIntent = getTestUserIntent(r, p, i, 5);
@@ -1768,7 +1877,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
@@ -1831,7 +1941,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10,
+      5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
@@ -1888,7 +1999,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i = InstanceType
-            .upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            .upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams createTaskParams = new UniverseDefinitionTaskParams();
     ObjectNode createBodyJson = (ObjectNode) Json.toJson(createTaskParams);
@@ -2268,7 +2379,7 @@ public class UniverseControllerTest extends WithApplication {
     AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5,
+    InstanceType i = InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5,
         new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();

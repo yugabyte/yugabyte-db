@@ -3,6 +3,7 @@
 import { connect } from 'react-redux';
 import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { reset } from 'redux-form';
+import { toast } from 'react-toastify';
 import OnPremNodesList from './OnPremNodesList';
 import {
   getInstanceTypeList,
@@ -52,16 +53,22 @@ const mapDispatchToProps = (dispatch, ownProps) => {
     createOnPremNodes: (nodePayloadData, pUUID) => {
       nodePayloadData.forEach(function (nodePayload) {
         Object.keys(nodePayload).forEach((zoneUUID, zoneIdx) => {
-          const nodesForZone = nodePayload[zoneUUID];
-          dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {
-            dispatch(createNodeInstancesResponse(response.payload));
-            if (zoneIdx === Object.keys(nodePayload).length - 1) {
-              dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
-                dispatch(getNodesInstancesForProviderResponse(response.payload));
-              });
+          const nodesForZone = nodePayload[zoneUUID];          
+          dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {       
+            if (!response.error) {
+              dispatch(createNodeInstancesResponse(response.payload));
+              if (zoneIdx === Object.keys(nodePayload).length - 1) {
+                dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
+                  dispatch(getNodesInstancesForProviderResponse(response.payload));
+                });
+                dispatch(closeDialog());
+                dispatch(closeUniverseDialog());
+              }
+            } else {
+              const errorMessage = response.payload?.response?.data?.error ?? 'Something went wrong creating node instances!';
+              toast.error(errorMessage);
               dispatch(closeDialog());
-              dispatch(closeUniverseDialog());
-            }
+            }           
           });
         });
       });

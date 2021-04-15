@@ -45,6 +45,8 @@ import {
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
 
+export const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
@@ -123,19 +125,19 @@ class UniverseDetail extends Component {
   };
 
   isCurrentUniverseDeleteTask = (uuid) => {
-    return this.props.tasks.customerTaskList
-      .filter((task) => task.targetUUID == uuid && task.type === 'Delete');
+    return this.props.tasks.customerTaskList.filter(
+      (task) => task.targetUUID == uuid && task.type === 'Delete'
+    );
   };
 
   getUniverseInfo = () => {
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     let currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
-    if (currentUniverseTasks.length>0) {
+    if (currentUniverseTasks.length > 0) {
       browserHistory.push('/');
+    } else {
+      this.props.getUniverseInfo(universeUUID);
     }
-    else {
-       this.props.getUniverseInfo(universeUUID);
-    }    
   };
 
   showUpgradeMarker = () => {
@@ -208,7 +210,8 @@ class UniverseDetail extends Component {
       closeModal,
       customer,
       customer: { currentCustomer },
-      params: { tab }
+      params: { tab },
+      featureFlags
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -446,6 +449,19 @@ class UniverseDetail extends Component {
       </div>
     );
 
+    const {
+      data: {
+        universeDetails: { nodeDetailsSet }
+      }
+    } = currentUniverse;
+
+    const isEphemeralStorage =
+      nodeDetailsSet.find?.((node) => {
+        return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
+          node.cloudInfo?.instance_type?.split?.('.')[0]
+        );
+      }) !== undefined;
+
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (
@@ -483,7 +499,7 @@ class UniverseDetail extends Component {
                     <>
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={ updateInProgress }
+                          disabled={updateInProgress}
                           onClick={showSoftwareUpgradesModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -520,7 +536,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={ updateInProgress }
+                          disabled={updateInProgress}
                           onClick={showGFlagsModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -533,7 +549,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={ updateInProgress }
+                          disabled={updateInProgress}
                           onClick={() => showSubmenu('security')}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -549,7 +565,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={ updateInProgress }
+                          disabled={updateInProgress}
                           onClick={showRollingRestartModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -564,7 +580,7 @@ class UniverseDetail extends Component {
 
                       {!isReadOnlyUniverse && !universePaused && !isProviderK8S && (
                         <YBMenuItem
-                          disabled={ updateInProgress }
+                          disabled={updateInProgress}
                           to={`/universes/${uuid}/edit/async`}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -583,7 +599,10 @@ class UniverseDetail extends Component {
                           modal={modal}
                           closeModal={closeModal}
                           button={
-                            <YBMenuItem disabled={ updateInProgress } onClick={showRunSampleAppsModal}>
+                            <YBMenuItem
+                              disabled={updateInProgress}
+                              onClick={showRunSampleAppsModal}
+                            >
                               <YBLabelWithIcon icon="fa fa-terminal">
                                 Run Sample Apps
                               </YBLabelWithIcon>
@@ -600,13 +619,17 @@ class UniverseDetail extends Component {
                       providers and once that's done this condition needs to be removed.
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
-                      {/* isAWSUniverse(currentUniverse?.data) &&
-                        <YBMenuItem onClick={showToggleUniverseStateModal}>
-                          <YBLabelWithIcon icon="fa fa-pause-circle-o">
-                            {!universePaused ? 'Pause Universe' : 'Resume Universe'}
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
-                       */}
+
+                      {isAWSUniverse(currentUniverse?.data) &&
+                        !isEphemeralStorage &&
+                        (featureFlags.test['pausedUniverse'] ||
+                          featureFlags.released['pausedUniverse']) && (
+                          <YBMenuItem onClick={showToggleUniverseStateModal}>
+                            <YBLabelWithIcon icon="fa fa-pause-circle-o">
+                              {!universePaused ? 'Pause Universe' : 'Resume Universe'}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
 
                       <YBMenuItem
                         onClick={showDeleteUniverseModal}
