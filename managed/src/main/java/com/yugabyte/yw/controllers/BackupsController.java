@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;

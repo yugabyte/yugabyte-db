@@ -14,7 +14,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;

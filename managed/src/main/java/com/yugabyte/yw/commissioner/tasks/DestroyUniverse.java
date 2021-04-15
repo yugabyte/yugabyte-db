@@ -67,51 +67,8 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       if (params().isDeleteBackups) {
         List<Backup> backupList = Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
-        for (Backup backup : backupList) {
-          try {
-            backup = Backup.get(params().customerUUID, backup.backupUUID);
-            if (backup.state != Backup.BackupState.Completed) {
-              LOG.error("Cannot delete backup in any other state other than completed.");
-              continue;
-            }
-            backup.transitionState(Backup.BackupState.Deleted);
-            BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
-            if (backupParams.backupList != null) {
-              for (BackupTableParams childBackupParams : backupParams.backupList) {
-                childBackupParams.actionType = BackupTableParams.ActionType.DELETE;
-                ShellResponse response = tableManager.deleteBackup(childBackupParams);
-                JsonNode jsonNode = Json.parse(response.message);
-                if (response.code != 0 || jsonNode.has("error")) {
-                  // Revert state to completed since it couldn't get deleted.
-                  backup.transitionState(Backup.BackupState.Completed);
-                  LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
-                            childBackupParams.storageLocation, response.code, jsonNode.has("error"));
-                  break;
-                } else {
-                  LOG.info("[" + getName() + "] STDOUT: " + response.message);
-                }
-              }
-            } else {
-              backupParams.actionType = BackupTableParams.ActionType.DELETE;
-              ShellResponse response = tableManager.deleteBackup(backupParams);
-              JsonNode jsonNode = Json.parse(response.message);
-              if (response.code != 0 || jsonNode.has("error")) {
-                // Revert state to completed since it couldn't get deleted.
-                backup.transitionState(Backup.BackupState.Completed);
-                LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
-                          backupParams.storageLocation, response.code, jsonNode.has("error"));
-              } else {
-                LOG.info("[" + getName() + "] STDOUT: " + response.message);
-              }
-            }
-          } catch (Exception e) {
-            LOG.error("Errored out with: " + e);
-            if (backup != null) {
-              // Revert state to completed since it couldn't get deleted.
-              backup.transitionState(Backup.BackupState.Completed);
-            }
-          }
-        }
+        createDeleteBackupTasks(backupList, params().customerUUID).setSubTaskGroupType(
+            SubTaskGroupType.DeletingBackup);
       }
 
       // Cleanup the kms_history table

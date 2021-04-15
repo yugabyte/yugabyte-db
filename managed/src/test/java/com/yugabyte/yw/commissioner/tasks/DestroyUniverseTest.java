@@ -103,7 +103,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
-    assertEquals(Backup.BackupState.Deleted, b.state);
   }
 
   @Test
@@ -121,7 +120,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
-    assertEquals(Backup.BackupState.Completed, b.state);
   }
 
   private TaskInfo submitTask(DestroyUniverse.Params taskParams, int version) {
