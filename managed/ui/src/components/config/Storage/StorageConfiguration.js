@@ -6,7 +6,7 @@ import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field, SubmissionError, change } from 'redux-form';
+import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -355,7 +355,6 @@ class StorageConfiguration extends Component {
           const configFields = [];
           const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field) => {
-            const value = config.data[field.id];
             configFields.push(
               <Row className="config-provider-row" key={configName + field.id}>
                 <Col lg={2}>
