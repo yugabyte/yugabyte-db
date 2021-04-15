@@ -455,9 +455,11 @@ Endpoint RpcAndWebServerBase::first_http_address() const {
 void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_.reset(new NodeInstancePB);
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
+  auto now = Env::Default()->NowMicros();
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
-  instance_pb_->set_instance_seqno(Env::Default()->NowMicros());
+  instance_pb_->set_instance_seqno(now);
+  instance_pb_->set_start_time_us(now);
 }
 
 Status RpcAndWebServerBase::Init() {
