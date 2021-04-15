@@ -46,7 +46,7 @@ class KeyManagementConfiguration extends Component {
 
   componentDidMount() {
     this.props.fetchKMSConfigList().then((response) => {
-      if (response.payload.data.length) {
+      if (response.payload?.data?.length) {
         this.setState({ listView: true });
       }
     });

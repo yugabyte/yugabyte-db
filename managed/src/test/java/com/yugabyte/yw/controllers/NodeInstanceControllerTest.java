@@ -41,6 +41,7 @@ import play.mvc.Result;
 
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
+  private final String FAKE_IP_2 = "fake_ip_2";
   private Customer customer;
   private Users user;
   private Provider provider;
@@ -63,13 +64,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     taskType = ArgumentCaptor.forClass(TaskType.class);
     taskParams = ArgumentCaptor.forClass(NodeTaskParams.class);
 
-    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
-    nodeData.ip = FAKE_IP;
-    nodeData.region = region.code;
-    nodeData.zone = zone.code;
-    nodeData.instanceType = "fake_instance_type";
-    nodeData.sshUser = "ssh-user";
-    node = NodeInstance.create(zone.uuid, nodeData);
+    NodeInstanceFormData.NodeInstanceData nodeData1 = new NodeInstanceFormData.NodeInstanceData();
+    nodeData1.ip = FAKE_IP;
+    nodeData1.region = region.code;
+    nodeData1.zone = zone.code;
+    nodeData1.instanceType = "fake_instance_type";
+    nodeData1.sshUser = "ssh-user";
+    node = NodeInstance.create(zone.uuid, nodeData1);
     // Give it a name.
     node.setNodeName("fake_name");
     node.save();
@@ -90,11 +91,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequest("GET", uri);
   }
 
-  private Result createNode(UUID zoneUuid) {
+  private Result createNode(UUID zoneUuid, NodeInstanceFormData.NodeInstanceData details) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
     NodeInstanceFormData formData = new NodeInstanceFormData();
     formData.nodes = new LinkedList<>();
-    formData.nodes.add(node.getDetails());
+    formData.nodes.add(details);
     JsonNode body = Json.toJson(formData);
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
@@ -218,12 +219,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateSuccess() {
-    Result r = createNode(zone.uuid);
-    checkOk(r);
-    JsonNode json = parseResult(r);
+    NodeInstanceFormData.NodeInstanceData testNode = new NodeInstanceFormData.NodeInstanceData();
+    testNode.ip = FAKE_IP_2;
+    testNode.region = region.code;
+    testNode.zone = zone.code;
+    testNode.instanceType = "fake_instance_type";
+    testNode.sshUser = "ssh-user";
+    Result successReq = createNode(zone.uuid, testNode);
+    checkOk(successReq);
+    JsonNode json = parseResult(successReq);
     assertThat(json, is(notNullValue()));
     assertTrue(json.isObject());
-    JsonNode nodeJson = json.get(FAKE_IP);
+    JsonNode nodeJson = json.get(FAKE_IP_2);
     assertThat(nodeJson, is(notNullValue()));
     assertTrue(nodeJson.isObject());
 
@@ -235,9 +242,17 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateFailureDuplicateIp() {
+    Result failedReq = createNode(zone.uuid, node.getDetails());
+    checkNotOk(failedReq,
+      "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = createNode(wrongUuid);
+    Result r = createNode(wrongUuid, node.getDetails());
     String error =
       "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
     checkNotOk(r, error);
