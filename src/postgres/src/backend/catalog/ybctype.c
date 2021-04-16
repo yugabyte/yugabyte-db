@@ -64,6 +64,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "catalog/pg_enum.h"
 #include "catalog/pg_type.h"
 #include "catalog/ybctype.h"
 #include "mb/pg_wchar.h"
@@ -175,12 +176,7 @@ YBCDataTypeFromOidMod(int attnum, Oid type_id)
 			case TYPTYPE_DOMAIN:
 				break;
 			case TYPTYPE_ENUM:
-				/*
-				 * TODO(jason): use the following line instead once
-				 * user-defined enums can be primary keys:
-				 *   basetp_oid = ANYENUMOID;
-				 */
-				return &YBCFixedLenByValTypeEntity;
+				basetp_oid = ANYENUMOID;
 				break;
 			case TYPTYPE_RANGE:
 				basetp_oid = ANYRANGEOID;
@@ -409,6 +405,50 @@ void YBCDatumToUInt64(Datum datum, uint64 *data, uint64 *bytes) {
 
 Datum YBCUInt64ToDatum(const uint64 *data, uint64 bytes, const YBCPgTypeAttrs *type_attrs) {
         return UInt64GetDatum(*data);
+}
+
+/*
+ * Given datum representing a 4-byte enum oid, lookup its sort order which is
+ * a 4-byte float, then treat the sort order as a 4-byte integer. Combine
+ * the sort order with the enum oid to make an int64 by putting the sort order
+ * at the high 4-byte and the enum oid at the low 4-byte.
+ */
+void YBCDatumToEnum(Datum datum, int64 *data, int64 *bytes) {
+	if (!bytes) {
+		HeapTuple tup;
+		Form_pg_enum en;
+		uint32_t sort_order;
+
+		/*
+		 * We expect datum to only contain a enum oid and does not already contain a sort order.
+		 */
+		Assert(!(datum >> 32));
+
+		/*
+		 * Find the sort order of this enum oid.
+		 */
+		tup = SearchSysCache1(ENUMOID, datum);
+		Assert(tup);
+		en = (Form_pg_enum) GETSTRUCT(tup);
+		sort_order = *(uint32 *) (&en->enumsortorder);
+
+		/*
+		 * Place the sort order at the high 4-byte of datum.
+		 */
+		datum |= ((int64) sort_order) << 32;
+		ReleaseSysCache(tup);
+	} else {
+		/*
+		 * If the caller passes a non-null address to bytes then it means it requests
+		 * us to not add sort order to datum for testing purpose.
+		 */
+	}
+	*data = DatumGetInt64(datum);
+}
+
+Datum YBCEnumToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	// Clear the sort order from the higher 4-bytes.
+	return Int64GetDatum(*data) & 0xffffffffLL;
 }
 
 void YBCDatumToOid(Datum datum, Oid *data, int64 *bytes) {
@@ -1228,9 +1268,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt32,
 		(YBCPgDatumFromData)YBCInt32ToDatum },
 
-	{ ANYENUMOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ ANYENUMOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64),
+		(YBCPgDatumToData)YBCDatumToEnum,
+		(YBCPgDatumFromData)YBCEnumToDatum },
 
 	{ FDW_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
 		(YBCPgDatumToData)YBCDatumToOid,

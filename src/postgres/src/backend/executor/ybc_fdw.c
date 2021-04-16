@@ -395,7 +395,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			const YBCPgTypeEntity *type_entity;
 
 			/* Get type entity for the operator from the aggref. */
-			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
+			type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
 			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, &op_handle));
