@@ -94,7 +94,7 @@ const SlowQueriesComponent = () => {
     console.warn('Invalid column header data detected, defaulting to initial values.');
   }
   const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
-  const [queryMonitoring, setQueryMonitoring] = useState(isQueryMonitoringEnabled)
+  const [queryMonitoring, setQueryMonitoring] = useState(isQueryMonitoringEnabled);
   const [columns, setColumns] = useState(initialColumns);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
@@ -118,7 +118,7 @@ const SlowQueriesComponent = () => {
     if (loading && selectedRow.length) {
       setSelectedRow([]);
     }
-  }, [loading]);
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getQueryStatement = (cell) => {
     const truncatedText = cell.length > 200 ? `${cell.substring(0, 200)}...` : cell;
@@ -163,18 +163,18 @@ const SlowQueriesComponent = () => {
   const handleToggleMonitoring = (ev) => {
     localStorage.setItem('__yb_query_monitoring__', ev.target.checked);
     setQueryMonitoring(ev.target.checked);
-  }
+  };
 
   const handleResetQueries = () => {
     resetSlowQueries(universeUUID).then((response) => {
       if (response.status === 200) {
         toast.success('Successfully reset slow queries!');
-      } else {        
+      } else {
         toast.error('Error resetting slow queries.');
-      }      
+      }
       if (queryMonitoring) getSlowQueries();
-    })
-  }
+    });
+  };
 
   const formatMillisNumber = (cell) => {
     if (!Number.isInteger(cell)) {

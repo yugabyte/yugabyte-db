@@ -160,7 +160,7 @@ export const QuerySearchInput: FC<QuerySearchInputProps> = ({
     return () => {
       document.removeEventListener('click', searchDropdownHandler);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Gets the location of querySearchInput element and sets left pixels
   useLayoutEffect(() => {
@@ -176,7 +176,7 @@ export const QuerySearchInput: FC<QuerySearchInputProps> = ({
         setSearchDropdownLeft(0);
       }
     }
-  }, [querySearchInput, searchTerms]);
+  }, [querySearchInput, searchTerms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div id={id} className="search-bar-container">
