@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Collection;
-import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -67,7 +66,7 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;

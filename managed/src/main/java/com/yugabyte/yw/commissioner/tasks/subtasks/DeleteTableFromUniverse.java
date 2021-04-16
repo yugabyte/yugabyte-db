@@ -17,7 +17,6 @@ import com.yugabyte.yw.forms.TableTaskParams;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.DeleteTableResponse;
 import org.yb.client.YBClient;
 import play.api.Play;
 
@@ -55,7 +54,7 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   @Override
   public void run() {
     Params params = taskParams();
-    Universe universe = Universe.get(params.universeUUID);
+    Universe universe = Universe.getOrBadRequest(params.universeUUID);
     String certificate = universe.getCertificate();
     YBClient client = null;
     try {

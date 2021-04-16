@@ -9,13 +9,9 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.io.File;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -25,7 +21,6 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +58,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;
