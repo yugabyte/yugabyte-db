@@ -126,13 +126,13 @@ class UniverseDetail extends Component {
 
   isCurrentUniverseDeleteTask = (uuid) => {
     return this.props.tasks.customerTaskList.filter(
-      (task) => task.targetUUID == uuid && task.type === 'Delete'
+      (task) => task.targetUUID === uuid && task.type === 'Delete'
     );
   };
 
   getUniverseInfo = () => {
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
-    let currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
+    const currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
     if (currentUniverseTasks.length > 0) {
       browserHistory.push('/');
     } else {

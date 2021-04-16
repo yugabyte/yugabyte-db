@@ -214,7 +214,7 @@ export function createProvider(type, name, config) {
     code: provider.code,
     name: name,
     config: config,
-  }
+  };
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {
     type: CREATE_PROVIDER,

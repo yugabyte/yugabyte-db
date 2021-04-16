@@ -6,7 +6,6 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse,
   resetUniverseInfo,
-  closeUniverseDialog,
   getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';

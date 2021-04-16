@@ -64,7 +64,7 @@ export default class MetricsPanel extends Component {
         this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
       metric.layout.height = this.props.height || 360;
       metric.layout.showlegend = true;
-      metric.layout.hovermode = 'closest'
+      metric.layout.hovermode = 'closest';
       metric.layout.margin = {
         l: 45,
         r: 25,

@@ -61,9 +61,7 @@ class ToggleUniverseState extends Component {
         currentUniverse: { data }
       },
     } = this.props;
-    const {
-      universeDetails: { nodeDetailsSet }, name
-    } = data;
+    const { name } = data;
 
     return (
       <YBModal

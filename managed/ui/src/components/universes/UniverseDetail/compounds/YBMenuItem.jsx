@@ -25,7 +25,7 @@ export class YBMenuItem extends Component {
       }
     }
     return (
-      <li className={availability, 'disabled'}>
+      <li className={`${availability} disabled`}>
         <div className={className}>{this.props.children}</div>
       </li>
     );

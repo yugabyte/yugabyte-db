@@ -94,7 +94,7 @@ const LiveQueriesComponent = ({ location }) => {
     if (loading && selectedRow.length) {
       setSelectedRow([]);
     }
-  }, [loading]);
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Default to showing YSQL if YSQL tables are present
