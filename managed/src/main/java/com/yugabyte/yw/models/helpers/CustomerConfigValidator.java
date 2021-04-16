@@ -15,6 +15,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.s3.model.Bucket;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
+import java.util.UUID;
 
 import play.libs.Json;
 
@@ -43,6 +52,8 @@ public class CustomerConfigValidator {
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
+  private static final String S3_BUCKET_NAME = "^s3://.*";
+
   public static abstract class ConfigValidator {
 
     private final String type;
@@ -61,6 +72,10 @@ public class CustomerConfigValidator {
       if (this.type.equals(type) && this.name.equals(name)) {
         JsonNode value = data.get(fieldName);
         doValidate(value == null ? "" : value.asText(), errorsCollector);
+        if (this.name.equals("S3") &&
+            data.get("AWS_ACCESS_KEY_ID") != null) {
+          validateS3DataContent(data, errorsCollector);
+        }
       }
     }
 
@@ -127,8 +142,8 @@ public class CustomerConfigValidator {
   public CustomerConfigValidator() {
     validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_NFS, BACKUP_LOCATION_FIELDNAME,
         NFS_PATH_REGEXP));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
-        S3_URL_SCHEMES, false));
+    validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
+        S3_BUCKET_NAME));
     validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, AWS_HOST_BASE_FIELDNAME,
         S3_URL_SCHEMES, true));
     validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_GCS, BACKUP_LOCATION_FIELDNAME,
@@ -178,5 +193,49 @@ public class CustomerConfigValidator {
     validators.forEach(v -> v.validate(formData.get("type").asText(), formData.get("name").asText(),
         formData.get("data"), errorJson));
     return errorJson;
+  }
+
+  /**
+   * Validates data which is contained in formData.
+   * During the procedure it checks all the S3 config parameters whether they are valid or not.
+   * Errors are collected and
+   * returned back as a result. Empty result object means no errors.
+   *
+   * Currently is checked:
+   *  - S3/AWS - S3 Bucket, whether it exists or not.
+   *
+   * @param formData, region
+   * @return Json filled with errors
+   */
+  public static ObjectNode validateS3DataContent(JsonNode formData, ObjectNode errorJson) {
+    try {
+      String bucketname = formData.get("BACKUP_LOCATION").asText();
+      //Assuming bucket name will always start with s3:// otherwise that will be invalid
+      bucketname = bucketname.substring(5);
+      AmazonS3 s3client = getS3Client(formData);
+      List<Bucket> buckets = s3client.listBuckets();
+      for (Bucket bucket : buckets) {
+        if (bucket.getName().equals(bucketname))
+          return errorJson;
+      }
+      errorJson.set("BackupConfigException", Json.newArray().add("Bucket name " + bucketname +
+          " doesn't exist"));
+    } catch (AmazonS3Exception s3Exception) {
+      errorJson.set("BackupConfigException", Json.newArray().add(s3Exception.getErrorMessage()));
+    }
+    return errorJson;
+  }
+
+  // TODO: move to some common utils or AWSCloudImpl file
+  public static AmazonS3 getS3Client(JsonNode formData) {
+    AWSCredentials credentials = new BasicAWSCredentials(
+      formData.get("AWS_ACCESS_KEY_ID").asText(),
+      formData.get("AWS_SECRET_ACCESS_KEY").asText()
+    );
+    return AmazonS3ClientBuilder
+      .standard()
+      .withCredentials(new AWSStaticCredentialsProvider(credentials))
+      .withRegion(Regions.DEFAULT_REGION)
+      .build();
   }
 }

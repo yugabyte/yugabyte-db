@@ -30,12 +30,10 @@ public class CustomerConfigController extends AuthenticatedController {
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
       return ApiResponse.error(BAD_REQUEST, errorJson);
     }
-
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     Audit.createAuditEntry(ctx(), request(), formData);
     return ApiResponse.success(customerConfig);
