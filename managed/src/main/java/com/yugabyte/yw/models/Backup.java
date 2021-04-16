@@ -210,7 +210,8 @@ public class Backup extends Model {
       Customer customer = Customer.get(customerUUID);
       Set<UUID> allUniverseUUIDs = Universe.getAllUUIDs(customer);
       List<Backup> backupsWithValidUniv = backups.stream()
-        .filter(backup -> allUniverseUUIDs.contains(backup.getBackupInfo().universeUUID))
+        .filter(backup -> allUniverseUUIDs.contains(backup.getBackupInfo().universeUUID) && 
+            !Universe.get(backup.getBackupInfo().universeUUID).getUniverseDetails().universePaused)
         .collect(Collectors.toList());
       ret.put(customer, backupsWithValidUniv);
     });
