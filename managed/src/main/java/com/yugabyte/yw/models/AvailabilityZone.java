@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
@@ -16,6 +17,7 @@ import javax.persistence.ManyToOne;
 import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 public class AvailabilityZone extends Model {
@@ -123,13 +125,25 @@ public class AvailabilityZone extends Model {
       .findFirst();
   }
 
+  public static AvailabilityZone getOrBadRequest(UUID zoneUuid) {
+    return maybeGet(zoneUuid)
+      .orElseThrow(() -> new YWServiceException(
+        BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
+  }
+
+  // TODO getOrNull should be replaced by maybeGet or getOrBadRequest
+  @Deprecated
   public static AvailabilityZone get(UUID zoneUuid) {
+    return maybeGet(zoneUuid).orElse(null);
+  }
+
+  public static Optional<AvailabilityZone> maybeGet(UUID zoneUuid) {
     return AvailabilityZone.find.query().
       fetch("region")
       .fetch("region.provider")
       .where()
       .idEq(zoneUuid)
-      .findOne();
+      .findOneOrEmpty();
   }
 
   @JsonBackReference

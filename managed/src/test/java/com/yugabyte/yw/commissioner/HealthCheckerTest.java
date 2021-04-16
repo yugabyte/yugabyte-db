@@ -157,7 +157,7 @@ public class HealthCheckerTest extends FakeDBApplication {
       universe.getUniverseDetails().getPrimaryCluster().userIntent;
     userIntent.accessKeyCode = accessKey.getKeyCode();
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    return Universe.get(universe.universeUUID);
+    return Universe.getOrBadRequest(universe.universeUUID);
   }
 
   private Universe setupK8sUniverse(String name) {
@@ -174,7 +174,7 @@ public class HealthCheckerTest extends FakeDBApplication {
       defaultCustomer.getCustomerId(),
       Common.CloudType.kubernetes, pi);
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
-    return Universe.get(universe.universeUUID);
+    return Universe.getOrBadRequest(universe.universeUUID);
   }
 
   private void setupAlertingData(

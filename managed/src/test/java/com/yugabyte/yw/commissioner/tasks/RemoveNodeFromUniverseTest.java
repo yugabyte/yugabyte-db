@@ -5,11 +5,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -18,8 +16,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -35,7 +31,6 @@ import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
@@ -71,7 +66,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, withMaster /* setMasters */));
-    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       public void run(Universe universe) {
@@ -91,7 +86,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       }
     };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
-    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
 
     mockClient = mock(YBClient.class);
     ShellResponse dummyShellResponse = new ShellResponse();

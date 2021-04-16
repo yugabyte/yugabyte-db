@@ -88,7 +88,7 @@ public class CreateTable extends AbstractTaskBase {
 
   private void createRedisTable() throws Exception {
     // Get the master addresses.
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
     LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
         taskParams().universeUUID, masterAddresses);
