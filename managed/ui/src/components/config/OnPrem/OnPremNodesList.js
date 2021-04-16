@@ -61,7 +61,7 @@ class OnPremNodesList extends Component {
     const self = this;
     const currentCloudRegions = supportedRegionList.data.filter(
       (region) => region.provider.code === 'onprem'
-    );    
+    );
     const currentCloudAccessKey = accessKeys.data
       .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
       .shift();
@@ -111,25 +111,25 @@ class OnPremNodesList extends Component {
           return isNonEmptyObject(instanceListByZone) ? instanceListByZone : null;
         })
         .filter(Boolean);
-      const existingNodeIps = new Set(nodeInstanceList.data.map(instance => instance.details.ip.trim()))
-      let errors = { instances: {}};
+      const existingNodeIps = new Set(nodeInstanceList.data.map(instance => instance.details.ip.trim()));
+      const errors = { instances: {}};
       Object.keys(vals.instances).forEach(region => {
         vals.instances[region].forEach((az, index) => {
           // Check if IP address is already in use by other node instance
           if (existingNodeIps.has(az.instanceTypeIP.trim())) {
             // If array exists then there are multiple errors
             if (!Array.isArray(errors.instances[region])) {
-              errors.instances[region] = new Array();
+              errors.instances[region] = [];
             }
             errors.instances[region][index] = {
               instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
-            }
+            };
           } else {
             // Add node instance to Set
-            existingNodeIps.add(az.instanceTypeIP.trim())
+            existingNodeIps.add(az.instanceTypeIP.trim());
           }
-        })
-      })
+        });
+      });
       if (Object.keys(errors.instances).length) {
         // reduxProps.stopSubmit()
         throw new SubmissionError({
