@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 215
 isTocNested: true
 showAsideToc: true
 ---
