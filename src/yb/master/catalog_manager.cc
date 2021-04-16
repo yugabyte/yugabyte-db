@@ -6509,12 +6509,14 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
+  NamespaceInfoMap namespace_ids_copy;
+  {
+    SharedLock<LockType> l(lock_);
+    namespace_ids_copy = namespace_ids_map_;
+  }
 
-  SharedLock<LockType> l(lock_);
-
-  for (const auto& entry : namespace_ids_map_) {
+  for (const auto& entry : namespace_ids_copy) {
     const auto& namespace_info = *entry.second;
-    auto ltm = namespace_info.LockForRead();
     // If the request asks for namespaces for a specific database type, filter by the type.
     if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
       continue;
