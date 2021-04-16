@@ -31,6 +31,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+// YB includes.
+#include "pg_yb_utils.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
@@ -573,6 +575,13 @@ static void
 RenumberEnumType(Relation pg_enum, HeapTuple *existing, int nelems)
 {
 	int			i;
+
+	if (IsYugaByteEnabled())
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("renumber enum labels is not yet supported")));
+	}
 
 	/*
 	 * We should only need to increase existing elements' enumsortorders,
