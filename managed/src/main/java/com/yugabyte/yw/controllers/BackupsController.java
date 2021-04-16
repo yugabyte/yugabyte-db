@@ -70,13 +70,7 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    Universe universe;
-    try {
-      universe = Universe.get(universeUUID);
-    } catch (RuntimeException re) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
     Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
         .bindFromRequest();
@@ -106,7 +100,7 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableName = null;
         subParams.keyspace = null;
         subParams.universeUUID = universeUUID;
-        subParams.parallelism = taskParams.parallelism;;
+        subParams.parallelism = taskParams.parallelism;
       }
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
@@ -171,7 +165,7 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    ObjectNode formData = (ObjectNode) request().body().asJson(); 
+    ObjectNode formData = (ObjectNode) request().body().asJson();
     List<String> taskUUIDList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {
       UUID uuid = UUID.fromString(backupUUID.asText());

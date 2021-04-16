@@ -80,7 +80,7 @@ public class RuntimeConfigFormData {
           case CUSTOMER:
             return factory.forCustomer(Customer.get(scopeUUID));
           case UNIVERSE:
-            return factory.forUniverse(Universe.get(scopeUUID));
+            return factory.forUniverse(Universe.getOrBadRequest(scopeUUID));
           case PROVIDER:
             return factory.forProvider(Provider.get(scopeUUID));
         }

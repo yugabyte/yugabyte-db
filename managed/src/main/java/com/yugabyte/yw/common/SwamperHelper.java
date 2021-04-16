@@ -23,7 +23,6 @@ import play.libs.Json;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.UUID;
@@ -147,7 +146,7 @@ public class SwamperHelper {
   }
 
   public void writeUniverseTargetJson(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
     // Write out the node specific file.
     ArrayNode nodeTargets = Json.newArray();

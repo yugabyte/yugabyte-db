@@ -2,65 +2,44 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.ImportUniverseFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
+import com.yugabyte.yw.models.*;
+import org.junit.Before;
+import org.junit.Test;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
+import play.libs.Json;
+import play.mvc.Result;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.UUID;
+
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.OK;
+import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
-import org.mockito.Mock;
-
-import java.util.*;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ImportUniverseFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.yb.client.YBClient;
-import org.yb.client.ListTabletServersResponse;
-import org.yb.util.ServerInfo;
-
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
 
 public class ImportControllerTest extends CommissionerBaseTest {
-  private static String MASTER_ADDRS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
+  private static final String MASTER_ADDRS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
   private Customer customer;
   private Users user;
   private String authToken;
@@ -79,7 +58,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
-    List<ServerInfo> mockTabletSIs = new ArrayList<ServerInfo>();
+    List<ServerInfo> mockTabletSIs = new ArrayList<>();
     ServerInfo si = new ServerInfo("UUID1", "127.0.0.1", 9100, false, "ALIVE");
     mockTabletSIs.add(si);
     si = new ServerInfo("UUID2", "127.0.0.2", 9100, false, "ALIVE");
@@ -114,8 +93,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
                               .put("masterAddresses", MASTER_ADDRS)
                               .put("universeUUID", univUUID);
 
-    JsonNode json = null;
-    Universe universe = null;
+    JsonNode json;
+    Universe universe;
     if (singleStep) {
       bodyJson.put("singleStep", "true");
     }
@@ -136,7 +115,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
       assertValue(json, "masterAddresses", MASTER_ADDRS);
       assertValue(json, "universeUUID", univUUID);
 
-      universe = Universe.get(UUID.fromString(univUUID));
+      universe = Universe.getOrBadRequest(UUID.fromString(univUUID));
       assertEquals(universe.getUniverseDetails().importedState, ImportedState.MASTERS_ADDED);
       assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
@@ -154,7 +133,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
       assertValue(json, "universeName", "importUniv");
       assertValue(json, "masterAddresses", MASTER_ADDRS);
       assertValue(json, "tservers_count", "3");
-      universe = Universe.get(UUID.fromString(univUUID));
+      universe = Universe.getOrBadRequest(UUID.fromString(univUUID));
       assertEquals(universe.getUniverseDetails().importedState, ImportedState.TSERVERS_ADDED);
       assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
@@ -176,7 +155,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
       assertValue(json, "universeName", "importUniv");
       assertValue(json, "masterAddresses", MASTER_ADDRS);
       assertValue(json, "tservers_count", "3");
-      universe = Universe.get(UUID.fromString(univUUID));
+      universe = Universe.getOrBadRequest(UUID.fromString(univUUID));
       assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     }
 
@@ -256,17 +235,14 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
     assertAuditEntry(numAuditsExpected + 1, customer.uuid);
 
-    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
-    result = doRequestWithAuthToken("GET", url, authToken);
-    String expectedResult = String.format("No universe found with UUID: %s", univUUID);
+    String lookupUniverseUrl = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    result = assertThrows(YWServiceException.class,
+      () -> doRequestWithAuthToken("GET", lookupUniverseUrl, authToken))
+      .getResult();
+    String expectedResult = String.format("Cannot find universe %s", univUUID);
     assertBadRequest(result, expectedResult);
 
-    try {
-      universe = Universe.get(UUID.fromString(univUUID));
-    } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Cannot find universe")));
-    }
+    assertFalse(Universe.maybeGet(UUID.fromString(univUUID)).isPresent());
   }
 
   @Test
@@ -311,7 +287,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertNotNull(resultJson.get("error").get("checks").get("check_masters_are_running"));
     assertEquals(resultJson.get("error").get("checks").get("check_masters_are_running").asText(),
                  "FAILURE");
-    Universe universe = Universe.get(UUID.fromString(univUUID));
+    Universe universe = Universe.getOrBadRequest(UUID.fromString(univUUID));
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     assertFalse(universe.getUniverseDetails().isUniverseEditable());

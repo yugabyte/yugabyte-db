@@ -84,7 +84,7 @@ public class NodeManager extends DevopsBase {
   play.Configuration appConfig;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
-    Universe universe = Universe.get(nodeTaskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
@@ -248,7 +248,7 @@ public class NodeManager extends DevopsBase {
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
-    Universe universe = Universe.get(taskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
