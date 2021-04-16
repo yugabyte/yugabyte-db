@@ -4687,6 +4687,50 @@ Datum age_exists(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
+PG_FUNCTION_INFO_V1(age_label);
+/*
+ * Executor function for label(edge/vertex).
+ */
+Datum age_label(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_value = NULL;
+    agtype_value *label = NULL;
+
+    /* check for NULL, NULL is FALSE */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    /* get the argument */
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
+    // edges and vertices are considered scalars
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        if (AGTE_IS_NULL(agt_arg->root.children[0]))
+            PG_RETURN_NULL();
+
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label() argument must resolve to an edge or vertex")));
+
+    }
+
+    agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    // fail if agtype value isn't an edge or vertex
+    if (agtv_value->type != AGTV_VERTEX && agtv_value->type != AGTV_EDGE)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label() argument must resolve to an edge or vertex")));
+
+    }
+
+    // extract the label agtype value from the vertex or edge
+    label = get_agtype_value_object_value(agtv_value, "label");
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(label));
+}
+
 PG_FUNCTION_INFO_V1(age_tostring);
 
 Datum age_tostring(PG_FUNCTION_ARGS)

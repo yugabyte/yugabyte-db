@@ -1737,6 +1737,69 @@ ERROR:  function ag_catalog.age_type() does not exist
 LINE 2:     RETURN type()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- label ()
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN label(v)
+$$) AS (label agtype);
+ label 
+-------
+ "v"
+ "v"
+ "v"
+ "v1"
+ "v1"
+ "v1"
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]->() RETURN label(e)
+$$) AS (label agtype);
+ label 
+-------
+ "e1"
+ "e1"
+(2 rows)
+
+SELECT * FROM cypher('expr', $$
+    RETURN label({id: 0, label: 'typecast', properties: {}}::vertex)
+$$) AS (label agtype);
+   label    
+------------
+ "typecast"
+(1 row)
+
+-- return NULL
+SELECT * FROM cypher('expr', $$
+    RETURN label(NULL)
+$$) AS (label agtype);
+ label 
+-------
+ 
+(1 row)
+
+SELECT ag_catalog.age_label(NULL);
+ age_label 
+-----------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH p=()-[]->() RETURN label(p)
+$$) AS (label agtype);
+ERROR:  label() argument must resolve to an edge or vertex
+SELECT * FROM cypher('expr', $$
+    RETURN label(1)
+$$) AS (label agtype);
+ERROR:  label() argument must resolve to an edge or vertex
+SELECT * FROM cypher('expr', $$
+    MATCH (n) RETURN label([n])
+$$) AS (label agtype);
+ERROR:  label() argument must resolve to an edge or vertex
+SELECT * FROM cypher('expr', $$
+    RETURN label({id: 0, label: 'failed', properties: {}})
+$$) AS (label agtype);
+ERROR:  label() argument must resolve to an edge or vertex
 -- timestamp() can't be done as it will always have a different value
 -- size() of a string
 SELECT * FROM cypher('expr', $$

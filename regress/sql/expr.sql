@@ -817,6 +817,34 @@ $$) AS (type agtype);
 SELECT * FROM cypher('expr', $$
     RETURN type()
 $$) AS (type agtype);
+-- label ()
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN label(v)
+$$) AS (label agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]->() RETURN label(e)
+$$) AS (label agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN label({id: 0, label: 'typecast', properties: {}}::vertex)
+$$) AS (label agtype);
+-- return NULL
+SELECT * FROM cypher('expr', $$
+    RETURN label(NULL)
+$$) AS (label agtype);
+SELECT ag_catalog.age_label(NULL);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH p=()-[]->() RETURN label(p)
+$$) AS (label agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN label(1)
+$$) AS (label agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH (n) RETURN label([n])
+$$) AS (label agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN label({id: 0, label: 'failed', properties: {}})
+$$) AS (label agtype);
 -- timestamp() can't be done as it will always have a different value
 -- size() of a string
 SELECT * FROM cypher('expr', $$

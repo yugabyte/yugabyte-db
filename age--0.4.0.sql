@@ -3213,6 +3213,14 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION ag_catalog.age_label(agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 CREATE FUNCTION ag_catalog._property_constraint_check(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
