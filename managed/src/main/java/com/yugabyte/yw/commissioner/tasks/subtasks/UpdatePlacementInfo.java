@@ -72,7 +72,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     YBClient client = null;
@@ -157,7 +157,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
     @Override
     public Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-      Universe universe = Universe.get(universeUUID);
+      Universe universe = Universe.getOrBadRequest(universeUUID);
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder(config);

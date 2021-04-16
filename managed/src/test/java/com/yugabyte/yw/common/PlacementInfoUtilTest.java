@@ -12,7 +12,6 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.InstanceType;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -21,7 +20,6 @@ import java.util.stream.Collectors;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
@@ -120,7 +118,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.providerType = cloud;
       userIntent.preferredRegion = r1.uuid;
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
-      universe = Universe.get(univUuid);
+      universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
       PlacementInfoUtil.selectMasters(nodes, replFactor);
       UniverseUpdater updater = new UniverseUpdater() {
@@ -922,7 +920,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     };
     Universe.saveDetails(universe.universeUUID, updater);
-    universe = Universe.get(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.universeUUID);
 
     UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
     PlacementInfo testPlacement = editTestUTD.getPrimaryCluster().placementInfo;

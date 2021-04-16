@@ -99,7 +99,7 @@ public class Customer extends Model {
     if (getUniverseUUIDs().isEmpty()) {
       return new HashSet<>();
     }
-    return Universe.get(getUniverseUUIDs());
+    return Universe.getAllPresent(getUniverseUUIDs());
   }
 
   @JsonIgnore

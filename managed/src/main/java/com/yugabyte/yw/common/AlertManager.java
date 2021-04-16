@@ -73,7 +73,7 @@ public class AlertManager {
     if (definition != null) {
       // The universe should exist (otherwise the definition should not exist as
       // well).
-      Universe universe = Universe.get(definition.universeUUID);
+      Universe universe = Universe.getOrBadRequest(definition.universeUUID);
       content = String.format("%s for %s is %s.", definition.name /* alert_name */, universe.name,
           state);
     } else {

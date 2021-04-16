@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -54,7 +53,8 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      List<NodeDetails> tserverNodes = Universe.get(taskParams().universeUUID).getTServers();
+      List<NodeDetails> tserverNodes =
+        Universe.getOrBadRequest(taskParams().universeUUID).getTServers();
       String nodeIpCsv = tserverNodes.stream()
           .map(nd -> nd.cloudInfo.private_ip)
           .collect(Collectors.joining(","));

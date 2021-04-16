@@ -2,74 +2,31 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.RunInShellFormData;
-
-import static com.yugabyte.yw.common.PlacementInfoUtil.*;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-import static play.test.Helpers.contentAsString;
-import static play.mvc.Http.Status.FORBIDDEN;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.*;
-
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-
-import com.yugabyte.yw.models.helpers.TaskType;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
@@ -79,38 +36,44 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-
-import org.pac4j.play.CallbackController;
-import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
-
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.YBClient;
 import play.Application;
-import play.api.Play;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.PlacementInfoUtil.*;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.*;
+import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.test.Helpers.contentAsString;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseControllerTest extends WithApplication {
@@ -267,18 +230,6 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseListWithInvalidUUID() {
-    UUID invalidUUID = UUID.randomUUID();
-    Result result = doRequestWithAuthToken("GET", "/api/customers/" + invalidUUID + "/universes", authToken);
-    assertEquals(FORBIDDEN, result.status());
-
-    String resultString = contentAsString(result);
-    assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate User")));
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
   public void testUniverseBackupFlagSuccess() {
     Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
@@ -287,7 +238,7 @@ public class UniverseControllerTest extends WithApplication {
                  "/update_backup_state?markActive=true";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
-    assertThat(Universe.get(u.universeUUID).getConfig().get(Universe.TAKE_BACKUPS),
+    assertThat(Universe.getOrBadRequest(u.universeUUID).getConfig().get(Universe.TAKE_BACKUPS),
                allOf(notNullValue(), equalTo("true")));
     assertAuditEntry(1, customer.uuid);
   }
@@ -301,29 +252,6 @@ public class UniverseControllerTest extends WithApplication {
                  "/update_backup_state";
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertBadRequest(result, "Invalid Query: Need to specify markActive value");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseGetWithInvalidCustomerUUID() {
-    UUID invalidUUID = UUID.randomUUID();
-    String url = "/api/customers/" + invalidUUID + "/universes/" + UUID.randomUUID();
-    Result result = doRequestWithAuthToken("GET", url, authToken);
-    assertEquals(FORBIDDEN, result.status());
-
-    String resultString = contentAsString(result);
-    assertThat(resultString, allOf(notNullValue(),
-        equalTo("Unable To Authenticate User")));
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseGetWithInvalidUniverseUUID() {
-    UUID invalidUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + invalidUUID;
-    Result result = doRequestWithAuthToken("GET", url, authToken);
-    String expectedResult = String.format("No universe found with UUID: %s", invalidUUID);
-    assertBadRequest(result, expectedResult);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -372,24 +300,6 @@ public class UniverseControllerTest extends WithApplication {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testGetMasterLeaderWithInvalidCustomerUUID() {
-    UniverseController universeController = new UniverseController(mockService);
-    UUID invalidUUID = UUID.randomUUID();
-    Result result = universeController.getMasterLeaderIP(invalidUUID, UUID.randomUUID());
-    assertBadRequest(result, "No customer found with UUID: " + invalidUUID);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testGetMasterLeaderWithInvalidUniverseUUID() {
-    UniverseController universeController = new UniverseController(mockService);
-    UUID invalidUUID = UUID.randomUUID();
-    Result result = universeController.getMasterLeaderIP(customer.uuid, invalidUUID);
-    assertBadRequest(result, "No universe found with UUID: " + invalidUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -839,15 +749,6 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(primaryClusterJson);
     assertNotNull(primaryClusterJson.get("userIntent"));
     assertAuditEntry(2, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseDestroyInvalidUUID() {
-    UUID randomUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID;
-    Result result = doRequestWithAuthToken("DELETE", url, authToken);
-    assertBadRequest(result, "No universe found with UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -1426,16 +1327,8 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
+    // TODO(API) - Should this be an http error and that too bad request?
     assertBadRequest(result, "foobar");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testUniverseStatusBadParams() {
-    UUID universeUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
-    Result result = doRequestWithAuthToken("GET", url, authToken);
-    assertBadRequest(result, "No universe found with UUID: " + universeUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1449,23 +1342,14 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testResetVersionUniverseBadUUID() {
-    UUID universeUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" +
-      universeUUID + "/setup_universe_2dc";
-    Result result = doRequestWithAuthToken("PUT", url, authToken);
-    assertBadRequest(result, "No universe found with UUID: " + universeUUID);
-  }
-
-  @Test
   public void testResetVersionUniverse() {
     Universe u = createUniverse("TestUniverse", customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" +
       u.universeUUID + "/setup_universe_2dc";
-    assertNotEquals(Universe.get(u.universeUUID).version, -1);
+    assertNotEquals(Universe.getOrBadRequest(u.universeUUID).version, -1);
     Result result = doRequestWithAuthToken("PUT", url, authToken);
     assertOk(result);
-    assertEquals(Universe.get(u.universeUUID).version, -1);
+    assertEquals(Universe.getOrBadRequest(u.universeUUID).version, -1);
   }
 
   @Test
@@ -1631,7 +1515,7 @@ public class UniverseControllerTest extends WithApplication {
       }
     };
     Universe.saveDetails(u.universeUUID, updater);
-    u = Universe.get(u.universeUUID);
+    u = Universe.getOrBadRequest(u.universeUUID);
     int totalNumNodesAfterExpand = 0;
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(u.getUniverseDetails().nodeDetailsSet);
     for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
@@ -2298,7 +2182,7 @@ public class UniverseControllerTest extends WithApplication {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
-    u = Universe.get(u.universeUUID);
+    u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
     bodyJson.put("size", 50);
@@ -2315,7 +2199,7 @@ public class UniverseControllerTest extends WithApplication {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
-    u = Universe.get(u.universeUUID);
+    u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
     bodyJson.put("size", 150);
@@ -2332,7 +2216,7 @@ public class UniverseControllerTest extends WithApplication {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
-    u = Universe.get(u.universeUUID);
+    u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
     bodyJson.put("size", 150);
@@ -2353,7 +2237,7 @@ public class UniverseControllerTest extends WithApplication {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
-    u = Universe.get(u.universeUUID);
+    u = Universe.getOrBadRequest(u.universeUUID);
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
     bodyJson.put("size", 150);
@@ -2519,15 +2403,6 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniversePauseInvalidUUID() {
-    UUID randomUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + "/pause";
-    Result result = doRequestWithAuthToken("POST", url, authToken);
-    assertBadRequest(result, "No universe found with UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
   public void testUniverseResumeValidUUID() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -2562,11 +2437,45 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
-  public void testUniverseResumeInvalidUUID() {
+  @Parameters({
+    "list universes, true, , GET",
+    "get universe, false, , GET",
+    "get universe leader, false, /leader, GET"
+  })
+  public void invalidCustomerUUID(
+    String testDescription, boolean isList, String urlSuffix, String httpMethod) {
+    UUID invalidCustomerUUID = UUID.randomUUID();
+    String universesPath = isList? "/universes" : "/universes/" + UUID.randomUUID();
+    String url = "/api/customers/" + invalidCustomerUUID + universesPath + urlSuffix;
+    Result result = doRequestWithAuthToken(httpMethod,
+      url,
+      authToken);
+    assertEquals(url, FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+      equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  // TODO(vineeth) Decide: Should these result in FORBIDDEN after RBAC?
+  @Test
+  @Parameters({
+    "get universe, , GET",
+    "delete universe, , DELETE",
+    "get universe status, /status, GET",
+    "pause universe, /pause, POST",
+    "resume universe, /resume, POST",
+    "get universe leader, /leader, GET",
+    "setup 2dc universe, /setup_universe_2dc, PUT"
+  })
+  public void invalidUniverseUUID(String testDescription, String urlSuffix, String httpMethod) {
     UUID randomUUID = UUID.randomUUID();
-    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + "/resume";
-    Result result = doRequestWithAuthToken("POST", url, authToken);
-    assertBadRequest(result, "No universe found with UUID: " + randomUUID);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + urlSuffix;
+    Result result = assertThrows(YWServiceException.class,
+      () -> doRequestWithAuthToken(httpMethod, url, authToken))
+      .getResult();
+    assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 }

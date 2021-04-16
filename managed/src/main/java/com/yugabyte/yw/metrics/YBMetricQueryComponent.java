@@ -2,66 +2,26 @@
 package com.yugabyte.yw.metrics;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.JdkSSLOptions;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SSLOptions;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.SslHelper;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.common.SwamperHelper;
-
-import java.io.IOException;
-
-import java.net.InetSocketAddress;
-
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.security.KeyStore;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.NavigableMap;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-
-
-import org.joda.time.DateTime;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
-
 import org.yb.util.ServerInfo;
 
-import play.Configuration;
-import play.libs.Json;
+import java.net.InetSocketAddress;
+import java.util.*;
+import java.util.Map.Entry;
 
 @Singleton
 public class YBMetricQueryComponent {
@@ -135,7 +95,7 @@ public class YBMetricQueryComponent {
     Average
   }
 
-  private class CassandraConnection {
+  private static class CassandraConnection {
     Cluster cluster = null;
     Session session = null;
   }
@@ -148,7 +108,7 @@ public class YBMetricQueryComponent {
     }
     Cluster.Builder builder = Cluster.builder()
                               .addContactPointsWithPorts(addresses);
-    String certificate = Universe.get(universeUUID).getCertificate();
+    String certificate = Universe.getOrBadRequest(universeUUID).getCertificate();
     if (certificate != null) {
       builder.withSSL(SslHelper.getSSLOptions(certificate));
     }
@@ -166,7 +126,7 @@ public class YBMetricQueryComponent {
     }
   }
 
-  class TServerMappings {
+  static class TServerMappings {
     public Map<String, String> nameToUUID;
     public Map<String, String> uuidToIP;
 
@@ -175,7 +135,7 @@ public class YBMetricQueryComponent {
       this.nameToUUID = nameToUUID;
       this.uuidToIP = uuidToIP;
     }
-  };
+  }
 
   private TServerMappings getTservers(Universe universe) {
     YBClient client = null;
@@ -209,13 +169,10 @@ public class YBMetricQueryComponent {
   }
 
   private ResultSet cassandraTserverSelectQuery(String metric, String tserverUUID,
-                                                Session session, Universe universe,
+                                                Session session,
                                                 long startMs, long endMs) {
-    int count = 0;
-    ResultSet rs = null;
-    String queryString = String.format(QUERY_FORMAT, METRICS_TABLE, metric,
-                                       tserverUUID.toString(), (startMs * 1000),
-                                       (endMs * 1000));
+    String queryString = String.format(QUERY_FORMAT, METRICS_TABLE, metric, tserverUUID,
+      (startMs * 1000), (endMs * 1000));
     return session.execute(queryString);
   }
 
@@ -243,10 +200,10 @@ public class YBMetricQueryComponent {
                                               int numTservers) {
     NavigableMap<Long, Double> timeRangeMap = new TreeMap<>();
     for (ResultSet rs : results) {
-      long currTimestampSec = 0;
+      long currTimestampSec;
       long prevTimestampSec = 0;
       double currRate;
-      double currVal = 0;
+      double currVal;
       double prevVal = 0;
       boolean start = true;
       Iterator<Row> rowIter = rs.iterator();
@@ -319,11 +276,9 @@ public class YBMetricQueryComponent {
   private NavigableMap<Long, Double> divideByConstant(List<ResultSet> results, double denom) {
     NavigableMap<Long, Double> timeRangeMap = new TreeMap<>();
     for (ResultSet rs : results) {
-      Iterator<Row> rowIter = rs.iterator();
-      while (rowIter.hasNext()) {
-        Row row = rowIter.next();
+      for (Row row : rs) {
         long timestampSec = row.getTimestamp("ts").getTime() / 1000;
-        double val = (double) getValue(row) / denom;
+        double val = getValue(row) / denom;
         timeRangeMap.put(timestampSec, val);
       }
     }
@@ -332,7 +287,7 @@ public class YBMetricQueryComponent {
 
   private List<ResultSet> queryRunner(String metricName, Session session,
                                       Map<String, String> tserverMap,
-                                      JsonNode params, Universe universe,
+                                      JsonNode params,
                                       long start, long end) {
     List<ResultSet> results = new ArrayList<>();
     // Check if metric needs to be reported for only a single tserver.
@@ -340,8 +295,8 @@ public class YBMetricQueryComponent {
       String tserverName = params.path("exported_instance").asText();
       ResultSet rs = cassandraTserverSelectQuery(metricName,
                                                  tserverMap.get(tserverName),
-                                                 session, universe,
-                                                 start, end);
+                                                 session,
+        start, end);
       if (rs != null && rs.iterator().hasNext()) {
         results.add(rs);
       }
@@ -350,7 +305,7 @@ public class YBMetricQueryComponent {
       // database calls.
       for (Entry<String, String> entry : tserverMap.entrySet()) {
         ResultSet rs = cassandraTserverSelectQuery(metricName, entry.getValue(),
-                                                   session, universe, start, end);
+                                                   session, start, end);
         if (rs != null && rs.iterator().hasNext()) {
           results.add(rs);
         }
@@ -374,7 +329,7 @@ public class YBMetricQueryComponent {
 
   /**
    * Query the metrics table in YB for a given metricType and query params
-   * @param queryParams, Query params like start, end timestamps, even filters
+   * @param queryParam, Query params like start, end timestamps, even filters
    *                     Ex: {"metricKey": "cpu_usage_user",
    *                     "start": <start timestamp>,
    *                     "end": <end timestamp>}
@@ -384,12 +339,11 @@ public class YBMetricQueryComponent {
 
     // total_rpcs_per_sec
     // tserver_ops_latency
-    JsonNode responseJson = null;
     List<String> metricResults = new ArrayList<>();
     String queryKey = queryParam.get("queryKey");
     Date date = new Date();
-    Long startTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
-    Long endTime = Long.parseLong(queryParam.getOrDefault("end", String.valueOf(date.getTime())));
+    long startTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
+    long endTime = Long.parseLong(queryParam.getOrDefault("end", String.valueOf(date.getTime())));
     if (startTime == 0) {
       throw new RuntimeException("Start time needs to be provided.");
     }
@@ -401,11 +355,11 @@ public class YBMetricQueryComponent {
       if (nodePrefix.length >= 3) {
         universeName = nodePrefix[2];
       }
-      Universe universe = Universe.getUniverseByName(universeName);
-      if (universe == null) {
+      Optional<Universe> optUniverse = Universe.maybeGetUniverseByName(universeName);
+      if (!optUniverse.isPresent()) {
         return null;
       }
-      universe = Universe.get(universe.universeUUID);
+      Universe universe = optUniverse.get();
       TServerMappings tserverMaps = getTservers(universe);
       CassandraConnection cc = null;
 
@@ -413,7 +367,7 @@ public class YBMetricQueryComponent {
         case "total_rpcs_per_sec":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
-            return responseJson;
+            return null;
           }
           for (String method : serviceMethods) {
             String metricName = String.format(COUNT_METRIC_STRING, method);
@@ -422,7 +376,6 @@ public class YBMetricQueryComponent {
               cc.session,
               tserverMaps.nameToUUID,
               params,
-              universe,
               startTime,
               endTime
             );
@@ -434,7 +387,7 @@ public class YBMetricQueryComponent {
         case "tserver_ops_latency":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
-            return responseJson;
+            return null;
           }
           for (String method : serviceMethods) {
             String metricCount = String.format(COUNT_METRIC_STRING, method);
@@ -444,7 +397,6 @@ public class YBMetricQueryComponent {
               cc.session,
               tserverMaps.nameToUUID,
               params,
-              universe,
               startTime,
               endTime
             );
@@ -453,7 +405,6 @@ public class YBMetricQueryComponent {
               cc.session,
               tserverMaps.nameToUUID,
               params,
-              universe,
               startTime,
               endTime
             );
@@ -468,14 +419,13 @@ public class YBMetricQueryComponent {
         case "disk_usage":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
-            return responseJson;
+            return null;
           }
           List<ResultSet> totalDiskRaw = queryRunner(
             TOTAL_DISK_STRING,
             cc.session,
             tserverMaps.nameToUUID,
             params,
-            universe,
             startTime,
             endTime
           );
@@ -484,7 +434,6 @@ public class YBMetricQueryComponent {
             cc.session,
             tserverMaps.nameToUUID,
             params,
-            universe,
             startTime,
             endTime
           );
@@ -496,14 +445,13 @@ public class YBMetricQueryComponent {
         case "cpu_usage":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
-            return responseJson;
+            return null;
           }
           List<ResultSet> userCpuRaw = queryRunner(
             CPU_USAGE_USER_STRING,
             cc.session,
             tserverMaps.nameToUUID,
             params,
-            universe,
             startTime,
             endTime
           );
@@ -512,7 +460,6 @@ public class YBMetricQueryComponent {
             cc.session,
             tserverMaps.nameToUUID,
             params,
-            universe,
             startTime,
             endTime
           );
@@ -524,32 +471,27 @@ public class YBMetricQueryComponent {
         case "node_up":
           cc = createCassandraConnection(universe.universeUUID);
           if (cc.session == null) {
-            return responseJson;
+            return null;
           }
           List<ResultSet> results = queryRunner(
             "node_up",
             cc.session,
             tserverMaps.nameToUUID,
             params,
-            universe,
             startTime,
             endTime
           );
           Map<String, List<String>> nodeUpMetrics = new HashMap<>();
           for (ResultSet rs : results) {
-            Iterator<Row> rowIter = rs.iterator();
-            while (rowIter.hasNext()) {
-              Row row = rowIter.next();
+            for (Row row : rs) {
               String nodeIP = tserverMaps.uuidToIP.get(row.getString("node"));
 
               if (null != nodeIP) {
                 long timestampSec = row.getTimestamp("ts").getTime() / 1000;
-                double val = (double) getValue(row);
+                double val = getValue(row);
                 String valStr = String.format(DATA_ENTRY_FORMAT, timestampSec, val);
 
-                if (null == nodeUpMetrics.get(nodeIP)) {
-                  nodeUpMetrics.put(nodeIP, new ArrayList<String>());
-                }
+                nodeUpMetrics.putIfAbsent(nodeIP, new ArrayList<>());
                 nodeUpMetrics.get(nodeIP).add(valStr);
               }
             }
@@ -581,9 +523,9 @@ public class YBMetricQueryComponent {
       }
       if (!metricResults.isEmpty()) {
         String returnJson = String.format(RESPONSE_FORMAT, metricResults);
-        responseJson = Util.convertStringToJson(returnJson);
+        return Util.convertStringToJson(returnJson);
       }
     }
-    return responseJson;
+    return null;
   }
 }

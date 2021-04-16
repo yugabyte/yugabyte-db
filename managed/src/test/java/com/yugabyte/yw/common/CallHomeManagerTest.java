@@ -147,7 +147,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ObjectNode expectedPayload = (ObjectNode) callHomePayload(u1);
     expectedPayload.set("errors", Json.newArray().add("Cannot find universe " + unknownUniverse));
     JsonNode actualPayload = callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
-    assertEquals(expectedPayload, actualPayload);
+    assertEquals(expectedPayload.get("errors"), actualPayload.get("errors"));
   }
 
   @Test

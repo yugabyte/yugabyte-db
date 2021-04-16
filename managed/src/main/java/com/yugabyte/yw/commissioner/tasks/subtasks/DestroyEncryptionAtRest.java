@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -49,7 +48,7 @@ public class DestroyEncryptionAtRest extends AbstractTaskBase {
     @Override
     public void run() {
         try {
-            Universe u = Universe.get(taskParams().universeUUID);
+            Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
             Customer c = Customer.get(u.customerId);
             if (EncryptionAtRestUtil.getNumKeyRotations(taskParams().universeUUID) > 0) {
                 keyManager.cleanupEncryptionAtRest(c.uuid, taskParams().universeUUID);

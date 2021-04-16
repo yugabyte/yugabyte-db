@@ -15,7 +15,6 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
 import play.api.Play;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -40,7 +39,7 @@ public class BackupUniverseKeys extends AbstractTaskBase {
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
         try {
             LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);

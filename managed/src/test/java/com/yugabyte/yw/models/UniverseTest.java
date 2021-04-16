@@ -36,7 +36,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import play.api.i18n.DefaultLangs;
 import play.libs.Json;
 
 import java.util.*;
@@ -85,7 +84,7 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetSingleUniverse() {
     Universe newUniverse = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
-    Universe fetchedUniverse = Universe.get(newUniverse.universeUUID);
+    Universe fetchedUniverse = Universe.getOrBadRequest(newUniverse.universeUUID);
     assertNotNull(fetchedUniverse);
     assertEquals(fetchedUniverse, newUniverse);
   }
@@ -105,7 +104,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u3 = createUniverse("Universe3", defaultCustomer.getCustomerId());
     Set<UUID> uuids = Sets.newHashSet(u1.universeUUID, u2.universeUUID, u3.universeUUID);
 
-    Set<Universe> universes = Universe.get(uuids);
+    Set<Universe> universes = Universe.getAllPresent(uuids);
     assertNotNull(universes);
     assertEquals(universes.size(), 3);
   }
@@ -113,7 +112,7 @@ public class UniverseTest extends FakeDBApplication {
   @Test(expected = RuntimeException.class)
   public void testGetUnknownUniverse() {
     UUID unknownUUID = UUID.randomUUID();
-    Universe u = Universe.get(unknownUUID);
+    Universe u = Universe.getOrBadRequest(unknownUUID);
   }
 
   @Test
@@ -134,7 +133,7 @@ public class UniverseTest extends FakeDBApplication {
     try {
       executor.awaitTermination(120, TimeUnit.SECONDS);
     } catch (InterruptedException e1) { }
-    Universe updUniv = Universe.get(u.universeUUID);
+    Universe updUniv = Universe.getOrBadRequest(u.universeUUID);
     assertEquals(numNodes, updUniv.getNodes().size());
     assertEquals(numNodes + 1, updUniv.version);
   }

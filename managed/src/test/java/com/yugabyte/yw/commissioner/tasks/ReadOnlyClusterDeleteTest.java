@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -157,7 +156,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   @Ignore("createPlacementInfoTask fails sometimes")
   public void testClusterDeleteSuccess() {
     UniverseDefinitionTaskParams univUTP =
-        Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -168,14 +167,14 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertClusterDeleteSequence(subTasksByPosition, false);
-    univUTP = Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+    univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
   }
 
   @Test
   public void testClusterDeleteFailure() {
     UniverseDefinitionTaskParams univUTP =
-      Universe.get(defaultUniverse.universeUUID).getUniverseDetails();
+      Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;

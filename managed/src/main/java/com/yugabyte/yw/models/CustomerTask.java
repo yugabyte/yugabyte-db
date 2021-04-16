@@ -387,7 +387,7 @@ public class CustomerTask extends Model {
 
   public String getNotificationTargetName() {
     if (getType().equals(TaskType.Create) && getTarget().equals(TargetType.Backup)) {
-      return Universe.get(getTargetUUID()).name;
+      return Universe.getOrBadRequest(getTargetUUID()).name;
     } else {
       return getTargetName();
     }

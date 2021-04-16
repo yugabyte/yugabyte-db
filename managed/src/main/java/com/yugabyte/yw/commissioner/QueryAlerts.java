@@ -84,7 +84,7 @@ public class QueryAlerts {
     Set<Alert> alertsStillActive = new HashSet<>();
     AlertDefinition.listActive(customerUUID).forEach(definition -> {
       try {
-        Universe universe = Universe.get(definition.universeUUID);
+        Universe universe = Universe.getOrBadRequest(definition.universeUUID);
         String query = new ConfigSubstitutor(configFactory.forUniverse(universe))
             .replace(definition.query);
         if (!queryHelper.queryDirect(query).isEmpty()) {

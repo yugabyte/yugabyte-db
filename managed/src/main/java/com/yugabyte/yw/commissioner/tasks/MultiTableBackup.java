@@ -74,7 +74,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.get(params().universeUUID);
+      Universe universe = Universe.getOrBadRequest(params().universeUUID);
       String masterAddresses = universe.getMasterAddresses(true);
       String certificate = universe.getCertificate();
 

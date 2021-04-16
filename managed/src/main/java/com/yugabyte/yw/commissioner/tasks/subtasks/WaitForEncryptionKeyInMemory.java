@@ -17,8 +17,6 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.KmsHistory;
-import java.util.Map;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
@@ -51,7 +49,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         if (universe != null &&
                 EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
             YBClient client = null;

@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import javax.persistence.IdClass;
 import javax.persistence.EmbeddedId;
 
 @Entity
@@ -239,8 +238,8 @@ public class KmsHistory extends Model {
       KmsHistory.find.query().where()
           .eq("config_uuid", configUUID)
           .eq("type", type)
-          .findList().forEach(n -> universeUUIDs.add(n.uuid.targetUuid));    
-      return Universe.get(universeUUIDs);
+          .findList().forEach(n -> universeUUIDs.add(n.uuid.targetUuid));
+      return Universe.getAllPresent(universeUUIDs);
     }
 
     @Override

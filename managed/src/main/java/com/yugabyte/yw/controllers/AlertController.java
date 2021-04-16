@@ -151,7 +151,7 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
-      Universe universe = Universe.get(universeUUID);
+      Universe universe = Universe.getOrBadRequest(universeUUID);
       updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
       AlertDefinition definition = AlertDefinition.create(
         customerUUID,
@@ -178,7 +178,7 @@ public class AlertController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Could not find Alert Definition");
     }
 
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     definition.query = new ConfigSubstitutor(configFactory.forUniverse(universe))
         .replace(definition.query);
     return ok(Json.toJson(definition));
@@ -203,7 +203,7 @@ public class AlertController extends AuthenticatedController {
       }
 
       AlertDefinitionFormData data = formData.get();
-      Universe universe = Universe.get(definition.universeUUID);
+      Universe universe = Universe.getOrBadRequest(definition.universeUUID);
       updateAlertDefinitionParameter(universe, data.template.getParameterName(), data.value);
       definition = AlertDefinition.update(
         definition.uuid,

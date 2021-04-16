@@ -360,7 +360,7 @@ public class PlacementInfoUtil {
       taskParams.universeUUID = UUID.randomUUID();
     } else {
       try {
-        universe = Universe.get(taskParams.universeUUID);
+        universe = Universe.getOrBadRequest(taskParams.universeUUID);
       } catch (Exception e) {
         LOG.info("Universe with UUID {} not found, configuring new universe.",
                  taskParams.universeUUID);
@@ -1154,7 +1154,7 @@ public class PlacementInfoUtil {
     Cluster currentCluster = taskParams.currentClusterType.equals(PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
 
-    Universe universe = Universe.get(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Collection<NodeDetails> existingNodes = universe.getNodesInCluster(currentCluster.uuid);
 
     // If placementInfo is null then user has chosen to Reset AZ config

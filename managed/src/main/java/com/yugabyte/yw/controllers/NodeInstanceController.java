@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,8 +44,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response with Node data
    */
   public Result get(UUID customerUuid, UUID nodeUuid) {
-    String error = validateParams(customerUuid, null /* zoneUuid */);
-    if (error != null) return ApiResponse.error(BAD_REQUEST, error);
+    Customer.getOrBadRequest(customerUuid);
 
     try {
       NodeInstance node = NodeInstance.get(nodeUuid);
@@ -63,8 +61,8 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response with list of nodes
    */
   public Result listByZone(UUID customerUuid, UUID zoneUuid) {
-    String error = validateParams(customerUuid, zoneUuid);
-    if (error != null) return ApiResponse.error(BAD_REQUEST, error);
+    Customer.getOrBadRequest(customerUuid);
+    AvailabilityZone.getOrBadRequest(zoneUuid);
 
     try {
       List<NodeInstance> nodes = NodeInstance.listByZone(zoneUuid, null /* instanceTypeCode */);
@@ -91,8 +89,8 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response of newly created Nodes
    */
   public Result create(UUID customerUuid, UUID zoneUuid) {
-    String error = validateParams(customerUuid, zoneUuid);
-    if (error != null) return ApiResponse.error(BAD_REQUEST, error);
+    Customer.getOrBadRequest(customerUuid);
+    AvailabilityZone.getOrBadRequest(zoneUuid);
 
     Form<NodeInstanceFormData> formData = formFactory.form(NodeInstanceFormData.class).bindFromRequest();
     List<NodeInstanceData> nodeDataList = formData.get().nodes;
@@ -157,25 +155,21 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   public Result nodeAction(UUID customerUUID, UUID universeUUID, String nodeName) {
-    String apiParamsErrorMessage = validateParams(customerUUID, universeUUID, nodeName);
-    if (apiParamsErrorMessage != null) {
-      return ApiResponse.error(BAD_REQUEST, apiParamsErrorMessage);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    universe.getNodeOrBadRequest(nodeName);
     Form<NodeActionFormData> formData = formFactory.form(NodeActionFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
     try {
-      Universe universe = Universe.get(universeUUID);
-
       if (!universe.getUniverseDetails().isUniverseEditable()) {
         String errMsg= "Node actions cannot be performed on universe UUID " + universeUUID;
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
-      Customer customer =  Customer.get(customerUUID);
       NodeTaskParams taskParams = new NodeTaskParams();
       taskParams.universeUUID = universe.universeUUID;
       taskParams.expectedUniverseVersion = universe.version;
@@ -227,39 +221,5 @@ public class NodeInstanceController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-  }
-
-  private String validateParams(UUID customerUuid, UUID zoneUuid) {
-    String e = null;
-    e = validateClassByUuid(Customer.class, customerUuid);
-    if (e != null) return e;
-    e = validateClassByUuid(AvailabilityZone.class, zoneUuid);
-    if (e != null) return e;
-    return e;
-  }
-
-  private String validateParams(UUID customerUUID, UUID universeUUID, String nodeName) {
-    String e = null;
-    e = validateClassByUuid(Customer.class, customerUUID);
-    if (e != null) return e;
-    e = validateClassByUuid(Universe.class, universeUUID);
-    if (e != null) return e;
-    Universe u = Universe.get(universeUUID);
-    NodeDetails nodeDetails = u.getNode(nodeName);
-    if (nodeDetails == null) {
-      return String.format("Invalid Node %s for Universe", nodeName);
-    }
-    return e;
-  }
-
-  private String validateClassByUuid(Class c, UUID uuid) {
-    try {
-      if (uuid != null && c.getMethod("get", UUID.class).invoke(null, uuid) == null) {
-        return "Invalid " + c.getName() + "UUID: " + uuid;
-      }
-    } catch (Throwable t) {
-      return t.getMessage();
-    }
-    return null;
   }
 }

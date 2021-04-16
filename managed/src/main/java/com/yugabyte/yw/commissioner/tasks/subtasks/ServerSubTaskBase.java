@@ -20,7 +20,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -50,21 +49,20 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   }
 
   public String getMasterAddresses() {
-    Universe universe = Universe.get(taskParams().universeUUID);
-    String masterAddresses = universe.getMasterAddresses();
-    return masterAddresses;
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    return universe.getMasterAddresses();
   }
 
   public HostAndPort getHostPort() {
-    NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
-    HostAndPort hp = HostAndPort.fromParts(
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    return HostAndPort.fromParts(
         node.cloudInfo.private_ip,
         taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-    return hp;
   }
 
   public YBClient getClient() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     return ybService.getClient(masterAddresses, certificate);
@@ -75,7 +73,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   }
 
   public void checkParams() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 

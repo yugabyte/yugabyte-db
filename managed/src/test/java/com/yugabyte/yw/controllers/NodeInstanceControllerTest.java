@@ -167,7 +167,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testGetNodeWithInvalidUuid() {
     Result r = getNode(UUID.randomUUID());
-    checkNotOk(r, "Null content");
+    checkNotOk(r, "Null content"); // TODO(API): This should cause 4XX not 500
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -192,13 +192,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNodeValid(json.get(0));
     assertAuditEntry(0, customer.uuid);
   }
+
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = listByZone(wrongUuid);
-    String error =
-      "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
-    checkNotOk(r, error);
+    Result r = assertThrows(YWServiceException.class, () -> listByZone(wrongUuid)).getResult();
+    String expectedError = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
+    checkNotOk(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -252,9 +252,12 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = createNode(wrongUuid, node.getDetails());
+    Result r = assertThrows(
+      YWServiceException.class,
+      () -> createNode(wrongUuid, node.getDetails()))
+      .getResult();
     String error =
-      "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
+      "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
   }
@@ -321,8 +324,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.addUniverseUUID(u.universeUUID);
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
-      Result r = performNodeAction(customer.uuid, u.universeUUID, "fake-n1",
-              nodeActionType, true);
+      Result r = assertThrows(
+        YWServiceException.class,
+        () -> performNodeAction(
+          customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true))
+        .getResult();
       assertBadRequest(r, "Invalid Node fake-n1 for Universe");
       assertAuditEntry(0, customer.uuid);
     }

@@ -32,7 +32,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -1255,7 +1254,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
 
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String certificate = universe.getCertificate();
     YBClient client = ybService.getClient(masterAddrs, certificate);
 
@@ -1343,8 +1342,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task.getType().equals(CustomerTask.TaskType.Resume)));
   }
 
-  private synchronized static int getClusterConfigVersion(UUID universeUUID) {
-    final Universe universe = Universe.get(universeUUID);
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
+  private synchronized static int getClusterConfigVersion(Universe universe) {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificate();
@@ -1364,9 +1364,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return version;
   }
 
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
   private static synchronized boolean versionsMatch(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
-    final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universe);
 
     // For backwards compatibility (see V56__Alter_Universe_Version.sql)
     if (universe.version == -1) {
@@ -1377,6 +1379,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe.version == clusterConfigVersion;
   }
 
+  // TODO: Use of synchronized in static scope! Looks suspicious.
+  //  Use of transactions may be better.
   private static void checkUniverseVersion(UUID universeUUID) {
     if (!versionsMatch(universeUUID)) {
       throw new RuntimeException("Universe version does not match cluster config version");
@@ -1391,7 +1395,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Increment the cluster config version
    */
   static synchronized private void incrementClusterConfigVersion(UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();

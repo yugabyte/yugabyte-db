@@ -28,7 +28,7 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
   public void run() {
     try {
       LOG.info("Running {}", getName());
-      Universe universe = Universe.get(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Customer customer = Customer.get(universe.customerId);
       String nodePrefix = universe.getUniverseDetails().nodePrefix;
 

@@ -67,11 +67,11 @@ public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
 
-  private static JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
+  private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
-  private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
+  private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
-  private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
+  private static final JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
       "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4}," +
       "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5}," +
       "{\"instanceTypeCode\": \"medium\", \"numCores\": 8, \"memSizeGB\": 15}," +

@@ -13,8 +13,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.util.*;
 
-import com.yugabyte.yw.common.PlacementInfoUtil;
-
 import org.yb.Common.TableType;
 import play.libs.Json;
 
@@ -51,7 +49,7 @@ public class TableManager extends DevopsBase {
 
   public ShellResponse runCommand(CommandSubType subType,
                                                       TableManagerParams taskParams) {
-    Universe universe = Universe.get(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;

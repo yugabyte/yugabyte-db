@@ -75,7 +75,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
       // Create an alert if the cronjobs failed to be created on this node.
       if (response.code != 0) {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         Customer cust = Customer.get(universe.customerId);
         String alertErrCode = "CRON_CREATION_FAILURE";
         String nodeName = taskParams().nodeName;

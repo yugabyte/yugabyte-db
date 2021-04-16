@@ -6,9 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.HashMap;
-import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -33,13 +31,9 @@ import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
 import org.yb.Common.TableType;
 
-import org.joda.time.DateTime;
-
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 
@@ -73,16 +67,10 @@ public class TablesController extends AuthenticatedController {
   public TablesController(YBClientService service) { this.ybService = service; }
 
   public Result create(UUID customerUUID, UUID universeUUID) {
+    // Validate customer UUID and universe UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     try {
-      // Validate customer UUID and universe UUID
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      Universe universe = Universe.get(universeUUID);
-
       Form<TableDefinitionTaskParams> formData = formFactory.form(TableDefinitionTaskParams.class)
         .bindFromRequest();
       TableDefinitionTaskParams taskParams = formData.get();
@@ -114,6 +102,7 @@ public class TablesController extends AuthenticatedController {
       // This error isn't useful at all, why send a NullPointerException as api response?
       return ApiResponse.error(BAD_REQUEST, "NullPointerException");
     } catch (RuntimeException e) {
+      // TODO: Error prone - remove this
       LOG.error("Error creating table", e);
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     } catch (Exception e) {
@@ -128,20 +117,9 @@ public class TablesController extends AuthenticatedController {
 
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-
-    // Validate universe UUID and retrieve master addresses
-    Universe universe = Universe.get(universeUUID);
-    if (universe == null) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
@@ -212,16 +190,11 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result universeList(UUID customerUUID, UUID universeUUID) {
-
     // Validate customer UUID
-    if (Customer.get(customerUUID) == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    // Validate universe UUID and retrieve master addresses
-    Universe universe = Universe.get(universeUUID);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
@@ -248,7 +221,7 @@ public class TablesController extends AuthenticatedController {
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
       for (TableInfo table : tableInfoList) {
-        String tableKeySpace = table.getNamespace().getName().toString();
+        String tableKeySpace = table.getNamespace().getName();
         if (!tableKeySpace.toLowerCase().equals("system") &&
             !tableKeySpace.toLowerCase().equals("system_schema") &&
             !tableKeySpace.toLowerCase().equals("system_auth") &&
@@ -285,16 +258,13 @@ public class TablesController extends AuthenticatedController {
    * @return json-serialized description of the table.
    */
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClient client = null;
-    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses(true);
+    String masterAddresses = universe.getMasterAddresses(true);
     try {
-      // Validate customer UUID and universe UUID
-      if (Customer.get(customerUUID) == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      Universe universe = Universe.get(universeUUID);
       String certificate = universe.getCertificate();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
@@ -317,13 +287,11 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    Universe universe = Universe.get(universeUUID);
     Form<MultiTableBackup.Params> formData = formFactory
         .form(MultiTableBackup.Params.class)
         .bindFromRequest();
@@ -387,12 +355,10 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-    Universe universe = Universe.get(universeUUID);
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
     if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
       String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
@@ -462,22 +428,11 @@ public class TablesController extends AuthenticatedController {
    * @param tableUUID UUID of the table to describe.
    */
   public Result bulkImport(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    // Validate customer UUID
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     try {
-
-      // Validate customer UUID and universe UUID and AWS provider.
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      Universe universe = Universe.get(universeUUID);
-      if (universe == null) {
-        String errMsg = "Invalid Universe UUID: " + universeUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-
       if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
         String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
         return ApiResponse.error(BAD_REQUEST, errMsg);

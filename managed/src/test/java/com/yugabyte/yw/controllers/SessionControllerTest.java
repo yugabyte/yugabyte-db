@@ -528,7 +528,7 @@ public class SessionControllerTest {
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     Universe.saveDetails(universe.universeUUID,
       ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.get(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     System.out.println("PRIVATE IP: " + node.cloudInfo.private_ip);
     Result result = doRequestWithAuthToken(
@@ -556,7 +556,7 @@ public class SessionControllerTest {
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     Universe.saveDetails(universe.universeUUID,
       ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.get(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Result result = doRequestWithAuthToken(
@@ -587,7 +587,7 @@ public class SessionControllerTest {
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     Universe.saveDetails(universe.universeUUID,
       ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
-    universe = Universe.get(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Result result = route(fakeRequest(

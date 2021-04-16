@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -101,10 +102,12 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     JsonNode bodyJson = Json.newObject();
 
-    Result result = restoreBackup(universeUUID, bodyJson, null);
+    Result result = assertThrows(YWServiceException.class,
+      () -> restoreBackup(universeUUID, bodyJson, null))
+      .getResult();
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", "Invalid Universe UUID: " + universeUUID);
+    assertValue(resultJson, "error", "Cannot find universe " + universeUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

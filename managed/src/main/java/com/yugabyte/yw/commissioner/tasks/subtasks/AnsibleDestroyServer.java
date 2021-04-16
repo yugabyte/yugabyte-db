@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +43,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
   private void removeNodeFromUniverse(final String nodeName) {
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
       LOG.error("No node in universe with name " + nodeName);
       return;
@@ -80,7 +79,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     UserIntent userIntent = u.getUniverseDetails()
         .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);

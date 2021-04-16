@@ -16,7 +16,6 @@ import org.asynchttpclient.util.Base64;
 import com.yugabyte.yw.models.CustomerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 import play.libs.Json;
 
 import javax.inject.Inject;
@@ -92,7 +91,7 @@ public class CallHomeManager {
     ArrayNode universes = Json.newArray();
     for (UUID universeUUID : c.getUniverseUUIDs()) {
       try {
-        Universe u = Universe.get(universeUUID);
+        Universe u = Universe.getOrBadRequest(universeUUID);
         universes.add(u.toJson());
       } catch (RuntimeException re) {
         errors.add(re.getMessage());
