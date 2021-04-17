@@ -7827,30 +7827,36 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     // If there was an error, abort any mutations started by the current task.
     // NOTE: Lock order should be lock_ -> table -> tablet.
     // We currently have a bunch of tablets locked and need to unlock first to ensure this holds.
-    map<TabletId, pair<scoped_refptr<TableInfo>, string /* partition key */>> tablet_ids_to_remove;
+    map<TableId, TabletInfos> tablet_ids_to_remove;
     for (scoped_refptr<TabletInfo>& new_tablet : new_tablets) {
-      tablet_ids_to_remove[new_tablet->tablet_id()] = make_pair(
-          new_tablet->table(),
-          new_tablet->metadata().dirty().pb.partition().partition_key_start()
-          );
+      tablet_ids_to_remove[new_tablet->table()->id()].push_back(new_tablet);
     }
 
     unlocker_out.Abort(); // tablet.unlock
     unlocker_in.Abort();
     for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-      TableInfo* table = tablet_id_to_remove.second.first.get();
-      auto l_table = table->LockForWrite(); // table.lock
-      if (table->RemoveTablet(tablet_id_to_remove.second.second)) {
-        VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
-            "table " << l_table->data().name();
+      const auto& tablets = tablet_id_to_remove.second;
+      std::unique_ptr<TableInfo::lock_type> lock;
+      for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+        if (!lock) {
+          lock = tablet->table()->LockForWrite(); // table.lock
+        }
+        if (tablet->table()->RemoveTablet(
+          tablet->metadata().dirty().pb.partition().partition_key_start())) {
+          VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
+            "table " << lock->data().name();
+        }
       }
     }
     {
       std::lock_guard <LockType> l(lock_); // lock_.lock
       auto tablet_map_checkout = tablet_map_.CheckOut();
       for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-        // Potential race condition above, but it's okay if a background thread deleted this.
-        tablet_map_checkout->erase(tablet_id_to_remove.first);
+        const auto& tablets = tablet_id_to_remove.second;
+        for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+          // Potential race condition above, but it's okay if a background thread deleted this.
+          tablet_map_checkout->erase(tablet->tablet_id());
+        }
       }
     }
     return s;
