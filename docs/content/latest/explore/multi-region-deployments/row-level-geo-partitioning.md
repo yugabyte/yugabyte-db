@@ -24,7 +24,7 @@ showAsideToc: true
 
 Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the database level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparently schema change propagation across the regions would benefit from this feature. 
 
-{{< tip title="" >}}
+{{< tip title="Moving data closer to users" >}}
 Geo-partitioning makes it easy for developers to move data closer to users for:
 
 * Achieving lower latency and higher performance
@@ -34,7 +34,7 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions, and subsequently pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
 * The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to. 
-* The second step involves configuring the partitions created in step one to pin data to the respective geographic locations by setting the appropriate metadata. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
+* The second step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
 An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
 
@@ -58,7 +58,7 @@ While this scenario has regulatory compliance requirements where data needs to b
 
 ## Step 1. Create table with partitions
 
-First, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the diagram below.
+First, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the following diagram:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-1.png)
 
@@ -101,7 +101,7 @@ First, we create the parent table that contains a `geo_partition` column which i
     );
     ```
 
-1. Next, create one partition per desired geography under the parent table. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
+1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
 
     ```sql
     CREATE TABLE transactions_eu 
@@ -126,68 +126,37 @@ First, we create the parent table that contains a `geo_partition` column which i
         DEFAULT TABLESPACE us_west_2_tablespace;
     ```
 
-So far, you've created the partitions, but haven't pinned them to the desired  geographical locations. You'll do this in the next section. Use the `\d` command to view the table and partitions you've created so far.
+1. Use the `\d` command to view the table and partitions you've created so far.
 
-```sql
-yugabyte=# \d
-```
+    ```sql
+    yugabyte=# \d
+    ```
 
-```output
-                List of relations
- Schema |         Name         | Type  |  Owner
---------+----------------------+-------+----------
- public | transactions         | table | yugabyte
- public | transactions_default | table | yugabyte
- public | transactions_eu      | table | yugabyte
- public | transactions_india   | table | yugabyte
-(4 rows)
-```
+    ```output
+                    List of relations
+     Schema |         Name         | Type  |  Owner
+    --------+----------------------+-------+----------
+    public | transactions         | table | yugabyte
+    public | transactions_default | table | yugabyte
+    public | transactions_eu      | table | yugabyte
+    public | transactions_india   | table | yugabyte
+    (4 rows)
+    ```
 
-## Step 2. Pin partitions to geographic locations
-
-Now that we have a table with the desired three partitions, the final step is to pin the data of these partitions to the desired geographical locations. In the example below, we are going to use regions and zones in the AWS cloud, and perform the pinning as shown in the diagram below.
+The data is now arranged as follows:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
-First, we pin the data of the EU partition `transactions_eu` to live across three zones of the Europe (Frankfurt) region `eu-central-1` as shown below.
+## Step 2. Pinning user transactions to geographic locations
 
-```sh
-$ yb-admin --master_addresses <yb-master-addresses>           \
-    modify_table_placement_info ysql.yugabyte transactions_eu \
-    aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,\
-    ... 3
-```
-
-Second, we pin the data of the India partition `transactions_india` to live across three zones in India - Asia Pacific (Mumbai) region `ap-south-1` as shown below.
-
-```sh
-$ yb-admin --master_addresses <yb-master-addresses>              \
-    modify_table_placement_info ysql.yugabyte transactions_india \
-    aws.ap-south-1.ap-south-1a,aws.ap-south-1.ap-south-1b,... 3
-```
-
-Finally, pin the data of the default partition `transactions_default` to live across three zones in the US West (Oregon) region `us-west-2`. This is shown below.
-
-```sh
-$ yb-admin --master_addresses <yb-master-addresses>                \
-    modify_table_placement_info ysql.yugabyte transactions_default \
-    aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,... 3
-```
-
-## Step 3. Pinning user transactions to geographic locations
-
-Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the diagram below.
+Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-3.png)
 
-Let us test this by inserting a few rows of data and verifying they are written to the correct partitions. First, we insert a row into the table with the `geo_partition` column value set to `EU` below.
+You can test this region pinning by inserting a few rows of data and verifying they are written to the correct partitions.
 
-```sql
-INSERT INTO transactions 
-    VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
-```
-
-All of the rows above should be inserted into the `transactions_eu` partition, and not in any of the others. We can verify this as shown below. Note that we have turned on the expanded auto mode output formatting for better readability by running the statement shown below.
+{{< tip title="Expanded output display" >}}
+The sample output includes expanded auto mode output formatting for better readability. You can enable this mode with the following statement:
 
 ```sql
 yugabyte=# \x auto
@@ -197,22 +166,31 @@ yugabyte=# \x auto
 Expanded display is used automatically.
 ```
 
-The row must be present in the `transactions` table, as seen below.
+{{</ tip >}}
 
-```sql
-yugabyte=# select * from transactions;
-```
+1. Insert a row into the table with the `geo_partition` column value set to `EU` below.
 
-```output
--[ RECORD 1 ]-+---------------------------
-user_id       | 100
-account_id    | 10001
-geo_partition | EU
-account_type  | checking
-amount        | 120.5
-txn_type      | debit
-created_at    | 2020-11-07 21:28:11.056236
-```
+    ```sql
+    INSERT INTO transactions 
+        VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
+    ```
+
+1. Verify that the row is present in the `transactions` table.
+
+    ```sql
+    yugabyte=# select * from transactions;
+    ```
+
+    ```output
+    -[ RECORD 1 ]-+---------------------------
+    user_id       | 100
+    account_id    | 10001
+    geo_partition | EU
+    account_type  | checking
+    amount        | 120.5
+    txn_type      | debit
+    created_at    | 2020-11-07 21:28:11.056236
+    ```
 
 Additionally, the row must be present only in the `transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
@@ -373,18 +351,19 @@ created_at    | 2020-11-07 21:28:11.056236
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
 ```sql
-CREATE TABLE transactions_brazil 
+CREATE TABLESPACE sa_east_1_tablespace WITH (
+    replica_placement='{"num_replicas": 3, "placement_blocks":
+      [{"cloud":"aws","region":"sa-east-1","zone":"sa-east-1a","min_num_replicas":1},
+      {"cloud":"aws","region":"sa-east-1","zone":"sa-east-1b","min_num_replicas":1},
+      {"cloud":"aws","region":"sa-east-1","zone":"sa-east-1c","min_num_replicas":1}]}'
+    );
+
+CREATE TABLE transactions_brazil
     PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
+      (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
-    FOR VALUES IN ('Brazil');
-```
-
-```sh
-$ yb-admin --master_addresses <yb-master-addresses>               \
-    modify_table_placement_info ysql.yugabyte transactions_brazil \
-    aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,... 3
+    FOR VALUES IN ('Brazil') TABLESPACE sa_east_1_tablespace;
 ```
 
 And with that, the new region is ready to store transactions of the residents of Brazil.
