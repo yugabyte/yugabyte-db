@@ -161,7 +161,6 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionApplyData apply_data_;
   docdb::ApplyTransactionState apply_state_;
-  ScopedRWOperation apply_operation_;
   ApplyIntentsTask apply_intents_task_;
 
   // Time of the next check whether this transaction has been aborted.
