@@ -759,12 +759,12 @@ class YBBackup:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'security_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n')
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'security_token = ' + '\n')
+                                     'access_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 if host_base:
