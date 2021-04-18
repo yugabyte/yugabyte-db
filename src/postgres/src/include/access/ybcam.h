@@ -64,6 +64,7 @@ typedef struct YbScanDescData
 	YBCPgStatement handle;
 	bool is_exec_done;
 
+	Relation relation;
 	Relation index;
 
 	int nkeys;
@@ -71,9 +72,6 @@ typedef struct YbScanDescData
 
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
-
-	/* Oid of the table being scanned */
-	Oid tableOid;
 
 	/* Kept query-plan control to pass it to PgGate during preparation */
 	YBCPgPrepareParameters prepare_params;
@@ -87,6 +85,7 @@ typedef struct YbScanDescData
 	 *   execution in YB tablet server.
 	 */
 	YBCPgExecParameters *exec_params;
+
 	/*
 	 * Flag used for bailing out from scan early. Currently used to bail out from scans where
 	 * one of the bind conditions is a search array and is empty.
@@ -135,7 +134,8 @@ YbScanDesc ybcBeginScan(Relation relation,
                         Relation index,
                         bool xs_want_itup,
                         int nkeys,
-                        ScanKey key);
+                        ScanKey key,
+                        Scan *pg_scan_plan);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

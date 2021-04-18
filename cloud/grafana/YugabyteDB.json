@@ -7868,7 +7868,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rocksdb_total_sst_file_size{node_prefix=\"$dbcluster\"})) / 1073741824",
+          "expr": "avg(sum without (table_id, table_name) (rocksdb_current_version_sst_files_size{node_prefix=\"$dbcluster\"})) / 1073741824",
           "hide": false,
           "interval": "",
           "legendFormat": "Size of SSTables",

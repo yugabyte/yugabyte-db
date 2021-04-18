@@ -6,7 +6,7 @@ import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field, SubmissionError, change } from 'redux-form';
+import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -237,8 +237,8 @@ class StorageConfiguration extends Component {
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
-  disableInputFields = (fieldKey) => {
-    return fieldKey === "BACKUP_LOCATION" ? true : false
+  disableInputFields = (fieldKey, enableEdit) => {
+    return enableEdit || fieldKey === "BACKUP_LOCATION" ? true : false
   };
 
   /**
@@ -355,7 +355,6 @@ class StorageConfiguration extends Component {
           const configFields = [];
           const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field) => {
-            const value = config.data[field.id];
             configFields.push(
               <Row className="config-provider-row" key={configName + field.id}>
                 <Col lg={2}>
@@ -366,7 +365,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     component={YBTextInputWithLabel}
-                    isReadOnly={this.disableInputFields(field.id)}
+                    isReadOnly={this.disableInputFields(field.id, enableEditOption)}
                   />
                 </Col>
               </Row>
@@ -464,11 +463,10 @@ class StorageConfiguration extends Component {
                     btnType="submit"
                   /> :
                   <>
-                    {activeTab !== "nfs" &&
+                    {!enableEditOption &&
                       <YBButton
                         btnText='Update'
                         btnClass={'btn btn-orange'}
-                        disabled={enableEditOption || submitting || loading}
                         btnType="submit"
                       />
                     }

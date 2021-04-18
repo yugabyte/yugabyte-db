@@ -10,7 +10,7 @@ import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 class V67__Update_Access_Key_Aws_Hosted_Zone extends JdbcMigration {
 
   override def migrate(connection: Connection): Unit = {
-    val selectStmt = "SELECT uuid, config FROM provider WHERE code = 'aws'"
+    val selectStmt = "SELECT uuid, config FROM provider WHERE code = 'aws' AND CONFIG IS NOT NULL"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 
     while (resultSet.next()) {
