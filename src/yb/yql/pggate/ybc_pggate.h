@@ -494,9 +494,6 @@ int32_t YBCGetSequenceCacheMinval();
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
 
-// Retrieve value of TEST_ysql_index_state_flags_update_delay_ms gflag.
-int32_t YBCGetTestIndexStateFlagsUpdateDelayMs();
-
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.

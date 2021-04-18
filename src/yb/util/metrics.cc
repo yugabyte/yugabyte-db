@@ -328,12 +328,12 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   AttributeMap prometheus_attr;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
-  if (strcmp(prototype_->name(), "tablet") == 0)  {
+  if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
-  } else if (strcmp(prototype_->name(), "server") == 0 ||
-      strcmp(prototype_->name(), "cluster") == 0) {
+  } else if (
+      strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
     prometheus_attr = attrs;
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;

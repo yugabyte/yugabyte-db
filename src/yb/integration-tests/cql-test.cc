@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include "yb/consensus/raft_consensus.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -20,6 +22,7 @@
 using namespace std::literals;
 
 DECLARE_int64(cql_processors_limit);
+DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
 
@@ -138,6 +141,55 @@ TEST_F(CqlTest, TestUpdateListIndexAfterOverwrite) {
   cql("UPDATE test SET v[0] = 8 WHERE h = 1");
   auto res2 = ASSERT_RESULT(select());
   EXPECT_EQ(res2, "[8, 11, 12]");
+}
+
+TEST_F(CqlTest, Timeout) {
+  FLAGS_client_read_write_timeout_ms = 5000 * kTimeMultiplier;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (i INT PRIMARY KEY, j INT) WITH transactions = { 'enabled' : true }"));
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    peer->raft_consensus()->TEST_DelayUpdate(100ms);
+  }
+
+  auto prepared = ASSERT_RESULT(session.Prepare(
+      "BEGIN TRANSACTION "
+      "  INSERT INTO t (i, j) VALUES (?, ?);"
+      "END TRANSACTION;"));
+  struct Request {
+    CassandraFuture future;
+    CoarseTimePoint start_time;
+  };
+  std::deque<Request> requests;
+  constexpr int kOps = 50;
+  constexpr int kKey = 42;
+  int executed_ops = 0;
+  for (;;) {
+    while (!requests.empty() && requests.front().future.Ready()) {
+      WARN_NOT_OK(requests.front().future.Wait(), "Insert failed");
+      auto passed = CoarseMonoClock::now() - requests.front().start_time;
+      ASSERT_LE(passed, FLAGS_client_read_write_timeout_ms * 1ms + 2s * kTimeMultiplier);
+      requests.pop_front();
+    }
+    if (executed_ops >= kOps) {
+      if (requests.empty()) {
+        break;
+      }
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+
+    auto stmt = prepared.Bind();
+    stmt.Bind(0, kKey);
+    stmt.Bind(1, ++executed_ops);
+    requests.push_back(Request {
+        .future = session.ExecuteGetFuture(stmt),
+        .start_time = CoarseMonoClock::now(),
+    });
+  }
 }
 
 } // namespace yb

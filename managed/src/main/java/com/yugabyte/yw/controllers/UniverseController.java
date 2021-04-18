@@ -381,6 +381,23 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
+   * Function to Trim keys and values of the passed map.
+   * @param data key value pairs.
+   * @return key value pairs with trim keys and values.
+   */
+  @VisibleForTesting
+  static Map<String, String> trimFlags(Map<String, String> data)
+  {
+    Map<String, String> trimData = new HashMap<>();
+    for (Map.Entry<String, String> intent : data.entrySet()) {
+      String key  = intent.getKey();
+      String value = intent.getValue();
+      trimData.put(key.trim(), value.trim());
+    }
+    return trimData;
+  }
+
+  /**
    * API that binds the UniverseDefinitionTaskParams class by merging
    * the UserIntent with the generated taskParams.
    *
@@ -413,6 +430,9 @@ public class UniverseController extends AuthenticatedController {
       //  uuid.
       Cluster c = taskParams.currentClusterType.equals(ClusterType.PRIMARY) ?
         taskParams.getPrimaryCluster() : taskParams.getReadOnlyClusters().get(0);
+      UserIntent primaryIntent = c.userIntent;
+      primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+      primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
       if (checkIfNodeParamsValid(taskParams, c)) {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid,
           clusterOpType);
@@ -540,6 +560,13 @@ public class UniverseController extends AuthenticatedController {
         updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       }
 
+      if (taskParams.getPrimaryCluster() != null) {
+        UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+        if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
+          taskParams.setTxnTableWaitCountFlag = true;
+        }
+      }
+
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(taskParams, customer.getCustomerId());
@@ -556,6 +583,9 @@ public class UniverseController extends AuthenticatedController {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
       if (primaryCluster != null) {
+        UserIntent primaryIntent = primaryCluster.userIntent;
+        primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+        primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
@@ -1454,6 +1484,8 @@ public class UniverseController extends AuthenticatedController {
       // instead of top level task param, for now just copy the master flag and tserver flag
       // from primary cluster.
       UserIntent primaryIntent = taskParams.getPrimaryCluster().userIntent;
+      primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
+      primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
       taskParams.masterGFlags = primaryIntent.masterGFlags;
       taskParams.tserverGFlags = primaryIntent.tserverGFlags;
     } catch (Throwable t) {
@@ -1746,10 +1778,10 @@ public class UniverseController extends AuthenticatedController {
       JsonNode resultNode = queryHelper.liveQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
-      LOG.warn("Universe does not have a private IP or DNS.");
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to fetch live queries");
+      LOG.error("Universe does not have a private IP or DNS", e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe");
+      LOG.error("Error retrieving queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
@@ -1768,10 +1800,32 @@ public class UniverseController extends AuthenticatedController {
       JsonNode resultNode = queryHelper.slowQueries(universe);
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
-      LOG.warn("Universe does not have a private IP or DNS.");
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to fetch slow queries");
+      LOG.error("Universe does not have a private IP or DNS", e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
-      LOG.error("Error retrieving queries for universe");
+      LOG.error("Error retrieving queries for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
+
+    Universe universe;
+    try {
+      universe = checkCallValid(customerUUID, universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    }
+
+    try {
+      JsonNode resultNode = queryHelper.resetQueries(universe);
+      return Results.status(OK, resultNode);
+    } catch (NullPointerException e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+        "Failed reach node, invalid IP or DNS.");
+    } catch (Throwable t) {
+      LOG.error("Error resetting slow queries for universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
