@@ -20,6 +20,7 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_backup.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -32,6 +33,19 @@
 
 namespace yb {
 namespace master {
+
+struct SnapshotScheduleRestoration {
+  TxnSnapshotId snapshot_id;
+  HybridTime restore_at;
+  TxnSnapshotRestorationId restoration_id;
+  OpId op_id;
+  HybridTime write_time;
+  int64_t term;
+  SnapshotScheduleFilterPB filter;
+  std::vector<TabletId> obsolete_tablets;
+  std::vector<TableId> obsolete_tables;
+  std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
+};
 
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {

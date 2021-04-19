@@ -119,6 +119,8 @@ class StateWithTablets {
     }
   }
 
+  void RemoveTablets(const std::vector<std::string>& tablet_ids);
+
   virtual bool IsTerminalFailure(const Status& status) = 0;
 
  protected:
