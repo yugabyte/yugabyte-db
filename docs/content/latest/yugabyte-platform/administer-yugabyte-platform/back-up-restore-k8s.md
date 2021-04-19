@@ -50,7 +50,7 @@ You can back up the Yugabyte Platform server as follows:
 - Copy the the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
 
   ```sh
-  wget /yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
+  wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
   ```
 
 - Verify that the computer performing the backup operation can access the Yugabyte Platform kubernetes pod instance by executing the following command:
@@ -90,7 +90,7 @@ To restore the Yugabyte Platform content from your saved backup, perform the fol
 - Copy the the Yugabyte Platform backup script yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
 
     ```sh
-    wget /yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Execute the following command to verify that the computer performing the backup operation can access the Yugabyte Platform kubernetes pod instance:

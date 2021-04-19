@@ -42,7 +42,7 @@ To back up the Yugabyte Platform server, perform the following:
 - Copy the the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    $ wget /yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh 
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh 
     ```
 
 - Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
@@ -70,7 +70,7 @@ To restore the Yugabyte Platform content from your saved backup, perform the fol
 - Copy the the `yb_platform_backup.sh` script from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    wget /yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh 
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh 
     ```
 
 - Copy the backup `.tar` file from your storage location.
