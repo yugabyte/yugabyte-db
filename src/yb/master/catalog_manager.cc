@@ -2142,23 +2142,35 @@ Status CatalogManager::SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::DeleteTablet(
-    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
+Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
   RETURN_NOT_OK(CheckOnline());
 
-  const auto& tablet_id = req->tablet_id();
-  const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  std::vector<TabletInfoPtr> tablet_infos;
+  {
+    std::lock_guard<LockType> lock(lock_);
+    TRACE("Acquired catalog manager lock");
 
-  const auto& table_info = tablet_info->table();
+    for (const auto& id : tablet_ids) {
+      auto it = tablet_map_->find(id);
+      if (it == tablet_map_->end()) {
+        return STATUS_FORMAT(NotFound, "Tablet $0 not found", id);
+      }
+      tablet_infos.push_back(it->second);
+    }
+  }
 
-  RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+  for (const auto& tablet_info : tablet_infos) {
+    RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(tablet_info->table()));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+  }
 
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+  return DeleteTabletListAndSendRequests(
+      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString());
+}
 
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
-      { tablet_info }, "Tablet deleted upon request at " + LocalTimeAsString()));
-
-  return Status::OK();
+Status CatalogManager::DeleteTablet(
+    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
+  return DeleteTablets({ req->tablet_id() });
 }
 
 namespace {
@@ -9056,6 +9068,9 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
   for (const auto& table_id_pb : tables) {
     auto table_description = VERIFY_RESULT(DescribeTable(
         table_id_pb, succeed_if_create_in_progress));
+    if (table_description.table_info->LockForRead()->data().started_deleting()) {
+      continue;
+    }
     if (include_parent_colocated_table && table_description.table_info->colocated()) {
       // If a table is colocated, add its parent colocated table as well.
       const auto parent_table_id =
@@ -9072,31 +9087,36 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     }
     all_tables.push_back(table_description);
 
-    if (add_indexes) {
-      TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
-      auto l = table_description.table_info->LockForRead();
+    if (!add_indexes) {
+      continue;
+    }
+    TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
+    auto l = table_description.table_info->LockForRead();
 
-      if (table_description.table_info->is_index()) {
-        return STATUS(InvalidArgument, "Expected table, but found index",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
+    if (table_description.table_info->is_index()) {
+      return STATUS(InvalidArgument, "Expected table, but found index",
+                    table_description.table_info->id(),
+                    MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+    }
 
-      if (l->data().table_type() == PGSQL_TABLE_TYPE) {
-        return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
+    if (l->data().table_type() == PGSQL_TABLE_TYPE) {
+      return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
+                    table_description.table_info->id(),
+                    MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+    }
 
-      for (const auto& index_info : l->data().pb.indexes()) {
-        LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
-                << "Wrong indexed table id in index descriptor";
-        TableIdentifierPB index_id_pb;
-        index_id_pb.set_table_id(index_info.table_id());
-        index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(
-            index_id_pb, succeed_if_create_in_progress)));
+    for (const auto& index_info : l->data().pb.indexes()) {
+      LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
+              << "Wrong indexed table id in index descriptor";
+      TableIdentifierPB index_id_pb;
+      index_id_pb.set_table_id(index_info.table_id());
+      index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+      auto index_description = VERIFY_RESULT(DescribeTable(
+          index_id_pb, succeed_if_create_in_progress));
+      if (index_description.table_info->LockForRead()->data().started_deleting()) {
+        continue;
       }
+      all_tables.push_back(index_description);
     }
   }
 
