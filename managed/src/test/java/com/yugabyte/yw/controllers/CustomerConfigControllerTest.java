@@ -173,7 +173,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testEditInUseStorageConfig() {
     ObjectNode bodyJson = Json.newObject();
-    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    JsonNode data = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
+        "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", " +
+        "\"ACCESS_SECRET\": \"A-SECRET\"}}");
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
@@ -188,7 +190,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
         defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
-    assertEquals(data, CustomerConfig.get(configUUID).data);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
   }
 
   @Test
@@ -206,5 +209,27 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertBadRequest(result, "Invalid configUUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditWithBackupLocation() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
+        "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", " +
+        "\"ACCESS_SECRET\": \"A-SECRET-NEW\"}}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
+        defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    // Should not update the field BACKUP_LOCATION to "test".
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+    // SHould be updated and the API response should give asked data.
+    assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
+    assertEquals("A-********EW", json.get("data").get("ACCESS_SECRET").textValue());
   }
 }
