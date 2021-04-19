@@ -270,11 +270,14 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
         self.run_ansible_create(args)
 
-        if self.can_ssh and not args.disable_custom_ssh:
+        if self.can_ssh:
             self.update_ansible_vars(args)
             host_info = self.wait_for_host(args)
-            self.cloud.setup_ansible(args).run("use_custom_ssh_port.yml",
-                                               self.extra_vars, host_info)
+            ansible = self.cloud.setup_ansible(args)
+            ansible.run("preprovision.yml", self.extra_vars, host_info)
+
+            if not args.disable_custom_ssh:
+                ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
     def run_ansible_create(self, args):
         self.update_ansible_vars(args)
