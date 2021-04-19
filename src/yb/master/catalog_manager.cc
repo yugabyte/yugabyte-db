@@ -5921,8 +5921,13 @@ void CatalogManager::ProcessPendingNamespace(
   // Ensure that we are currently the Leader before handling DDL operations.
   {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
+    if (!l.catalog_status().ok()) {
       LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
+      // Don't try again, we have to reset in-memory state after losing leader election.
+      return;
+    }
+    if (!l.leader_status().ok()) {
+      LOG(WARNING) << "Leader status failure: " << l.leader_status().ToString();
       // Don't try again, we have to reset in-memory state after losing leader election.
       return;
     }
