@@ -214,7 +214,7 @@ typedef struct cypher_create_path
 {
     ExtensibleNode extensible;
     List *target_nodes;
-    AttrNumber tuple_position;
+    AttrNumber path_attr_num;
 } cypher_create_path;
 
 #define CYPHER_CLAUSE_FLAG_NONE 0x0000
@@ -227,36 +227,72 @@ typedef struct cypher_create_path
 #define CYPHER_CLAUSE_HAS_PREVIOUS_CLAUSE(flags) \
     (flags & CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE)
 
+/*
+ * Structure that contains all information to create
+ * a new entity in the create clause, or where to access
+ * this information if it doesn't need to be created.
+ *
+ * NOTE: This structure may be used for the MERGE clause as
+ * well
+ */
 typedef struct cypher_target_node
 {
     ExtensibleNode extensible;
+    // 'v' for vertex or 'e' for edge
     char type;
+    // flags defined below, prefaced with CYPHER_TARGET_NODE_FLAG_*
     uint32 flags;
+    // if an edge, denotes direction
     cypher_rel_dir dir;
-    int id_var_no;
-    int prop_var_no;
-    List *targetList;
-    TargetEntry *te;
-    List *expr_states;
+    /*
+     * Used to create the id for the vertex/edge,
+     * if the CYPHER_TARGET_NODE_FLAG_INSERT flag
+     * is set. Doing it this way will protect us when
+     * rescan gets implemented. By calling the function
+     * that creates the id ourselves, we won't have an
+     * issue where the id could be created then not used.
+     * Since there is a limited number of ids available, we
+     * don't want to waste them.
+     */
+    Expr *id_expr;
+    ExprState *id_expr_state;
+    /*
+     * Attribute Number that this entity's properties
+     * are stored in the CustomScanState's child TupleTableSlot
+     */
+    AttrNumber prop_attr_num;
+    // RelInfo for the table this entity will be stored in
     ResultRelInfo *resultRelInfo;
+    // elemTupleSlot used to insert the entity into its table
     TupleTableSlot *elemTupleSlot;
+    // relid that the label stores its entity
     Oid relid;
+    // label this entity belongs to.
     char *label_name;
+    // variable name for this entity
     char *variable_name;
+    /*
+     * Attribute number this entity needs to be stored in
+     * for parent execution nodes to reference it. If the
+     * entity is a varaible (CYPHER_TARGET_NODE_IS_VAR).
+     */
     AttrNumber tuple_position;
 } cypher_target_node;
 
 #define CYPHER_TARGET_NODE_FLAG_NONE 0x0000
 // node must insert data
 #define CYPHER_TARGET_NODE_FLAG_INSERT 0x0001
-//node is a var declared in a previous clause
-#define CYPHER_TARGET_NODE_PREV_VAR 0x0002
-//node is a var declared in the current clause
-#define CYPHER_TARGET_NODE_CUR_VAR 0x0004
+/*
+ * Flag that denotes if this target node is referencing
+ * a variable that was already created AND created in the
+ * same clause.
+ */
+#define EXISTING_VARAIBLE_DECLARED_SAME_CLAUSE 0x0002
+
 //node is the first instance of a declared variable
-#define CYPHER_TARGET_NODE_IS_VAR 0x0008
+#define CYPHER_TARGET_NODE_IS_VAR 0x0004
 // node is an element in a path variable
-#define CYPHER_TARGET_NODE_IN_PATH_VAR 0x0010
+#define CYPHER_TARGET_NODE_IN_PATH_VAR 0x0008
 
 #define CYPHER_TARGET_NODE_OUTPUT(flags) \
     (flags & (CYPHER_TARGET_NODE_IS_VAR | CYPHER_TARGET_NODE_IN_PATH_VAR))
@@ -267,12 +303,12 @@ typedef struct cypher_target_node
 #define CYPHER_TARGET_NODE_IS_VARIABLE(flags) \
     (flags & CYPHER_TARGET_NODE_IS_VAR)
 
-#define CYPHER_TARGET_NODE_ID_IS_GRAPHID(flags) \
-    (flags & CYPHER_TARGET_NODE_CUR_VAR)
-
-#define CYPHER_TARGET_NODE_ID_IS_AGTYPE(flags) \
-    (flags & CYPHER_TARGET_NODE_PREV_VAR)
-
+/*
+ * When a vertex is created and is reference in the same clause
+ * later. We don't need to check to see if the vertex still exists.
+ */
+#define SAFE_TO_SKIP_EXISTENCE_CHECK(flags) \
+    (flags & EXISTING_VARAIBLE_DECLARED_SAME_CLAUSE)
 
 #define CYPHER_TARGET_NODE_INSERT_ENTITY(flags) \
     (flags & CYPHER_TARGET_NODE_FLAG_INSERT)

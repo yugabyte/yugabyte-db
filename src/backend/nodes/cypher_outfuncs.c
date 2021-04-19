@@ -291,7 +291,7 @@ void out_cypher_create_path(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_create_path);
 
     WRITE_NODE_FIELD(target_nodes);
-    WRITE_INT32_FIELD(tuple_position);
+    WRITE_INT32_FIELD(path_attr_num);
 }
 
 // serialization function for the cypher_target_node ExtensibleNode.
@@ -302,11 +302,9 @@ void out_cypher_target_node(StringInfo str, const ExtensibleNode *node)
     WRITE_CHAR_FIELD(type);
     WRITE_INT32_FIELD(flags);
     WRITE_ENUM_FIELD(dir, cypher_rel_dir);
-    WRITE_INT32_FIELD(id_var_no);
-    WRITE_INT32_FIELD(prop_var_no);
-    WRITE_NODE_FIELD(targetList);
-    WRITE_NODE_FIELD(te);
-    WRITE_NODE_FIELD(expr_states);
+    WRITE_NODE_FIELD(id_expr);
+    WRITE_NODE_FIELD(id_expr_state);
+    WRITE_INT32_FIELD(prop_attr_num);
     WRITE_NODE_FIELD(resultRelInfo);
     WRITE_NODE_FIELD(elemTupleSlot);
     WRITE_OID_FIELD(relid);

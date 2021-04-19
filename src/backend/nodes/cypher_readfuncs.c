@@ -191,7 +191,7 @@ void read_cypher_create_path(struct ExtensibleNode *node)
     READ_LOCALS(cypher_create_path);
 
     READ_NODE_FIELD(target_nodes);
-    READ_INT_FIELD(tuple_position);
+    READ_INT_FIELD(path_attr_num);
 }
 
 /*
@@ -205,11 +205,9 @@ void read_cypher_target_node(struct ExtensibleNode *node)
     READ_CHAR_FIELD(type);
     READ_INT_FIELD(flags);
     READ_ENUM_FIELD(dir, cypher_rel_dir);
-    READ_INT_FIELD(id_var_no);
-    READ_INT_FIELD(prop_var_no);
-    READ_NODE_FIELD(targetList);
-    READ_NODE_FIELD(te);
-    READ_NODE_FIELD(expr_states);
+    READ_NODE_FIELD(id_expr);
+    READ_NODE_FIELD(id_expr_state);
+    READ_INT_FIELD(prop_attr_num);
     READ_NODE_FIELD(resultRelInfo);
     READ_NODE_FIELD(elemTupleSlot);
     READ_OID_FIELD(relid);
