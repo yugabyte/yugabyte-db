@@ -78,6 +78,7 @@ class TServerMetricsPB;
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
                              consensus::ConsensusServiceProxy> ProxyTuple;
+typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
 
 // Master-side view of a single tablet server.
 //
@@ -136,7 +137,10 @@ class TSDescriptor {
 
   std::string placement_uuid() const;
 
+  template<typename Lambda>
+  bool DoesRegistrationMatch(Lambda predicate) const;
   bool IsRunningOn(const HostPortPB& hp) const;
+  bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
   // Should this ts have any leader load on it.
   virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;

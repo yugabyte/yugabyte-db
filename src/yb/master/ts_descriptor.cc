@@ -248,11 +248,9 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
   return ts_information_->registration().common().cloud_info();
 }
 
-bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
+template<typename Lambda>
+bool TSDescriptor::DoesRegistrationMatch(Lambda predicate) const {
   TSRegistrationPB reg = GetRegistration();
-  auto predicate = [&hp](const HostPortPB& rhs) {
-    return rhs.host() == hp.host() && rhs.port() == hp.port();
-  };
   if (std::find_if(reg.common().private_rpc_addresses().begin(),
                    reg.common().private_rpc_addresses().end(),
                    predicate) != reg.common().private_rpc_addresses().end()) {
@@ -264,6 +262,20 @@ bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
     return true;
   }
   return false;
+}
+
+bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
+  auto predicate = [&blacklist](const HostPortPB& rhs) {
+    return blacklist.count(HostPortFromPB(rhs)) > 0;
+  };
+  return DoesRegistrationMatch(predicate);
+}
+
+bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
+  auto predicate = [&hp](const HostPortPB& rhs) {
+    return rhs.host() == hp.host() && rhs.port() == hp.port();
+  };
+  return DoesRegistrationMatch(predicate);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
