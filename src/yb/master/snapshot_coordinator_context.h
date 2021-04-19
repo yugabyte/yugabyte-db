@@ -63,16 +63,12 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
-  virtual Result<SysRowEntries> CollectEntries(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-      bool add_indexes,
-      bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) = 0;
+  virtual Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
   virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
-  virtual CHECKED_STATUS RestoreSysCatalog(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
-      HybridTime write_time, const SnapshotScheduleFilterPB& filter) = 0;
+  virtual CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) = 0;
+  virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
 
   virtual const Schema& schema() = 0;
 
