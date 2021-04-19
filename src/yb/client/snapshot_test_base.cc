@@ -171,7 +171,7 @@ Status SnapshotTestBase::RestoreSnapshot(
 
   return WaitFor([this, &restoration_id] {
     return IsRestorationDone(restoration_id);
-  }, kWaitTimeout * kTimeMultiplier, "Restoration done");
+  }, kWaitTimeout * kTimeMultiplier, Format("Restoration $0 done", restoration_id));
 }
 
 } // namespace client

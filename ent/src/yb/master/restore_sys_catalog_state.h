@@ -16,7 +16,10 @@
 
 #include <unordered_map>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"
@@ -30,14 +33,37 @@ namespace master {
 // Initially we load tables and tablets into it, then match schedule filter.
 class RestoreSysCatalogState {
  public:
-  CHECKED_STATUS LoadTable(const Slice& id, const Slice& data);
-  CHECKED_STATUS LoadTablet(const Slice& id, const Slice& data);
-  Result<SysRowEntries> FilterEntries(const SnapshotScheduleFilterPB& filter);
+  explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
+
+  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db);
+
+  CHECKED_STATUS DetermineObsoleteObjects(const SysRowEntries& existing);
+
+  CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
+
+  CHECKED_STATUS PrepareTabletCleanup(
+      const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
+      docdb::DocWriteBatch* write_batch);
+
+  CHECKED_STATUS PrepareTableCleanup(
+      const TableId& id, SysTablesEntryPB pb, const Schema& schema,
+      docdb::DocWriteBatch* write_batch);
 
  private:
-  Result<bool> MatchTable(
-      const SnapshotScheduleFilterPB& filter, const TableId& id, const SysTablesEntryPB& table);
+  template <class PB>
+  CHECKED_STATUS IterateSysCatalog(
+      const Schema& schema, const docdb::DocDB& doc_db, std::unordered_map<std::string, PB>* map);
 
+  CHECKED_STATUS DetermineEntries();
+
+  Result<bool> MatchTable(const TableId& id, const SysTablesEntryPB& table);
+
+  template <class PB>
+  void AddEntry(const std::pair<const std::string, PB>& id_and_pb, faststring* buffer);
+
+  SnapshotScheduleRestoration& restoration_;
+  SysRowEntries entries_;
+  std::unordered_map<TableId, SysNamespaceEntryPB> namespaces_;
   std::unordered_map<TableId, SysTablesEntryPB> tables_;
   std::unordered_map<TabletId, SysTabletsEntryPB> tablets_;
 };

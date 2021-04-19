@@ -270,7 +270,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return table_info->schema_version;
   }
 
-  const std::string& indexed_tablet_id(const TableId& table_id = "") const {
+  const std::string& indexed_table_id(const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     static const std::string kEmptyString = "";
     std::lock_guard<MutexType> lock(data_mutex_);

@@ -243,7 +243,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
       bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) override;
+      bool succeed_if_create_in_progress);
+
+  Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
+    // See args above.
+    return CollectEntries(tables, true, true, true);
+  }
 
   server::Clock* Clock() override;
 
@@ -269,9 +275,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 
-  CHECKED_STATUS RestoreSysCatalog(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
-      HybridTime write_time, const SnapshotScheduleFilterPB& filter) override;
+  CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
+  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
   rpc::Scheduler& Scheduler() override;
 
