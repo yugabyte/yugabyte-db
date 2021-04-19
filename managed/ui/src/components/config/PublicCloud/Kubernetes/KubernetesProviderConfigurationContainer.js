@@ -9,9 +9,15 @@ import {
   fetchCloudMetadata
 } from '../../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../../actions/modal';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
+    },
     deleteProviderConfig: (providerUUID) => {
       dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {

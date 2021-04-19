@@ -12,7 +12,6 @@ import { YBCopyButton } from '../../../common/descriptors';
 import { KUBERNETES_PROVIDERS } from '../../../../config';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { YBTextInput, YBModal } from '../../../common/forms/fields';
-import { getPromiseState } from '../../../../utils/PromiseUtils';
 import './ListKubernetesConfigurations.scss';
 
 export default class ListKubernetesConfigurations extends Component {
@@ -30,18 +29,10 @@ export default class ListKubernetesConfigurations extends Component {
   };
 
   deleteProviderEnabled = (providerUUID) => {
-    return (
-      isDefinedNotNull(providerUUID) &&
-      (getPromiseState(this.props.universeList).isSuccess() ||
-        getPromiseState(this.props.universeList).isEmpty()) &&
-      !this.props.universeList.data.some(
-        (universe) =>
-          universe.universeDetails.clusters &&
-          universe.universeDetails.clusters.some(
-            (cluster) => cluster.userIntent.provider === providerUUID
-          )
-      )
-    );
+    const providerInUse = (this.props.universeList?.data || [])
+      .flatMap(item => item.universeDetails.clusters)
+      .some(item => item.userIntent.provider === providerUUID);
+    return !providerInUse;
   };
 
   formatZones = (cell) => (

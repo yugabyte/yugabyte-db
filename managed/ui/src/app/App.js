@@ -10,6 +10,6 @@ import './../_style/fonts.css';
 export const App = (props) => (
   <>
     <div>{props.children}</div>
-    <ToastContainer hideProgressBar position="top-center" />
+    <ToastContainer hideProgressBar position="top-center" autoClose={10000} />
   </>
 );
