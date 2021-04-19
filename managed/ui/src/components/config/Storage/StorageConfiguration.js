@@ -6,7 +6,7 @@ import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field, SubmissionError } from 'redux-form';
+import { Field, SubmissionError, reset } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -19,7 +19,8 @@ import {
   isNonEmptyObject,
   isEmptyObject,
   isDefinedNotNull,
-  isNonEmptyArray
+  isNonEmptyArray,
+  isEmptyArray
 } from '../../../utils/ObjectUtils';
 import { Formik } from 'formik';
 
@@ -28,7 +29,7 @@ const storageConfigTypes = {
     title: 'NFS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'NFS_BACKUP_LOCATION',
         label: 'NFS Storage Path',
         placeHolder: 'NFS Storage Path'
       }
@@ -38,7 +39,7 @@ const storageConfigTypes = {
     title: 'GCS Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'GCS_BACKUP_LOCATION',
         label: 'GCS Bucket',
         placeHolder: 'GCS Bucket'
       },
@@ -53,7 +54,7 @@ const storageConfigTypes = {
     title: 'Azure Storage',
     fields: [
       {
-        id: 'BACKUP_LOCATION',
+        id: 'AZ_BACKUP_LOCATION',
         label: 'Container URL',
         placeHolder: 'Container URL'
       },
@@ -92,7 +93,7 @@ class StorageConfiguration extends Component {
     super(props);
 
     this.state = {
-      enableEditOption: true
+      enableEdit: false
     }
   }
 
@@ -129,27 +130,32 @@ class StorageConfiguration extends Component {
     // These conditions will pick only the required JSON keys from the respective tab.
     switch (props.activeTab) {
       case 'nfs':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['NFS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION']);
         break;
 
       case 'gcs':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON']);
         break;
 
       case 'az':
+        dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
         dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
         break;
 
       default:
         if (values['IAM_INSTANCE_PROFILE']) {
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
           dataPayload = _.pick(dataPayload, [
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'IAM_INSTANCE_PROFILE'
           ]);
         } else {
-           dataPayload = _.pick(dataPayload, [
+          dataPayload['BACKUP_LOCATION'] = dataPayload['S3_BACKUP_LOCATION'];
+          dataPayload = _.pick(dataPayload, [
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
@@ -159,8 +165,10 @@ class StorageConfiguration extends Component {
         break;
     }
 
+    console.log(values, '*************', dataPayload)
+
     if (values.type === "update") {
-      this.setState({ enableEditOption: true });
+      this.setState({ enableEdit: false });
       return this.props
         .updateCustomerConfig({
           type: 'STORAGE',
@@ -179,27 +187,28 @@ class StorageConfiguration extends Component {
           }
         });
     } else {
-      this.setState({ enableEditOption: false });
-    return this.props
-      .addCustomerConfig({
-        type: 'STORAGE',
-        name: type,
-        data: dataPayload
-      })
-      .then((resp) => {
-        if (getPromiseState(this.props.addConfig).isSuccess()) {
-          // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
-          this.props.reset();
-          this.props.fetchCustomerConfigs();
-        } else if (getPromiseState(this.props.addConfig).isError()) {
-          // show server-side validation errors under form inputs
-          throw new SubmissionError(this.props.addConfig.error);
-        }
-      });
+      this.setState({ enableEdit: false });
+      return this.props
+        .addCustomerConfig({
+          type: 'STORAGE',
+          name: type,
+          data: dataPayload
+        })
+        .then((resp) => {
+          if (getPromiseState(this.props.addConfig).isSuccess()) {
+            // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
+            this.props.reset();
+            this.props.fetchCustomerConfigs();
+          } else if (getPromiseState(this.props.addConfig).isError()) {
+            // show server-side validation errors under form inputs
+            throw new SubmissionError(this.props.addConfig.error);
+          }
+        });
     }
   };
 
   deleteStorageConfig = (configUUID) => {
+    // window.location.reload();
     this.props.deleteCustomerConfig(configUUID)
       .then(() => {
         this.props.reset(); // reset form to initial values
@@ -220,14 +229,14 @@ class StorageConfiguration extends Component {
    * backup config.
    */
   onEditConfig = () => {
-    this.setState({ enableEditOption: false });
+    this.setState({ enableEdit: true });
   }
 
   /**
    * This method will disable the edit input fields.
    */
   disableEditFields = () => {
-    this.setState({ enableEditOption: true });
+    this.setState({ enableEdit: false });
   }
 
   /**
@@ -237,8 +246,9 @@ class StorageConfiguration extends Component {
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
-  disableInputFields = (fieldKey, enableEdit) => {
-    return enableEdit || fieldKey === "BACKUP_LOCATION" ? true : false
+  disableInputFields = (fieldKey, enableEdit, activeTab) => {
+    const tab = activeTab.toUpperCase();
+    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false
   };
 
   /**
@@ -249,56 +259,65 @@ class StorageConfiguration extends Component {
    * @param {Array<object>} configs Backup config Data.
    */
   setInitialConfiValues = (activeTab = "nfs", configs) => {
+    const tab = activeTab.toUpperCase();
     const data = !isNonEmptyArray(configs) &&
       configs.data.filter((config) => config.name === activeTab.toUpperCase());
-    const initialVal = data.map((obj) => {
+    let initialValues = data.map((obj) => {
       switch (activeTab) {
         case "nfs":
           return {
             type: "update",
             configUUID: obj?.configUUID,
-            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION
-          };
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+          }
 
         case "gcs":
           return {
             type: "update",
             configUUID: obj?.configUUID,
-            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
-            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
+            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON,
           };
 
         case "az":
           return {
             type: "update",
             configUUID: obj?.configUUID,
-            BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
             AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
           };
 
         default:
-          if (isDefinedNotNull(obj.data?.IAM_INSTANCE_PROFILE)) {
-            return {
-              type: "update",
-              configUUID: obj?.configUUID,
-              IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
-              BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
-              AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
-            }
-          } else {
-            return {
-              type: "update",
-              configUUID: obj?.configUUID,
-              AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID,
-              AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY,
-              BACKUP_LOCATION: obj.data?.BACKUP_LOCATION,
-              AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
-            }
+          return {
+            type: "update",
+            configUUID: obj?.configUUID,
+            IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_HOST_BASE: obj.data?.AWS_HOST_BASE,
           }
       }
     });
 
-    this.props.setInitialConfigValues(initialVal[0]);
+    if (initialValues.length > 0) {
+      this.props.setInitialConfigValues(initialValues[0]);
+    } else {
+      initialValues = {
+        IAM_INSTANCE_PROFILE: false,
+        AWS_ACCESS_KEY_ID: "",
+        AWS_SECRET_ACCESS_KEY: "",
+        S3_BACKUP_LOCATION: "",
+        AWS_HOST_BASE: ""
+      };
+      this.props.setInitialConfigValues(initialValues);
+    }
   };
 
   render() {
@@ -309,7 +328,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
-    const { enableEditOption } = this.state;
+    const { enableEdit } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
 
@@ -331,7 +350,7 @@ class StorageConfiguration extends Component {
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
-            enableEdit={enableEditOption}
+            enableEdit={enableEdit}
             onEditConfig={this.onEditConfig}
           />
         </Tab>
@@ -365,7 +384,7 @@ class StorageConfiguration extends Component {
                     name={field.id}
                     placeHolder={field.placeHolder}
                     component={YBTextInputWithLabel}
-                    isReadOnly={this.disableInputFields(field.id, enableEditOption)}
+                    isReadOnly={this.disableInputFields(field.id, enableEdit, activeTab)}
                   />
                 </Col>
               </Row>
@@ -386,12 +405,17 @@ class StorageConfiguration extends Component {
               )}
               <YBButton
                 btnText={'Delete Configuration'}
-                disabled={config.inUse || submitting || loading || isEmptyObject(config)}
+                disabled={
+                  config.inUse ||
+                  submitting ||
+                  loading ||
+                  isEmptyObject(config) ||
+                  (enableEdit && activeTab !== "nfs")}
                 btnClass={'btn btn-default'}
                 onClick={
                   isDefinedNotNull(config)
                     ? this.showDeleteConfirmModal.bind(this, config.name)
-                    : () => {}
+                    : () => { }
                 }
               />
               {activeTab !== "nfs" &&
@@ -463,18 +487,17 @@ class StorageConfiguration extends Component {
                     btnType="submit"
                   /> :
                   <>
-                    {!enableEditOption &&
+                    {enableEdit && activeTab !== "nfs" &&
                       <YBButton
                         btnText='Update'
                         btnClass={'btn btn-orange'}
                         btnType="submit"
                       />
                     }
-                    {!enableEditOption &&
+                    {enableEdit && activeTab !== "nfs" &&
                       <YBButton
                         btnText='Cancel'
                         btnClass={'btn btn-default'}
-                        btnType="cancel"
                         onClick={this.disableEditFields}
                       />
                     }
