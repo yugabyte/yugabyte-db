@@ -10,25 +10,6 @@
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
-  pre_tasks:
-    # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
-    - name: Fix google-cloud yum repo settings for GCP VM
-      become: yes
-      become_method: sudo
-      replace:
-        dest: "/etc/yum.repos.d/google-cloud.repo"
-        regexp: 'repo_gpgcheck=1'
-        replace: 'repo_gpgcheck=0'
-      when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
-    # Ensure Python 2.x is installed.
-    # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
-    - name: 'install python 2.x'
-      raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
-    - name: Install policycoreutils-python
-      package:
-        name: policycoreutils-python
-        state: present
-      when: machine_image is match(".*centos-7-v20210217")
   roles:
     - ansible-sshd
   vars:
