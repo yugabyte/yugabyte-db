@@ -1,8 +1,8 @@
 ---
-title: Back up and restore Platform - Kubernetes
-headerTitle: Back up and restore Platform - Kubernetes
-linkTitle: Back up and restore Yugabyte Platform - K8s
+title: Back Up and Restore Yugabyte Platform on Kubernetes
+headerTitle: Back Up and Restore Yugabyte Platform on Kubernetes
 description: Use a script file to back up and restore Yugabyte Platform on Kubernetes.
+linkTitle: Back Up and Restore Yugabyte Platform
 aliases:
 menu:
   latest:
@@ -35,89 +35,88 @@ Yugabyte Platform installations include configuration settings, certificates and
 
 You can use the Yugabyte Platform backup script to back up an existing Yugabyte Platform server and restore it, when needed, for disaster recovery or migrating to a new server.
 
-The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For more details, refer to the [Yugabyte Platform overview](https://docs.yugabyte.com/latest/yugabyte-platform/overview/).
+{{< note title="Note" >}}
 
-## Back up a Yugabyte Platform server
+You cannot back up and restore Prometheus metrics data.
 
-1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the yugabyte-db repository to your local workstation using the following wget command:
+{{< /note >}}
+
+The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For details, see [Yugabyte Platform overview](https://docs.yugabyte.com/latest/yugabyte-platform/overview/).
+
+## Back Up a Yugabyte Platform Server
+
+You can back up the Yugabyte Platform server as follows:
+
+- Copy the the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
+
+  ```sh
+  wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
+  ```
+
+- Verify that the computer performing the backup operation can access the Yugabyte Platform kubernetes pod instance by executing the following command:
+
+  ```sh
+  kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
+  ```
+  
+  *k8s_namespace* specifies the kubernetes namespace where the Yugabyte Platform pod is running.<br>
+  *k8s_pod* specifies the name of the Yugabyte Platform kubernetes pod.
+
+- Run the `yb_platform_backup.sh` script using the `create` command, as follows:
+
+  ```sh
+  ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
+  ```
+  *backup* is the command to run the backup of the Yugabyte Platform server.<br>
+  
+  *output_path* specifies the location for the output backup archive.<br>
+  
+  *k8s_namespace* specifies the Kubernetes namespace in which the Yugabyte Platform pod is running.<br>
+  
+  *k8s_pod* specifies the name of the Yugabyte Platform Kubernetes pod.<br>
+  
+  *exclude_releases* excludes Yugabyte releases from the backup archive.<br>
+  
+  *verbose* prints debug output.<br>
+  
+- Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
+
+- Upload the backup file to your preferred storage location, and delete it from the local disk.
+
+## Restore a Yugabyte Platform Server
+
+To restore the Yugabyte Platform content from your saved backup, perform the following:
+
+- Copy the the Yugabyte Platform backup script yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
 
     ```sh
-    wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
-1. Verify that the machine performing the backup operation can access the Yugabyte Platform kubernetes pod instance:
+- Execute the following command to verify that the computer performing the backup operation can access the Yugabyte Platform kubernetes pod instance:
 
     ```sh
     kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
     ```
 
-    <br/>
+    *k8s_namespace* specifies the kubernetes namespace where the Yugabyte Platform pod is running.<br>
 
-    * `k8s_namespace` specifies the kubernetes namespace where the Yugabyte Platform pod is running.
-    * `k8s_pod` specifies the name of the Yugabyte Platform kubernetes pod.
+    *k8s_pod* specifies the name of the Yugabyte Platform kubernetes pod.
 
-1. Run the `yb_platform_backup.sh` script using the `backup` command:
-
-    ```sh
-    ./yb_platform_backup.sh backup --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
-    ```
-
-    * `backup` is the command to run the backup of the Yugabyte Platform server.
-    * `output_path` specifies the location for the output backup archive.
-    * `k8s_namespace` specifies the Kubernetes namespace in which the Yugabyte Platform pod is running.
-    * `k8s_pod` specifies the name of the Yugabyte Platform Kubernetes pod.
-    * `exclude_releases` excludes Yugabyte releases from the backup archive.
-    * `verbose` prints debug output.
-
-    {{< note title="Prometheus metrics data" >}}
-
-Backup and restore of Prometheus metrics data is not currently supported.
-
-    {{< /note >}}
-
-1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
-
-1. Upload the backup file to your preferred storage location, and delete it from the local disk.
-
-## Restore a Yugabyte Platform server
-
-To restore the Yugabyte Platform content from your saved backup, do the following:
-
-1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the yugabyte-db repository to your local workstation using the following wget command:
-
-    ```sh
-    wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
-    ```
-
-1. Verify that the machine performing the backup operation can access the Yugabyte Platform kubernetes pod instance:
-
-    ```sh
-    kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
-    ```
-
-    <br/>
-
-    * `k8s_namespace` specifies the kubernetes namespace where the Yugabyte Platform pod is running.
-    * `k8s_pod` specifies the name of the Yugabyte Platform kubernetes pod.
-
-1. Run the `yb_platform_backup.sh` script using the `restore` command:
+- Run the `yb_platform_backup.sh` script using the `restore` command:
 
     ```sh
     ./yb_platform_backup.sh restore --input <input_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--verbose]
     ```
 
-    <br/>
+    *restore* restores the Yugabyte Platform server content.<br>
 
-    * `restore` is the command to restore the Yugabyte Platform server content.
-    * `input_path` is the path to the `.tar.gz` backup file to restore.
-    * `k8s_namespace` specifies the kubernetes namespace where the Yugabyte Platform pod is running.
-    * `k8s_pod` specifies the name of the Yugabyte Platform Kubernetes pod.
-    * `verbose` prints debug output.
+    *input_path* is the path to the `.tar.gz` backup file to restore.<br>
 
-    {{< note title="Prometheus metrics data" >}}
+    *k8s_namespace* specifies the kubernetes namespace where the Yugabyte Platform pod is running.<br>
 
-Backup and restore of Prometheus metrics data is not currently supported.
+    *k8s_pod* specifies the name of the Yugabyte Platform Kubernetes pod.<br>
 
-    {{< /note >}}
+    *verbose* prints debug output.<br>
 
-Your restored Yugabyte Platform is now ready to continue orchestrating and managing your universes and clusters.
+Upon completion of the preceding steps, the restored Yugabyte Platform is ready to continue orchestrating and managing your universes and clusters.
