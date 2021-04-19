@@ -204,5 +204,11 @@ void StateWithTablets::CheckCompleteness() {
   }
 }
 
+void StateWithTablets::RemoveTablets(const std::vector<std::string>& tablet_ids) {
+  for (const auto& id : tablet_ids) {
+    tablets_.erase(id);
+  }
+}
+
 } // namespace master
 } // namespace yb
