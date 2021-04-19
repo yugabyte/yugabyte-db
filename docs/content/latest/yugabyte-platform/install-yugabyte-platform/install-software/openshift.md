@@ -100,18 +100,22 @@ spec:
   source: certified-operators
   sourceNamespace: openshift-marketplace
 EOF
+```
 
+This creates a Subscription object and installs the operator in the cluster, as demonstrated by the following output:
+
+```
 # output
 subscription.operators.coreos.com/yugabyte-platform-operator-bundle created
 ```
-
-This creates a Subscription object and installs the operator in the cluster.
 
 To verify that the operator pods are in Running state, execute the following command:
 
 ```shell
 oc get pods -n openshift-operators | grep -E '^NAME|yugabyte-platform'
+```
 
+```
 # output
 NAME                                                         READY  STATUS  RESTARTS  AGE
 yugabyte-platform-operator-controller-manager-7485db7486-6nzxr 2/2  Running  0      5m38s
@@ -129,20 +133,19 @@ You can create an instance of Yugabyte Platform via he OpenShift web console as 
 
 - Open the OCP web console and navigate to **Home > Projects > Create Project**.
 - Enter the name yb-platform and click **Create**.
-- Navigate to **Operators > Installed Operators** select **Yugabyte Platform Operator**, as shown in the following illustration:
+- Navigate to **Operators > Installed Operators** and select **Yugabyte Platform Operator**, as shown in the following illustration:
 
 ![Yugabyte Platform Install Operator](/images/ee/openshift-install-yp-operator.png)
 
 - Click **Create Instance** to open the **Create YBPlatform** page. 
-- Review the default settings without modifying them and click **Create**. Ensure that the **yb-platform** project is selected.
 
-{{< note title="A note on StorageClass" >}}
-If your cluster has a different StorageClass than `standard`, then do the following when you are at the **Create YBPlatform** page:
-- Go to **YAML View**.
-- Change the value of `spec.yugaware.storageClass` to correct StorageClass name.
+- Ensure that the **yb-platform** project is selected and review the default settings.
 
-You can find the StorageClass by going to **Storage > Storage Classes** on the OpenShift Web Console using admin user.
-{{< /note >}}
+- Accept the default settings without modifying them, unless your cluster has a StorageClass other than standard, in which case open **YAML View** and change the value of `spec.yugaware.storageClass` to the correct StorageClass name.
+
+  You can find the StorageClass by navigating to **Storage > Storage Classes** on the OpenShift Web Console as admin user.
+
+- Click **Create**. 
 
 Shortly, you should expect the **Status** column in the **Yugabyte Platform** tab to display **Deployed**, as shown in the following illustration:
 
@@ -150,56 +153,61 @@ Shortly, you should expect the **Status** column in the **Yugabyte Platform** ta
 
 #### How to Use the Command Line
 
-Alternatively, you can create an instance of Yugabyte Platform via the command line.
+Alternatively, you can create an instance of Yugabyte Platform via the command line, as follows:
 
-To create a new project, execute the following command:
+- To create a new project, execute the following command:
 
-```shell
-oc new-project yb-platform
+  ```shell
+  oc new-project yb-platform
+  ```
+  ```
+  # output
+  Now using project "yb-platform" on server "web-console-address"
+  ```
 
-# output
-Now using project "yb-platform" on server "web-console-address"
-```
+- Verify the StorageClass setting for your cluster by executing the following command as admin user:
+  ```shell
+  oc get storageClass
+  ```
 
-To create an instance of Yugabyte Platform in the yb-platform project, execute the following command:
+  If your cluster's StorageClass is not `standard`, change the value of   `spec.yugaware.storageClass` to the correct StorageClass name when you create an instance of Yugabyte Platform.
 
-```shell
-oc apply \
-  -n yb-platform \
-  -f - <<EOF
-apiVersion: yugabyte.com/v1alpha1
-kind: YBPlatform
-metadata:
-  name: ybplatform-sample
-spec:
-  image:
-    repository: registry.connect.redhat.com/yugabytedb/yugabyte-platform
-    tag: latest
-  ocpCompatibility:
-    enabled: true
-  rbac:
-    create: false
-EOF
+- To create an instance of Yugabyte Platform in the yb-platform project, execute the following command:
 
-# output
-ybplatform.yugabyte.com/ybplatform-sample created
-```
+  ```shell
+  oc apply \
+    -n yb-platform \
+    -f - <<EOF
+  apiVersion: yugabyte.com/v1alpha1
+  kind: YBPlatform
+  metadata:
+    name: ybplatform-sample
+  spec:
+    image:
+      repository: registry.connect.redhat.com/yugabytedb/yugabyte-platform
+      tag: latest
+    ocpCompatibility:
+      enabled: true
+    rbac:
+      create: false
+  EOF
+  ```
+  ```
+  # output
+  ybplatform.yugabyte.com/ybplatform-sample created
+  ```
 
-{{< note title="A note on StorageClass" >}}
-If your cluster has a different StorageClass than `standard`, then change the value of `spec.yugaware.storageClass` to the correct StorageClass name in the preceding command.
+- To verify that the pods of the Yugabyte Platform instance are in Running state, execute the following:
 
-You can find the StorageClass by executing `oc get storageclass` with admin user.
-{{< /note >}}
+  ```shell
+  oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
+  ```
+  ```
+  # output
+  NAME                         READY  STATUS  RESTARTS  AGE
+  Ybplatform-sample-yugaware-0  5/5   Running  0        22s
+  ```
 
-To verify that the pods of the Yugabyte Platform instance are in Running state, execute the following:
-
-```shell
-oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
-
-# output
-NAME                         READY  STATUS  RESTARTS  AGE
-Ybplatform-sample-yugaware-0  5/5   Running  0        22s
-```
 
 ### Upgrading the Yugabyte Platform Instance
 
@@ -212,7 +220,9 @@ oc patch \
  ybplatform ybplatform-sample \
  -p '{"spec":{"image":{"tag":"2.5.2.0-b89"}}}' --type merge \
  -n yb-platform
- 
+```
+
+```
 # output
 ybplatform.yugabyte.com/ybplatform-sample patched
 ```
@@ -221,7 +231,9 @@ To verify that the pods are being updated, execute the following command:
 
 ```shell
 oc get pods -n yb-platform -l app=ybplatform-sample-yugaware -w
+```
 
+```
 # output
 NAME                         READY  STATUS          RESTARTS  AGE
 ybplatform-sample-yugaware-0  5/5   Running            0     18m
@@ -264,7 +276,9 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   oc new-project yb-platform
-  
+  ```
+
+  ```
   # output
   Now using project "yb-platform" on server "web-console-address"
   ```
@@ -273,7 +287,9 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   oc create -f yugabyte-k8s-secret.yml -n yb-platform 
-  
+  ```
+
+  ```
   # output
   secret/yugabyte-k8s-pull-secret created 
   ```
@@ -282,7 +298,9 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   helm repo add yugabytedb https://charts.yugabyte.com
-  
+  ```
+
+  ```
   # output
   "yugabytedb" has been added to your repositories
   ```
@@ -291,11 +309,21 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   helm search repo yugabytedb/yugaware -l 
-  
+  ```
+
+  ```
   # output
   NAME              CHART VERSION  APP VERSION   DESCRIPTION                    
   yugabytedb/yugaware   2.5.3      2.5.3.1-b10   YugaWare is YugaByte Database's...  
   ```
+
+- Verify the StorageClass setting for your cluster by executing the following command as admin user:
+
+  ```shell
+  oc get storageClass
+  ```
+  
+  If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the Yugabyte Platform Helm chart in the next step.
 
 - Execute the following command to install the Yugabyte Platform Helm chart:
 
@@ -307,14 +335,8 @@ To create a Yugabyte Platform instance, perform the following:
 
   Expect to see a message notifying you whether or not the deployment is successful.
 
-  {{< note title="A note on StorageClass" >}}
-  If your cluster has a different StorageClass than `standard`, then add `--set yugaware.storageClass=<storage-class-name>` to the preceding command.  
-
-  You can find the StorageClass by executing `oc get storageclass` with admin user.
-  {{< /note >}}
-
   Note that if you are executing the preceding command as an admin user, then you can set `rabc.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
-
+  
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 
   ```shell
@@ -374,13 +396,16 @@ To find the region and zone labels, execute the following command:
 oc get machinesets \
   -n openshift-machine-api \
   -ojsonpath='{range .items[*]}{.metadata.name}{", region: "}{.spec.template.spec.providerSpec.value.region}{", zone: "}{.spec.template.spec.providerSpec.value.zone}{"\n"}{end}'
+```
+
+```
 # output
   ocp-dev4-l5ffp-worker-a, region: us-east4, zone: us-east4-a
   ocp-dev4-l5ffp-worker-b, region: us-east4, zone: us-east4-b
   ocp-dev4-l5ffp-worker-c, region: us-east4, zone: us-east4-c
 ```
 
-After the execution, the region is displayed as US East and the zones as us-east4-a, us-east4-, and so on.
+After the execution, the region is displayed as US East and the zones as us-east4-a, us-east4-b, and so on.
 
 ## Configuring the CLI with the OCP Cluster
 
@@ -415,6 +440,9 @@ In case of the Operator-based installation of Yugabyte Platform, execute the fol
 oc get services \
   ybplatform-sample-yugaware-ui \
   -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+```
+
+```
 # output
 12.34.56.78
 ```
@@ -425,6 +453,9 @@ In case of the Helm-based installation, execute the following command:
 oc get services \
    yw-test-yugaware-ui \
   -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+```
+
+```
 # output
 12.34.56.78
 ```
