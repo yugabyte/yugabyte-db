@@ -84,23 +84,41 @@ Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapReques
 
 void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
                                                   uint64_t* last_breaking_version) const {
-  Status s = master_->catalog_manager()->GetYsqlCatalogVersion(current_version,
-                                                               last_breaking_version);
-  if (!s.ok()) {
+  auto fill_vers = [current_version, last_breaking_version](){
     /*
      * This should never happen, but if it does then we cannot guarantee that user requests
      * received by this master's tserver interface have a compatible version.
      * Log an error and return the highest possible version to ensure we reject the request if
      * it needs a catalog version compatibility check.
      */
-    LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
-               << s.ToUserMessage();
     if (current_version) {
       *current_version = UINT64_MAX;
     }
     if (last_breaking_version) {
       *last_breaking_version = UINT64_MAX;
     }
+  };
+  // Ensure that we are currently the Leader before handling catalog version.
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+    if (!l.catalog_status().ok()) {
+      LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
+      fill_vers();
+      return;
+    }
+    if (!l.leader_status().ok()) {
+      LOG(WARNING) << "Leader status failure: " << l.leader_status().ToString();
+      fill_vers();
+      return;
+    }
+  }
+
+  Status s = master_->catalog_manager()->GetYsqlCatalogVersion(current_version,
+                                                               last_breaking_version);
+  if (!s.ok()) {
+    LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
+               << s.ToUserMessage();
+    fill_vers();
   }
 }
 

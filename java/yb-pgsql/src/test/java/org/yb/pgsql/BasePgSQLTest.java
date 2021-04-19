@@ -354,18 +354,28 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private void cleanUpCustomDatabases() throws Exception {
     LOG.info("Cleaning up custom databases");
     try (Statement stmt = connection.createStatement()) {
-      List<String> databases = getRowList(stmt,
-          "SELECT datname FROM pg_database" +
-              " WHERE datname <> 'template0'" +
-              " AND datname <> 'template1'" +
-              " AND datname <> 'postgres'" +
-              " AND datname <> 'yugabyte'" +
-              " AND datname <> 'system_platform'").stream().map(r -> r.getString(0))
-                  .collect(Collectors.toList());
+      for (int i = 0; i < 2; i++) {
+        try {
+        List<String> databases = getRowList(stmt,
+            "SELECT datname FROM pg_database" +
+                " WHERE datname <> 'template0'" +
+                " AND datname <> 'template1'" +
+                " AND datname <> 'postgres'" +
+                " AND datname <> 'yugabyte'" +
+                " AND datname <> 'system_platform'").stream().map(r -> r.getString(0))
+                    .collect(Collectors.toList());
 
-      for (String database : databases) {
-        LOG.info("Dropping database '{}'", database);
-        stmt.execute("DROP DATABASE " + database);
+        for (String database : databases) {
+          LOG.info("Dropping database '{}'", database);
+          stmt.execute("DROP DATABASE " + database);
+        }
+        } catch (Exception e) {
+          if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
+            continue;
+          } else {
+            throw e;
+          }
+        }
       }
     }
   }
@@ -375,17 +385,27 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Cleaning up roles");
     List<String> persistentUsers = Arrays.asList(DEFAULT_PG_USER, TEST_PG_USER);
     try (Statement stmt = connection.createStatement()) {
-      List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-          + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
-              .map(r -> r.getString(0))
-              .collect(Collectors.toList());
+      for (int i = 0; i < 2; i++) {
+        try {
+        List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
+            + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
+                .map(r -> r.getString(0))
+                .collect(Collectors.toList());
 
-      for (String role : roles) {
-        boolean isPersistent = persistentUsers.contains(role);
-        LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-        stmt.execute("DROP OWNED BY " + role + " CASCADE");
-        if (!isPersistent) {
-          stmt.execute("DROP ROLE " + role);
+        for (String role : roles) {
+          boolean isPersistent = persistentUsers.contains(role);
+          LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
+          stmt.execute("DROP OWNED BY " + role + " CASCADE");
+          if (!isPersistent) {
+            stmt.execute("DROP ROLE " + role);
+          }
+        }
+        } catch (Exception e) {
+          if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
+            continue;
+          } else {
+            throw e;
+          }
         }
       }
     }
