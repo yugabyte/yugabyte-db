@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -1136,6 +1138,23 @@ public class PlacementInfoUtil {
     }
   }
 
+  public static Map<UUID, PlacementAZ> getPlacementAZMap(PlacementInfo placementInfo) {
+    return getPlacementAZStream(placementInfo)
+      .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+  }
+
+  public static Map<UUID, PlacementAZ> getPlacementAZMap(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+      .flatMap(cluster -> getPlacementAZStream(cluster.placementInfo))
+      .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+  }
+
+  private static Stream<PlacementAZ> getPlacementAZStream(PlacementInfo placementInfo) {
+    return placementInfo.cloudList.stream()
+      .flatMap(cloud -> cloud.regionList.stream())
+      .flatMap(region -> region.azList.stream());
+  }
+
   /**
    * This method configures nodes for Edit case, with user specified placement info.
    * It supports the following combinations --
@@ -1995,11 +2014,21 @@ public class PlacementInfoUtil {
     addPlacementZone(zone, placementInfo, 1 /* rf */, 1 /* numNodes */);
   }
 
-  private static void addPlacementZone(
+  public static void addPlacementZone(
     UUID zone,
     PlacementInfo placementInfo,
     int rf,
     int numNodes
+  ) {
+    addPlacementZone(zone, placementInfo, rf, numNodes, true);
+  }
+
+  public static void addPlacementZone(
+    UUID zone,
+    PlacementInfo placementInfo,
+    int rf,
+    int numNodes,
+    boolean isAffinitized
   ) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.get(zone);
@@ -2043,7 +2072,7 @@ public class PlacementInfoUtil {
         newPlacementAZ.name = az.name;
         newPlacementAZ.replicationFactor = 0;
         newPlacementAZ.subnet = az.subnet;
-        newPlacementAZ.isAffinitized = true;
+        newPlacementAZ.isAffinitized = isAffinitized;
         placementRegion.azList.add(newPlacementAZ);
 
         return newPlacementAZ;
