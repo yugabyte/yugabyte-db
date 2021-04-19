@@ -17,6 +17,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -28,14 +30,11 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
 import org.slf4j.Logger;
@@ -148,7 +147,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Retrieve master leader address of given universe
     final String leaderMasterAddress = universe.getMasterLeaderHostText();
     if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
-      sortInRestartOrder(leaderMasterAddress, masterNodes);
+      masterNodes = sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
+      tServerNodes = sortTServersInRestartOrder(universe, tServerNodes);
     }
     return new ImmutablePair<>(masterNodes, tServerNodes);
   }
@@ -202,23 +202,39 @@ public class UpgradeUniverse extends UniverseTaskBase {
   }
 
   // Find the master leader and move it to the end of the list.
-  private void sortInRestartOrder(String leaderMasterAddress,
-                                  List<NodeDetails> masterNodes) {
-    boolean foundLeader = false;
-    int numMasters = masterNodes.size();
-    if (numMasters == 0) {
-      return;
+  private List<NodeDetails> sortMastersInRestartOrder(String leaderMasterAddress,
+                                                      List<NodeDetails> nodes) {
+    if (nodes.isEmpty()) {
+      return nodes;
     }
-    int masterLeaderIdx = IntStream.range(0, numMasters)
-        .filter(i -> masterNodes.get(i).cloudInfo.private_ip.equals(leaderMasterAddress))
-        .findFirst() // first occurrence
-        .orElse(-1); // No element found
-    if (masterLeaderIdx == -1) {
-      throw new IllegalStateException(String.format(
-          "Master leader %s node not present in master list.", leaderMasterAddress));
+    return nodes.stream()
+      .sorted(Comparator.<NodeDetails, Boolean>comparing(
+        node -> leaderMasterAddress.equals(node.cloudInfo.private_ip)
+      ).thenComparing(NodeDetails::getNodeIdx))
+      .collect(Collectors.toList());
+  }
+
+  // Find the master leader and move it to the end of the list.
+  private List<NodeDetails> sortTServersInRestartOrder(Universe universe,
+                                                       List<NodeDetails> nodes) {
+    if (nodes.isEmpty()) {
+      return nodes;
     }
-    // Move the master to the end of the list so that it updates last.
-    Collections.swap(masterNodes, masterLeaderIdx, numMasters - 1);
+
+    Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
+      PlacementInfoUtil.getPlacementAZMap(universe);
+    return nodes.stream()
+      .sorted(Comparator.<NodeDetails, Boolean>comparing(
+        node -> {
+          PlacementInfo.PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
+          if (placementAZ == null) {
+            return true;
+          }
+          // Primary zones go first
+          return !placementAZ.isAffinitized;
+        }
+      ).thenComparing(NodeDetails::getNodeIdx))
+      .collect(Collectors.toList());
   }
 
   private void createServerUpgradeTasks(List<NodeDetails> masterNodes,

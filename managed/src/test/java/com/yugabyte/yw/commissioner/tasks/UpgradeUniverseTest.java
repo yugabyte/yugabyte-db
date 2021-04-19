@@ -9,10 +9,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,6 +20,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -120,7 +118,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     super.setUp();
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az1 = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(region, "az-3", "AZ 3", "subnet-3");
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
     CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
@@ -142,8 +142,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certUUID);
-    Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, false);
+
+    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(userIntent, pi, true));
 
     // Setup mocks
     mockClient = mock(YBClient.class);
@@ -278,9 +283,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                                             ServerType serverType, int startPosition) {
     int position = startPosition;
     List<TaskType> taskSequence = ROLLING_RESTART_TASK_SEQUENCE;
-    // We need to check that the master leader is upgraded last.
-    List<Integer> nodeOrder = serverType == MASTER ?
-        Arrays.asList(1, 3, 2) : Arrays.asList(1, 2, 3);
+    List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
     for (int nodeIdx : nodeOrder) {
       String nodeName = String.format("host-n%d", nodeIdx);
       for (int j = 0; j < taskSequence.size(); j++) {
@@ -308,9 +311,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int position = startPosition;
     if (isRollingUpgrade) {
       List<TaskType> taskSequence = CERTS_ROLLING_UPGRADE_TASK_SEQUENCE;
-      // We need to check that the master leader is upgraded last.
-      List<Integer> nodeOrder = serverType == MASTER ?
-          Arrays.asList(1, 3, 2) : Arrays.asList(1, 2, 3);
+      List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
         for (int j = 0; j < taskSequence.size(); j++) {
@@ -358,9 +359,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int position = startPosition;
     if (isRollingUpgrade) {
       List<TaskType> taskSequence = SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE;
-      // We need to check that the master leader is upgraded last.
-      List<Integer> nodeOrder = serverType == MASTER ?
-          Arrays.asList(1, 3, 2) : Arrays.asList(1, 2, 3);
+      List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
         for (int j = 0; j < taskSequence.size(); j++) {
@@ -438,9 +437,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     switch (option) {
       case ROLLING_UPGRADE:
         List<TaskType> taskSequence = GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE;
-        // We need to check that the master leader is upgraded last.
-        List<Integer> nodeOrder = serverType == MASTER ?
-            Arrays.asList(1, 3, 2) : Arrays.asList(1, 2, 3);
+        List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
         for (int nodeIdx : nodeOrder) {
           String nodeName = String.format("host-n%d", nodeIdx);
           for (int j = 0; j < taskSequence.size(); j++) {
@@ -1179,5 +1176,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
+  }
+
+  private List<Integer> getRollingUpgradeNodeOrder(ServerType serverType) {
+    return serverType == MASTER ?
+      // We need to check that the master leader is upgraded last.
+      Arrays.asList(1, 3, 2) :
+      // We need to check that isAffinitized zone node is upgraded first.
+      Arrays.asList(2, 1, 3);
   }
 }

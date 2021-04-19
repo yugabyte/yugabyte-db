@@ -147,7 +147,6 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
     String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
         taskParams().nodePrefix, provider, universeDetails.communicationPorts.masterRpcPort);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;

@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -70,7 +72,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   Map<String, String> config= new HashMap<String, String>();
 
-  private void setupUniverse(boolean setMasters, UserIntent userIntent) {
+  private void setupUniverse(boolean setMasters,
+                             UserIntent userIntent,
+                             PlacementInfo placementInfo) {
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
@@ -82,7 +86,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     defaultProvider.setConfig(config);
     defaultProvider.save();
     Universe.saveDetails(defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
+        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */,
+          false, placementInfo));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
@@ -113,11 +118,13 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupUniverseSingleAZ(boolean setMasters) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
-    setupUniverse(setMasters, userIntent);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 3, 3, true);
+    setupUniverse(setMasters, userIntent, pi);
     ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
@@ -149,7 +156,11 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
-    setupUniverse(setMasters, userIntent);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, false);
+    setupUniverse(setMasters, userIntent, pi);
 
     String nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
     String nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
@@ -208,44 +219,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.UniverseUpdateSucceeded
   );
 
-  List<JsonNode> KUBERNETES_UPGRADE_SOFTWARE_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of())
-  );
-
   List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS = ImmutableList.of(
       TaskType.UpdateAndPersistGFlags,
       TaskType.KubernetesCommandExecutor,
@@ -278,9 +251,59 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.UniverseUpdateSucceeded
   );
 
-  List<JsonNode> KUBERNETES_UPGRADE_GFLAG_RESULTS = ImmutableList.of(
-      Json.toJson(ImmutableMap.of("masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
-                                  "tserverGFlags", Json.parse("{\"tserver-flag\":\"t1\"}"))),
+  private static List<JsonNode> createUpgradeSoftwareResult(boolean isSingleAZ) {
+    String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
+    return ImmutableList.of(
+      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version",
+        "namespace", namespace)),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()));
+  }
+
+  private static List<JsonNode> createUpdateGflagsResult(boolean isSingleAZ) {
+    String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
+    return ImmutableList.of(
+      Json.toJson(ImmutableMap.of(
+        "masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
+        "tserverGFlags", Json.parse("{\"tserver-flag\":\"t1\"}"))),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
@@ -295,7 +318,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+      Json.toJson(ImmutableMap.of(
+        "commandType", HELM_UPGRADE.name(),
+        "namespace", namespace)),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -308,11 +333,12 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
-      Json.toJson(ImmutableMap.of())
-    );
+      Json.toJson(ImmutableMap.of()));
+  }
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                  UpgradeTaskType taskType) {
+                                  UpgradeTaskType taskType,
+                                  boolean isSingleAZ) {
     int position = 0;
     List<TaskType> taskList = taskType == UpgradeTaskType.Software ?
         KUBERNETES_UPGRADE_SOFTWARE_TASKS : KUBERNETES_UPGRADE_GFLAG_TASKS;
@@ -320,8 +346,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(1, tasks.size());
       assertEquals(task, tasks.get(0).getTaskType());
-      JsonNode expectedResults = taskType == UpgradeTaskType.Software ?
-          KUBERNETES_UPGRADE_SOFTWARE_RESULTS.get(position) : KUBERNETES_UPGRADE_GFLAG_RESULTS.get(position);
+      List<JsonNode> expectedResultsList = taskType == UpgradeTaskType.Software ?
+        createUpgradeSoftwareResult(isSingleAZ) : createUpdateGflagsResult(isSingleAZ);
+      JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails = tasks.stream()
           .map(t -> t.getTaskDetails())
           .collect(Collectors.toList());
@@ -382,7 +409,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, UpgradeTaskType.Software);
+    assertTaskSequence(subTasksByPosition, UpgradeTaskType.Software, true);
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -419,7 +446,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, UpgradeTaskType.GFlags);
+    assertTaskSequence(subTasksByPosition, UpgradeTaskType.GFlags, true);
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -455,7 +482,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, UpgradeTaskType.Software);
+    assertTaskSequence(subTasksByPosition, UpgradeTaskType.Software, false);
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -492,7 +519,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, UpgradeTaskType.GFlags);
+    assertTaskSequence(subTasksByPosition, UpgradeTaskType.GFlags, false);
     assertEquals(Success, taskInfo.getTaskState());
   }
 }
