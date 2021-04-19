@@ -235,4 +235,8 @@ public class NodeDetails {
   public int getNodeIdx() {
     return this.nodeIdx;
   }
+
+  public UUID getAzUuid() {
+    return azUuid;
+  }
 }
