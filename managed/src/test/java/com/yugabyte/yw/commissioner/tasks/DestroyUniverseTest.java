@@ -6,6 +6,8 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.createBackup;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -94,14 +96,21 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid, defaultUniverse.universeUUID,
         s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
-    
+    ShellResponse shellResponse =  new ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
+    TaskInfo taskInfo = submitTask(taskParams, 4);
 
-    submitTask(taskParams, 4);
+    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    verify(mockTableManager, times(1)).deleteBackup(any());
+    // Backup state should be DELETED.
+    assertEquals(Backup.BackupState.Deleted, backup.state);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 
@@ -111,14 +120,18 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     Backup b = ModelFactory.createBackup(defaultCustomer.uuid, defaultUniverse.universeUUID,
         s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
-    
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
+    TaskInfo taskInfo = submitTask(taskParams, 4);
+    b.setTaskUUID(taskInfo.getTaskUUID());
 
-    submitTask(taskParams, 4);
+    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    verify(mockTableManager, times(0)).deleteBackup(any());
+    // Backup should be in COMPLETED state.
+    assertEquals(Backup.BackupState.Completed, backup.state);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 

@@ -957,7 +957,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe.saveDetails(u.universeUUID, updater);
 
     Backup b = ModelFactory.createBackup(customer.uuid,
-    u.universeUUID, s3StorageConfig.configUUID);
+        u.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
 
     String url = "/api/customers/" + customer.uuid + "/universes/"
@@ -967,9 +967,10 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
-    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
-    assertNotNull(th);
-    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    CustomerTask customerTask = CustomerTask.find.query().where()
+        .eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(customerTask);
+    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertAuditEntry(1, customer.uuid);
   }
 
