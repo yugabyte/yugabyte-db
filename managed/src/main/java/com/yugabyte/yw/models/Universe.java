@@ -937,12 +937,10 @@ public class Universe extends Model {
   }
 
   static boolean isUniversePaused(UUID uuid) {
-    try {
-      Universe universe = Universe.get(uuid);
-      return universe.getUniverseDetails().universePaused;
-    }
-    catch (Exception e) {
+    Universe universe = maybeGet(uuid).orElse(null);
+    if (universe == null) {
       return false;
     }
+    return universe.getUniverseDetails().universePaused;
   }
 }

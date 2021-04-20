@@ -33,8 +33,8 @@ import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 
 @RunWith(MockitoJUnitRunner.class)
@@ -65,7 +65,7 @@ public class SchedulerTest extends FakeDBApplication {
   }
 
   @Test
-  public void scheduleManualBackupWithExpiryTest() {
+  public void schedulerDeletesExpiredBackups() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
 
@@ -73,23 +73,25 @@ public class SchedulerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackupWithExpiry(defaultCustomer.uuid,
         universe.universeUUID, s3StorageConfig.configUUID);
     backup.transitionState(Backup.BackupState.Completed);
-    alterUniversePaused(true, universe);
 
+    // Test that we do not delete backups of paused universe
+    setUniversePaused(true, universe);
     scheduler.scheduleRunner();
-
     assertEquals(0, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(null , CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID));
+    verify(mockCommissioner, times(0)).submit(any(), any());
 
-    alterUniversePaused(false, universe);
+    // Unpause the universe and make sure that we will delete the backup.
+    setUniversePaused(false, universe);
     scheduler.scheduleRunner();
- 
     CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
-
     assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
+    verify(mockCommissioner, times(1)).submit(any(), any());
   }
 
   @Test
-  public void scheduleManualBackupWithExpiryWithDeletedUniverseTest() {
+  public void schedulerDeletesExpiredBackups_universeDeleted() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
 
@@ -103,9 +105,11 @@ public class SchedulerTest extends FakeDBApplication {
     CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
     assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
+    verify(mockCommissioner, times(1)).submit(any(), any());
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
   }
 
-  public static void alterUniversePaused(boolean value, Universe universe) {
+  public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
