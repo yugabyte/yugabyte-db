@@ -15,10 +15,7 @@ menu:
 isTocNested: true
 showAsideToc: true 
 ---
-
 ## v2.7.0 - Apr 19, 2021
-
-STEVE V: need bug fixes in master branch from time of 2.5.3.0 release build through 2.7.0.0
 
 Yugabyte release 2.7.0 builds on our work in the 2.5 series, which fed into the 2.4 stable release. With release 2.7.0, we're planning development on a number of [new features](#new-features), as well as refinements to existing functionality.
 
@@ -79,7 +76,7 @@ docker pull yugabytedb/yugabyte:2.7.0.0-b17
 #### Yugabyte Platform
 
 * Azure IaaS orchestration
-    * No support for regions with zero Availability Zones(AZs) (#5628)
+  * No support for regions with zero Availability Zones(AZs) (#5628)
 
 ## Notes
 
