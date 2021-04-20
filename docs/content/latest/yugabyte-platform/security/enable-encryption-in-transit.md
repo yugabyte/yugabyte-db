@@ -150,8 +150,6 @@ The following procedure describes how to rotate the existing custom certificates
 
 ![edit-tls](/images/yp/encryption-in-transit/edit-tls.png)    
 
-
-
 ### How to Expand the Universe
 
 You can expand universes configured with custom CA-signed certificates.
