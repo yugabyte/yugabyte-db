@@ -7,6 +7,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -37,7 +39,6 @@ import com.google.inject.Inject;
 
 import play.api.Play;
 import play.data.Form;
-import play.data.FormFactory;
 import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
@@ -79,7 +80,7 @@ public class CloudProviderController extends AuthenticatedController {
       "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
 
   @Inject
-  FormFactory formFactory;
+  ValidatingFormFactory formFactory;
 
   @Inject
   AWSInitializer awsInitializer;
@@ -123,15 +124,11 @@ public class CloudProviderController extends AuthenticatedController {
   // This endpoint we are using only for deleting provider for integration test purpose. our
   // UI should call cleanup endpoint.
   public Result delete(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.get(customerUUID, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
-
-    Customer customer = Customer.get(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     if (customer.getUniversesForProvider(providerUUID).size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot delete Provider with Universes");
+      throw new YWServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
 
     // TODO: move this to task framework
@@ -152,7 +149,8 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.success("Deleted provider: " + providerUUID);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
+      throw new YWServiceException(
+        INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
     }
   }
 
@@ -161,17 +159,15 @@ public class CloudProviderController extends AuthenticatedController {
    * @return JSON response of newly created provider
    */
   public Result create(UUID customerUUID) throws IOException {
-    Form<CloudProviderFormData> formData = formFactory.form(CloudProviderFormData.class).bindFromRequest();
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<CloudProviderFormData> formData =
+        formFactory.getFormDataOrBadRequest(CloudProviderFormData.class);
 
     Common.CloudType providerCode = formData.get().code;
     if (!providerCode.equals(Common.CloudType.kubernetes)) {
       Provider provider = Provider.get(customerUUID, providerCode);
       if (provider != null) {
-        return ApiResponse.error(BAD_REQUEST, "Duplicate provider code: " + providerCode);
+        throw new YWServiceException(
+          BAD_REQUEST, "Duplicate provider code: " + providerCode);
       }
     }
 
@@ -213,7 +209,8 @@ public class CloudProviderController extends AuthenticatedController {
     } catch (RuntimeException e) {
       String errorMsg = "Unable to create provider: " + providerCode;
       LOG.error(errorMsg, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, errorMsg);
+      throw new YWServiceException(
+        INTERNAL_SERVER_ERROR, errorMsg);
     }
   }
 
@@ -225,39 +222,39 @@ public class CloudProviderController extends AuthenticatedController {
     try {
       formData = mapper.treeToValue(requestBody, KubernetesProviderFormData.class);
     } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid JSON");
+      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
     }
 
     Common.CloudType providerCode = formData.code;
     if (!providerCode.equals(Common.CloudType.kubernetes)) {
-      return ApiResponse.error(BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
+      throw new YWServiceException(BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
     }
 
     boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
     if (formData.regionList.isEmpty()) {
-      return ApiResponse.error(BAD_REQUEST, "Need regions in provider");
+      throw new YWServiceException(BAD_REQUEST, "Need regions in provider");
     }
     for (RegionData rd : formData.regionList) {
       if (rd.config != null) {
         if (rd.config.containsKey("KUBECONFIG_NAME")) {
           if (hasConfig) {
-            return ApiResponse.error(BAD_REQUEST, "Kubeconfig can't be at two levels");
+            throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
           } else {
             hasConfig = true;
           }
         }
       }
       if (rd.zoneList.isEmpty()) {
-        return ApiResponse.error(BAD_REQUEST, "No zone provided in region");
+        throw new YWServiceException(BAD_REQUEST, "No zone provided in region");
       }
       for (ZoneData zd : rd.zoneList) {
         if (zd.config != null) {
           if (zd.config.containsKey("KUBECONFIG_NAME")) {
             if (hasConfig) {
-              return ApiResponse.error(BAD_REQUEST, "Kubeconfig can't be at two levels");
+              throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
             }
           } else if (!hasConfig) {
-            return ApiResponse.error(BAD_REQUEST, "No Kubeconfig found for zone(s)");
+            throw new YWServiceException(BAD_REQUEST, "No Kubeconfig found for zone(s)");
           }
         }
       }
@@ -290,7 +287,7 @@ public class CloudProviderController extends AuthenticatedController {
         createKubernetesInstanceTypes(provider, customerUUID);
       } catch (javax.persistence.PersistenceException ex) {
         provider.delete();
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
         // TODO: make instance types more multi-tenant friendly...
       }
       Audit.createAuditEntry(ctx(), request(), requestBody);
@@ -301,7 +298,7 @@ public class CloudProviderController extends AuthenticatedController {
       }
       String errorMsg = "Unable to create provider: " + providerCode;
       LOG.error(errorMsg, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, errorMsg);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, errorMsg);
     }
   }
 
@@ -345,7 +342,7 @@ public class CloudProviderController extends AuthenticatedController {
 
       } catch (IOException e) {
         LOG.error(e.getMessage());
-        throw new RuntimeException("Unable to create Kube Config file.");
+        throw new YWServiceException(BAD_REQUEST, "Unable to create Kube Config file.");
       }
     }
 
@@ -358,7 +355,7 @@ public class CloudProviderController extends AuthenticatedController {
             );
           } catch (IOException e) {
             LOG.error(e.getMessage());
-            throw new RuntimeException("Unable to create Pull Secret file.");
+            throw new YWServiceException(BAD_REQUEST, "Unable to create Pull Secret file.");
           }
         }
       }
@@ -391,7 +388,7 @@ public class CloudProviderController extends AuthenticatedController {
           provider.uuid, Json.toJson(config));
     } catch (IOException e) {
       LOG.error(e.getMessage());
-      throw new RuntimeException("Unable to create GCP Credentials file.");
+      throw new YWServiceException(BAD_REQUEST, "Unable to create GCP Credentials file.");
     }
 
     Map<String, String> newConfig = new HashMap<String, String>();
@@ -409,7 +406,7 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   private void createKubernetesInstanceTypes(Provider provider, UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     KUBERNETES_INSTANCE_TYPES.forEach((instanceType -> {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
@@ -445,10 +442,7 @@ public class CloudProviderController extends AuthenticatedController {
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
   public Result setupDocker(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.get(customerUUID, Common.CloudType.docker);
     if (provider != null) {
       return ApiResponse.success(provider);
@@ -471,15 +465,12 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.success(newProvider);
     } catch (Exception e) {
       LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create docker provider");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create docker provider");
     }
   }
 
   public Result initialize(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     if (provider.code.equals("gcp")) {
       return gcpInitializer.initialize(customerUUID, providerUUID);
     } else if (provider.code.equals("azu")) {
@@ -493,14 +484,8 @@ public class CloudProviderController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     CloudBootstrap.Params taskParams = Json.fromJson(requestBody, CloudBootstrap.Params.class);
 
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
-    }
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
-    }
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Set the top-level provider info.
     taskParams.providerUUID = providerUUID;
     if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
@@ -550,18 +535,11 @@ public class CloudProviderController extends AuthenticatedController {
 
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
-    Form<CloudBootstrapFormData> formData = formFactory.form(CloudBootstrapFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<CloudBootstrapFormData> formData =
+        formFactory.getFormDataOrBadRequest(CloudBootstrapFormData.class);
 
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
-    } else {
-      return ApiResponse.error(BAD_REQUEST, "Internal API issues");
-    }
-
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    return ApiResponse.success();
     /*
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
     taskParams.providerUUID = providerUUID;
@@ -576,20 +554,13 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   public Result edit(UUID customerUUID, UUID providerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     JsonNode formData =  request().body().asJson();
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
-
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
       String hostedZoneId = formData.get("hostedZoneId").asText();
       if (hostedZoneId == null || hostedZoneId.length() == 0) {
-        return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
+        throw new YWServiceException(BAD_REQUEST, "Required field hosted zone id");
       }
       return validateHostedZoneUpdate(provider, hostedZoneId);
     } else if (provider.code.equals("kubernetes")) {
@@ -600,10 +571,10 @@ public class CloudProviderController extends AuthenticatedController {
         return ApiResponse.success(provider);
       }
       else {
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not parse config");
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
       }
     } else {
-      return ApiResponse.error(BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
+      throw new YWServiceException(BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
     }
   }
 
@@ -612,7 +583,7 @@ public class CloudProviderController extends AuthenticatedController {
     ShellResponse response = dnsManager.listDnsRecord(
         provider.uuid, hostedZoneId);
     if (response.code != 0) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     // The result returned from devops should be of the form
     // {
@@ -621,12 +592,12 @@ public class CloudProviderController extends AuthenticatedController {
     JsonNode hostedZoneData = Json.parse(response.message);
     hostedZoneData = hostedZoneData.get("name");
     if (hostedZoneData == null || hostedZoneData.asText().isEmpty()) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     try {
       provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());
     } catch (RuntimeException e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     Audit.createAuditEntry(ctx(), request());
     return ApiResponse.success(provider);

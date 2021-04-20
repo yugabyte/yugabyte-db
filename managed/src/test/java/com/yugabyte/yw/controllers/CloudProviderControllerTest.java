@@ -43,6 +43,11 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import static play.test.Helpers.*;
+import play.mvc.Http;
 
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
@@ -77,32 +82,36 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       "GET", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken());
   }
 
-  private Result createProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-      "POST", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken(), bodyJson);
+  private Result createProvider(JsonNode bodyJson)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", user.createAuthToken()).build();
+    return routeWithYWErrHandler(
+      fakeRequest("POST", "/api/customers/" + customer.uuid + "/providers")
+        .cookie(validCookie).bodyJson(bodyJson));
   }
 
-  private Result createKubernetesProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-      "POST",
-      "/api/customers/" + customer.uuid + "/providers/kubernetes",
-      user.createAuthToken(),
-      bodyJson);
+  private Result createKubernetesProvider(JsonNode bodyJson)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", user.createAuthToken()).build();
+    return routeWithYWErrHandler(
+      fakeRequest("POST", "/api/customers/" + customer.uuid + "/providers/kubernetes")
+        .cookie(validCookie).bodyJson(bodyJson));
   }
 
-  private Result deleteProvider(UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
-      "DELETE",
-      "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
-      user.createAuthToken());
+  private Result deleteProvider(UUID providerUUID)
+    throws InterruptedException, ExecutionException, TimeoutException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", user.createAuthToken()).build();
+    return routeWithYWErrHandler(
+      fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/providers/" + providerUUID)
+          .cookie(validCookie));
   }
 
-  private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-      "PUT",
-      "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit",
-      user.createAuthToken(),
-      bodyJson);
+  private Result editProvider(JsonNode bodyJson, UUID providerUUID)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", user.createAuthToken()).build();
+    return routeWithYWErrHandler(
+      fakeRequest("PUT", "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/edit")
+        .cookie(validCookie).bodyJson(bodyJson));
   }
 
   private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
@@ -168,7 +177,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProvider() {
+  public void testCreateProvider()
+      throws InterruptedException, ExecutionException, TimeoutException{
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "azu");
     bodyJson.put("name", "Microsoft");
@@ -181,7 +191,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateDuplicateProvider() {
+  public void testCreateDuplicateProvider()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
@@ -192,7 +203,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderWithDifferentCustomer() {
+  public void testCreateProviderWithDifferentCustomer()
+      throws InterruptedException, ExecutionException, TimeoutException {
     Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
@@ -205,7 +217,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateWithInvalidParams() {
+  public void testCreateWithInvalidParams()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     Result result = createProvider(bodyJson);
@@ -214,7 +227,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderWithConfig() {
+  public void testCreateProviderWithConfig()
+      throws InterruptedException, ExecutionException, TimeoutException {
     List<String> providerCodes = ImmutableList.of("aws", "gcp");
     for (String code : providerCodes) {
       String providerName = code + "-Provider";
@@ -254,7 +268,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderWithHostVpcGcp() {
+  public void testCreateProviderWithHostVpcGcp()
+      throws InterruptedException, ExecutionException, TimeoutException {
     String providerName = "gcp-Provider";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "gcp");
@@ -274,7 +289,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderWithHostCredentialsGcp() {
+  public void testCreateProviderWithHostCredentialsGcp()
+      throws InterruptedException, ExecutionException, TimeoutException {
     String providerName = "gcp-Provider";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "gcp");
@@ -298,7 +314,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateKubernetesMultiRegionProvider() {
+  public void testCreateKubernetesMultiRegionProvider()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectMapper mapper = new ObjectMapper();
 
     String providerName = "Kubernetes-Provider";
@@ -340,7 +357,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateKubernetesMultiRegionProviderFailure() {
+  public void testCreateKubernetesMultiRegionProviderFailure()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectMapper mapper = new ObjectMapper();
 
     String providerName = "Kubernetes-Provider";
@@ -374,7 +392,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithAccessKey() {
+  public void testDeleteProviderWithAccessKey() throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
@@ -390,7 +408,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithInstanceType() {
+  public void testDeleteProviderWithInstanceType() throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.onpremProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
 
@@ -419,7 +437,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithMultiRegionAccessKey() {
+  public void testDeleteProviderWithMultiRegionAccessKey() throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
     Region r1 = Region.create(p, "region-2", "region 2", "yb image");
@@ -436,7 +454,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithInvalidProviderUUID() {
+  public void testDeleteProviderWithInvalidProviderUUID() throws InterruptedException, ExecutionException, TimeoutException{
     UUID providerUUID = UUID.randomUUID();
     Result result = deleteProvider(providerUUID);
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
@@ -444,7 +462,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithUniverses() {
+  public void testDeleteProviderWithUniverses()
+    throws InterruptedException, ExecutionException, TimeoutException {
     Provider p = ModelFactory.awsProvider(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -460,12 +479,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result result = deleteProvider(p.uuid);
+    assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "Cannot delete Provider with Universes");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testDeleteProviderWithoutAccessKey() {
+  public void testDeleteProviderWithoutAccessKey() throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.awsProvider(customer);
     Result result = deleteProvider(p.uuid);
     assertOk(result);
@@ -476,7 +496,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteProviderWithProvisionScript() {
+  public void testDeleteProviderWithProvisionScript() throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     String scriptFile = createTempFile("provision_instance.py", "some script");
@@ -489,7 +509,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderKubernetes() {
+  public void testEditProviderKubernetes()
+      throws InterruptedException, ExecutionException, TimeoutException {
     Map<String, String> config = new HashMap<String, String>();
     config.put("KUBECONFIG_PROVIDER", "gke");
     config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
@@ -511,7 +532,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderKubernetesConfigEdit() {
+  public void testEditProviderKubernetesConfigEdit()
+      throws InterruptedException, ExecutionException, TimeoutException {
     Map<String, String> config = new HashMap<String, String>();
     config.put("KUBECONFIG_PROVIDER", "gke");
     config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
@@ -541,7 +563,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderWithAWSProviderType() {
+  public void testEditProviderWithAWSProviderType()
+      throws InterruptedException, ExecutionException, TimeoutException {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
@@ -557,7 +580,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderWithInvalidProviderType() {
+  public void testEditProviderWithInvalidProviderType()
+      throws InterruptedException, ExecutionException, TimeoutException {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "1234");
@@ -568,7 +592,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderWithEmptyHostedZoneId() {
+  public void testEditProviderWithEmptyHostedZoneId()
+      throws InterruptedException, ExecutionException, TimeoutException{
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("hostedZoneId", "");
@@ -579,7 +604,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAwsProviderWithValidHostedZoneId() {
+  public void testCreateAwsProviderWithValidHostedZoneId()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
@@ -603,7 +629,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAwsProviderWithInvalidDevopsReply() {
+  public void testCreateAwsProviderWithInvalidDevopsReply()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
@@ -614,12 +641,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     mockDnsManagerListFailure("fail", 0);
     Result result = createProvider(bodyJson);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
-    assertInternalServerError(result, "Invalid devops API response: ");
+    assertInternalServerError(result, "Unable to create provider: aws");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testCreateAwsProviderWithInvalidHostedZoneId() {
+  public void testCreateAwsProviderWithInvalidHostedZoneId()
+      throws InterruptedException, ExecutionException, TimeoutException {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
@@ -630,7 +658,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     mockDnsManagerListFailure("fail", 1);
     Result result = createProvider(bodyJson);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
-    assertInternalServerError(result, "Invalid devops API response: ");
+    assertInternalServerError(result, "Unable to create provider: aws");
     assertAuditEntry(0, customer.uuid);
   }
 
