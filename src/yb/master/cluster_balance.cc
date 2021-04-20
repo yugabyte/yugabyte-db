@@ -108,6 +108,10 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
 DEFINE_bool(load_balancer_skip_leader_as_remove_victim, false,
             "Should the LB skip a leader as a possible remove candidate.");
 
+DEFINE_bool(allow_leader_balancing_dead_node, true,
+            "When a tserver is marked as dead, do we continue leader balancing for tables that "
+            "have a replica on this tserver");
+
 DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
                  "For testing purposes, number of milliseconds to wait after counting and "
                  "finding pending tasks.");
@@ -384,6 +388,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
+      if (state_->allow_only_leader_balancing_) {
+        LOG(INFO) << "Skipping Add replicas. Only leader balancing table " << table.first;
+        break;
+      }
       auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_add.ok()) {
         LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
@@ -402,6 +410,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle cleanup after over-replication.
     for ( ; remaining_removals > 0; --remaining_removals) {
+      if (state_->allow_only_leader_balancing_) {
+        LOG(INFO) << "Skipping remove replicas. Only leader balancing table " << table.first;
+        break;
+      }
       auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
       if (!handle_remove.ok()) {
         LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
@@ -507,7 +519,7 @@ void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   per_table_states_.clear();
   global_state_ = std::make_unique<GlobalLoadState>();
   if (initialize_ts_descs) {
-    // Only call GetAllReportedDescriptors once for a LB run, and then cache it in global_state_.
+    // Only call GetAllDescriptors once for a LB run, and then cache it in global_state_.
     GetAllDescriptors(&global_state_->ts_descs_);
   }
 }
@@ -1193,7 +1205,7 @@ void ClusterLoadBalancer::InitializeTSDescriptors() {
   // Set the leader blacklist so we can also mark the tablet servers as we add them up.
   state_->SetLeaderBlacklist(GetLeaderBlacklist());
 
-  // Loop over live tablet servers to set empty defaults, so we can also have info on those
+  // Loop over tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
   for (const auto& ts_desc : global_state_->ts_descs_) {
