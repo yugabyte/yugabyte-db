@@ -15,26 +15,23 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
-import org.hamcrest.CoreMatchers;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
-
 import java.io.File;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.TreeMap;
+import java.util.Collections;
+
+import org.hamcrest.CoreMatchers;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Tests for PostgreSQL configuration.
@@ -45,7 +42,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testPostgresConfigDefault() throws Exception {
-    int tserver = spawnTServerWithFlags();
+    int tserver = spawnTServer();
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -68,7 +65,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
   @Test
   public void testPostgresConfigCatchAll() throws Exception {
     int tserver = spawnTServerWithFlags(
-        "--ysql_pg_conf=max_connections=46, bonjour_name = 'some name', port=5432");
+        "ysql_pg_conf", "max_connections=46, bonjour_name = 'some name', port=5432");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -106,7 +103,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
       statement.execute("CREATE ROLE test_role LOGIN PASSWORD 'pass'");
     }
 
-    int tserver = spawnTServerWithFlags();
+    int tserver = spawnTServer();
 
     // Can connect as test_role.
     try (Connection ignored = getConnectionBuilder().withTServer(tserver)
@@ -127,9 +124,9 @@ public class TestPgConfiguration extends BasePgSQLTest {
       statement.execute("CREATE ROLE test_role LOGIN PASSWORD 'pass'");
     }
 
-    int tserver = spawnTServerWithFlags("--ysql_hba_conf=" +
-        "host all test_role 0.0.0.0/0 password," +
-        "host all all 0.0.0.0/0 trust");
+    int tserver = spawnTServerWithFlags(
+        "ysql_hba_conf", "host all test_role 0.0.0.0/0 password," +
+                         "host all all 0.0.0.0/0 trust");
 
     // Can connect as test_role with password.
     try (Connection ignored = getConnectionBuilder().withTServer(tserver)
@@ -161,9 +158,9 @@ public class TestPgConfiguration extends BasePgSQLTest {
       statement.execute("CREATE ROLE test_role LOGIN PASSWORD 'pass'");
     }
 
-    int tserver = spawnTServerWithFlags("--ysql_hba_conf=" +
-        "host all all 0.0.0.0/0 trust," +
-        "host all test_role 0.0.0.0/0 password");
+    int tserver = spawnTServerWithFlags(
+        "ysql_hba_conf", "host all all 0.0.0.0/0 trust," +
+                         "host all test_role 0.0.0.0/0 password");
 
     // Can connect as test_role without password.
     try (Connection ignored = getConnectionBuilder().withTServer(tserver)
@@ -186,7 +183,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
       statement.execute("CREATE ROLE su SUPERUSER LOGIN PASSWORD 'pass'");
     }
 
-    int tserver = spawnTServerWithFlags("--ysql_enable_auth");
+    int tserver = spawnTServerWithFlags("ysql_enable_auth", "true");
     ConnectionBuilder tsConnBldr = getConnectionBuilder().withTServer(tserver);
 
     // Can connect as user with correct password.
@@ -264,10 +261,9 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
 
     // hba_conf rules should override ysql_enable_auth auto-generated rules.
-    int tserver = spawnTServerWithFlags(
-        "--ysql_enable_auth",
-        "--ysql_hba_conf=host all all 0.0.0.0/0 trust, host all all ::0/0 trust"
-    );
+    int tserver = spawnTServerWithFlags(ImmutableMap.of(
+        "ysql_enable_auth", "true",
+        "ysql_hba_conf", "host all all 0.0.0.0/0 trust, host all all ::0/0 trust"));
     ConnectionBuilder tsConnBldr = getConnectionBuilder().withTServer(tserver);
 
     // Can connect as user with correct password.
@@ -292,7 +288,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testTimezoneFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_timezone=GMT");
+    int tserver = spawnTServerWithFlags("ysql_timezone", "GMT");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -315,14 +311,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testDateStyleFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_datestyle=MDY");
+    int tserver = spawnTServerWithFlags("ysql_datestyle", "MDY");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW datestyle", new Row("ISO, MDY"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_datestyle=YMD");
+    tserver = spawnTServerWithFlags("ysql_datestyle", "YMD");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -332,14 +328,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testMaxConnectionsFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_max_connections=256");
+    int tserver = spawnTServerWithFlags("ysql_max_connections", "256");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW max_connections", new Row("256"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_max_connections=64");
+    tserver = spawnTServerWithFlags("ysql_max_connections", "64");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -349,7 +345,8 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testDefaultTransactionIsolationFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_default_transaction_isolation='serializable'");
+    int tserver = spawnTServerWithFlags(
+        "ysql_default_transaction_isolation", "'serializable'");
 
     // Connect without passing a default isolation level.
     try (Connection connection = getConnectionBuilder().withTServer(tserver)
@@ -358,7 +355,8 @@ public class TestPgConfiguration extends BasePgSQLTest {
       assertQuery(statement, "SHOW default_transaction_isolation", new Row("serializable"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_default_transaction_isolation='read committed'");
+    tserver = spawnTServerWithFlags(
+        "ysql_default_transaction_isolation", "'read committed'");
 
     // Connect without passing a default isolation level.
     try (Connection connection = getConnectionBuilder().withTServer(tserver)
@@ -370,14 +368,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testLogStatementFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_log_statement=ddl");
+    int tserver = spawnTServerWithFlags("ysql_log_statement", "ddl");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_statement", new Row("ddl"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_log_statement=all");
+    tserver = spawnTServerWithFlags("ysql_log_statement", "all");
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_statement", new Row("all"));
@@ -386,14 +384,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testLogMinMessagesFlag() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_log_min_messages=error");
+    int tserver = spawnTServerWithFlags("ysql_log_min_messages", "error");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_min_messages", new Row("error"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_log_min_messages=fatal");
+    tserver = spawnTServerWithFlags("ysql_log_min_messages", "fatal");
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_min_messages", new Row("fatal"));
@@ -402,14 +400,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void testLogMinDurationStatement() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_log_min_duration_statement=100");
+    int tserver = spawnTServerWithFlags("ysql_log_min_duration_statement", "100");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_min_duration_statement", new Row("100ms"));
     }
 
-    tserver = spawnTServerWithFlags("--ysql_log_min_duration_statement=150");
+    tserver = spawnTServerWithFlags("ysql_log_min_duration_statement", "150");
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
       assertQuery(statement, "SHOW log_min_duration_statement", new Row("150ms"));
@@ -418,11 +416,10 @@ public class TestPgConfiguration extends BasePgSQLTest {
 
   @Test
   public void mixedPostgresConfiguration() throws Exception {
-    int tserver = spawnTServerWithFlags(
-        "--ysql_datestyle=MDY",
-        "--ysql_max_connections=64",
-        "--ysql_pg_conf=max_connections=256, default_transaction_isolation=serializable"
-    );
+    int tserver = spawnTServerWithFlags(ImmutableMap.of(
+        "ysql_datestyle", "MDY",
+        "ysql_max_connections", "64",
+        "ysql_pg_conf", "max_connections=256, default_transaction_isolation=serializable"));
 
     // Connect without passing a default isolation level.
     try (Connection connection = getConnectionBuilder().withTServer(tserver)
@@ -455,7 +452,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
     Files.write(confFile.toPath(), "--ysql_max_connections=1234".getBytes());
 
     int tserver = spawnTServerWithFlags(
-        "--flagfile=" + targetDir.getName() + "/" + confFile.getName());
+        "flagfile", targetDir.getName() + "/" + confFile.getName());
 
     try (Connection conn = getConnectionBuilder().withTServer(tserver).connect();
         Statement stmt = conn.createStatement()) {
@@ -474,11 +471,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
   }
 
-  private static int spawnTServerWithFlags(String... flags) throws Exception {
-    List<String> tserverArgs = new ArrayList<>(BasePgSQLTest.tserverArgs);
-    tserverArgs.addAll(Arrays.asList(flags));
-    int tserver = miniCluster.getNumTServers();
-    miniCluster.startTServer(tserverArgs);
-    return tserver;
+  private int spawnTServer() throws Exception {
+    return spawnTServerWithFlags(Collections.emptyMap());
   }
 }
