@@ -80,8 +80,7 @@ public class CustomerConfigController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
     }
     CustomerConfig config = CustomerConfig.get(configUUID);
-    JsonNode formDataJson = Json.toJson(formData.get("data"));
-    JsonNode data = formDataJson.get(("data"));
+    JsonNode data = Json.toJson(formData.get("data"));
     if (data != null && data.get("BACKUP_LOCATION") != null) {
       ((ObjectNode)data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
     }

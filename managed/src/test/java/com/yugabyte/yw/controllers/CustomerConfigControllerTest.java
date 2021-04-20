@@ -173,15 +173,14 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testEditInUseStorageConfig() {
     ObjectNode bodyJson = Json.newObject();
-    JsonNode data = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
-        "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", " +
-        "\"ACCESS_SECRET\": \"A-SECRET\"}}");
+    JsonNode data = Json.parse("{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", " +
+        "\"ACCESS_SECRET\": \"A-SECRET\"}");
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(),
-                                              configUUID);
+        configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url,
         defaultUser.createAuthToken(), bodyJson);
@@ -214,9 +213,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testEditWithBackupLocation() {
     ObjectNode bodyJson = Json.newObject();
-    JsonNode data = Json.parse("{\"name\": \"S3\", \"type\": \"STORAGE\", \"data\": " +
-        "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", " +
-        "\"ACCESS_SECRET\": \"A-SECRET-NEW\"}}");
+    JsonNode data = Json.parse("{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", " +
+        "\"ACCESS_SECRET\": \"A-SECRET-NEW\"}");
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
