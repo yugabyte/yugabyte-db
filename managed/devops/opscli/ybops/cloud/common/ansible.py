@@ -54,16 +54,16 @@ class AnsibleProcess(object):
         """
 
         playbook_args = self.playbook_args
-        tags = extra_vars.pop("tags", None)
-        skip_tags = extra_vars.pop("skip_tags", None)
+        tags = extra_vars.get("tags")
+        skip_tags = extra_vars.get("skip_tags")
         # Use the ssh_user provided in extra vars as the ssh user to override.
-        ssh_user = extra_vars.pop("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
-        ssh_port = extra_vars.pop("ssh_port", None)
-        ssh_host = extra_vars.pop("ssh_host", None)
-        vault_password_file = extra_vars.pop("vault_password_file", None)
-        ask_sudo_pass = extra_vars.pop("ask_sudo_pass", None)
-        sudo_pass_file = extra_vars.pop("sudo_pass_file", None)
-        ssh_key_file = extra_vars.pop("private_key_file", None)
+        ssh_user = extra_vars.get("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
+        ssh_port = extra_vars.get("ssh_port")
+        ssh_host = extra_vars.get("ssh_host")
+        vault_password_file = extra_vars.get("vault_password_file")
+        ask_sudo_pass = extra_vars.get("ask_sudo_pass")
+        sudo_pass_file = extra_vars.get("sudo_pass_file")
+        ssh_key_file = extra_vars.get("private_key_file")
 
         playbook_args.update(extra_vars)
 

@@ -49,6 +49,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client_error.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/error.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/rejection_score_source.h"
@@ -111,14 +112,12 @@ const std::string Batcher::kErrorReachingOutToTServersMsg(
 // ------------------------------------------------------------
 
 Batcher::Batcher(YBClient* client,
-                 ErrorCollector* error_collector,
                  const YBSessionPtr& session,
                  YBTransactionPtr transaction,
                  ConsistentReadPoint* read_point,
                  bool force_consistent_read)
   : client_(client),
     weak_session_(session),
-    error_collector_(error_collector),
     next_op_sequence_number_(0),
     async_rpc_metrics_(session->async_rpc_metrics()),
     transaction_(std::move(transaction)),
@@ -197,7 +196,9 @@ void Batcher::CheckForFinishedFlush() {
     // kComplete - because of race condition CheckForFinishedFlush could be invoked from 2 threads
     //             and one of them just finished last operation.
     // kGatheringOps - lookup failure happened while batcher is getting filled with operations.
-    if (state_ == BatcherState::kComplete || state_ == BatcherState::kGatheringOps) {
+    // kAborted - batcher has been aborted (including internally due to tablet lookup failure).
+    if (state_ == BatcherState::kComplete || state_ == BatcherState::kGatheringOps ||
+        state_ == BatcherState::kAborted) {
       return;
     }
 
@@ -240,7 +241,9 @@ void Batcher::RunCallback(const Status& status) {
   }
 }
 
-void Batcher::FlushAsync(StatusFunctor callback) {
+void Batcher::FlushAsync(
+    StatusFunctor callback, const IsWithinTransactionRetry is_within_transaction_retry) {
+  YBSessionPtr session;
   size_t operations_count;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -248,10 +251,19 @@ void Batcher::FlushAsync(StatusFunctor callback) {
     state_ = BatcherState::kResolvingTablets;
     flush_callback_ = std::move(callback);
     operations_count = ops_.size();
+    session = weak_session_.lock();
+  }
+  if (session) {
+    // Important to do this outside of the lock so that we don't have
+    // a lock inversion deadlock -- the session lock should always
+    // come before the batcher lock.
+    session->FlushStarted(this);
   }
 
   auto transaction = this->transaction();
-  if (transaction) {
+  // If YBSession retries previously failed ops within the same transaction, these ops are already
+  // expected by transaction.
+  if (transaction && !is_within_transaction_retry) {
     transaction->ExpectOperations(operations_count);
   }
 
@@ -281,6 +293,9 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
 
+  // TODO(tsplit): Consider implementing Batcher::AddInflightOp that returns void and use it for
+  // retries.
+  // TODO(tsplit): Consider doing refresh somewhere else, not inside Batcher::Add.
   if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitionList())) {
     client_->data_->meta_cache_->InvalidateTableCache(*yb_op->table());
   }
@@ -351,7 +366,7 @@ bool Batcher::IsAbortedUnlocked() const {
 }
 
 void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status) {
-  error_collector_->AddError(in_flight_op->yb_op, status);
+  error_collector_.AddError(in_flight_op->yb_op, status);
   if (FLAGS_TEST_combine_batcher_errors) {
     if (combined_error_.ok()) {
       combined_error_ = status.CloneAndPrepend(in_flight_op->ToString());
@@ -403,9 +418,9 @@ void Batcher::TabletLookupFinished(
     }
 
     if (lookup_result.ok()) {
-      op->tablet = *lookup_result;
+      const auto& tablet = *lookup_result;
 
-      const Partition& partition = op->tablet->partition();
+      const Partition& partition = tablet->partition();
 
       bool partition_contains_row = false;
       const auto& partition_key = op->partition_key;
@@ -435,6 +450,8 @@ void Batcher::TabletLookupFinished(
             Slice(partition_key).ToDebugHexString());
         LOG_WITH_PREFIX(DFATAL) << msg;
         lookup_result = STATUS(InternalError, msg);
+      } else {
+        op->tablet = tablet;
       }
     }
 
@@ -501,6 +518,17 @@ void Batcher::FlushBuffersIfReady() {
     }
 
     state_ = BatcherState::kTransactionPrepare;
+  }
+
+  if (had_errors_) {
+    // We are doing it to keep guarantee on the order of ops (see InFlightOp::sequence_number_)
+    // when we retry on YBSession level.
+    // ClientErrorCode::kAbortedBatchDueToFailedTabletLookup is retriable at YBSession level,
+    // so YBSession will check other errors in error collector to decide whether to retry.
+    static Status tablet_resolution_failed = STATUS(
+            Aborted, "Tablet resolution failed for some ops, aborted the whole batch.",
+            ClientError(ClientErrorCode::kAbortedBatchDueToFailedTabletLookup));
+    Abort(tablet_resolution_failed);
   }
 
   // All operations were added, and tablets for them were resolved.
@@ -683,7 +711,18 @@ void Batcher::RemoveInFlightOpsAfterFlushing(
     const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result) {
   auto transaction = this->transaction();
   if (transaction) {
-    transaction->Flushed(ops, flush_extra_result.used_read_time, status);
+    const auto ops_will_be_retried = !status.ok() && ShouldSessionRetryError(status);
+    if (!ops_will_be_retried) {
+      // We don't call Transaction::Flushed for ops that will be retried within the same
+      // transaction in order to keep transaction running until we finally retry all operations
+      // successfully or decide to fail and abort the transaction.
+      // We also don't call Transaction::Flushed for ops that have been retried, but failed during
+      // the retry.
+      // See comments for YBTransaction::Impl::running_requests_ and
+      // YBSession::AddErrorsAndRunCallback.
+      // https://github.com/yugabyte/yugabyte-db/issues/7984.
+      transaction->Flushed(ops, flush_extra_result.used_read_time, status);
+    }
   }
   if (status.ok() && read_point_) {
     read_point_->UpdateClock(flush_extra_result.propagated_hybrid_time);
@@ -754,6 +793,10 @@ double Batcher::RejectionScore(int attempt_num) {
   }
 
   return rejection_score_source_->Get(attempt_num);
+}
+
+CollectedErrors Batcher::GetAndClearPendingErrors() {
+  return error_collector_.GetAndClearErrors();
 }
 
 std::string Batcher::LogPrefix() const {

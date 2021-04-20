@@ -135,9 +135,9 @@ public class ImportController extends AuthenticatedController {
   // Returns null if there are parsing or invalid port errors.
   private Map<String, Integer> getMastersList(String masterAddresses) {
     Map<String, Integer> userMasterIpPorts = new HashMap<>();
-    String nodesList[] = masterAddresses.split(",");
+    String[] nodesList = masterAddresses.split(",");
     for (String hostPort : nodesList) {
-      String parts[] = hostPort.split(":");
+      String[] parts = hostPort.split(":");
       if (parts.length != 2) {
         LOG.error("Incorrect host:port format: " + hostPort);
         return null;
@@ -182,10 +182,7 @@ public class ImportController extends AuthenticatedController {
     };
     checkMasters.initialize(taskParams);
     // Execute the task. If it fails, sets the error in the results.
-    if (!executeITask(checkMasters, "check_masters_are_running", results)) {
-      return false;
-    }
-    return true;
+    return executeITask(checkMasters, "check_masters_are_running", results);
   }
 
   // Helper function to check that a master leader exists.
@@ -210,10 +207,7 @@ public class ImportController extends AuthenticatedController {
     };
     checkMasterLeader.initialize(taskParams);
     // Execute the task. If it fails, return an error.
-    if (!executeITask(checkMasterLeader, "check_master_leader_election", results)) {
-      return false;
-    }
-    return true;
+    return executeITask(checkMasterLeader, "check_master_leader_election", results);
   }
 
   /**
@@ -255,11 +249,7 @@ public class ImportController extends AuthenticatedController {
     UniverseDefinitionTaskParams taskParams = null;
     // Attempt to find an existing universe with this id
     if (importForm.universeUUID != null) {
-      try {
-        universe = Universe.get(importForm.universeUUID);
-      } catch (Exception e) {
-        universe = null;
-      }
+        universe = Universe.maybeGet(importForm.universeUUID).orElse(null);
     }
 
     try {
@@ -305,8 +295,8 @@ public class ImportController extends AuthenticatedController {
 
     LOG.info("Done importing masters " + masterAddresses);
     results.put("state", State.IMPORTED_MASTERS.toString());
-    results.put("universeName", universeName.toString());
-    results.put("masterAddresses", masterAddresses.toString());
+    results.put("universeName", universeName);
+    results.put("masterAddresses", masterAddresses);
 
     return ApiResponse.success(results);
   }
@@ -336,15 +326,7 @@ public class ImportController extends AuthenticatedController {
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
-    Universe universe = null;
-    try {
-      universe = Universe.get(importForm.universeUUID);
-    } catch (RuntimeException re) {
-      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
-      LOG.error(errMsg);
-      results.put("error", errMsg);
-      return ApiResponse.error(BAD_REQUEST, results);
-    }
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
@@ -447,8 +429,8 @@ public class ImportController extends AuthenticatedController {
     setImportedState(universe, ImportedState.TSERVERS_ADDED);
 
     results.put("state", State.IMPORTED_TSERVERS.toString());
-    results.put("masterAddresses", masterAddresses.toString());
-    results.put("universeName", importForm.universeName.toString());
+    results.put("masterAddresses", masterAddresses);
+    results.put("universeName", importForm.universeName);
 
     return ApiResponse.success(results);
   }
@@ -467,15 +449,7 @@ public class ImportController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
-    Universe universe = null;
-    try {
-      universe = Universe.get(importForm.universeUUID);
-    } catch (RuntimeException re) {
-      String errMsg = "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
-      LOG.error(errMsg);
-      results.put("error", errMsg);
-      return ApiResponse.error(BAD_REQUEST, results);
-    }
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {

@@ -353,7 +353,7 @@ public class NodeManagerTest extends FakeDBApplication {
           if (configureParams.enableYSQL) {
             gflags.put("enable_ysql", "true");
             gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
-              Universe.get(configureParams.universeUUID)
+              Universe.getOrBadRequest(configureParams.universeUUID)
                 .getNode(configureParams.nodeName).ysqlServerRpcPort));
           } else {
             gflags.put("enable_ysql", "false");
@@ -417,7 +417,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(processType.toLowerCase());
 
           if (configureParams.updateMasterAddrsOnly) {
-            String masterAddresses = Universe.get(configureParams.universeUUID)
+            String masterAddresses = Universe.getOrBadRequest(configureParams.universeUUID)
                 .getMasterAddresses(false);
             if (configureParams.isMasterInShellMode) {
               masterAddresses = "";

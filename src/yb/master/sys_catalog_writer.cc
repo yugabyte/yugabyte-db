@@ -132,6 +132,8 @@ Status FillSysCatalogWriteRequest(
     SetBinaryValue(data, metadata->mutable_expr());
   }
 
+  req->set_type(op_type);
+
   // Add column type.
   SetInt8Value(type, req->add_range_column_values());
 

@@ -716,6 +716,14 @@ message TServerMetricsPB {
   optional int64 uncompressed_sst_file_size = 5;
   optional uint64 uptime_seconds = 6;
   optional uint64 num_sst_files = 7;
+
+  message PathMetrics {
+    // Device path provided by user in --fs_data_dirs
+    required bytes path_id = 1;
+    optional uint64 used_space = 2;
+    optional uint64 total_space = 3;
+  }
+  repeated PathMetrics path_metrics = 8;
 }
 
 message TabletForSplitPB {

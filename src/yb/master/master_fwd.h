@@ -62,6 +62,9 @@ class TabletReportPB;
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 typedef std::vector<TabletInfoPtr> TabletInfos;
 
+struct SnapshotScheduleRestoration;
+using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
+
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 } // namespace master

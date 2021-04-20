@@ -58,7 +58,7 @@ class DBBlockCacheTest : public DBTestBase {
     Options options = CurrentOptions();
     options.create_if_missing = true;
     // options.compression = kNoCompression;
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     options.table_factory.reset(new BlockBasedTableFactory(table_options));
     return options;
   }

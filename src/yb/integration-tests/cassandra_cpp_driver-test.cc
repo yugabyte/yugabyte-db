@@ -205,8 +205,8 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
   }
 
  protected:
-  friend Result<IndexPermissions>
-  TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test);
+  friend Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
+      CppCassandraDriverTestIndex* test, IndexPermissions target_permission);
 
   friend void TestBackfillIndexTable(CppCassandraDriverTestIndex* test,
                                      PKOnlyIndex is_pk_only, IsUnique is_unique,
@@ -217,6 +217,13 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
       CppCassandraDriverTestIndex* test, bool delete_before_insert);
 
   void TestUniqueIndexCommitOrder(bool commit_txn1, bool use_txn2);
+};
+
+class CppCassandraDriverTestIndexDeferred : public CppCassandraDriverTestIndex {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    return {"--defer_index_backfill=true"};
+  }
 };
 
 class CppCassandraDriverTestIndexSlow : public CppCassandraDriverTestIndex {
@@ -797,32 +804,13 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   }
 }
 
-TEST_F_EX(CppCassandraDriverTest, TestCreateIndex, CppCassandraDriverTestIndexSlow) {
-  IndexPermissions perm =
-      ASSERT_RESULT(TestBackfillCreateIndexTableSimple(this));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+Result<IndexPermissions> TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex* test) {
+  return TestBackfillCreateIndexTableSimple(
+      test, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
-TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
-          CppCassandraDriverTestIndexNonResponsiveTServers) {
-  // We expect the create index to fail.
-  auto res = TestBackfillCreateIndexTableSimple(this);
-  if (res.ok()) {
-    ASSERT_NE(*res, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-  } else if (res.status().IsTimedOut()) {
-    // It was probably on NotFound retry loop, so just send some request to the index and expect
-    // NotFound.  See issue #5932 to alleviate the need to do this.
-    const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
-    auto res2 = client_->GetYBTableInfo(index_table_name);
-    ASSERT_TRUE(!res2.ok());
-    ASSERT_TRUE(res2.status().IsNotFound()) << res2.status();
-  } else {
-    ASSERT_TRUE(res.status().IsNotFound()) << res.status();
-  }
-}
-
-Result<IndexPermissions>
-TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test) {
+Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
+    CppCassandraDriverTestIndex* test, IndexPermissions target_permission) {
   TestTable<cass_int32_t, string> table;
   RETURN_NOT_OK(table.CreateTable(&test->session_, "test.test_table",
                                   {"k", "v"}, {"(k)"}, true));
@@ -845,7 +833,58 @@ TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test) {
   const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
   const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
   return test->client_->WaitUntilIndexPermissionsAtLeast(
-      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+      table_name, index_table_name, target_permission);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateIndex, CppCassandraDriverTestIndexSlow) {
+  IndexPermissions perm = ASSERT_RESULT(TestBackfillCreateIndexTableSimple(this));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateIndexDeferred, CppCassandraDriverTestIndexDeferred) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
+
+  IndexPermissions perm = ASSERT_RESULT(
+      TestBackfillCreateIndexTableSimple(this, IndexPermissions::INDEX_PERM_DO_BACKFILL));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+
+  // Sleep a little and check again. We expect no further progress.
+  const size_t kSleepTimeMs = 10000;
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+  perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+
+  // Disable deferral, and then create another index. Both the indexes should backfill
+  // and go to completion.
+  ASSERT_OK(cluster_->SetFlagOnMasters("defer_index_backfill", "false"));
+  auto s = session_.ExecuteQuery("create index test_table_index_by_v_2 on test_table(v);");
+  const YBTableName index_table_name2(YQL_DATABASE_CQL, "test", "test_table_index_by_v_2");
+  perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name));
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(
+    CppCassandraDriverTest, TestCreateIndexSlowTServer,
+    CppCassandraDriverTestIndexNonResponsiveTServers) {
+  // We expect the create index to fail.
+  auto res = TestBackfillCreateIndexTableSimple(this);
+  if (res.ok()) {
+    ASSERT_NE(*res, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  } else if (res.status().IsTimedOut()) {
+    // It was probably on NotFound retry loop, so just send some request to the index and expect
+    // NotFound.  See issue #5932 to alleviate the need to do this.
+    const YBTableName index_table_name(YQL_DATABASE_CQL, "test", "test_table_index_by_v");
+    auto res2 = client_->GetYBTableInfo(index_table_name);
+    ASSERT_TRUE(!res2.ok());
+    ASSERT_TRUE(res2.status().IsNotFound()) << res2.status();
+  } else {
+    ASSERT_TRUE(res.status().IsNotFound()) << res.status();
+  }
 }
 
 Result<int64_t> GetTableSize(CassandraSession *session, const std::string& table_name) {

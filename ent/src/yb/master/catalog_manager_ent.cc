@@ -36,8 +36,6 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/cql_operation.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/join.h"
@@ -65,7 +63,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/status.h"
-#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -344,8 +341,9 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   auto tables = VERIFY_RESULT(CollectTables(req->tables(),
                                             req->add_indexes(),
                                             true /* include_parent_colocated_table */));
+  std::unordered_set<NamespaceId> added_namespaces;
   for (const auto& table : tables) {
-    RETURN_NOT_OK(snapshot->AddEntries(table));
+    snapshot->AddEntries(table, &added_namespaces);
     all_tablets.insert(all_tablets.end(), table.tablet_infos.begin(), table.tablet_infos.end());
   }
 
@@ -404,9 +402,11 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
   auto tables = VERIFY_RESULT(CollectTables(
       table_identifiers, add_indexes, include_parent_colocated_table,
       succeed_if_create_in_progress));
+  std::unordered_set<NamespaceId> namespaces;
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
-    SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr);
+    SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr,
+                             &namespaces);
   }
 
   return entries;
@@ -1406,12 +1406,11 @@ Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData
   return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
-Status CatalogManager::RestoreSysCatalog(
-    const TxnSnapshotId& snapshot_id, HybridTime restore_at, const OpId& op_id,
-    HybridTime write_time, const SnapshotScheduleFilterPB& filter) {
+Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoration) {
+  // Restore master snapshot and load it to RocksDB.
   auto& tablet = *tablet_peer()->tablet();
   auto dir = VERIFY_RESULT(tablet.snapshots().RestoreToTemporary(
-      snapshot_id, restore_at));
+      restoration->snapshot_id, restoration->restore_at));
   rocksdb::Options rocksdb_options;
   std::string log_prefix = LogPrefix();
   // Remove ": " to patch suffix.
@@ -1419,50 +1418,46 @@ Status CatalogManager::RestoreSysCatalog(
   tablet.InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
   auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
-  const auto& schema = this->schema();
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
-  RestoreSysCatalogState state;
+  // Load objects to restore and determine obsolete objects.
+  RestoreSysCatalogState state(restoration);
+  RETURN_NOT_OK(state.LoadObjects(schema(), doc_db));
   {
-    auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-        schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
-        ReadHybridTime::SingleTime(restore_at), nullptr);
-    RETURN_NOT_OK(EnumerateSysCatalog(
-        iter.get(), schema, SysRowEntry::TABLE,
-        std::bind(&RestoreSysCatalogState::LoadTable, &state, _1, _2)));
+    auto existing = VERIFY_RESULT(CollectEntriesForSnapshot(restoration->filter.tables().tables()));
+    RETURN_NOT_OK(state.DetermineObsoleteObjects(existing));
   }
-  {
-    auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-        schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
-        ReadHybridTime::SingleTime(restore_at), nullptr);
-    RETURN_NOT_OK(EnumerateSysCatalog(
-        iter.get(), schema, SysRowEntry::TABLET,
-        std::bind(&RestoreSysCatalogState::LoadTablet, &state, _1, _2)));
-  }
-  auto entries = VERIFY_RESULT(state.FilterEntries(filter));
 
+  // Generate write batch.
   docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
-  docdb::DocOperationApplyData apply_data{.doc_write_batch = &write_batch};
-  std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
-  for (const auto& entry : entries.entries()) {
-    QLWriteRequestPB write_request;
-    RETURN_NOT_OK(FillSysCatalogWriteRequest(
-        entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
-        &write_request));
-    docdb::QLWriteOperation operation(schema_ptr, IndexMap(), nullptr, boost::none);
-    QLResponsePB response;
-    RETURN_NOT_OK(operation.Init(&write_request, &response));
-    RETURN_NOT_OK(operation.Apply(apply_data));
+  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
+  for (const auto& tablet_id : restoration->obsolete_tablets) {
+    auto info = GetTabletInfo(tablet_id);
+    if (!info.ok()) {
+      continue;
+    }
+    RETURN_NOT_OK(state.PrepareTabletCleanup(
+        tablet_id, (**info).LockForRead()->data().pb, schema(), &write_batch));
   }
+  for (const auto& table_id : restoration->obsolete_tables) {
+    auto info = GetTableInfo(table_id);
+    if (!info) {
+      continue;
+    }
+    RETURN_NOT_OK(state.PrepareTableCleanup(
+        table_id, info->LockForRead()->data().pb, schema(), &write_batch));
+  }
+
+  // Apply write batch to RocksDB.
   docdb::KeyValueWriteBatchPB kv_write_batch;
   write_batch.MoveToWriteBatchPB(&kv_write_batch);
 
   rocksdb::WriteBatch rocksdb_write_batch;
   PrepareNonTransactionWriteBatch(
-      kv_write_batch, write_time, nullptr, &rocksdb_write_batch, nullptr);
+      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr);
   docdb::ConsensusFrontiers frontiers;
-  set_op_id(op_id, &frontiers);
-  set_hybrid_time(write_time, &frontiers);
+  set_op_id(restoration->op_id, &frontiers);
+  set_hybrid_time(restoration->write_time, &frontiers);
 
   tablet.WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
@@ -1470,6 +1465,33 @@ Status CatalogManager::RestoreSysCatalog(
   // TODO(pitr) Handle master leader failover.
   RETURN_NOT_OK(ElectedAsLeaderCb());
 
+  return Status::OK();
+}
+
+Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
+  auto objects_to_restore = restoration.objects_to_restore;
+  VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
+  for (const auto& entry : entries.entries()) {
+    VLOG_WITH_PREFIX(1)
+        << "Alive " << SysRowEntry::Type_Name(entry.type()) << ": " << entry.id();
+    auto it = objects_to_restore.find(entry.id());
+    if (it == objects_to_restore.end()) {
+      return STATUS_FORMAT(IllegalState, "Object $0/$1 present, but should not be restored",
+                           SysRowEntry::Type_Name(entry.type()), entry.id());
+    }
+    if (it->second != entry.type()) {
+      return STATUS_FORMAT(
+          IllegalState, "Restored object $0 has wrong type $1, while $2 expected",
+          entry.id(), SysRowEntry::Type_Name(entry.type()), SysRowEntry::Type_Name(it->second));
+    }
+    objects_to_restore.erase(it);
+  }
+  for (const auto& id_and_type : objects_to_restore) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected to restore $0/$1, but it does not present after restoration",
+        SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
+  }
   return Status::OK();
 }
 

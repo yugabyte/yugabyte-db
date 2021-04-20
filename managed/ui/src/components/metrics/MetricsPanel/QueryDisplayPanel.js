@@ -10,10 +10,10 @@ import './MetricsPanel.scss';
 
 const GRAPH_COL_WIDTH = 192;
 export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
-  const { ysqlQueries, loading, errors } = useSlowQueriesApi({
+  const { ysqlQueries } = useSlowQueriesApi({
     universeUUID, enabled
-  }); 
-  
+  });
+
   // Get top 5 queries by total_time descending
   const topQueries = ysqlQueries.sort((a, b) => b.total_time - a.total_time).slice(0, 5);
 
@@ -36,7 +36,7 @@ export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
         <span className="metric-bar" style={{ width: num / highestExecTime * GRAPH_COL_WIDTH }}></span>
       </div>
     );
-  }
+  };
 
   const getMeanBarWhiskersFormat = (num, row) => {
     const leftPixel = (row.min_time / highestMaxTime * GRAPH_COL_WIDTH) + 100;
@@ -54,12 +54,12 @@ export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
         <div className="whiskers-plot" style={{ width: `${widthPixel}px`, left: `${leftPixel}px`}}><span className="line"></span></div>
       </div>
     );
-  }
+  };
 
   const getQueryStatement = (query) => {
     const truncatedText = query.length > 80 ? `${query.substring(0, 80)}...` : query;
-    return <Highlighter type="sql" text={truncatedText} element="pre" />
-  }
+    return <Highlighter type="sql" text={truncatedText} element="pre" />;
+  };
 
   if (!topQueries || !topQueries.length) {
     return null;
@@ -98,8 +98,8 @@ export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
         </TableHeaderColumn>
         <TableHeaderColumn dataField="datname" width="200px">
           Database
-        </TableHeaderColumn>              
+        </TableHeaderColumn>
       </BootstrapTable>
     </div>
   );
-}
+};

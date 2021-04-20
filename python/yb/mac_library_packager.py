@@ -81,7 +81,10 @@ class MacLibraryPackager:
         yb_lib_file_for_postgres = os.path.join(src_lib_dir, 'libyb_pggate.dylib')
         libedit_file_for_postgres = os.path.join(get_thirdparty_dir(),
                                                  'installed/common/lib/libedit.dylib')
-
+        libldap_file_for_postgres = os.path.join(get_thirdparty_dir(),
+                                                 'installed/common/lib/libldap-2.4.2.dylib')
+        libldap_r_file_for_postgres = os.path.join(get_thirdparty_dir(),
+                                                   'installed/common/lib/libldap_r-2.4.2.dylib')
         processed_libs = []
         for bin_file in os.listdir(dst_bin_dir):
             if bin_file.endswith('.sh') or bin_file in bin_dir_files:
@@ -103,6 +106,8 @@ class MacLibraryPackager:
             # Treat this as a special case for now (10/14/18).
             libs.append(yb_lib_file_for_postgres)
             libs.append(libedit_file_for_postgres)
+            libs.append(libldap_file_for_postgres)
+            libs.append(libldap_r_file_for_postgres)
             for lib in libs:
                 if lib in processed_libs:
                     continue
@@ -377,7 +382,8 @@ class MacLibraryPackager:
                     for rpath in rpaths:
                         if basename in os.listdir(rpath):
                             # This shouldn't happen.
-                            raise RuntimeError("lib %s" % os.path.join(rpath, basename))
+                            raise RuntimeError("Unexpected lib {} in filename {}".format(
+                                                  os.path.join(rpath, basename), filename))
 
         postgres_lib = os.path.join(postgres_dst, 'lib')
         for absolute_dependency in absolute_dependency_paths:

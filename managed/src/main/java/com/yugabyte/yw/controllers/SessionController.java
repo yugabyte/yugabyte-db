@@ -388,6 +388,7 @@ public class SessionController extends Controller {
 
   @With(TokenAuthenticator.class)
   public Result proxyRequest(UUID universeUUID, String requestUrl) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     try {
       // Validate that the request is of <ip/hostname>:<port> format
       Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
@@ -402,7 +403,6 @@ public class SessionController extends Controller {
       String addr = String.format("%s:%s", host, port);
 
       // Validate that the proxy request is for a node from the specified universe
-      Universe universe = Universe.get(universeUUID);
       if (!universe.nodeExists(host, Integer.parseInt(port))) {
         LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
         return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");

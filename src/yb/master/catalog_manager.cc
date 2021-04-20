@@ -2142,23 +2142,35 @@ Status CatalogManager::SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::DeleteTablet(
-    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
+Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
   RETURN_NOT_OK(CheckOnline());
 
-  const auto& tablet_id = req->tablet_id();
-  const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  std::vector<TabletInfoPtr> tablet_infos;
+  {
+    std::lock_guard<LockType> lock(lock_);
+    TRACE("Acquired catalog manager lock");
 
-  const auto& table_info = tablet_info->table();
+    for (const auto& id : tablet_ids) {
+      auto it = tablet_map_->find(id);
+      if (it == tablet_map_->end()) {
+        return STATUS_FORMAT(NotFound, "Tablet $0 not found", id);
+      }
+      tablet_infos.push_back(it->second);
+    }
+  }
 
-  RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+  for (const auto& tablet_info : tablet_infos) {
+    RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(tablet_info->table()));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+  }
 
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+  return DeleteTabletListAndSendRequests(
+      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString());
+}
 
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
-      { tablet_info }, "Tablet deleted upon request at " + LocalTimeAsString()));
-
-  return Status::OK();
+Status CatalogManager::DeleteTablet(
+    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
+  return DeleteTablets({ req->tablet_id() });
 }
 
 namespace {
@@ -3762,7 +3774,7 @@ Status CatalogManager::BackfillIndex(
   }
 
   return MultiStageAlterTable::StartBackfillingData(
-      this, indexed_table, index_info_pb, boost::none);
+      this, indexed_table, {index_info_pb}, boost::none);
 }
 
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
@@ -6509,12 +6521,14 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
+  NamespaceInfoMap namespace_ids_copy;
+  {
+    SharedLock<LockType> l(lock_);
+    namespace_ids_copy = namespace_ids_map_;
+  }
 
-  SharedLock<LockType> l(lock_);
-
-  for (const auto& entry : namespace_ids_map_) {
+  for (const auto& entry : namespace_ids_copy) {
     const auto& namespace_info = *entry.second;
-    auto ltm = namespace_info.LockForRead();
     // If the request asks for namespaces for a specific database type, filter by the type.
     if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
       continue;
@@ -7825,30 +7839,36 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     // If there was an error, abort any mutations started by the current task.
     // NOTE: Lock order should be lock_ -> table -> tablet.
     // We currently have a bunch of tablets locked and need to unlock first to ensure this holds.
-    map<TabletId, pair<scoped_refptr<TableInfo>, string /* partition key */>> tablet_ids_to_remove;
+    map<TableId, TabletInfos> tablet_ids_to_remove;
     for (scoped_refptr<TabletInfo>& new_tablet : new_tablets) {
-      tablet_ids_to_remove[new_tablet->tablet_id()] = make_pair(
-          new_tablet->table(),
-          new_tablet->metadata().dirty().pb.partition().partition_key_start()
-          );
+      tablet_ids_to_remove[new_tablet->table()->id()].push_back(new_tablet);
     }
 
     unlocker_out.Abort(); // tablet.unlock
     unlocker_in.Abort();
     for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-      TableInfo* table = tablet_id_to_remove.second.first.get();
-      auto l_table = table->LockForWrite(); // table.lock
-      if (table->RemoveTablet(tablet_id_to_remove.second.second)) {
-        VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
-            "table " << l_table->data().name();
+      const auto& tablets = tablet_id_to_remove.second;
+      std::unique_ptr<TableInfo::lock_type> lock;
+      for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+        if (!lock) {
+          lock = tablet->table()->LockForWrite(); // table.lock
+        }
+        if (tablet->table()->RemoveTablet(
+          tablet->metadata().dirty().pb.partition().partition_key_start())) {
+          VLOG(1) << "Removed tablet " << tablet_id_to_remove.first << " from "
+            "table " << lock->data().name();
+        }
       }
     }
     {
       std::lock_guard <LockType> l(lock_); // lock_.lock
       auto tablet_map_checkout = tablet_map_.CheckOut();
       for (auto &tablet_id_to_remove : tablet_ids_to_remove) {
-        // Potential race condition above, but it's okay if a background thread deleted this.
-        tablet_map_checkout->erase(tablet_id_to_remove.first);
+        const auto& tablets = tablet_id_to_remove.second;
+        for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+          // Potential race condition above, but it's okay if a background thread deleted this.
+          tablet_map_checkout->erase(tablet->tablet_id());
+        }
       }
     }
     return s;
@@ -9048,6 +9068,9 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
   for (const auto& table_id_pb : tables) {
     auto table_description = VERIFY_RESULT(DescribeTable(
         table_id_pb, succeed_if_create_in_progress));
+    if (table_description.table_info->LockForRead()->data().started_deleting()) {
+      continue;
+    }
     if (include_parent_colocated_table && table_description.table_info->colocated()) {
       // If a table is colocated, add its parent colocated table as well.
       const auto parent_table_id =
@@ -9064,31 +9087,36 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     }
     all_tables.push_back(table_description);
 
-    if (add_indexes) {
-      TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
-      auto l = table_description.table_info->LockForRead();
+    if (!add_indexes) {
+      continue;
+    }
+    TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
+    auto l = table_description.table_info->LockForRead();
 
-      if (table_description.table_info->is_index()) {
-        return STATUS(InvalidArgument, "Expected table, but found index",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
+    if (table_description.table_info->is_index()) {
+      return STATUS(InvalidArgument, "Expected table, but found index",
+                    table_description.table_info->id(),
+                    MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+    }
 
-      if (l->data().table_type() == PGSQL_TABLE_TYPE) {
-        return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
-                      table_description.table_info->id(),
-                      MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
+    if (l->data().table_type() == PGSQL_TABLE_TYPE) {
+      return STATUS(InvalidArgument, "Getting indexes for YSQL table is not supported",
+                    table_description.table_info->id(),
+                    MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+    }
 
-      for (const auto& index_info : l->data().pb.indexes()) {
-        LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
-                << "Wrong indexed table id in index descriptor";
-        TableIdentifierPB index_id_pb;
-        index_id_pb.set_table_id(index_info.table_id());
-        index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(
-            index_id_pb, succeed_if_create_in_progress)));
+    for (const auto& index_info : l->data().pb.indexes()) {
+      LOG_IF(DFATAL, table_description.table_info->id() != index_info.indexed_table_id())
+              << "Wrong indexed table id in index descriptor";
+      TableIdentifierPB index_id_pb;
+      index_id_pb.set_table_id(index_info.table_id());
+      index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+      auto index_description = VERIFY_RESULT(DescribeTable(
+          index_id_pb, succeed_if_create_in_progress));
+      if (index_description.table_info->LockForRead()->data().started_deleting()) {
+        continue;
       }
+      all_tables.push_back(index_description);
     }
   }
 
