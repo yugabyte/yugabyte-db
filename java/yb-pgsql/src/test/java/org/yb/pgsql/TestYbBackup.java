@@ -354,7 +354,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
 
     // Add a new node.
-    miniCluster.startTServer(this.tserverArgs);
+    miniCluster.startTServer(getTServerFlags());
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
 

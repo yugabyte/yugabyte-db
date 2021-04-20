@@ -13,31 +13,40 @@
 //
 package org.yb.cql;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
-import com.datastax.driver.core.querybuilder.QueryBuilder;
-import com.google.common.net.HostAndPort;
-import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
+import static org.yb.AssertionWrappers.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.*;
-import org.yb.client.*;
+
+import org.yb.ColumnSchema;
+import org.yb.Common;
+import org.yb.Schema;
+import org.yb.Type;
+import org.yb.YBTestRunner;
+import org.yb.client.CreateTableOptions;
+import org.yb.client.LocatedTablet;
+import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 import org.yb.consensus.Metadata;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-
-import static junit.framework.TestCase.assertEquals;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertTrue;
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
+import com.datastax.driver.core.querybuilder.QueryBuilder;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 
 @RunWith(value=YBTestRunner.class)
 public class TestConsistencyLevels extends BaseCQLTest {
@@ -69,21 +78,20 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   protected void createMiniClusterWithSameRegion() throws Exception {
     // Create a cluster with tservers in the same region.
-    List<List<String>> tserverArgs = new ArrayList<>();
-    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, 1)));
-    }
-    createMiniCluster(1, tserverArgs);
-
+    createMiniCluster(1, NUM_TABLET_SERVERS,
+        Collections.emptyMap(),
+        Collections.singletonMap("placement_region", String.format("%s%d", REGION_PREFIX, 1)));
   }
 
   protected void createMiniClusterWithPlacementRegion() throws Exception {
     // Create a cluster with tservers in different regions.
-    List<List<String>> tserverArgs = new ArrayList<>();
-    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, i)));
-    }
-    createMiniCluster(1, tserverArgs);
+    createMiniCluster(1, NUM_TABLET_SERVERS, (cb) -> {
+      List<Map<String, String>> perTserverFlags = new ArrayList<>();
+      for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
+        perTserverFlags.add(Collections.singletonMap("placement_region", REGION_PREFIX + i));
+      }
+      cb.perTServerFlags(perTserverFlags);
+    });
   }
 
   @Before
