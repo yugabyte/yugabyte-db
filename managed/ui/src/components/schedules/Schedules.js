@@ -53,6 +53,8 @@ class ScheduleDisplayItem extends Component {
     let taskType = '';
     let keyspace = '';
     let tableDetails = '';
+    let backupType = '';
+
     if (schedule.taskType === 'BackupUniverse') {
       taskType = 'Table Backup';
       tableDetails = `${schedule.taskParams.keyspace}.${schedule.taskParams.tableName}`;
@@ -76,7 +78,7 @@ class ScheduleDisplayItem extends Component {
         ? 'Unlimited'
         : moment.duration(schedule.taskParams.timeBeforeDelete).humanize();
     
-    let backupType = '';
+    // Assign YSQl or YCQL backup type to distinguish between backups.
     switch (schedule?.taskParams?.backupType) {
       case 'YQL_TABLE_TYPE':
         backupType = 'YCQL';
@@ -119,7 +121,7 @@ class ScheduleDisplayItem extends Component {
             <DescriptionItem title={'Schedule (UTC)'}>
               <span>{schedule.frequency || schedule.cronExpression}</span>
             </DescriptionItem>
-            <DescriptionItem title={'Backup Type'}>
+            <DescriptionItem title='Backup Type'>
               <span>{backupType}</span>
             </DescriptionItem>
             <DescriptionItem title={'Encrypt Backup'}>
