@@ -332,6 +332,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
 
+  // Trigger asynchronous compactions concurrently on the provided tablets.
+  CHECKED_STATUS TriggerCompactionAndWait(const TabletPtrs& tablets);
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -564,6 +567,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for manually triggering compactions for tablets created from a split.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
+
+  // Thread pool for admin triggered compactions for tablets.
+  std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
