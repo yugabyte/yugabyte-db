@@ -34,11 +34,14 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
+
+#include "yb/common/json_util.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -47,7 +50,9 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_backup.pb.h"
 
+#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
@@ -476,7 +481,8 @@ TEST_F(AdminCliTest, SnapshotSchedule) {
   LOG(INFO) << "Schedule id: " << schedule_id;
   std::this_thread::sleep_for(20s);
 
-  ASSERT_OK(WaitFor([this, schedule_id]() -> Result<bool> {
+  Timestamp last_snapshot_time;
+  ASSERT_OK(WaitFor([this, schedule_id, &last_snapshot_time]() -> Result<bool> {
     auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_schedules"));
     const auto& schedules = VERIFY_RESULT(Get(out, "schedules")).get().GetArray();
     SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
@@ -487,14 +493,51 @@ TEST_F(AdminCliTest, SnapshotSchedule) {
     if (snapshots.Size() < 2) {
       return false;
     }
-    std::string first_snapshot_hybrid_time = VERIFY_RESULT(
-        Get(snapshots[0], "snapshot_time_utc")).get().GetString();
-    std::string second_previous_snapshot_hybrid_time = VERIFY_RESULT(
-        Get(snapshots[1], "previous_snapshot_time_utc")).get().GetString();
-    SCHECK_EQ(first_snapshot_hybrid_time, second_previous_snapshot_hybrid_time, IllegalState,
-              "Wrong previous_snapshot_hybrid_time");
+    std::string last_snapshot_time_str;
+    for (const auto& snapshot : snapshots) {
+      std::string snapshot_time = VERIFY_RESULT(
+          Get(snapshot, "snapshot_time_utc")).get().GetString();
+      if (!last_snapshot_time_str.empty()) {
+        std::string previous_snapshot_time = VERIFY_RESULT(
+            Get(snapshot, "previous_snapshot_time_utc")).get().GetString();
+        SCHECK_EQ(previous_snapshot_time, last_snapshot_time_str, IllegalState,
+                  "Wrong previous_snapshot_hybrid_time");
+      }
+      last_snapshot_time_str = snapshot_time;
+    }
+    LOG(INFO) << "Last snapshot time: " << last_snapshot_time_str;
+    last_snapshot_time = VERIFY_RESULT(DateTime::TimestampFromString(last_snapshot_time_str));
     return true;
   }, 20s, "At least 2 snapshots"));
+
+  last_snapshot_time.set_value(last_snapshot_time.value() + 1);
+  LOG(INFO) << "Restore at: " << last_snapshot_time.ToFormattedString();
+
+  out = ASSERT_RESULT(CallJsonAdmin(
+      "restore_snapshot_schedule", schedule_id, last_snapshot_time.ToFormattedString()));
+  std::string restoration_id = ASSERT_RESULT(Get(out, "restoration_id")).get().GetString();
+  LOG(INFO) << "Restoration id: " << restoration_id;
+
+  ASSERT_OK(WaitFor([this, restoration_id]() -> Result<bool> {
+    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
+    const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
+    SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
+    auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
+    SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
+    std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
+    master::SysSnapshotEntryPB::State state;
+    if (!master::SysSnapshotEntryPB_State_Parse(state_str, &state)) {
+      return STATUS_FORMAT(IllegalState, "Failed to parse restoration state: $0", state_str);
+    }
+    if (state == master::SysSnapshotEntryPB::RESTORING) {
+      return false;
+    }
+    if (state == master::SysSnapshotEntryPB::RESTORED) {
+      return true;
+    }
+    return STATUS_FORMAT(IllegalState, "Unexpected restoration state: $0",
+                         master::SysSnapshotEntryPB_State_Name(state));
+  }, 20s, "Wait restoration complete"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {

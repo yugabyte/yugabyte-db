@@ -78,6 +78,7 @@ class TServerMetricsPB;
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
                              consensus::ConsensusServiceProxy> ProxyTuple;
+typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
 
 // Master-side view of a single tablet server.
 //
@@ -129,12 +130,17 @@ class TSDescriptor {
   // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
+  CloudInfoPB GetCloudInfo() const;
+
   // Return the pre-computed placement_id, comprised of the cloud_info data.
   std::string placement_id() const;
 
   std::string placement_uuid() const;
 
+  template<typename Lambda>
+  bool DoesRegistrationMatch(Lambda predicate) const;
   bool IsRunningOn(const HostPortPB& hp) const;
+  bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
   // Should this ts have any leader load on it.
   virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
@@ -274,6 +280,16 @@ class TSDescriptor {
     return ts_metrics_.uptime_seconds;
   }
 
+  struct TSPathMetrics {
+    uint64_t used_space = 0;
+    uint64_t total_space = 0;
+  };
+
+  std::unordered_map<std::string, TSPathMetrics> path_metrics() {
+    SharedLock<decltype(lock_)> l(lock_);
+    return ts_metrics_.path_metrics;
+  }
+
   void UpdateMetrics(const TServerMetricsPB& metrics);
 
   void GetMetrics(TServerMetricsPB* metrics);
@@ -312,6 +328,8 @@ class TSDescriptor {
     return capabilities_.find(capability) != capabilities_.end();
   }
 
+  virtual bool IsLiveAndHasReported() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
@@ -348,6 +366,8 @@ class TSDescriptor {
 
     uint64_t uptime_seconds = 0;
 
+    std::unordered_map<std::string, TSPathMetrics> path_metrics;
+
     void ClearMetrics() {
       total_memory_usage = 0;
       total_sst_file_size = 0;
@@ -356,6 +376,7 @@ class TSDescriptor {
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
       uptime_seconds = 0;
+      path_metrics.clear();
     }
   };
 

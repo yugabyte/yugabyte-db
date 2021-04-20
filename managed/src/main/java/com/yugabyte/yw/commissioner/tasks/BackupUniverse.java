@@ -37,7 +37,7 @@ public class BackupUniverse extends UniverseTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-      Universe universe = Universe.get(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (universe.getUniverseDetails().backupInProgress) {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }

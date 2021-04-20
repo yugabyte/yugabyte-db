@@ -54,6 +54,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/singleton.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.pb.h"
@@ -762,6 +763,168 @@ Status ExternalMiniCluster::AddTServerToBlacklist(
   return Status::OK();
 }
 
+Status ExternalMiniCluster::GetMinReplicaCountForPlacementBlock(
+    ExternalMaster* master,
+    const string& cloud, const string& region, const string& zone,
+    int* min_num_replicas) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  int index = GetIndexOfMaster(master);
+
+  if (index == -1) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given master '$0' not in the current list of $1 masters.",
+        master->bound_rpc_hostport().ToString(), masters_.size()));
+  }
+
+  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout);
+  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  if (config_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "GetMasterClusterConfig RPC response hit error: $0",
+        config_resp.error().ShortDebugString()));
+  }
+  const SysClusterConfigEntryPB& config = config_resp.cluster_config();
+
+  if (!config.has_replication_info() || !config.replication_info().has_live_replicas()) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given placement block '$0.$1.$2' not in the current list of placement blocks.",
+        cloud, region, zone));
+  }
+
+  const master::PlacementInfoPB& pi = config.replication_info().live_replicas();
+
+  int found_index = -1;
+  bool found = false;
+  for (int i = 0; i < pi.placement_blocks_size(); i++) {
+    if (!pi.placement_blocks(i).has_cloud_info()) {
+      continue;
+    }
+
+    bool is_cloud_same = false, is_region_same = false, is_zone_same = false;
+
+    if (pi.placement_blocks(i).cloud_info().has_placement_cloud() && cloud != "") {
+      is_cloud_same = pi.placement_blocks(i).cloud_info().placement_cloud() == cloud;
+    } else if (!pi.placement_blocks(i).cloud_info().has_placement_cloud() && cloud == "") {
+      is_cloud_same = true;
+    }
+
+    if (pi.placement_blocks(i).cloud_info().has_placement_region() && region != "") {
+      is_region_same = pi.placement_blocks(i).cloud_info().placement_region() == region;
+    } else if (!pi.placement_blocks(i).cloud_info().has_placement_region() && region == "") {
+      is_region_same = true;
+    }
+
+    if (pi.placement_blocks(i).cloud_info().has_placement_zone() && zone != "") {
+      is_zone_same = pi.placement_blocks(i).cloud_info().placement_zone() == zone;
+    } else if (!pi.placement_blocks(i).cloud_info().has_placement_zone() && zone == "") {
+      is_zone_same = true;
+    }
+
+    if (is_cloud_same && is_region_same && is_zone_same) {
+      found = true;
+      found_index = i;
+      break;
+    }
+  }
+
+  if (!found || !pi.placement_blocks(found_index).has_min_num_replicas()) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given placement block '$0.$1.$2' not in the current list of placement blocks.",
+        cloud, region, zone));
+  }
+
+  *min_num_replicas = pi.placement_blocks(found_index).min_num_replicas();
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
+    ExternalMaster* master,
+    ExternalTabletServer* ts) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  int index = GetIndexOfMaster(master);
+
+  if (index == -1) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given master '$0' not in the current list of $1 masters.",
+        master->bound_rpc_hostport().ToString(), masters_.size()));
+  }
+
+  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout);
+  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  if (config_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "GetMasterClusterConfig RPC response hit error: $0",
+        config_resp.error().ShortDebugString()));
+  }
+  // Get current config
+  ChangeMasterClusterConfigRequestPB change_req;
+  SysClusterConfigEntryPB config = *config_resp.mutable_cluster_config();
+  // add tserver to blacklist
+  HostPortToPB(ts->bound_rpc_hostport(), config.mutable_leader_blacklist()->mutable_hosts()->Add());
+  *change_req.mutable_cluster_config() = config;
+  ChangeMasterClusterConfigResponsePB change_resp;
+  rpc.Reset();
+  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  if (change_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "ChangeMasterClusterConfig RPC response hit error: $0",
+        change_resp.error().ShortDebugString()));
+  }
+
+  LOG(INFO) << "TServer at " << ts->bound_rpc_hostport().ToString()
+  << " was added to the leader blacklist";
+
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::EmptyBlacklist(
+    ExternalMaster* master) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  int index = GetIndexOfMaster(master);
+
+  if (index == -1) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given master '$0' not in the current list of $1 masters.",
+        master->bound_rpc_hostport().ToString(), masters_.size()));
+  }
+
+  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout);
+  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  if (config_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "GetMasterClusterConfig RPC response hit error: $0",
+        config_resp.error().ShortDebugString()));
+  }
+  // Get current config.
+  ChangeMasterClusterConfigRequestPB change_req;
+  SysClusterConfigEntryPB config = *config_resp.mutable_cluster_config();
+  // Clear blacklist.
+  config.mutable_server_blacklist()->mutable_hosts()->Clear();
+  config.mutable_leader_blacklist()->mutable_hosts()->Clear();
+  *change_req.mutable_cluster_config() = config;
+  ChangeMasterClusterConfigResponsePB change_resp;
+  rpc.Reset();
+  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  if (change_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "ChangeMasterClusterConfig RPC response hit error: $0",
+        change_resp.error().ShortDebugString()));
+  }
+
+  LOG(INFO) << "Blacklist cleared successfully";
+
+  return Status::OK();
+}
+
 Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers) {
   ListMastersRequestPB list_req;
   ListMastersResponsePB list_resp;
@@ -1367,6 +1530,22 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   } while (!s.ok());
 
   return master(idx);
+}
+
+Result<int> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
+  for (int i = 0; i < num_tablet_servers(); ++i) {
+    auto tserver = tablet_server(i);
+    if (tserver->IsProcessAlive()) {
+      auto tablets = VERIFY_RESULT(GetTablets(tserver));
+      for (const auto& tablet : tablets) {
+        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+          return i;
+        }
+      }
+    }
+  }
+  return STATUS(
+      NotFound, Format("Could not find leader of tablet $0 among live tservers.", tablet_id));
 }
 
 ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::string& uuid) const {

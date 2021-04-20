@@ -10,10 +10,12 @@
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
     "build": "npm run cleanup && REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) react-scripts build && npm run fetch-map",
+    "build:ci": "CI=true GENERATE_SOURCEMAP=false react-scripts build",
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",
     "test": "react-scripts test --env=jest-environment-jsdom-sixteen",
+    "test:ci": "CI=true react-scripts test --reporters=jest-junit --env=jest-environment-jsdom-sixteen",
     "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen"
   },
   "engines": {
@@ -35,6 +37,7 @@
     "eslint-config-prettier": "6.11.0",
     "eslint-plugin-import": "2.20.2",
     "jest-environment-jsdom-sixteen": "1.0.3",
+    "jest-junit": "12.0.0",
     "ncp": "2.0.0",
     "prettier": "2.1.0",
     "rimraf": "2.7.1",

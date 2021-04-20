@@ -230,6 +230,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
+  Result<int> GetTabletLeaderIndex(const std::string& tablet_id);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
@@ -241,8 +243,19 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   CHECKED_STATUS PingMaster(ExternalMaster* master) const;
 
-  // Add a Tablet Server to the blacklist
+  // Add a Tablet Server to the blacklist.
   CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
+
+  // Returns the min_num_replicas corresponding to a PlacementBlockPB.
+  CHECKED_STATUS GetMinReplicaCountForPlacementBlock(
+    ExternalMaster* master,
+    const string& cloud, const string& region, const string& zone,
+    int* min_num_replicas);
+  // Add a Tablet Server to the leader blacklist.
+  CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
+
+  // Empty blacklist.
+  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but

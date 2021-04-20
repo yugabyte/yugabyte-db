@@ -777,6 +777,12 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
       updateFormField('async.NodeToNodeEncrypt', event.target.checked);
+      
+      // If NodeToNodeEncrypt is false update ClientToNodeEncrypt field to false.
+      if (!event.target.checked) {
+        updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
+        updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
+      }
       this.setState({
         enableNodeToNodeEncrypt: event.target.checked,
         enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
@@ -1192,11 +1198,12 @@ export default class ClusterFields extends Component {
         );
       });
 
+    const configList = cloud.authConfig.data ?? [];
     const kmsConfigList = [
       <option value="" key={`kms-option-0`}>
         Select Configuration
       </option>,
-      ...cloud.authConfig.data.map?.((config, index) => {
+      ...configList.map((config, index) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
         return (
           <option value={config.metadata.configUUID} key={`kms-option-${index + 1}`}>

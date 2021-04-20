@@ -113,6 +113,47 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
       table_exists_ = false;
     }
   }
+
+  Result<bool> is_ts_stale(int ts_idx) {
+    std::shared_ptr<master::MasterServiceProxy> proxy = external_mini_cluster()->master_proxy();
+    std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+    master::ListTabletServersRequestPB req;
+    master::ListTabletServersResponsePB resp;
+    controller->Reset();
+
+    proxy->ListTabletServers(req, &resp, controller.get());
+
+    bool is_stale = false, is_ts_found = false;
+    for (int i = 0; i < resp.servers_size(); i++) {
+      if (!resp.servers(i).has_instance_id()) {
+        return STATUS_SUBSTITUTE(
+          Uninitialized,
+          "ListTabletServers RPC returned a TS with uninitialized instance id."
+        );
+      }
+
+      if (!resp.servers(i).instance_id().has_permanent_uuid()) {
+        return STATUS_SUBSTITUTE(
+          Uninitialized,
+          "ListTabletServers RPC returned a TS with uninitialized UUIDs."
+        );
+      }
+
+      if (resp.servers(i).instance_id().permanent_uuid() ==
+                      external_mini_cluster()->tablet_server(ts_idx)->uuid()) {
+        is_ts_found = true;
+        is_stale = !resp.servers(i).alive();
+      }
+    }
+
+    if (!is_ts_found) {
+      return STATUS_SUBSTITUTE(
+          NotFound,
+          "Given TS not found in ListTabletServers RPC."
+      );
+    }
+    return is_stale;
+  }
 };
 
 TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
@@ -312,6 +353,298 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancingWithBlacklist) {
   ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 3, 4 }));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
+}
+
+TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
+  const int rf = 3;
+  const auto& ts2_id = external_mini_cluster()->tablet_server(2)->uuid();
+  const auto& ts1_id = external_mini_cluster()->tablet_server(1)->uuid();
+
+  // Reduce the time after which a TS is marked DEAD.
+  int tserver_unresponsive_timeout_ms = 15000;
+  bool allow_dead_node_lb = true;
+  for (int i = 0; i < num_masters(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "tserver_unresponsive_timeout_ms",
+                                              std::to_string(tserver_unresponsive_timeout_ms)));
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "allow_leader_balancing_dead_node",
+                                              std::to_string(allow_dead_node_lb)));
+  }
+
+  // Verify that the load is evenly distributed.
+  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
+
+  std::vector<uint32_t> tserver_loads;
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2 }));
+  ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
+
+  // Leader blacklist a TS.
+  LOG(INFO) << "Blacklisting node#2 for leaders";
+
+  ASSERT_OK(external_mini_cluster()->AddTServerToLeaderBlacklist(
+      external_mini_cluster()->master(),
+      external_mini_cluster()->tablet_server(2)));
+
+  // Wait for LB to finish and then verify leaders and load evenly distributed.
+  WaitForLoadBalanceCompletion();
+
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2 }));
+  ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
+  ASSERT_EQ(tserver_loads[0], 15);
+  ASSERT_EQ(tserver_loads[1], 15);
+  ASSERT_EQ(tserver_loads[2], 15);
+
+  std::vector<uint32_t> leader_tserver_loads;
+  int total_leaders;
+  for (const auto& tn : table_names_) {
+    const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+    leader_tserver_loads.clear();
+    total_leaders = 0;
+
+    for (const auto& lc : new_leader_counts) {
+      if (lc.first == ts2_id) {
+        ASSERT_EQ(lc.second, 0);
+      } else {
+        leader_tserver_loads.push_back(lc.second);
+        total_leaders += lc.second;
+      }
+
+    }
+    ASSERT_TRUE(AreLoadsBalanced(leader_tserver_loads));
+    ASSERT_EQ(total_leaders, 5);
+  }
+
+  // Stop a TS and empty blacklist.
+  LOG(INFO) << "Killing tablet server #" << 1;
+  ASSERT_OK(external_mini_cluster()->tablet_server(1)->Pause());
+
+  WaitForLoadBalanceCompletion();
+
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return is_ts_stale(1);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
+
+  // All the leaders should now be on the first TS.
+  for (const auto& tn : table_names_) {
+    const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+    leader_tserver_loads.clear();
+    total_leaders = 0;
+
+    for (const auto& lc : new_leader_counts) {
+      if (lc.first == ts1_id || lc.first == ts2_id) {
+        ASSERT_EQ(lc.second, 0);
+      } else {
+        leader_tserver_loads.push_back(lc.second);
+        total_leaders += lc.second;
+      }
+
+    }
+    ASSERT_TRUE(AreLoadsBalanced(leader_tserver_loads));
+    ASSERT_EQ(total_leaders, 5);
+  }
+
+  // Remove TS 2 from leader blacklist so that leader load gets transferred
+  // to TS2 in the presenece of a DEAD TS1.
+  LOG(INFO) << "Emptying blacklist";
+  ASSERT_OK(external_mini_cluster()->EmptyBlacklist(
+      external_mini_cluster()->master()));
+
+  WaitForLoadBalanceCompletion();
+
+  // Verify loads and leader loads.
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2 }));
+  ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
+  ASSERT_EQ(tserver_loads[0], 15);
+  ASSERT_EQ(tserver_loads[1], 15);
+  ASSERT_EQ(tserver_loads[2], 15);
+
+  // Check new leader counts. TS 0 and 2 should contain all the leaders.
+  for (const auto& tn : table_names_) {
+    const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+    leader_tserver_loads.clear();
+    total_leaders = 0;
+
+    for (const auto& lc : new_leader_counts) {
+      if (lc.first == ts1_id) {
+        ASSERT_EQ(lc.second, 0);
+      } else {
+        leader_tserver_loads.push_back(lc.second);
+        total_leaders += lc.second;
+      }
+
+    }
+    ASSERT_TRUE(AreLoadsBalanced(leader_tserver_loads));
+    ASSERT_EQ(total_leaders, 5);
+  }
+
+  ASSERT_OK(external_mini_cluster()->tablet_server(1)->Resume());
+
+  WaitForLoadBalanceCompletion();
+}
+
+TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
+  const int rf = 3;
+  int num_ts = num_tablet_servers();
+
+  // Reduce the time after which a TS is marked DEAD.
+  int tserver_unresponsive_timeout_ms = 5000;
+  for (int i = 0; i < num_masters(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
+                                              "tserver_unresponsive_timeout_ms",
+                                              std::to_string(tserver_unresponsive_timeout_ms)));
+  }
+
+  // Add a TS and wait for LB to complete.
+  LOG(INFO) << "Adding a TS";
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true));
+  ++num_ts;
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
+
+  WaitForLoadBalanceCompletion();
+
+  // Load should be balanced.
+  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
+
+  std::vector<uint32_t> tserver_loads;
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2, 3 }));
+  ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
+
+  // Test 1: Test load movement with existing tservers.
+  // Kill and blacklist a TS.
+  LOG(INFO) << "Killing tablet server #" << 2;
+  external_mini_cluster()->tablet_server(2)->Shutdown();
+
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return is_ts_stale(2);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
+
+  LOG(INFO) << "Node #2 dead. Blacklisting it.";
+
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+      external_mini_cluster()->master(),
+      external_mini_cluster()->tablet_server(2)));
+
+  // Wait for LB to become idle.
+  WaitForLoadBalanceCompletion();
+
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2, 3 }));
+
+  // Each node should have exactly 15 tablets except node 2.
+  ASSERT_EQ(tserver_loads[0], 15);
+  ASSERT_EQ(tserver_loads[1], 15);
+  ASSERT_EQ(tserver_loads[2], 0);
+  ASSERT_EQ(tserver_loads[3], 15);
+
+  // Test 2: Test adding a new node while blacklist+dead is in progress.
+  // Kill and blacklist a TS.
+  LOG(INFO) << "Killing tablet server #" << 3;
+  external_mini_cluster()->tablet_server(3)->Shutdown();
+
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return is_ts_stale(3);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
+
+  LOG(INFO) << "Node #3 dead. Blacklisting it.";
+
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+      external_mini_cluster()->master(),
+      external_mini_cluster()->tablet_server(3)));
+
+  // Add a TS now and check if load is transferred.
+  LOG(INFO) << "Adding a TS";
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true));
+  ++num_ts;
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
+
+  // Wait for LB to become idle.
+  WaitForLoadBalanceCompletion();
+
+  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2, 3, 4 }));
+
+  // Each node should have exactly 15 tablets on it except node 2 and 3.
+  ASSERT_EQ(tserver_loads[0], 15);
+  ASSERT_EQ(tserver_loads[1], 15);
+  ASSERT_EQ(tserver_loads[2], 0);
+  ASSERT_EQ(tserver_loads[3], 0);
+  ASSERT_EQ(tserver_loads[4], 15);
+}
+
+TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancing) {
+  int num_ts = num_tablet_servers();
+
+  // Increase the time after which raft would start a leader change
+  // if heartbeats are missed.
+  int max_heartbeat_missed_periods = 50;
+  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
+                                      "leader_failure_max_missed_heartbeat_periods",
+                                      std::to_string(max_heartbeat_missed_periods)));
+
+  ASSERT_OK(external_mini_cluster()->SetFlagOnTServers(
+                                      "leader_failure_max_missed_heartbeat_periods",
+                                      std::to_string(max_heartbeat_missed_periods)));
+
+  // Add a couple of TServers so that each node has 1 leader tablet per table.
+  LOG(INFO) << "Adding 2 tservers";
+  std::vector<std::string> extra_opts;
+  extra_opts.push_back(strings::Substitute("--leader_failure_max_missed_heartbeat_periods=$0",
+                                  max_heartbeat_missed_periods));
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+  ++num_ts;
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
+
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+  ++num_ts;
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
+
+  // Wait for load balancing to complete.
+  WaitForLoadBalanceCompletion();
+
+  // Now add a new TS. Per table there won't be any leader transfer
+  // as each node has 1 leader/table.
+  // Total leader loads without global leader balancing will be:
+  // 3, 3, 3, 3, 3, 0.
+  // Global leader balancing should kick in and make it
+  // 3, 3, 3, 2, 2, 2.
+  LOG(INFO) << "Adding another tserver on which global leader load should be transferred";
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+  ++num_ts;
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
+
+  WaitForLoadBalanceCompletion();
+
+  // Check for leader loads.
+  std::vector<uint32_t> leader_tserver_loads;
+  std::unordered_map<TabletServerId, int> per_ts_leader_loads;
+  int total_leaders = 0;
+  for (const auto& tn : table_names_) {
+    const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+    for (const auto& lc : new_leader_counts) {
+      per_ts_leader_loads[lc.first] += lc.second;
+      total_leaders += lc.second;
+    }
+  }
+
+  ASSERT_EQ(total_leaders, 15);
+
+  for (const auto& ll : per_ts_leader_loads) {
+    LOG(INFO) << "TS Id: " << ll.first << ", leader count: " << ll.second;
+    leader_tserver_loads.push_back(ll.second);
+  }
+
+  ASSERT_TRUE(AreLoadsBalanced(leader_tserver_loads));
 }
 
 } // namespace integration_tests
