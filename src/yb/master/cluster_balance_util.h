@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_CLUSTER_BALANCE_UTIL_H
 #define YB_MASTER_CLUSTER_BALANCE_UTIL_H
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <regex>
@@ -22,7 +23,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <atomic>
 
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
@@ -61,6 +61,8 @@ DECLARE_int32(load_balancer_max_concurrent_removals);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 
 DECLARE_int32(load_balancer_max_concurrent_moves_per_table);
+
+DECLARE_bool(allow_leader_balancing_dead_node);
 
 namespace yb {
 namespace master {
@@ -380,11 +382,17 @@ class PerTableLoadState {
       }
 
       // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
-      if (check_ts_aliveness && !per_ts_meta_[ts_uuid].descriptor->IsLiveAndHasReported()) {
+      if (check_ts_liveness_ && !per_ts_meta_[ts_uuid].descriptor->IsLiveAndHasReported()) {
         if (!blacklisted_servers_.count(ts_uuid)) {
-          return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader not received "
-                "heartbeat from ts $0. Stopping LB operations for tables with replicas",
-                " in this TS.", ts_uuid);
+          if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
+            allow_only_leader_balancing_ = true;
+            LOG(INFO) << strings::Substitute("Master leader not received "
+                  "heartbeat from ts $0. Only performing leader balancing for tables with replicas",
+                  " in this TS.", ts_uuid);
+          } else {
+            return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
+                "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
+          }
         } else {
           LOG(INFO) << strings::Substitute("Master leader not received heartbeat from ts $0"
                                 " but it is blacklisted. Continuing LB operations for tables"
@@ -521,10 +529,10 @@ class PerTableLoadState {
     global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerLoadCounts());
 
     // Only add TS for LBing if it is not dead.
-    // check_ts_aliveness is an artifact of cluster_balance_mocked.h
+    // check_ts_liveness_ is an artifact of cluster_balance_mocked.h
     // and is used to ensure that we don't perform a liveness check
     // during mimicing load balancers.
-    if (!check_ts_aliveness || ts_desc->IsLiveAndHasReported()) {
+    if (!check_ts_liveness_ || ts_desc->IsLiveAndHasReported()) {
       sorted_load_.push_back(ts_uuid);
     }
 
@@ -549,13 +557,13 @@ class PerTableLoadState {
     // Add this tablet server for leader load-balancing only if it is not blacklisted and it has
     // heartbeated recently enough to be considered responsive for leader balancing.
     // Also, don't add it if isn't live or hasn't reported all its tablets.
-    // check_ts_aliveness is an artifact of cluster_balance_mocked.h
+    // check_ts_liveness_ is an artifact of cluster_balance_mocked.h
     // and is used to ensure that we don't perform a liveness check
     // during mimicing load balancers.
     if (!is_blacklisted &&
         ts_desc->TimeSinceHeartbeat().ToMilliseconds() <
         FLAGS_leader_balance_unresponsive_timeout_ms &&
-        (!check_ts_aliveness || ts_desc->IsLiveAndHasReported())) {
+        (!check_ts_liveness_ || ts_desc->IsLiveAndHasReported())) {
       sorted_leader_load_.push_back(ts_uuid);
     }
 
@@ -570,7 +578,7 @@ class PerTableLoadState {
     const auto& ts_meta = per_ts_meta_[to_ts];
 
     // If this server is deemed DEAD then don't add it.
-    if (check_ts_aliveness && !ts_meta.descriptor->IsLiveAndHasReported()) {
+    if (check_ts_liveness_ && !ts_meta.descriptor->IsLiveAndHasReported()) {
       return false;
     }
 
@@ -948,11 +956,13 @@ class PerTableLoadState {
   // Boolean whether tablets for this table should respect the affinited zones.
   bool use_preferred_zones_ = true;
 
-  // check_ts_aliveness is used to indicate if the TS descriptors
+  // check_ts_liveness_ is used to indicate if the TS descriptors
   // need to be checked if they are live and considered for Load balancing.
   // In most scenarios, this would be true, except when we use the cluster_balance_mocked.h
   // for triggering LB scenarios.
-  bool check_ts_aliveness = true;
+  bool check_ts_liveness_ = true;
+  // Allow only leader balancing for this table.
+  bool allow_only_leader_balancing_ = false;
 
  private:
   const std::string uninitialized_ts_meta_format_msg =
