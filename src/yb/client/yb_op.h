@@ -124,6 +124,9 @@ class YBOperation {
 
   void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet);
 
+  // Resets tablet, so it will be re-resolved on applying this operation.
+  void ResetTablet();
+
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 

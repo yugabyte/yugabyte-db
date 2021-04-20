@@ -37,6 +37,8 @@ DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(load_balancer_max_concurrent_removals);
 
+YB_STRONGLY_TYPED_BOOL(StepdownIfLeader);
+
 namespace yb {
 namespace master {
 
@@ -273,7 +275,7 @@ class ClusterLoadBalancer {
   // Issue the change config and modify the in-memory state for removing a replica on the specified
   // tablet server.
   CHECKED_STATUS RemoveReplica(
-      const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader)
+      const TabletId& tablet_id, const TabletServerId& ts_uuid)
       REQUIRES_SHARED(catalog_manager_->lock_);
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
@@ -374,7 +376,7 @@ class ClusterLoadBalancer {
   // global load balancing once all tables are themselves balanced.
   // This value is only set to true once is_idle_ becomes true, and this value is only set to false
   // once we perform a non-global move.
-  bool can_balance_global_load_ = false;
+  bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
   void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->lock_);

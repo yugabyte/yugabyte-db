@@ -22,6 +22,7 @@ public class YWServiceException extends RuntimeException {
   private final JsonNode errJson;
   // TODO: also accept throwable and expose stack trace in when in dev server mode
   YWServiceException(int httpStatus, String userVisibleMessage, JsonNode errJson) {
+    super(userVisibleMessage);
     this.httpStatus = httpStatus;
     this.userVisibleMessage = userVisibleMessage;
     this.errJson = errJson;

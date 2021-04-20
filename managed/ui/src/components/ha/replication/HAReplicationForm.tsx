@@ -41,6 +41,7 @@ const validationSchema = Yup.object().shape({
   replicationFrequency: Yup.mixed().when(['instanceType', 'replicationEnabled'], {
     is: (instanceType, replicationEnabled) =>
       instanceType === HAInstanceTypes.Active && replicationEnabled,
+    // eslint-disable-next-line no-template-curly-in-string
     then: Yup.number().min(1, 'Minimum value is ${min}').required('Required field')
   })
 });

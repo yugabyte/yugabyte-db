@@ -72,7 +72,10 @@ using std::shared_ptr;
 namespace yb {
 namespace rpc {
 
-Proxy::Proxy(ProxyContext* context, const HostPort& remote, const Protocol* protocol)
+Proxy::Proxy(ProxyContext* context,
+             const HostPort& remote,
+             const Protocol* protocol,
+             const boost::optional<MonoDelta>& resolve_cache_timeout)
     : context_(context),
       remote_(remote),
       protocol_(protocol ? protocol : context_->DefaultProtocol()),
@@ -80,7 +83,9 @@ Proxy::Proxy(ProxyContext* context, const HostPort& remote, const Protocol* prot
           std::make_shared<OutboundCallMetrics>(context_->metric_entity()) : nullptr),
       call_local_service_(remote == HostPort()),
       resolve_waiters_(30),
-      resolved_ep_(std::chrono::milliseconds(FLAGS_proxy_resolve_cache_ms)),
+      resolved_ep_(std::chrono::milliseconds(
+          resolve_cache_timeout ? (*resolve_cache_timeout).ToMilliseconds()
+                                : FLAGS_proxy_resolve_cache_ms)),
       latency_hist_(ScopedDnsTracker::active_metric()),
       // Use the context->num_connections_to_server() here as opposed to directly reading the
       // FLAGS_num_connections_to_server, because the flag value could have changed since then.
@@ -307,12 +312,15 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
   return controller->status();
 }
 
-std::shared_ptr<Proxy> ProxyCache::Get(const HostPort& remote, const Protocol* protocol) {
+std::shared_ptr<Proxy> ProxyCache::Get(const HostPort& remote,
+                                       const Protocol* protocol,
+                                       const boost::optional<MonoDelta>& resolve_cache_timeout) {
   ProxyKey key(remote, protocol);
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = proxies_.find(key);
   if (it == proxies_.end()) {
-    it = proxies_.emplace(key, std::make_unique<Proxy>(context_, remote, protocol)).first;
+    it = proxies_.emplace(
+        key, std::make_unique<Proxy>(context_, remote, protocol, resolve_cache_timeout)).first;
   }
   return it->second;
 }

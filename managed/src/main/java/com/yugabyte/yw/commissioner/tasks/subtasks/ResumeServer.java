@@ -34,7 +34,7 @@ public class ResumeServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(ResumeServer.class);
 
   private void resumeUniverse(final String nodeName) {
-    Universe u = Universe.get(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
       LOG.error("No node in universe with name " + nodeName);
       return;

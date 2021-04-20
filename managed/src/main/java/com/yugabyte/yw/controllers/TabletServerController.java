@@ -66,14 +66,10 @@ public class TabletServerController extends AuthenticatedController {
    */
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    if (Customer.get(customerUUID) == null) {
-      final String errMsg = "Invalid Customer UUID: " + customerUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    // Validate universe UUID and retrieve master leader address
-    final Universe universe = Universe.get(universeUUID);
     final String masterLeaderIPAddr = universe.getMasterLeaderHostText();
     if (masterLeaderIPAddr.isEmpty()) {
       final String errMsg =

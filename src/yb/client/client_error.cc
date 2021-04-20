@@ -21,5 +21,21 @@ const std::string kClientErrorCategoryName = "client error";
 StatusCategoryRegisterer client_error_category_registerer(
     StatusCategoryDescription::Make<ClientErrorTag>(&kClientErrorCategoryName));
 
+bool IsRetryableClientError(const Status& s) {
+  if (s.ok()) {
+    return false;
+  }
+  switch (ClientError(s).value()) {
+    case ClientErrorCode::kNone:
+      return false;
+    case ClientErrorCode::kTablePartitionListIsStale:
+    case ClientErrorCode::kExpiredRequestToBeRetried:
+    case ClientErrorCode::kTabletNotYetRunning:
+    case ClientErrorCode::kAbortedBatchDueToFailedTabletLookup:
+      return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(ClientErrorCode, ClientError(s).value());
+}
+
 } // namespace client
 } // namespace yb

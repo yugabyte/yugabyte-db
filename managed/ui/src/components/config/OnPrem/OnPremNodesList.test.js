@@ -124,7 +124,7 @@ const mockUniverseList = {
     name: 'SUCCESS',
     ordinal: 1
   }
-}
+};
 
 beforeEach(() => {
   render(<OnPremNodesList

@@ -108,12 +108,20 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
 DEFINE_bool(load_balancer_skip_leader_as_remove_victim, false,
             "Should the LB skip a leader as a possible remove candidate.");
 
+DEFINE_bool(allow_leader_balancing_dead_node, true,
+            "When a tserver is marked as dead, do we continue leader balancing for tables that "
+            "have a replica on this tserver");
+
 DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
                  "For testing purposes, number of milliseconds to wait after counting and "
                  "finding pending tasks.");
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
+
+DEFINE_bool(load_balancer_count_move_as_add, true,
+            "Should we enable state change to count add server triggered by load move as just an "
+            "add instead of both an add and remove.");
 
 namespace yb {
 namespace master {
@@ -384,6 +392,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
+      if (state_->allow_only_leader_balancing_) {
+        LOG(INFO) << "Skipping Add replicas. Only leader balancing table " << table.first;
+        break;
+      }
       auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_add.ok()) {
         LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
@@ -402,6 +414,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     // Handle cleanup after over-replication.
     for ( ; remaining_removals > 0; --remaining_removals) {
+      if (state_->allow_only_leader_balancing_) {
+        LOG(INFO) << "Skipping remove replicas. Only leader balancing table " << table.first;
+        break;
+      }
       auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
       if (!handle_remove.ok()) {
         LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
@@ -469,13 +485,13 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   // Update state.
   is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
 
-  // Two interesting cases when updating can_balance_global_load_ state:
+  // Two interesting cases when updating can_perform_global_operations_ state:
   // If we previously couldn't balance global load, but now the LB is idle, enable global balancing.
   // If we previously could balance global load, but now the LB is busy, then it is busy balancing
   // global load or doing other operations (remove, etc.). In this case, we keep global balancing
   // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
-  can_balance_global_load_ = can_balance_global_load_ || ai.IsIdle();
+  can_perform_global_operations_ = can_perform_global_operations_ || ai.IsIdle();
 }
 
 Status ClusterLoadBalancer::IsIdle() const {
@@ -490,7 +506,7 @@ Status ClusterLoadBalancer::IsIdle() const {
 }
 
 bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
-  return FLAGS_enable_global_load_balancing && can_balance_global_load_;
+  return FLAGS_enable_global_load_balancing && can_perform_global_operations_;
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
@@ -507,7 +523,7 @@ void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   per_table_states_.clear();
   global_state_ = std::make_unique<GlobalLoadState>();
   if (initialize_ts_descs) {
-    // Only call GetAllReportedDescriptors once for a LB run, and then cache it in global_state_.
+    // Only call GetAllDescriptors once for a LB run, and then cache it in global_state_.
     GetAllDescriptors(&global_state_->ts_descs_);
   }
 }
@@ -795,7 +811,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         RETURN_NOT_OK(MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid));
         // Update global state if necessary.
         if (!is_global_balancing_move) {
-          can_balance_global_load_ = false;
+          can_perform_global_operations_ = false;
         }
         return true;
       }
@@ -928,6 +944,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
     } else {
       if (state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_[right])) {
         // Non-leader blacklisted tserver with not too many leader replicas.
+        // TODO(Sanket): Even though per table load is below the configured threshold,
+        // we might want to do global leader balancing above a certain threshold that is lower
+        // than the per table threshold. Can add another gflag/knob here later.
         return false;
       } else {
         // Non-leader blacklisted tserver with too many leader replicas.
@@ -975,13 +994,29 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
       int load_variance =
           state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
 
+      bool is_global_balancing_move = false;
+
       // Check for state change or end conditions.
       if (left == right || (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
             !high_leader_blacklisted)) {
-        // Either both left and right are at the end, or our load_variance is already too small,
-        // which means it will be too small for any TSs between left and right, so we can return.
-        if (right == last_pos) {
+        // Global leader balancing only if per table variance is > 0.
+        // If both left and right are same (i.e. load_variance is 0) and right is last_pos
+        // or right is last_pos and load_variance is 0 then we can return as we don't
+        // have any other moves to make.
+        if (load_variance == 0 && right == last_pos) {
           return false;
+        }
+        // Check if we can benefit from global leader balancing.
+        // If we have > 0 load_variance and there are no per table moves left.
+        if (load_variance > 0 && CanBalanceGlobalLoad()) {
+          int global_load_variance = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid) -
+                                        state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
+          // Already globally balanced. Since we are sorted by global load, we can return here as
+          // there are no other moves for us to make.
+          if (global_load_variance < state_->options_->kMinGlobalLeaderLoadVarianceToBalance) {
+            return false;
+          }
+          is_global_balancing_move = true;
         } else {
           break;
         }
@@ -1028,6 +1063,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
           LOG(INFO) << "Move tablet " << tablet_id << " leader from leader blacklisted TS "
             << *from_ts << " to TS " << *to_ts;
         }
+        if (!is_global_balancing_move) {
+          can_perform_global_operations_ = false;
+        }
         return true;
       }
     }
@@ -1046,7 +1084,8 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
 
   for (const auto& tablet_id : state_->tablets_over_replicated_) {
     // Skip if there is a pending ADD_SERVER.
-    if (VERIFY_RESULT(IsConfigMemberInTransitionMode(tablet_id))) {
+    if (VERIFY_RESULT(IsConfigMemberInTransitionMode(tablet_id)) ||
+        state_->per_tablet_meta_[tablet_id].starting > 0) {
       continue;
     }
 
@@ -1080,7 +1119,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
-    RETURN_NOT_OK(RemoveReplica(tablet_id, remove_candidate, true));
+    RETURN_NOT_OK(RemoveReplica(tablet_id, remove_candidate));
     return true;
   }
   return false;
@@ -1089,6 +1128,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
 Result<bool> ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
   for (const auto& tablet_id : state_->tablets_wrong_placement_) {
+    LOG(INFO) << "Processing tablet " << tablet_id;
     // Skip this tablet if it is not over-replicated.
     if (!state_->tablets_over_replicated_.count(tablet_id)) {
       continue;
@@ -1114,7 +1154,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
       *out_tablet_id = tablet_id;
       *out_from_ts = std::move(target_uuid);
       // Force leader stepdown if we have wrong placements or blacklisted servers.
-      RETURN_NOT_OK(RemoveReplica(tablet_id, *out_from_ts, true));
+      RETURN_NOT_OK(RemoveReplica(tablet_id, *out_from_ts));
       return true;
     }
   }
@@ -1136,7 +1176,8 @@ Status ClusterLoadBalancer::MoveReplica(
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));
   RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
-  return state_->RemoveReplica(tablet_id, from_ts);
+  return GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add) ?
+      Status::OK() : state_->RemoveReplica(tablet_id, from_ts);
 }
 
 Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
@@ -1148,7 +1189,7 @@ Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletSe
 }
 
 Status ClusterLoadBalancer::RemoveReplica(
-    const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader) {
+    const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
                                    true /* should_remove_leader */));
@@ -1171,7 +1212,7 @@ void ClusterLoadBalancer::InitializeTSDescriptors() {
   // Set the leader blacklist so we can also mark the tablet servers as we add them up.
   state_->SetLeaderBlacklist(GetLeaderBlacklist());
 
-  // Loop over live tablet servers to set empty defaults, so we can also have info on those
+  // Loop over tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
   for (const auto& ts_desc : global_state_->ts_descs_) {
