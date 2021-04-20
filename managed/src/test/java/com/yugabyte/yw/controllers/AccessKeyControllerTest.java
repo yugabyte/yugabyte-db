@@ -184,8 +184,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetAccessKeyWithValidKeyCode() 
-      throws InterruptedException, ExecutionException, TimeoutException {
+  public void testGetAccessKeyWithValidKeyCode() {
     AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "foo", new AccessKey.KeyInfo());
     Result result = getAccessKey(defaultProvider.uuid, accessKey.getKeyCode());
     JsonNode json = Json.parse(contentAsString(result));
@@ -337,7 +336,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAccessKeyWithException() throws InterruptedException, ExecutionException, TimeoutException{
+  public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1", SSH_PORT, true, false))
         .thenThrow(new RuntimeException("Something went wrong!!"));
     Result result = assertThrows(YWServiceException.class,
@@ -394,7 +393,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteAccessKeyWithInvalidProviderUUID() throws TimeoutException, InterruptedException, ExecutionException {
+  public void testDeleteAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result result = assertThrows(YWServiceException.class,
         () -> deleteAccessKey(invalidProviderUUID, "foo")).getResult();
@@ -403,7 +402,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteAccessKeyWithInvalidAccessKeyCode() throws InterruptedException, ExecutionException, TimeoutException{
+  public void testDeleteAccessKeyWithInvalidAccessKeyCode() {
     Result result = assertThrows(YWServiceException.class,
         () -> deleteAccessKey(defaultProvider.uuid, "foo")).getResult();
     assertBadRequest(result, "KeyCode not found: foo");
@@ -411,7 +410,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteAccessKeyWithValidAccessKeyCode() throws InterruptedException, ExecutionException, TimeoutException {
+  public void testDeleteAccessKeyWithValidAccessKeyCode() {
     AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     Result result = deleteAccessKey(defaultProvider.uuid, "key-code-1");
     assertEquals(OK, result.status());
