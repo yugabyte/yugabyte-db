@@ -20,7 +20,7 @@
 
 # What is YugabyteDB?
 
-**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, and/or globally-distributed deployments.**
+**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
 
 
 The core features of YugabyteDB include:
@@ -35,7 +35,7 @@ The core features of YugabyteDB include:
 
 * **Geo-distributed, multi-cloud** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations that can be leveraged in two-region deployments. To serve (stale) data with low latencies, read replicas are also a supported feature.
 
-* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support using Apache Cassandra QL roots.
+* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
 * **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data-at-rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
@@ -135,7 +135,7 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/arch
 
 # Need Help?
 
-* You can ask questions, find answers, and/or help others on our Community [Slack](https://www.yugabyte.com/slack) and [Forum](https://forum.yugabyte.com), as well as [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db)
+* You can ask questions, find answers, and help others on our Community [Slack](https://www.yugabyte.com/slack) and [Forum](https://forum.yugabyte.com), as well as [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db).
 
 * Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues.
 
