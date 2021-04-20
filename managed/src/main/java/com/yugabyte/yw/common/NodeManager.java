@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.CertificateParams;
 
@@ -83,7 +84,7 @@ public class NodeManager extends DevopsBase {
   play.Configuration appConfig;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
-    Universe universe = Universe.get(nodeTaskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
@@ -170,7 +171,7 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Precheck)
+      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -180,8 +181,14 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--precheck_type");
         if (keyInfo.skipProvisioning) {
           subCommand.add("configure");
+          subCommand.add("--ssh_user");
+          subCommand.add("yugabyte");
         } else {
           subCommand.add("provision");
+          if (keyInfo.sshUser != null) {
+            subCommand.add("--ssh_user");
+            subCommand.add(keyInfo.sshUser);
+          }
         }
 
         if (keyInfo.airGapInstall) {
@@ -241,7 +248,7 @@ public class NodeManager extends DevopsBase {
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
-    Universe universe = Universe.get(taskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
@@ -313,6 +320,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
         }
+
         if (taskParam.enableYSQL) {
           extra_gflags.put("enable_ysql", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format(
@@ -321,6 +329,15 @@ public class NodeManager extends DevopsBase {
         } else {
           extra_gflags.put("enable_ysql", "false");
         }
+
+        if (taskParam.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+            && taskParam.setTxnTableWaitCountFlag) {
+          extra_gflags.put(
+              "txn_table_wait_min_ts_count",
+              Integer.toString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
+        }
+
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
           if (cert == null) {

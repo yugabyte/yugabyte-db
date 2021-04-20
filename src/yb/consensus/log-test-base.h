@@ -65,6 +65,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/doc_key.h"
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -96,12 +97,12 @@ const char* kTestTablet = "test-log-tablet";
 
 YB_STRONGLY_TYPED_BOOL(AppendSync);
 
-// Append a single batch of 'count' NoOps to the log.  If 'size' is not NULL, increments it by the
-// expected increase in log size.  Increments 'op_id''s index once for each operation logged.
+// Append a single batch of 'count' NoOps to the log.  If 'size' is not nullptr, increments it by
+// the expected increase in log size.  Increments 'op_id''s index once for each operation logged.
 static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            Log* log, OpIdPB* op_id,
                                            int count,
-                                           int* size = NULL) {
+                                           int* size = nullptr) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
     auto replicate = std::make_shared<ReplicateMsg>();
@@ -161,7 +162,9 @@ class LogTestBase : public YBTest {
     current_index_ = 1;
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     metric_registry_.reset(new MetricRegistry());
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry_.get(), "log-test-base");
+    table_metric_entity_ = METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "log-test-base");
+    tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(
+                                metric_registry_.get(), "log-test-base-tablet");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
@@ -186,7 +189,8 @@ class LogTestBase : public YBTest {
                        fs_manager_->uuid(),
                        schema_with_ids,
                        0, // schema_version
-                       metric_entity_.get(),
+                       table_metric_entity_.get(),
+                       tablet_metric_entity_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -310,14 +314,15 @@ class LogTestBase : public YBTest {
     }
   }
 
-  // Append a single NO_OP entry. Increments op_id by one.  If non-NULL, and if the write is
+  // Append a single NO_OP entry. Increments op_id by one.  If non-nullptr, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
   CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = nullptr) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
-  // written.  If non-NULL, 'size' keeps track of the size of the operations successfully written.
+  // written.  If non-nullptr, 'size' keeps track of the size of the operations successfully
+  // written.
   CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = nullptr) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
@@ -350,7 +355,8 @@ class LogTestBase : public YBTest {
   const Schema schema_;
   gscoped_ptr<FsManager> fs_manager_;
   gscoped_ptr<MetricRegistry> metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   int64_t current_index_;

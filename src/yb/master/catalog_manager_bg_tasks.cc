@@ -31,6 +31,7 @@
 
 #include <memory>
 
+#include "yb/master/master_service_base.h"
 #include "yb/util/logging.h"
 #include "yb/util/mutex.h"
 
@@ -53,7 +54,7 @@ DEFINE_int32(load_balancer_initial_delay_secs, 120,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_bool(sys_catalog_respect_affinity_task, true,
+DEFINE_bool(sys_catalog_respect_affinity_task, false,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
@@ -106,7 +107,7 @@ void CatalogManagerBgTasks::Shutdown() {
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     // Perform assignment processing.
-    ScopedLeaderSharedLock l(catalog_manager_);
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
     if (!l.catalog_status().ok()) {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();

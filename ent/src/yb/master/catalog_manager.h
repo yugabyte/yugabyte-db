@@ -243,7 +243,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       bool add_indexes,
       bool include_parent_colocated_table,
-      bool succeed_if_create_in_progress) override;
+      bool succeed_if_create_in_progress);
+
+  Result<SysRowEntries> CollectEntriesForSnapshot(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
+    // See args above.
+    return CollectEntries(tables, true, true, true);
+  }
 
   server::Clock* Clock() override;
 
@@ -260,6 +266,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id,
                                         HybridTime restore_at,
+                                        SendMetadata send_metadata,
                                         TabletSnapshotOperationCallback callback) override;
 
   void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
@@ -267,6 +274,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        TabletSnapshotOperationCallback callback) override;
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
+
+  CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
+  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
   rpc::Scheduler& Scheduler() override;
 
@@ -353,6 +363,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   void Started() override;
+
+  void SysCatalogLoaded(int64_t term) override;
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

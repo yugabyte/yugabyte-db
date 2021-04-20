@@ -27,11 +27,13 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -79,7 +81,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = (ObjectNode) Json.newObject();
+            ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
             Audit.createAuditEntry(ctx(), request(), formData);
             return Results.status(OK, resultNode);
@@ -128,6 +130,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
                                 "in_use",
                                 EncryptionAtRestUtil.configInUse(configModel.configUUID)
                         );
+                        metadata.put(
+                            "universeDetails",
+                            EncryptionAtRestUtil.getUniverses(configModel.configUUID)
+                    );
                         metadata.put("name", configModel.name);
                         result.put("credentials", CommonUtils.maskConfig(credentials));
                         result.put("metadata", metadata);
@@ -136,6 +142,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
         return ApiResponse.success(kmsConfigs);
     }
 
@@ -165,7 +172,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
                     customerUUID);
 
-            ObjectNode resultNode = (ObjectNode) Json.newObject();
+            ObjectNode resultNode = Json.newObject();
             resultNode.put("taskUUID", taskUUID.toString());
             Audit.createAuditEntry(ctx(), request());
             return Results.status(OK, resultNode);

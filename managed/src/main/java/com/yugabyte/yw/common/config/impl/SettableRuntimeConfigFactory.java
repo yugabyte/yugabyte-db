@@ -24,12 +24,10 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static java.util.stream.Collectors.toMap;
 
 /**
  * Factory to create RuntimeConfig for various scopes
@@ -110,11 +108,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   @VisibleForTesting
   Config getConfigForScope(UUID scope, String description) {
-    List<RuntimeConfigEntry> scopedValues =
-      RuntimeConfigEntry.getAll(scope);
-    Map<String, String> values = scopedValues
-      .stream()
-      .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
+    Map<String, String> values = RuntimeConfigEntry.getAsMapForScope(scope);
     Config config = ConfigFactory.parseMap(values, description);
     LOG.trace("Read from DB for {}: {}", description, config);
     return config;

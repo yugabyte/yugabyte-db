@@ -106,7 +106,10 @@ export default class SideNavBar extends Component {
                       to="/admin"
                       icon="fa fa-gear"
                       text="Admin"
-                      display={getFeatureState(currentCustomer.data.features, 'menu.administration')}
+                      display={getFeatureState(
+                        currentCustomer.data.features,
+                        'menu.administration'
+                      )}
                     />
                   </ul>
                   {isNotHidden(currentCustomer.data.features, 'menu.help') && (

@@ -43,7 +43,7 @@ export default function (state = INITIAL_STATE, action) {
         return { ...state, universeTablesList: [], error: null, loading: false };
       }
     case FETCH_TABLES_LIST_FAILURE:
-      error = action.payload.data || { message: action.payload.response.data.error };
+      error = action.payload.data || { message: action.payload.response?.data?.error };
       return { ...state, universeTablesList: [], error: error, loading: false };
     case RESET_TABLES_LIST:
       return { ...state, universeTablesList: [], error: null, loading: false };

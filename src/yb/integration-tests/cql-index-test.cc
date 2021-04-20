@@ -110,7 +110,7 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   constexpr cass_int32_t kValues = kKeys;
   constexpr int kNumInserts = kThreads * 5;
 
-  FLAGS_client_read_write_timeout_ms = 10000;
+  FLAGS_client_read_write_timeout_ms = 10000 * kTimeMultiplier;
   SetAtomicFlag(1000, &FLAGS_TEST_inject_txn_get_status_delay_ms);
   FLAGS_transaction_abort_check_interval_ms = 100000;
 

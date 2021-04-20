@@ -59,6 +59,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/human_readable.h"
@@ -124,10 +125,6 @@ DEFINE_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_int32(db_block_cache_num_shard_bits, 4,
-             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
-TAG_FLAG(db_block_cache_num_shard_bits, advanced);
-
 DEFINE_bool(enable_log_cache_gc, true,
             "Set to true to enable log cache garbage collector.");
 
@@ -135,9 +132,6 @@ DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
             "If set to true, log cache garbage collection would evict only memory that was "
             "allocated over limit for log cache. Otherwise it will try to evict requested number "
             "of bytes.");
-
-DEFINE_bool(enable_block_based_table_cache_gc, false,
-            "Set to true to enable block based table garbage collector.");
 
 DEFINE_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
@@ -158,7 +152,16 @@ DEFINE_test_flag(double, fault_crash_after_cmeta_deleted, 0.0,
 DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
                  "after fetching the files during a remote bootstrap but before "
-                 "marking the superblock as TABLET_DATA_READY.")
+                 "marking the superblock as TABLET_DATA_READY.");
+
+DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
+                 "Fraction of the time when the tablet will crash immediately after initiating a "
+                 "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
+                 "TABLET_DATA_READY.");
+
+DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
+                 "Fraction of the time when the tablet will crash immediately before flushing a "
+                 "parent tablet's kSplit operation.");
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
@@ -183,17 +186,17 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-namespace {
-
-constexpr int kDbCacheSizeUsePercentage = -1;
-constexpr int kDbCacheSizeCacheDisabled = -2;
-
-} // namespace
-
 DEFINE_int32(flush_background_task_interval_msec, 0,
              "The tick interval time for the flush background task. "
              "This defaults to 0, which means disable the background task "
              "And only use callbacks on memstore allocations. ");
+
+DEFINE_int32(verify_tablet_data_interval_sec, 0,
+             "The tick interval time for the tablet data integrity verification background task. "
+             "This defaults to 0, which means disable the background task.");
+
+DEFINE_bool(skip_tablet_data_verification, false,
+            "Skip checking tablet data for corruption.");
 
 DEFINE_int64(global_memstore_size_percentage, 10,
              "Percentage of total available memory to use for the global memstore. "
@@ -203,16 +206,6 @@ DEFINE_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
-
-DEFINE_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
-             "Size of cross-tablet shared RocksDB block cache (in bytes). "
-             "This defaults to -1 for system auto-generated default, which would use "
-             "FLAGS_db_block_cache_ram_percentage to select a percentage of the total memory as "
-             "the default size for the shared block cache. Value of -2 disables block cache.");
-
-DEFINE_int32(db_block_cache_size_percentage, 50,
-             "Default percentage of total available memory to use as block cache size, if not "
-             "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
 
 DEFINE_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
@@ -320,6 +313,7 @@ using tablet::RaftGroupStatePB;
 using tablet::RUNNING;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
+using tablet::TABLET_DATA_INIT_STARTED;
 using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_SPLIT_COMPLETED;
 using tablet::TABLET_DATA_TOMBSTONED;
@@ -328,6 +322,8 @@ using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
+
+constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 
 // Only called from the background task to ensure it's synchronized
 void TSTabletManager::MaybeFlushTablet() {
@@ -352,6 +348,24 @@ void TSTabletManager::MaybeFlushTablet() {
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
       for (auto listener : TEST_listeners) {
         listener->StartedFlush(tablet_to_flush->tablet_id());
+      }
+    }
+  }
+}
+
+void TSTabletManager::VerifyTabletData() {
+  LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
+  for (const TabletPeerPtr& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING) {
+      if (PREDICT_FALSE(FLAGS_skip_tablet_data_verification)) {
+        LOG_WITH_PREFIX(INFO)
+            << Format("Skipped tablet data verification check on $0", peer->tablet_id());
+      } else {
+        Status s = peer->tablet()->VerifyDataIntegrity();
+        if (!s.ok()) {
+          LOG(WARNING) << "Tablet data integrity verification failed on " << peer->tablet_id()
+                       << ": " << s;
+        }
       }
     }
   }
@@ -383,27 +397,6 @@ TabletPeerPtr TSTabletManager::TabletToFlush() {
 }
 
 namespace {
-
-class LRUCacheGC : public GarbageCollector {
- public:
-  explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
-
-  void CollectGarbage(size_t required) {
-    if (!FLAGS_enable_block_based_table_cache_gc) {
-      return;
-    }
-
-    auto evicted = cache_->Evict(required);
-    LOG(INFO) << "Evicted from table cache: " << HumanReadableNumBytes::ToString(evicted)
-              << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
-              << ", required: " << HumanReadableNumBytes::ToString(required);
-  }
-
-  virtual ~LRUCacheGC() = default;
-
- private:
-  std::shared_ptr<rocksdb::Cache> cache_;
-};
 
 class FunctorGC : public GarbageCollector {
  public:
@@ -478,30 +471,14 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                   server_->metric_entity(), post_split_trigger_compaction_pool))
               .Build(&post_split_trigger_compaction_pool_));
 
-  int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
-  int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
-  // Auto-compute size of block cache if asked to.
-  if (FLAGS_db_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
-    // Check some bounds.
-    CHECK(FLAGS_db_block_cache_size_percentage > 0 && FLAGS_db_block_cache_size_percentage <= 100)
-        << Substitute(
-               "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
-               "$0",
-               FLAGS_db_block_cache_size_percentage);
-
-    block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
-  }
-
-  block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
-      block_cache_size_bytes, "BlockBasedTable", server_->mem_tracker());
-
-  if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
-    tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
-                                                       FLAGS_db_block_cache_num_shard_bits);
-    tablet_options_.block_cache->SetMetrics(server_->metric_entity());
-    block_based_table_gc_ = std::make_shared<LRUCacheGC>(tablet_options_.block_cache);
-    block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
-  }
+  block_based_table_mem_tracker_ = docdb::InitBlockCacheMemTracker(
+      kDefaultTserverBlockCacheSizePercentage,
+      server_->mem_tracker());
+  block_based_table_gc_ = docdb::InitBlockCache(
+      server_->metric_entity(),
+      kDefaultTserverBlockCacheSizePercentage,
+      block_based_table_mem_tracker_.get(),
+      &tablet_options_);
 
   auto log_cache_mem_tracker = consensus::LogCache::GetServerMemTracker(server_->mem_tracker());
   log_cache_gc_ = std::make_shared<FunctorGC>(
@@ -515,6 +492,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
         "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
         "$0",
         FLAGS_global_memstore_size_percentage);
+  int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
   size_t memstore_size_bytes = total_ram_avail * FLAGS_global_memstore_size_percentage / 100;
 
   if (FLAGS_global_memstore_size_mb_max != 0) {
@@ -523,6 +501,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   }
 
   // Add memory monitor and background thread for flushing
+  // TODO(zhaoalex): replace task with Poller
   if (should_count_memory) {
     background_task_.reset(new BackgroundTask(
       std::function<void()>([this](){ MaybeFlushTablet(); }),
@@ -573,8 +552,8 @@ Status TSTabletManager::Init() {
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
   ThreadPoolMetrics bootstrap_metrics = {
-          NULL,
-          NULL,
+          nullptr,
+          nullptr,
           METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
   };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
@@ -646,6 +625,9 @@ Status TSTabletManager::Init() {
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
 
+  verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
+
   return Status::OK();
 }
 
@@ -688,6 +670,14 @@ Status TSTabletManager::Start() {
   } else {
     LOG(INFO)
         << "Split tablets cleanup is disabled by cleanup_split_tablets_interval_sec flag set to 0";
+  }
+  if (FLAGS_verify_tablet_data_interval_sec > 0) {
+    verify_tablet_data_poller_->Start(
+        &server_->messenger()->scheduler(), FLAGS_verify_tablet_data_interval_sec * 1s);
+    LOG(INFO) << "Tablet data verification task started...";
+  } else {
+    LOG(INFO)
+        << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
   }
 
   return Status::OK();
@@ -949,6 +939,8 @@ Status TSTabletManager::ApplyTabletSplit(
     raft_log = tablet_peer->raft_consensus()->log().get();
   }
 
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
+
   RETURN_NOT_OK(raft_log->FlushIndex());
 
   auto& meta = *CHECK_NOTNULL(tablet->metadata());
@@ -1007,6 +999,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
     RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir));
+
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_after_log_copied);
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
@@ -1440,7 +1434,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   yb::OpId split_op_id;
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
-    if (CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
+    // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
+    if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
+        CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
                           true /* expected */, false /* val */)) {
       LOG(ERROR) << "Setting the state of a tablet to FAILED";
       tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
@@ -1502,7 +1498,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         server_->messenger(),
         &server_->proxy_cache(),
         log,
-        tablet->GetMetricEntity(),
+        tablet->GetTableMetricsEntity(),
+        tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
@@ -1574,6 +1571,8 @@ void TSTabletManager::StartShutdown() {
   }
 
   tablets_cleaner_->Shutdown();
+
+  verify_tablet_data_poller_->Shutdown();
 
   async_client_init_->Shutdown();
 
@@ -1763,7 +1762,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
-  DCHECK(tablet_peers != NULL);
+  DCHECK(tablet_peers != nullptr);
   // See AppendKeysFromMap for why this is done.
   if (tablet_peers->empty()) {
     tablet_peers->reserve(tablet_map_.size());
@@ -2093,13 +2092,20 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
   TabletDataState data_state = meta->tablet_data_state();
   CHECK(data_state == TABLET_DATA_DELETED ||
         data_state == TABLET_DATA_TOMBSTONED ||
-        data_state == TABLET_DATA_COPYING)
+        data_state == TABLET_DATA_COPYING ||
+        data_state == TABLET_DATA_INIT_STARTED)
       << "Unexpected TabletDataState in tablet " << tablet_id << ": "
       << TabletDataState_Name(data_state) << " (" << data_state << ")";
 
   if (data_state == TABLET_DATA_COPYING) {
     // We tombstone tablets that failed to remotely bootstrap.
     data_state = TABLET_DATA_TOMBSTONED;
+  }
+
+  if (data_state == TABLET_DATA_INIT_STARTED) {
+    // We delete tablets that failed to completely initialize after a split.
+    // TODO(tsplit): https://github.com/yugabyte/yugabyte-db/issues/8013
+    data_state = TABLET_DATA_DELETED;
   }
 
   const string kLogPrefix = TabletLogPrefix(tablet_id);

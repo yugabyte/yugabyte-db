@@ -18,7 +18,8 @@ const mapStateToProps = (state) => {
     customerConfigs: state.customer.configs,
     configList: state.cloud.authConfig,
     visibleModal: state.modal.visibleModal,
-    deleteConfig: state.customer.deleteConfig
+    deleteConfig: state.customer.deleteConfig,
+    modal: state.modal
   };
 };
 
@@ -57,7 +58,7 @@ const mapDispatchToProps = (dispatch) => {
           toast.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
         .catch((err) => {
-          console.error(err)
+          console.error(err);
         });
     }
   };

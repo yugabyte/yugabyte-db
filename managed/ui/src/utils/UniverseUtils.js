@@ -136,14 +136,17 @@ export function isKubernetesUniverse(currentUniverse) {
   );
 }
 
-export const isOnpremUniverse = (universe) => {
+export const isUniverseType = (universe, type) => {
   const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
-  return cluster?.userIntent?.providerType === 'onprem';
+  return cluster?.userIntent?.providerType === type;
+};
+
+export const isOnpremUniverse = (universe) => {
+  return isUniverseType(universe, 'onprem');
 };
 
 export const isAWSUniverse = (universe) => {
-  const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
-  return cluster?.userIntent?.providerType === 'aws';
+  return isUniverseType(universe, 'aws');
 };
 
 // Reads file and passes content into Promise.resolve

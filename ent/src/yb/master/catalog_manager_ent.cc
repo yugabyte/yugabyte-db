@@ -34,6 +34,9 @@
 #include "yb/common/ql_name.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -44,6 +47,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/encryption_manager.h"
+#include "yb/master/restore_sys_catalog_state.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -59,7 +63,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/status.h"
-#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -295,6 +298,14 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
     return CreateTransactionAwareSnapshot(*req, resp, rpc);
   }
 
+  if (req->has_schedule_id()) {
+    auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
+    auto snapshot_id = VERIFY_RESULT(
+        snapshot_coordinator_.CreateForSchedule(schedule_id, rpc->GetClientDeadline()));
+    resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    return Status::OK();
+  }
+
   return CreateNonTransactionAwareSnapshot(req, resp, rpc);
 }
 
@@ -330,8 +341,9 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   auto tables = VERIFY_RESULT(CollectTables(req->tables(),
                                             req->add_indexes(),
                                             true /* include_parent_colocated_table */));
+  std::unordered_set<NamespaceId> added_namespaces;
   for (const auto& table : tables) {
-    RETURN_NOT_OK(snapshot->AddEntries(table));
+    snapshot->AddEntries(table, &added_namespaces);
     all_tablets.insert(all_tablets.end(), table.tablet_infos.begin(), table.tablet_infos.end());
   }
 
@@ -390,9 +402,11 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
   auto tables = VERIFY_RESULT(CollectTables(
       table_identifiers, add_indexes, include_parent_colocated_table,
       succeed_if_create_in_progress));
+  std::unordered_set<NamespaceId> namespaces;
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
-    SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr);
+    SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr,
+                             &namespaces);
   }
 
   return entries;
@@ -483,9 +497,6 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
     HybridTime ht;
     if (req->has_restore_ht()) {
       ht = HybridTime(req->restore_ht());
-    } else if (req->has_restore_interval()) {
-      ht = HybridTime::FromMicros(
-          master_->clock()->Now().GetPhysicalValueMicros() - req->restore_interval());
     }
     TxnSnapshotRestorationId id = VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht));
     resp->set_restoration_id(id.data(), id.size());
@@ -601,7 +612,8 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
         SendRestoreTabletSnapshotRequest(
-            tablet, snapshot_id, HybridTime(), TabletSnapshotOperationCallback());
+            tablet, snapshot_id, HybridTime(), SendMetadata::kFalse,
+            TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -1361,12 +1373,18 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet,
     const string& snapshot_id,
     HybridTime restore_at,
+    SendMetadata send_metadata,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   if (restore_at) {
     call->SetSnapshotHybridTime(restore_at);
+  }
+  if (send_metadata) {
+    auto lock = tablet->table()->LockForRead();
+    const auto& pb = lock->data().pb;
+    call->SetMetadata(pb.version(), pb.schema(), pb.indexes());
   }
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
@@ -1386,6 +1404,95 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
 
 Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
   return tablet_peer()->tablet()->snapshots().Create(data);
+}
+
+Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoration) {
+  // Restore master snapshot and load it to RocksDB.
+  auto& tablet = *tablet_peer()->tablet();
+  auto dir = VERIFY_RESULT(tablet.snapshots().RestoreToTemporary(
+      restoration->snapshot_id, restoration->restore_at));
+  rocksdb::Options rocksdb_options;
+  std::string log_prefix = LogPrefix();
+  // Remove ": " to patch suffix.
+  log_prefix.erase(log_prefix.size() - 2);
+  tablet.InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+  // Load objects to restore and determine obsolete objects.
+  RestoreSysCatalogState state(restoration);
+  RETURN_NOT_OK(state.LoadObjects(schema(), doc_db));
+  {
+    auto existing = VERIFY_RESULT(CollectEntriesForSnapshot(restoration->filter.tables().tables()));
+    RETURN_NOT_OK(state.DetermineObsoleteObjects(existing));
+  }
+
+  // Generate write batch.
+  docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
+  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
+  for (const auto& tablet_id : restoration->obsolete_tablets) {
+    auto info = GetTabletInfo(tablet_id);
+    if (!info.ok()) {
+      continue;
+    }
+    RETURN_NOT_OK(state.PrepareTabletCleanup(
+        tablet_id, (**info).LockForRead()->data().pb, schema(), &write_batch));
+  }
+  for (const auto& table_id : restoration->obsolete_tables) {
+    auto info = GetTableInfo(table_id);
+    if (!info) {
+      continue;
+    }
+    RETURN_NOT_OK(state.PrepareTableCleanup(
+        table_id, info->LockForRead()->data().pb, schema(), &write_batch));
+  }
+
+  // Apply write batch to RocksDB.
+  docdb::KeyValueWriteBatchPB kv_write_batch;
+  write_batch.MoveToWriteBatchPB(&kv_write_batch);
+
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PrepareNonTransactionWriteBatch(
+      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr);
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(restoration->op_id, &frontiers);
+  set_hybrid_time(restoration->write_time, &frontiers);
+
+  tablet.WriteToRocksDB(
+      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+
+  // TODO(pitr) Handle master leader failover.
+  RETURN_NOT_OK(ElectedAsLeaderCb());
+
+  return Status::OK();
+}
+
+Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
+  auto objects_to_restore = restoration.objects_to_restore;
+  VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
+  for (const auto& entry : entries.entries()) {
+    VLOG_WITH_PREFIX(1)
+        << "Alive " << SysRowEntry::Type_Name(entry.type()) << ": " << entry.id();
+    auto it = objects_to_restore.find(entry.id());
+    if (it == objects_to_restore.end()) {
+      return STATUS_FORMAT(IllegalState, "Object $0/$1 present, but should not be restored",
+                           SysRowEntry::Type_Name(entry.type()), entry.id());
+    }
+    if (it->second != entry.type()) {
+      return STATUS_FORMAT(
+          IllegalState, "Restored object $0 has wrong type $1, while $2 expected",
+          entry.id(), SysRowEntry::Type_Name(entry.type()), SysRowEntry::Type_Name(it->second));
+    }
+    objects_to_restore.erase(it);
+  }
+  for (const auto& id_and_type : objects_to_restore) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected to restore $0/$1, but it does not present after restoration",
+        SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
+  }
+  return Status::OK();
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
@@ -3342,6 +3449,10 @@ void CatalogManager::Started() {
 
 Result<SnapshotSchedulesToTabletsMap> CatalogManager::MakeSnapshotSchedulesToTabletsMap() {
   return snapshot_coordinator_.MakeSnapshotSchedulesToTabletsMap();
+}
+
+void CatalogManager::SysCatalogLoaded(int64_t term) {
+  return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
 } // namespace enterprise

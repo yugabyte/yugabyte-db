@@ -13,6 +13,7 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.DataType;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.schemabuilder.SchemaBuilder;
@@ -25,6 +26,8 @@ import java.util.List;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
@@ -32,6 +35,7 @@ import org.junit.runner.RunWith;
 @RunWith(value=YBTestRunner.class)
 public class TestJson extends BaseCQLTest {
 
+  private static final Logger LOG = LoggerFactory.getLogger(TestJson.class);
   private void verifyEmptyRows(ResultSet rs, int expected_rows) {
     List<Row> rows = rs.all();
     assertEquals(expected_rows, rows.size());
@@ -57,6 +61,28 @@ public class TestJson extends BaseCQLTest {
     Row row = session.execute(String.format("SELECT * FROM test_json WHERE c2 = '%s'", json)).one();
     assertEquals(c1, row.getInt("c1"));
     assertEquals(json, row.getJson("c2"));
+  }
+
+  @Test
+  public void testUpsert() throws Exception {
+    session.execute("CREATE TABLE cdr ( Imsi text, Call_date timestamp, Json_metrics jsonb, " +
+      "PRIMARY KEY ((imsi), call_date)) with CLUSTERING ORDER BY (call_date DESC)");
+    session.execute("INSERT INTO cdr (imsi,call_date,json_metrics) VALUES " +
+      "('1111',totimestamp(now()),'{\"a\":43,\"b\":656}') IF NOT EXISTS;");
+    String updateStmt = "UPDATE cdr SET json_metrics->'c'=?,json_metrics->'d'=? " +
+    "WHERE imsi=? and call_date=totimestamp(now());";
+    PreparedStatement stmt = session.prepare(updateStmt);
+    session.execute(stmt.bind("54333", "{\"x\":\"y\"}", "33"));
+    ResultSet rs = session.execute("select * from cdr where imsi='33'");
+    List<Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    Row row = rows.get(0);
+    LOG.info("json is " + row);
+    JSONObject jsonObject = new JSONObject(row.getJson("json_metrics"));
+    assertEquals(54333, jsonObject.getInt("c"));
+    assertEquals("y", jsonObject.getJSONObject("d").getString("x"));
+    runInvalidStmt("UPDATE cdr SET json_metrics->'c'->'e'='5433' " +
+      "WHERE imsi='34' and call_date=totimestamp(now());");
   }
 
   @Test

@@ -393,14 +393,14 @@ class UniverseForm extends Component {
             return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
           })
           .map((masterFlag) => {
-            return { name: masterFlag.name, value: masterFlag.value };
+            return { name: masterFlag.name.trim(), value: masterFlag.value.trim() };
           });
         clusterIntent.tserverGFlags = formValues.primary.tserverGFlags
           .filter((tserverFlag) => {
             return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
           })
           .map((tserverFlag) => {
-            return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+            return { name: tserverFlag.name.trim(), value: tserverFlag.value.trim() };
           });
 
         if (currentProvider === 'aws' || currentProvider === 'azu') {
@@ -621,7 +621,17 @@ class UniverseForm extends Component {
       );
     }
 
-    if (this.state.currentView === 'Primary' && type !== 'Edit' && type !== 'Async') {
+    const selectedProviderUUID = this.props?.formValues?.primary?.provider;
+    const selectedProvider = this.props?.cloud?.providers?.data?.find(
+      (provider) => provider.uuid === selectedProviderUUID
+    );
+
+    if (
+      this.state.currentView === 'Primary' &&
+      type !== 'Edit' &&
+      type !== 'Async' &&
+      (selectedProvider === undefined || selectedProvider?.code !== 'kubernetes')
+    ) {
       asyncReplicaBtn = (
         <YBButton
           btnClass="btn btn-default universe-form-submit-btn"
@@ -696,7 +706,8 @@ class UniverseForm extends Component {
       fetchCustomerTasks: this.props.fetchCustomerTasks,
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
-      location: this.props.location
+      location: this.props.location,
+      featureFlags: this.props.featureFlags
     };
 
     if (this.state.currentView === 'Primary') {
@@ -709,12 +720,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     let submitControl = (
@@ -735,7 +746,7 @@ class UniverseForm extends Component {
           btnClass="btn btn-orange universe-form-submit-btn"
           btnText={submitTextLabel}
           btnType={'submit'}
-          disabled={ formChangedOrInvalid || updateInProgress }
+          disabled={formChangedOrInvalid || updateInProgress}
         />
       );
     } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
@@ -826,7 +837,7 @@ class UniverseForm extends Component {
             onClick={showFullMoveModal}
             btnClass="btn btn-orange universe-form-submit-btn"
             btnText={submitTextLabel}
-            disabled={ formChangedOrInvalid || updateInProgress }
+            disabled={formChangedOrInvalid || updateInProgress}
           />
           {visibleModal === 'fullMoveModal' && (
             <YBModal
@@ -906,7 +917,7 @@ class UniverseForm extends Component {
               {asyncReplicaBtn}
               <YBButton
                 btnClass="btn btn-orange universe-form-submit-btn"
-                disabled={ disableSubmit || updateInProgress }
+                disabled={disableSubmit || updateInProgress}
                 btnText={submitTextLabel}
                 btnType={'submit'}
               />

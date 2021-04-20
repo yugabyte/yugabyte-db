@@ -78,7 +78,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
     }
 
     private void sendKeyToMasters(byte[] keyRef, UUID kmsConfigUUID) {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
         String certificate = universe.getCertificate();
         YBClient client = null;
@@ -140,7 +140,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
         String certificate = universe.getCertificate();
         YBClient client = null;

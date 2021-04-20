@@ -9,9 +9,11 @@ import org.slf4j.LoggerFactory;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static java.util.stream.Collectors.toMap;
 
 @Entity
 public class RuntimeConfigEntry extends Model {
@@ -53,6 +55,14 @@ public class RuntimeConfigEntry extends Model {
 
   public static RuntimeConfigEntry get(UUID scope, String path) {
     return findOne.byId(new RuntimeConfigEntryKey(scope, path));
+  }
+
+  public static Map<String, String> getAsMapForScope(UUID scope) {
+    List<RuntimeConfigEntry> scopedValues =
+      getAll(scope);
+    return scopedValues
+      .stream()
+      .collect(toMap(RuntimeConfigEntry::getPath, RuntimeConfigEntry::getValue));
   }
 
   @Transactional

@@ -39,9 +39,6 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.ConnectionCleaner;
-import org.yb.pgsql.cleaners.UserObjectCleaner;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.SanitizerUtil;
 import org.yb.master.Master;
@@ -57,6 +54,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -65,7 +63,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";
   protected static final String DEFAULT_PG_PASS = "yugabyte";
-  public static final String TEST_PG_USER = "yugabyte_test";
+  protected static final String TEST_PG_USER = "yugabyte_test";
 
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
@@ -91,9 +89,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
-  // CQL and Redis settings.
-  protected static boolean startCqlProxy = false;
-  protected static boolean startRedisProxy = false;
+  // CQL and Redis settings, will be reset before each test via resetSettings method.
+  protected boolean startCqlProxy = false;
+  protected boolean startRedisProxy = false;
 
   protected static Connection connection;
 
@@ -195,8 +193,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (isTSAN() || isASAN()) {
       flagMap.put("pggate_rpc_timeout_secs", "120");
     }
-    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
-    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
+    flagMap.put("start_cql_proxy", String.valueOf(startCqlProxy));
+    flagMap.put("start_redis_proxy", String.valueOf(startRedisProxy));
 
     // Setup flag for postgres test on prefetch-limit when starting tserver.
     if (getYsqlPrefetchLimit() != null) {
@@ -216,13 +214,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = new TreeMap<>();
-    flagMap.put("client_read_write_timeout_ms", "120000");
+    flagMap.put("client_read_write_timeout_ms",
+                String.valueOf(SanitizerUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
     return flagMap;
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 1;
   }
 
@@ -294,6 +293,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     pgInitialized = true;
   }
 
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
+    // TODO(alex): Move to a superclass
+    startCqlProxy = false;
+    startRedisProxy = false;
+  }
+
   static ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster);
   }
@@ -327,19 +334,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return pgRegressEnvVars;
   }
 
-  /**
-   * Register default post-test cleaners, executed in order.
-   * When overridden, new cleaners should be added to the front of the list.
-   */
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = new ArrayList<>();
-    cleaners.add(new ConnectionCleaner());
-    cleaners.add(new UserObjectCleaner());
-    return cleaners;
-  }
-
   @After
   public void cleanUpAfter() throws Exception {
+    LOG.info("Cleaning up after {}", getCurrentTestMethodName());
     if (connection == null) {
       LOG.warn("No connection created, skipping cleanup");
       return;
@@ -350,9 +347,61 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = getConnectionBuilder().connect();
     }
 
-    // Run cleaners in order.
-    for (ClusterCleaner cleaner : getCleaners()) {
-      cleaner.clean(connection);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("RESET SESSION AUTHORIZATION");
+
+      // TODO(dmitry): Workaround for #1721, remove after fix.
+      stmt.execute("ROLLBACK");
+      stmt.execute("DISCARD TEMP");
+    }
+
+    cleanUpCustomDatabases();
+
+    cleanUpCustomEntities();
+  }
+
+  /**
+   * Removes all databases excluding `postgres`, `yugabyte`, `system_platform`, `template1`, and
+   * `template2`. Any lower-priority cleaners should only clean objects in one of the remaining
+   * three databases, or cluster-wide objects (e.g. roles).
+   */
+  private void cleanUpCustomDatabases() throws Exception {
+    LOG.info("Cleaning up custom databases");
+    try (Statement stmt = connection.createStatement()) {
+      List<String> databases = getRowList(stmt,
+          "SELECT datname FROM pg_database" +
+              " WHERE datname <> 'template0'" +
+              " AND datname <> 'template1'" +
+              " AND datname <> 'postgres'" +
+              " AND datname <> 'yugabyte'" +
+              " AND datname <> 'system_platform'").stream().map(r -> r.getString(0))
+                  .collect(Collectors.toList());
+
+      for (String database : databases) {
+        LOG.info("Dropping database '{}'", database);
+        stmt.execute("DROP DATABASE " + database);
+      }
+    }
+  }
+
+  /** Drop entities owned by non-system roles, and drop custom roles. */
+  private void cleanUpCustomEntities() throws Exception {
+    LOG.info("Cleaning up roles");
+    List<String> persistentUsers = Arrays.asList(DEFAULT_PG_USER, TEST_PG_USER);
+    try (Statement stmt = connection.createStatement()) {
+      List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
+          + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
+              .map(r -> r.getString(0))
+              .collect(Collectors.toList());
+
+      for (String role : roles) {
+        boolean isPersistent = persistentUsers.contains(role);
+        LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
+        stmt.execute("DROP OWNED BY " + role + " CASCADE");
+        if (!isPersistent) {
+          stmt.execute("DROP ROLE " + role);
+        }
+      }
     }
   }
 
@@ -1020,6 +1069,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return row;
   }
 
+  protected List<Row> getRowList(Statement stmt, String query) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery(query)) {
+      return getRowList(rs);
+    }
+  }
+
   protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
@@ -1668,8 +1723,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           if (autoCommit != null) {
             connection.setAutoCommit(autoCommit.enabled);
           }
-
-          ConnectionCleaner.register(connection);
           return connection;
         } catch (SQLException sqlEx) {
           // Close the connection now if we opened it, instead of waiting until the end of the test.

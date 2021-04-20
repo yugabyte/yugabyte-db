@@ -61,7 +61,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
   private static final int EMAIL_SMTP_PORT = 25;
 
-  private static final int EMAIL_SMTP_PORT_SSL = 587;
+  private static final int EMAIL_SMTP_PORT_SSL = 465;
 
   @Rule
   public MockitoRule rule = MockitoJUnit.rule();
@@ -263,6 +263,8 @@ public class EmailHelperTest extends FakeDBApplication {
   public void testSmtpDataToProperties_UsernameIsNull() {
     SmtpData smtpData = EmailFixtures.createSmtpData();
     smtpData.smtpUsername = null;
-    emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    Properties props = emailHelper.smtpDataToProperties(defaultCustomer, smtpData);
+    assertFalse(props.contains("mail.smtp.user"));
+    assertFalse(props.contains("mail.smtp.auth"));
   }
 }

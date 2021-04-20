@@ -279,7 +279,7 @@ TEST_F(TabletServerTest, TestInsert) {
   std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   scoped_refptr<Counter> rows_inserted =
-    METRIC_rows_inserted.Instantiate(tablet->tablet()->GetMetricEntity());
+      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetTabletMetricsEntity());
   ASSERT_EQ(0, rows_inserted->value());
   tablet.reset();
 

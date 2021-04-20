@@ -272,13 +272,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid,
-    const YBCPgOid index_oid,
-    const uint32_t target_index_permissions,
-    uint32_t *actual_index_permissions);
-
 YBCStatus YBCPgAsyncUpdateIndexPermissions(
     const YBCPgOid database_oid,
     const YBCPgOid indexed_table_oid);
@@ -493,9 +486,6 @@ int32_t YBCGetSequenceCacheMinval();
 
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
-
-// Retrieve value of TEST_ysql_index_state_flags_update_delay_ms gflag.
-int32_t YBCGetTestIndexStateFlagsUpdateDelayMs();
 
 bool YBCPgIsYugaByteEnabled();
 

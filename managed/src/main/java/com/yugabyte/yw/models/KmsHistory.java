@@ -21,10 +21,11 @@ import javax.persistence.TemporalType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-import javax.persistence.IdClass;
 import javax.persistence.EmbeddedId;
 
 @Entity
@@ -230,6 +231,15 @@ public class KmsHistory extends Model {
                 .eq("config_uuid", configUUID)
                 .eq("type", type)
                 .findList().size() != 0;
+    }
+
+    public static Set<Universe> getUniverses(UUID configUUID, KmsHistoryId.TargetType type) {
+      Set<UUID> universeUUIDs = new HashSet<>();
+      KmsHistory.find.query().where()
+          .eq("config_uuid", configUUID)
+          .eq("type", type)
+          .findList().forEach(n -> universeUUIDs.add(n.uuid.targetUuid));
+      return Universe.getAllPresent(universeUUIDs);
     }
 
     @Override

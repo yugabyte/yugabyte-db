@@ -20,6 +20,7 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_backup.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -33,6 +34,19 @@
 namespace yb {
 namespace master {
 
+struct SnapshotScheduleRestoration {
+  TxnSnapshotId snapshot_id;
+  HybridTime restore_at;
+  TxnSnapshotRestorationId restoration_id;
+  OpId op_id;
+  HybridTime write_time;
+  int64_t term;
+  SnapshotScheduleFilterPB filter;
+  std::vector<TabletId> obsolete_tablets;
+  std::vector<TableId> obsolete_tables;
+  std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
+};
+
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
@@ -41,6 +55,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
+
+  Result<TxnSnapshotId> CreateForSchedule(
+      const SnapshotScheduleId& schedule_id, CoarseTimePoint deadline);
 
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 
@@ -78,6 +95,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ApplyWritePair(const Slice& key, const Slice& value) override;
 
   CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
+
+  void SysCatalogLoaded(int64_t term);
 
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
   Result<SnapshotSchedulesToTabletsMap> MakeSnapshotSchedulesToTabletsMap();
