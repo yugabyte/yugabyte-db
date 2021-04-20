@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: explore-ysql-language-features-views
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 325
 isTocNested: true
 showAsideToc: true
 ---

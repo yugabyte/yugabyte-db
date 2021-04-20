@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: explore-ysql-language-features-partitioins
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 315
 isTocNested: true
 showAsideToc: true
 ---
