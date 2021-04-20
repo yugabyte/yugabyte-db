@@ -276,6 +276,16 @@ class TSDescriptor {
     return ts_metrics_.uptime_seconds;
   }
 
+  struct TSPathMetrics {
+    uint64_t used_space = 0;
+    uint64_t total_space = 0;
+  };
+
+  std::unordered_map<std::string, TSPathMetrics> path_metrics() {
+    SharedLock<decltype(lock_)> l(lock_);
+    return ts_metrics_.path_metrics;
+  }
+
   void UpdateMetrics(const TServerMetricsPB& metrics);
 
   void GetMetrics(TServerMetricsPB* metrics);
@@ -314,6 +324,8 @@ class TSDescriptor {
     return capabilities_.find(capability) != capabilities_.end();
   }
 
+  virtual bool IsLiveAndHasReported() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
@@ -350,6 +362,8 @@ class TSDescriptor {
 
     uint64_t uptime_seconds = 0;
 
+    std::unordered_map<std::string, TSPathMetrics> path_metrics;
+
     void ClearMetrics() {
       total_memory_usage = 0;
       total_sst_file_size = 0;
@@ -358,6 +372,7 @@ class TSDescriptor {
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
       uptime_seconds = 0;
+      path_metrics.clear();
     }
   };
 

@@ -16,6 +16,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 
 import org.junit.Test;
@@ -27,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.util.Iterator;
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +50,7 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
   private Logger logger = LoggerFactory.getLogger(TestSpark3Jsonb.class);
   private static String KEYSPACE = "test";
   private static String INPUT_TABLE = "person";
+  private static String CDR_TABLE = "cdr";
   private String phones[] = {
     "{\"code\":\"+42\",\"phone\":1000}",
     "{\"code\":\"+43\",\"phone\":1200}",
@@ -140,6 +143,114 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       spark.close();
   }
 
+  @Test
+  public void testCdr() throws Exception {
+      // Set up config.
+      List<InetSocketAddress> addresses = miniCluster.getCQLContactPoints();
+
+      // Setup the local spark master
+      SparkConf conf = new SparkConf().setAppName("yb.spark-jsonb")
+        .setMaster("local[1]")
+        .set("confirm.truncate", "true")
+        .set("spark.cassandra.connection.localDC", "datacenter1")
+        .set("spark.cassandra.connection.host", addresses.get(0).getHostName())
+        .set("spark.sql.catalog.mycatalog",
+          "com.datastax.spark.connector.datasource.CassandraCatalog");
+
+      createSchemaIfNotExist(conf);
+      SparkSession spark = SparkSession.builder().config(conf)
+        .withExtensions(new CassandraSparkExtensions()).getOrCreate();
+      processCDRForYoutube(spark);
+
+      String query = "SELECT usage from mycatalog.test.cdr where imsi=116 order by gdate";
+      Dataset<Row> rows = spark.sql(query);
+      Iterator<Row> iterator = rows.toLocalIterator();
+      int count = 0;
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          String jsonb = row.getString(0);
+          assertEquals(jsonb, "{\"dl\":1122,\"rsrq\":10000,\"ul\":72}");
+          count++;
+      }
+      processCDRForCall(spark);
+
+      Dataset<org.apache.spark.sql.Row> df = spark.sqlContext().read()
+          .format("org.apache.spark.sql.cassandra")
+          .option("keyspace", KEYSPACE)
+          .option("table", CDR_TABLE).load();
+      logger.info("Table loaded Sucessfully");
+
+      df.createOrReplaceTempView("temp");
+
+      spark.sqlContext().sql("select * from temp").show(false);
+      logger.info("Data READ SuccessFully");
+
+      rows = spark.sql(query);
+      iterator = rows.toLocalIterator();
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          String jsonb = row.getString(0);
+          assertEquals(jsonb, "{\"dl\":1122,\"rsrp\":-80,\"rsrq\":null,\"sinr\":100,\"ul\":72}");
+      }
+      spark.close();
+  }
+
+  private void processCDRForCall(SparkSession spark) {
+    URL sqlFileRes = getClass().getClassLoader().getResource("cdr-call.csv");
+    Dataset<Row> rows = spark.read().option("header", true).csv(sqlFileRes.getFile());
+    rows.show();
+    rows.createOrReplaceTempView("temp");
+    Dataset<Row> updatedRows = spark
+        .sql("select date as gdate,imsi,rsrp,sinr,rsrq from temp ");
+    updatedRows.show();
+    updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", KEYSPACE)
+        .option("table", CDR_TABLE)
+        .option("spark.cassandra.mergeable.json.column.mapping", "dl,rsrp,sinr,ul,rsrq:usage")
+        .mode(SaveMode.Append).save();
+  }
+  private void processCDRForYoutube(SparkSession spark) {
+
+    URL sqlFileRes = getClass().getClassLoader().getResource("cdr-youtube.csv");
+    Dataset<Row> rows = spark.read().option("header", true).csv(sqlFileRes.getFile());
+    rows.show();
+    long start = System.currentTimeMillis();
+    rows.createOrReplaceTempView("temp");
+    spark.sqlContext().sql("select * from temp").show(false);
+    logger.info("starting youtube");
+    Dataset<Row> updatedRows = spark
+      .sql("select date as gdate,imsi,dl,ul,rsrq from temp ");
+    updatedRows.show();
+    logger.info("starting youtube");
+    updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", KEYSPACE)
+        .option("table", CDR_TABLE)
+        .option("spark.cassandra.mergeable.json.column.mapping", "dl,rsrp,sinr,ul,rsrq:usage")
+        .mode(SaveMode.Append).save();
+    logger.info("df save took " + (System.currentTimeMillis()-start) + "; " + updatedRows.count());
+
+  }
+
+  private void createSchemaIfNotExist(SparkConf conf) {
+    CassandraConnector connector = CassandraConnector.apply(conf);
+
+    try (CqlSession session = connector.openSession();) {
+
+      String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE + ";";
+      session.execute(createKeyspace);
+      logger.info("Created keyspace name: {}", KEYSPACE);
+
+      String tableWithKeysapce = KEYSPACE + "." + CDR_TABLE;
+
+      String createTable = "CREATE TABLE IF NOT EXISTS " + tableWithKeysapce +
+          "(gdate date, imsi text," + "usage jsonb, PRIMARY KEY(gdate,imsi) )";
+
+      session.execute(createTable);
+      logger.info("Created table tablename: {}", INPUT_TABLE);
+      session.close();
+    } catch (Exception e) {
+      logger.error("Error in creating schema: {}", e.getStackTrace());
+      e.printStackTrace();
+    }
+  }
   private CqlSession createTestSchemaIfNotExist(SparkConf conf) throws Exception {
       // Create the Cassandra connector to Spark.
       CassandraConnector connector = CassandraConnector.apply(conf);

@@ -17,13 +17,14 @@ const appTypes = [
     type: 'ysql',
     title: 'YSQL',
     description:
-      'This app writes out 1M unique string keys each with a string value. There are multiple ' +
-      'readers and writers that write these keys and read them indefinitely. Note that the number of ' +
+      'This app writes out 2M unique string keys each with a string value. There are multiple ' +
+      'readers and writers that write 2M keys and read 1.5M keys . ' + 
+      'To write the keys and read them indefinitely set num_reads & num_writes to -1 . Note that the number of ' +
       'reads and writes to perform can be specified as a parameter.',
     options: [
-      { num_unique_keys: '1000000' },
-      { num_reads: '-1' },
-      { num_writes: '-1' },
+      { num_unique_keys: '2000000' },
+      { num_reads: '1500000' },
+      { num_writes: '2000000' },
       { num_threads_read: '32' },
       { num_threads_write: '2' }
     ]
@@ -33,14 +34,16 @@ const appTypes = [
     type: 'cassandra',
     title: 'YCQL',
     description:
-      'This app writes out 1M unique string keys ' +
-      'each with a string value. There are multiple readers and writers that update these ' +
-      'keys and read them indefinitely. Note that the number of reads and writes to ' +
+      'This app writes out 2M unique string keys ' +
+      'each with a string value. There are multiple readers and writers that update 2M ' +
+      'keys and read 1.5M keys. '  +
+      'To update the keys and read them indefinitely set num_reads & num_writes to -1 .' + 
+      'Note that the number of reads and writes to ' +
       'perform can be specified as a parameter.',
     options: [
-      { num_unique_keys: '1000000' },
-      { num_reads: '-1' },
-      { num_writes: '-1' },
+      { num_unique_keys: '2000000' },
+      { num_reads: '1500000' },
+      { num_writes: '2000000' },
       { num_threads_read: '24' },
       { num_threads_write: '2' },
       { table_ttl_seconds: '-1' }

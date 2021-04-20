@@ -182,10 +182,8 @@ public class Scheduler {
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe;
-    try {
-      universe = Universe.get(taskParams.universeUUID);
-    } catch (Exception e) {
+    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
+    if (universe == null) {
       schedule.stopSchedule();
       return;
     }
@@ -221,7 +219,7 @@ public class Scheduler {
     taskParams.scheduleUUID = schedule.scheduleUUID;
     Universe universe;
     try {
-      universe = Universe.get(taskParams.universeUUID);
+      universe = Universe.getOrBadRequest(taskParams.universeUUID);
     } catch (Exception e) {
       schedule.stopSchedule();
       return;
