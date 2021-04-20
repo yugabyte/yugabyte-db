@@ -6,7 +6,7 @@ import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { withRouter } from 'react-router';
-import { Field, SubmissionError, reset } from 'redux-form';
+import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -19,8 +19,7 @@ import {
   isNonEmptyObject,
   isEmptyObject,
   isDefinedNotNull,
-  isNonEmptyArray,
-  isEmptyArray
+  isNonEmptyArray
 } from '../../../utils/ObjectUtils';
 import { Formik } from 'formik';
 
@@ -165,8 +164,6 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    console.log(values, '*************', dataPayload)
-
     if (values.type === "update") {
       this.setState({ enableEdit: false });
       return this.props
@@ -208,7 +205,6 @@ class StorageConfiguration extends Component {
   };
 
   deleteStorageConfig = (configUUID) => {
-    // window.location.reload();
     this.props.deleteCustomerConfig(configUUID)
       .then(() => {
         this.props.reset(); // reset form to initial values
