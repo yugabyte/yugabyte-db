@@ -15,21 +15,22 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Map;
+
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.yb.client.TestUtils;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Tests for PostgreSQL configuration.
@@ -39,10 +40,15 @@ public class TestPgEncryption extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgEncryption.class);
 
   public TestPgEncryption() {
-    tserverArgs = new ArrayList<>();
-    tserverArgs.add("--use_client_to_server_encryption=true");
-    tserverArgs.add(String.format("--certs_for_client_dir=%s", certsDir()));
     useIpWithCertificate = true;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("use_client_to_server_encryption", "true");
+    flagMap.put("certs_for_client_dir", certsDir());
+    return flagMap;
   }
 
   private static String certsDir() {
@@ -84,7 +90,7 @@ public class TestPgEncryption extends BasePgSQLTest {
 
   @Test
   public void testSslWithAuth() throws Exception {
-    int tserver = spawnTServerWithFlags("--ysql_enable_auth");
+    int tserver = spawnTServerWithFlags("ysql_enable_auth", "true");
 
     // Client connection with SSL enabled -- should only allow connection with pass (+SSL).
     ConnectionBuilder tsConnBldr = getConnectionBuilder().withSslMode("require")
@@ -134,10 +140,10 @@ public class TestPgEncryption extends BasePgSQLTest {
     //   openssl pkcs8 -topk8 -inform PEM -in ysql.key -outform DER -nocrypt -out ysql.key.der
     // (see sslkey entry in https://jdbc.postgresql.org/documentation/head/connect.html for details)
     // This is not required for ysqlsh or psql where the PEM format is supported.
-    int tserver = spawnTServerWithFlags(
-      "--ysql_hba_conf_csv=hostssl all all all md5 clientcert=1",
-      String.format("--ysql_pg_conf_csv=ssl_cert_file='%s',ssl_key_file='%s',ssl_ca_file='%s'",
-                    sslcertFile, sslkeyFile, sslrootcertFile));
+    int tserver = spawnTServerWithFlags(ImmutableMap.of(
+        "ysql_hba_conf_csv", "hostssl all all all md5 clientcert=1",
+        "ysql_pg_conf_csv", String.format("ssl_cert_file='%s',ssl_key_file='%s',ssl_ca_file='%s'",
+            sslcertFile, sslkeyFile, sslrootcertFile)));
 
     // Client connection with SSL and cert -- should only allow connection with pass (+cert/SSL).
     ConnectionBuilder tsConnBldr = getConnectionBuilder().withSslMode("require")
@@ -216,13 +222,4 @@ public class TestPgEncryption extends BasePgSQLTest {
     }
 
   }
-
-  private static int spawnTServerWithFlags(String... flags) throws Exception {
-    List<String> tserverArgs = new ArrayList<>(BasePgSQLTest.tserverArgs);
-    tserverArgs.addAll(Arrays.asList(flags));
-    int tserver = miniCluster.getNumTServers();
-    miniCluster.startTServer(tserverArgs);
-    return tserver;
-  }
-
 }
