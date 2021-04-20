@@ -483,11 +483,9 @@ public class TestTransaction extends BaseCQLTest {
       // and executing a transaction. Verify that OperationTimedOutException is raised as CQL proxy
       // keeps retrying the transaction.
       destroyMiniCluster();
-      List<List<String>> tserverArgs = new ArrayList<>();
-      for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-        tserverArgs.add(Arrays.asList("--transaction_max_missed_heartbeat_periods=0.0"));
-      }
-      createMiniCluster(NUM_MASTERS, tserverArgs);
+      createMiniCluster(
+          Collections.emptyMap(),
+          Collections.singletonMap("transaction_max_missed_heartbeat_periods", "0.0"));
 
       setUpCqlClient();
       session.execute("create table test_timeout (k int primary key, v int) " +

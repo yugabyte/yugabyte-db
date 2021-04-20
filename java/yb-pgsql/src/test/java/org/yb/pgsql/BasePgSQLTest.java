@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.*;
 import static org.yb.util.SanitizerUtil.isASAN;
 import static org.yb.util.SanitizerUtil.isTSAN;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -71,7 +72,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
-  private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
   // Metric names.
@@ -172,10 +172,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected Map<String, String> getMasterAndTServerFlags() {
-    return new TreeMap<>();
-  }
-
   protected Integer getYsqlPrefetchLimit() {
     return null;
   }
@@ -187,8 +183,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /**
    * @return flags shared between tablet server and initdb
    */
+  @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
+    Map<String, String> flagMap = super.getTServerFlags();
 
     if (isTSAN() || isASAN()) {
       flagMap.put("pggate_rpc_timeout_secs", "120");
@@ -212,10 +209,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
+  @Override
   protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
+    Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("client_read_write_timeout_ms",
-                String.valueOf(SanitizerUtil.adjustTimeout(120000)));
+        String.valueOf(SanitizerUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
     return flagMap;
   }
@@ -233,18 +231,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
-      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
-      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-
-    for (Map.Entry<String, String> entry : getMasterAndTServerFlags().entrySet()) {
-      String flagStr = "--" + entry.getKey() + "=" + entry.getValue();
-      builder.addCommonTServerArgs(flagStr);
-      builder.addMasterArgs(flagStr);
-    }
     builder.enablePostgres(true);
   }
 
@@ -296,7 +282,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @Override
   protected void resetSettings() {
     super.resetSettings();
-    // TODO(alex): Move to a superclass
     startCqlProxy = false;
     startRedisProxy = false;
   }
@@ -1547,6 +1532,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       return sb.toString().trim();
     }
+  }
+
+  protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.putAll(additionalFlags);
+    int tserver = miniCluster.getNumTServers();
+    miniCluster.startTServer(tserverFlags);
+    return tserver;
+  }
+
+  /**
+   * Simple helper for {@link #spawnTServerWithFlags(Map)}.
+   * <p>
+   * Please use {@code ImmutableMap.of} for more arguments!
+   */
+  protected int spawnTServerWithFlags(
+      String additionalFlagKey, String additionalFlagValue) throws Exception {
+    return spawnTServerWithFlags(ImmutableMap.of(additionalFlagKey, additionalFlagValue));
   }
 
   /** Run a process, returning output lines. */

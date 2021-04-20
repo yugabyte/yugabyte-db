@@ -26,8 +26,15 @@ public class TestPgRegressTablegroup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressTablegroup.class);
 
   @Override
-  protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = super.getMasterAndTServerFlags();
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("ysql_beta_feature_tablegroup", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_beta_feature_tablegroup", "true");
     return flagMap;
   }

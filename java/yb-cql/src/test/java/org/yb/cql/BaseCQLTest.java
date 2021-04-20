@@ -86,9 +86,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   /** Convenient default session for tests to use, cleaned after each test. */
   protected Session session;
 
-  /** To customize, override and use {@code super} call. */
+  @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
+    Map<String, String> flagMap = super.getTServerFlags();
 
     flagMap.put("start_cql_proxy",
         String.valueOf(startCqlProxy));
@@ -104,25 +104,14 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  /** To customize, override and use {@code super} call. */
-  protected Map<String, String> getMasterFlags() {
-    return new TreeMap<>();
-  }
-
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
-      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
-      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
     builder.enablePostgres(false);
     // Prevent YB server processes from closing connections which are idle for less than client
     // timeout period.
-    builder.addCommonArgs(String.format(
-        "--rpc_default_keepalive_time_ms=%d", cqlClientTimeoutMs + 5000));
+    builder.addCommonFlag("rpc_default_keepalive_time_ms",
+        String.valueOf(cqlClientTimeoutMs + 5000));
   }
 
   @BeforeClass
@@ -208,7 +197,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Override
   protected void resetSettings() {
     super.resetSettings();
-    // TODO(alex): Move to a superclass
     startCqlProxy = true;
     startRedisProxy = false;
     systemQueryCacheEmptyResponses = false;

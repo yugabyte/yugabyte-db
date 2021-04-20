@@ -27,19 +27,24 @@ import org.yb.cql.BaseCQLTest;
 
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-import java.util.ArrayList;
+import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunner.class)
 public class TestCQLSecure extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestCQLSecure.class);
 
   public TestCQLSecure() {
-    tserverArgs = new ArrayList<>();
-    tserverArgs.add("--use_client_to_server_encryption=true");
-    tserverArgs.add(String.format("--certs_for_client_dir=%s", certsDir()));
     useIpWithCertificate = true;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("use_client_to_server_encryption", "true");
+    flagMap.put("certs_for_client_dir", certsDir());
+    return flagMap;
   }
 
   @BeforeClass

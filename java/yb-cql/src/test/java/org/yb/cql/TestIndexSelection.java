@@ -31,43 +31,17 @@
  */
 package org.yb.cql;
 
+import static org.yb.AssertionWrappers.*;
+
 import java.util.*;
 
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
-
-import com.datastax.driver.core.BatchStatement;
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.ColumnDefinitions.Definition;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SimpleStatement;
-import com.datastax.driver.core.TableMetadata;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
-
-import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
-import org.yb.util.TableProperties;
-
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertNull;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
-
-import org.yb.YBTestRunner;
-
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestIndexSelection extends BaseCQLTest {
@@ -79,14 +53,13 @@ public class TestIndexSelection extends BaseCQLTest {
     return super.getTestMethodTimeoutSec()*10;
   }
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
-    BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=1000");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--index_backfill_wait_for_old_txns_ms=100");
-    BaseCQLTest.setUpBeforeClass();
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allow_index_table_read_write", "true");
+    flagMap.put("index_backfill_upperbound_for_user_enforced_txn_duration_ms", "1000");
+    flagMap.put("index_backfill_wait_for_old_txns_ms", "100");
+    return flagMap;
   }
 
   @Before

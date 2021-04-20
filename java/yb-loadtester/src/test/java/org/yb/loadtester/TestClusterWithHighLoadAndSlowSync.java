@@ -29,14 +29,10 @@ public class TestClusterWithHighLoadAndSlowSync extends TestClusterBase {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     // Tests hearbeat batching (initially disabled) which is very beneficial during slow sync.
-    builder.addMasterArgs(
-        "--catalog_manager_report_batch_size=10"
-    );
-    builder.addCommonTServerArgs(
-        "--log_inject_latency",
-        "--log_inject_latency_ms_mean=100",
-        "--log_inject_latency_ms_stddev=50"
-    );
+    builder.addMasterFlag("catalog_manager_report_batch_size", "10");
+    builder.addCommonTServerFlag("log_inject_latency", "true");
+    builder.addCommonTServerFlag("log_inject_latency_ms_mean", "100");
+    builder.addCommonTServerFlag("log_inject_latency_ms_stddev", "50");
   }
 
   @Before

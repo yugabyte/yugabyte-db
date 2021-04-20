@@ -361,7 +361,7 @@ public class TestTimestampDataType extends BaseCQLTest {
 
   @Test
   public void testTimestampLogicGFlag() throws Exception {
-//     Testing ICU timezones flag enabled (default).
+    // Testing ICU timezones flag enabled (default).
     String tableName = "test";
     String newTimestamp = "\'2019-01-26T00:03:16.059 America/New_York\'";
     session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
@@ -373,9 +373,10 @@ public class TestTimestampDataType extends BaseCQLTest {
     Iterator<Row> rows = runSelect(sel_stmt);
     assertTrue(rows.hasNext());
     destroyMiniCluster();
-//    Testing ICU timezones flag disabled.
-    tserverArgs.add("--use_icu_timezones=false");
-    createMiniCluster();
+    // Testing ICU timezones flag disabled.
+    createMiniCluster(
+        Collections.emptyMap(),
+        Collections.singletonMap("use_icu_timezones", "false"));
     setUpCqlClient();
     session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
     runInvalidStmt(ins_stmt);
@@ -392,7 +393,6 @@ public class TestTimestampDataType extends BaseCQLTest {
       assertEquals("26 Jan 2019 03:33:16 GMT",row.getTimestamp(1).toGMTString());
     }
     destroyMiniCluster();
-    tserverArgs.remove("--use_icu_timezones=false");
   }
 
 }

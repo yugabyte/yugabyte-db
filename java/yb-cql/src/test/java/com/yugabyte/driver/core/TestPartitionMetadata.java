@@ -22,6 +22,8 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import java.util.Collections;
+
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
@@ -91,13 +93,12 @@ public class TestPartitionMetadata extends BaseCQLTest {
     LOG.info("Start test: " + getCurrentTestMethodName());
     destroyMiniCluster();
     // Testing cql_server_always_send_events flag enabled.
-    tserverArgs.add("--cql_server_always_send_events=true");
-    createMiniCluster();
+    createMiniCluster(
+        Collections.emptyMap(),
+        Collections.singletonMap("cql_server_always_send_events", "true"));
     setUpCqlClient();
 
     internalTestCreateDropTable();
-
-    tserverArgs.remove("--cql_server_always_send_events=true");
     LOG.info("End test: " + getCurrentTestMethodName());
   }
 }

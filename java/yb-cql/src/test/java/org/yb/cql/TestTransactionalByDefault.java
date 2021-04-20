@@ -27,7 +27,7 @@ public class TestTransactionalByDefault extends BaseCQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerArgs("--cql_table_is_transactional_by_default");
+    builder.addCommonTServerFlag("cql_table_is_transactional_by_default", "true");
   }
 
   @Test
