@@ -5,13 +5,13 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.81.0"
+  HUGO_VERSION = "0.82.1"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.81.0"
+  HUGO_VERSION = "0.82.1"
 
 [context.production.environment]
-  HUGO_VERSION = "0.81.0"
+  HUGO_VERSION = "0.82.1"
 
 # Redirects
 # - Default status is a 301 unless otherwise specified.
