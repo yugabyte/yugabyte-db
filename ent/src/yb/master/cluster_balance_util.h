@@ -47,7 +47,7 @@ class PerTableLoadState : public yb::master::PerTableLoadState {
   void UpdateTabletServer(std::shared_ptr<yb::master::TSDescriptor> ts_desc) override {
     super::UpdateTabletServer(ts_desc);
     // If the TS is perceived as DEAD then ignore it.
-    if (check_ts_aliveness && !ts_desc->IsLiveAndHasReported()) {
+    if (check_ts_liveness_ && !ts_desc->IsLiveAndHasReported()) {
       return;
     }
 
