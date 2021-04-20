@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: explore-ysql-language-features-tablespaces
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 320
 isTocNested: true
 showAsideToc: true
 ---
