@@ -75,8 +75,11 @@ docker pull yugabytedb/yugabyte:2.7.0.0-b17
 
 #### Yugabyte Platform
 
-* Azure IaaS orchestration
-  * No support for regions with zero Availability Zones(AZs) (#5628)
+N/A
+
+#### Core Database
+
+N/A
 
 ## Notes
 
