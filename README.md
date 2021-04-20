@@ -74,7 +74,7 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** is expected to be released on **Apr, 2021**, the **v2.4 stable release** was release in **Jan 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** is expected to be released on **Apr, 2021**, the **v2.4 stable release** was released in **Jan 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
