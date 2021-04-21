@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
@@ -23,7 +22,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.Common;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -85,7 +83,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     defaultProvider.save();
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
-    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
 
@@ -116,7 +114,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupUniverseSingleAZ(boolean setMasters) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     setupUniverse(setMasters, userIntent);
@@ -148,7 +146,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
-    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+    InstanceType i = InstanceType.upsert(defaultProvider.uuid, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     setupUniverse(setMasters, userIntent);

@@ -67,6 +67,7 @@ def execute_command(cmd, password=None):
     stdout, stderr = p.communicate()
     if p.returncode != 0:
         print("Failed running cmd: {}".format(cmd))
+        print(stdout)
         print(stderr)
         sys.exit(1)
     else:
@@ -87,12 +88,16 @@ if __name__ == '__main__':
     if args.ask_password:
         password = getpass.getpass('Sudo password: ')
         execute_command(construct_vault_command(args), password=password)
+        print("Password saved.")
 
-    print('Executing provision now for instance with IP {}...'.format(args.ip))
+
+    print('Performing preflight checks for instance with IP {}...'.format(args.ip))
     output = execute_command(construct_instance_command(args, True), password=password)
     if all(json.loads(output).values()):
         print("Preflight checks passed!")
+        print('Executing provision now for instance with IP {}...'.format(args.ip))
         execute_command(construct_instance_command(args), password=password)
+        print("Provisioning successful!")
     else:
         print("Failed preflight checks!")
         print(output)

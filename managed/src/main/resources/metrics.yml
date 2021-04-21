@@ -1285,7 +1285,7 @@ lsm_rocksdb_num_seeks_per_node:
         "rocksdb_number_db_seek": "Seek"
 
 lsm_rocksdb_total_sst_per_node:
-  metric: "rocksdb_total_sst_file_size"
+  metric: "rocksdb_current_version_sst_files_size"
   function: "sum without (table_id, table_name)|avg"
   operator: "/ 1073741824"
   filters:
@@ -1296,7 +1296,7 @@ lsm_rocksdb_total_sst_per_node:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_total_sst_file_size": "Size of SSTables"
+        "rocksdb_current_version_sst_files_size": "Size of SSTables"
       ticksuffix: "&nbsp;GB"
       tickformat: ".2f"
 

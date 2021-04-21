@@ -54,6 +54,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/metadata.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -836,11 +837,18 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.has_been_fully_compacted = false;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
-  metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;
+  metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }
 
+Result<std::string> RaftGroupMetadata::TopSnapshotsDir() const {
+  auto result = snapshots_dir();
+  RETURN_NOT_OK_PREPEND(
+      fs_manager()->CreateDirIfMissingAndSync(result),
+      Format("Unable to create snapshots directory $0", result));
+  return result;
+}
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with

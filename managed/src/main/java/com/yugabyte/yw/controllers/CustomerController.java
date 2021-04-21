@@ -76,13 +76,13 @@ public class CustomerController extends AuthenticatedController {
     ObjectNode responseJson = (ObjectNode) Json.toJson(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
     if (config != null) {
-      responseJson.set("alertingData", config.data);
+      responseJson.set("alertingData", config.getData());
     } else {
       responseJson.set("alertingData", null);
     }
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
     if (smtpConfig != null) {
-      responseJson.set("smtpData", smtpConfig.data);
+      responseJson.set("smtpData", smtpConfig.getData());
     } else {
       responseJson.set("smtpData", null);
     }
@@ -121,7 +121,7 @@ public class CustomerController extends AuthenticatedController {
       if (config == null && formData.get().alertingData != null) {
         CustomerConfig.createAlertConfig(customerUUID, Json.toJson(formData.get().alertingData));
       } else if (config != null && formData.get().alertingData != null) {
-        config.data = Json.toJson(formData.get().alertingData);
+        config.setData(Json.toJson(formData.get().alertingData));
         config.update();
       }
 
@@ -129,7 +129,7 @@ public class CustomerController extends AuthenticatedController {
       if (smtpConfig == null && formData.get().smtpData != null) {
         CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(formData.get().smtpData));
       } else if (smtpConfig != null && formData.get().smtpData != null) {
-        smtpConfig.data = Json.toJson(formData.get().smtpData);
+        smtpConfig.setData(Json.toJson(formData.get().smtpData));
         smtpConfig.update();
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && formData.get().smtpData == null) {

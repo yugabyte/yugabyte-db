@@ -481,29 +481,9 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
   explicit LookupCallbackVisitor(const Status& error_status) : error_status_(error_status) {
   }
 
-  void operator() (const LookupTabletCallback& tablet_callback) const {
-    if (error_status_) {
-      tablet_callback(*error_status_);
-      return;
-    }
-    auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
-    if (remote_tablet == nullptr) {
-      static const Status error_status =
-          STATUS(TryAgain, "Tablet for requested partition is not yet running");
-      tablet_callback(error_status);
-      return;
-    }
-    tablet_callback(remote_tablet);
-  }
+  void operator()(const LookupTabletCallback& tablet_callback) const;
+  void operator()(const LookupTabletRangeCallback& tablet_range_callback) const;
 
-  void operator() (const LookupTabletRangeCallback& tablet_range_callback) const {
-    if (error_status_) {
-      tablet_range_callback(*error_status_);
-      return;
-    }
-    auto result = boost::get<std::vector<RemoteTabletPtr>>(param_);
-    tablet_range_callback(result);
-  }
  private:
   const LookupCallbackParam param_;
   const boost::optional<Status> error_status_;

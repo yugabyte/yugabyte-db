@@ -40,7 +40,7 @@ void PgMiniTestBase::DoTearDown() {
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
-  FLAGS_client_read_write_timeout_ms = 120000;
+  FLAGS_client_read_write_timeout_ms = 120000 * kTimeMultiplier;
   FLAGS_enable_ysql = true;
   FLAGS_hide_pg_catalog_table_creation_logs = true;
   FLAGS_master_auto_run_initdb = true;

@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.CreatedTimestamp;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.UpdatedTimestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -15,9 +18,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.abs;
@@ -41,7 +42,11 @@ public class Backup extends Model {
     Deleted,
 
     @EnumValue("Skipped")
-    Skipped
+    Skipped,
+
+    // Complete or partial failure to delete
+    @EnumValue("FailedToDelete")
+    FailedToDelete,
   }
 
   @Id
@@ -89,7 +94,8 @@ public class Backup extends Model {
 
   // For creating new backup we would set the storage location based on
   // universe UUID and backup UUID.
-  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace.table_name.table_uuid
+  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
+  // .table_name.table_uuid
   private void updateStorageLocation(BackupTableParams params) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (params.tableUUIDList != null) {
@@ -189,14 +195,30 @@ public class Backup extends Model {
       .findOne();
   }
 
-  public static List<Backup> getExpiredBackups(UUID scheduleUUID) {
+  public static Map<Customer, List<Backup>> getExpiredBackups() {
     // Get current timestamp.
     Date now = new Date();
-    return Backup.find.query().where()
-      .eq("schedule_uuid", scheduleUUID)
+    List<Backup> expiredBackups = Backup.find.query().where()
       .lt("expiry", now)
       .eq("state", BackupState.Completed)
       .findList();
+
+    Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
+    for (Backup backup : expiredBackups) {
+      expiredBackupsByCustomerUUID.putIfAbsent(backup.customerUUID, new ArrayList<>());
+      expiredBackupsByCustomerUUID.get(backup.customerUUID).add(backup);
+    }
+
+    Map<Customer, List<Backup>> ret = new HashMap<>();
+    expiredBackupsByCustomerUUID.forEach((customerUUID, backups) -> {
+      Customer customer = Customer.get(customerUUID);
+      Set<UUID> allUniverseUUIDs = Universe.getAllUUIDs(customer);
+      List<Backup> backupsWithValidUniv = backups.stream()
+        .filter(backup -> allUniverseUUIDs.contains(backup.getBackupInfo().universeUUID))
+        .collect(Collectors.toList());
+      ret.put(customer, backupsWithValidUniv);
+    });
+    return ret;
   }
 
   public void transitionState(BackupState newState) {
@@ -204,11 +226,11 @@ public class Backup extends Model {
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState) ||
         (this.state == BackupState.Completed && newState == BackupState.Deleted) ||
-        // This condition is for the case in which the delete fails and we need
-        // to reset the state.
-        (this.state == BackupState.Deleted && newState == BackupState.Completed)) {
+        (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)) {
       this.state = newState;
       save();
+    } else {
+      LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
     }
   }
 

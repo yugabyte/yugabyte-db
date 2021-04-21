@@ -58,7 +58,7 @@ public class LoadBalancerStateChange extends UniverseTaskBase {
   public void run() {
     ChangeLoadBalancerStateResponse resp;
     YBClient client = null;
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     try {

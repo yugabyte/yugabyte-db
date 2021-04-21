@@ -37,10 +37,14 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flag_tags.h"
@@ -233,11 +237,15 @@ const std::shared_ptr<TSInformationPB> TSDescriptor::GetTSInformationPB() const 
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   SharedLock<decltype(lock_)> l(lock_);
-  const auto& ci = ts_information_->registration().common().cloud_info();
+  const auto& ts_ci = ts_information_->registration().common().cloud_info();
 
-  return cloud_info.placement_cloud() == ci.placement_cloud() &&
-         cloud_info.placement_region() == ci.placement_region() &&
-         cloud_info.placement_zone() == ci.placement_zone();
+  // cloud_info should be a prefix of ts_ci.
+  return CatalogManagerUtil::IsCloudInfoPrefix(cloud_info, ts_ci);
+}
+
+CloudInfoPB TSDescriptor::GetCloudInfo() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return ts_information_->registration().common().cloud_info();
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
@@ -281,6 +289,10 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
+  for (const auto& path_metric : metrics.path_metrics()) {
+    ts_metrics_.path_metrics[path_metric.path_id()] =
+        { path_metric.used_space(), path_metric.total_space() };
+  }
 }
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
@@ -293,6 +305,12 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
   metrics->set_read_ops_per_sec(ts_metrics_.read_ops_per_sec);
   metrics->set_write_ops_per_sec(ts_metrics_.write_ops_per_sec);
   metrics->set_uptime_seconds(ts_metrics_.uptime_seconds);
+  for (const auto& path_metric : ts_metrics_.path_metrics) {
+    auto* new_path_metric = metrics->add_path_metrics();
+    new_path_metric->set_path_id(path_metric.first);
+    new_path_metric->set_used_space(path_metric.second.used_space);
+    new_path_metric->set_total_space(path_metric.second.total_space);
+  }
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {
@@ -328,6 +346,10 @@ std::size_t TSDescriptor::NumTasks() const {
 bool TSDescriptor::IsLive() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms) && !IsRemoved();
+}
+
+bool TSDescriptor::IsLiveAndHasReported() const {
+  return IsLive() && has_tablet_report();
 }
 
 std::string TSDescriptor::ToString() const {

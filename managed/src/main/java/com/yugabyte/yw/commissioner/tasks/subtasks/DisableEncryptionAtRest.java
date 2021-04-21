@@ -9,12 +9,10 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.io.File;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +44,7 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
 
     @Override
     public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
+        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         String hostPorts = universe.getMasterAddresses();
         String certificate = universe.getCertificate();
         YBClient client = null;

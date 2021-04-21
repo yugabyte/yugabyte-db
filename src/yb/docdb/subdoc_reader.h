@@ -63,6 +63,9 @@ class ObsolescenceTracker {
   // are not a valid concept (e.g. in SQL), so the same will be true of any subsequent children.
   ObsolescenceTracker Child(const DocHybridTime& write_time, const MonoDelta& ttl) const;
 
+  // A version of the above method which only updates the tracked high write_time_watermark_.
+  ObsolescenceTracker Child(const DocHybridTime& write_time) const;
+
   const DocHybridTime& GetHighWriteTime();
 
   // Performs the computation required to set the TTL on a row before constructing a SubDocument

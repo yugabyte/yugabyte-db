@@ -29,6 +29,7 @@ struct SnapshotScheduleOperation {
   SnapshotScheduleId schedule_id;
   SnapshotScheduleFilterPB filter;
   TxnSnapshotId snapshot_id;
+  HybridTime previous_snapshot_hybrid_time;
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
@@ -56,6 +57,7 @@ class SnapshotScheduleState {
 
   void PrepareOperations(
       HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
+  Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
 
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
@@ -63,6 +65,8 @@ class SnapshotScheduleState {
   std::string ToString() const;
 
  private:
+  SnapshotScheduleOperation MakeCreateSnapshotOperation(HybridTime last_snapshot_time);
+
   SnapshotCoordinatorContext& context_;
   SnapshotScheduleId id_;
   SnapshotScheduleOptionsPB options_;

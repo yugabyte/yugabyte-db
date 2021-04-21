@@ -46,9 +46,12 @@ class ListSnapshotSchedulesResponsePB;
 class ListSnapshotsResponsePB;
 class ReportedTabletPB;
 class SnapshotCoordinatorContext;
+class SnapshotScheduleFilterPB;
 class SnapshotState;
 class SysRowEntries;
 class SysSnapshotEntryPB;
+class SysTablesEntryPB;
+class SysTabletsEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class TSRegistrationPB;
@@ -58,6 +61,9 @@ class TabletReportPB;
 
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 typedef std::vector<TabletInfoPtr> TabletInfos;
+
+struct SnapshotScheduleRestoration;
+using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 

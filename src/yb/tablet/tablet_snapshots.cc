@@ -42,6 +42,12 @@ const std::string kTempSnapshotDirSuffix = ".tmp";
 
 } // namespace
 
+struct TabletSnapshots::RestoreMetadata {
+  boost::optional<Schema> schema;
+  boost::optional<IndexMap> index_map;
+  uint32_t schema_version;
+};
+
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
 
 std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
@@ -203,14 +209,22 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());
-  const Status s = RestoreCheckpoint(snapshot_dir, restore_at, frontier);
+  RestoreMetadata restore_metadata;
+  if (tx_state->request()->has_schema()) {
+    restore_metadata.schema.emplace();
+    RETURN_NOT_OK(SchemaFromPB(tx_state->request()->schema(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(tx_state->request()->indexes());
+    restore_metadata.schema_version = tx_state->request()->schema_version();
+  }
+  const Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   return s;
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
-    const std::string& dir, HybridTime restore_at, const docdb::ConsensusFrontier& frontier) {
+    const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
+    const docdb::ConsensusFrontier& frontier) {
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
   auto op_pause = PauseReadWriteOperations();
@@ -249,6 +263,15 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  if (restore_metadata.schema) {
+    // TODO(pitr) check deleted columns
+    tablet().metadata()->SetSchema(
+        *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
+        restore_metadata.schema_version);
+    RETURN_NOT_OK(tablet().metadata()->Flush());
+    ResetYBMetaDataCache();
+  }
+
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
   s = OpenRocksDBs();
@@ -271,6 +294,27 @@ Status TabletSnapshots::RestoreCheckpoint(
   DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
 
   return Status::OK();
+}
+
+Result<std::string> TabletSnapshots::RestoreToTemporary(
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  auto source_dir = JoinPathSegments(
+      VERIFY_RESULT(metadata().TopSnapshotsDir()), snapshot_id.ToString());
+  auto dest_dir = source_dir + kTempSnapshotDirSuffix;
+  RETURN_NOT_OK(CleanupSnapshotDir(dest_dir));
+  RETURN_NOT_OK(CopyDirectory(
+      &rocksdb_env(), source_dir, dest_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue));
+
+  {
+    rocksdb::Options rocksdb_options;
+    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
+
+    RETURN_NOT_OK(patcher.Load());
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+  }
+
+  return dest_dir;
 }
 
 Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {

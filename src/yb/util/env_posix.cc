@@ -265,6 +265,52 @@ Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extrac
   return extractor(sbuf);
 }
 
+Result<struct statvfs> GetFilesystemStats(const std::string& path) {
+  struct statvfs stat;
+  auto ret = statvfs(path.c_str(), &stat);
+  if (ret != 0) {
+    if (errno == EACCES) {
+      return STATUS_SUBSTITUTE(NotAuthorized,
+          "Caller doesn't have the required permission on a component of the path $0",
+          path);
+    } else if (errno == EIO) {
+      return STATUS_SUBSTITUTE(IOError,
+          "I/O error occurred while reading from '$0' filesystem",
+          path);
+    } else if (errno == ELOOP) {
+      return STATUS_SUBSTITUTE(InternalError,
+          "Too many symbolic links while translating '$0' path",
+          path);
+    } else if (errno == ENAMETOOLONG) {
+      return STATUS_SUBSTITUTE(NotSupported,
+          "Path '$0' is too long",
+          path);
+    } else if (errno == ENOENT) {
+      return STATUS_SUBSTITUTE(NotFound,
+          "File specified by path '$0' doesn't exist",
+          path);
+    } else if (errno == ENOMEM) {
+      return STATUS(InternalError, "Insufficient memory");
+    } else if (errno == ENOSYS) {
+      return STATUS_SUBSTITUTE(NotSupported,
+          "Filesystem for path '$0' doesn't support statvfs",
+          path);
+    } else if (errno == ENOTDIR) {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+          "A component of the path '$0' is not a directory",
+          path);
+    } else {
+      return STATUS_SUBSTITUTE(InternalError,
+          "Failed to read information about filesystem for path '%s': errno=$0: $1",
+          path,
+          errno,
+          ErrnoToString(errno));
+    }
+  }
+
+  return stat;
+}
+
 // Use non-memory mapped POSIX files to write data to a file.
 //
 // TODO (perf) investigate zeroing a pre-allocated allocated area in
@@ -1363,52 +1409,27 @@ class PosixEnv : public Env {
     if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0)) {
       return FLAGS_TEST_simulate_free_space_bytes;
     }
-    struct statvfs stat;
-    auto ret = statvfs(path.c_str(), &stat);
-    if (ret != 0) {
-      if (errno == EACCES) {
-        return STATUS_SUBSTITUTE(NotAuthorized,
-            "Caller doesn't have the required permission on a component of the path $0",
-            path);
-      } else if (errno == EIO) {
-        return STATUS_SUBSTITUTE(IOError,
-            "I/O error occurred while reading from '$0' filesystem",
-            path);
-      } else if (errno == ELOOP) {
-        return STATUS_SUBSTITUTE(InternalError,
-            "Too many symbolic links while translating '$0' path",
-            path);
-      } else if (errno == ENAMETOOLONG) {
-        return STATUS_SUBSTITUTE(NotSupported,
-            "Path '$0' is too long",
-            path);
-      } else if (errno == ENOENT) {
-        return STATUS_SUBSTITUTE(NotFound,
-            "File specified by path '$0' doesn't exist",
-            path);
-      } else if (errno == ENOMEM) {
-        return STATUS(InternalError, "Insufficient memory");
-      } else if (errno == ENOSYS) {
-        return STATUS_SUBSTITUTE(NotSupported,
-            "Filesystem for path '$0' doesn't support statvfs",
-            path);
-      } else if (errno == ENOTDIR) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-            "A component of the path '$0' is not a directory",
-            path);
-      } else {
-        return STATUS_SUBSTITUTE(InternalError,
-            "Failed to read information about filesystem for path '%s': errno=$0: $1",
-            path,
-            errno,
-            ErrnoToString(errno));
-      }
-    }
-    uint64_t block_size = stat.f_frsize > 0 ? static_cast<uint64_t>(stat.f_frsize) :
-                                              static_cast<uint64_t>(stat.f_bsize);
-    uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
+
+    auto stat = GetFilesystemStats(path);
+    RETURN_NOT_OK(stat);
+    uint64_t block_size = stat->f_frsize > 0 ? static_cast<uint64_t>(stat->f_frsize) :
+                                               static_cast<uint64_t>(stat->f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat->f_bavail);
 
     return available_blocks * block_size;
+  }
+
+  Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& path) override {
+    auto stat = GetFilesystemStats(path);
+    RETURN_NOT_OK(stat);
+    uint64_t block_size = stat->f_frsize > 0 ? static_cast<uint64_t>(stat->f_frsize) :
+                                               static_cast<uint64_t>(stat->f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat->f_bavail);
+    uint64_t total_blocks = static_cast<uint64_t>(stat->f_blocks);
+
+    return FilesystemStats{available_blocks * block_size,
+                           (total_blocks - available_blocks) * block_size,
+                           total_blocks * block_size};
   }
 
   Result<ResourceLimits> GetUlimit(int resource) override {

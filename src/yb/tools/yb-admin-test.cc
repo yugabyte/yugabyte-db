@@ -34,11 +34,14 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
+
+#include "yb/common/json_util.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -47,7 +50,9 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_backup.pb.h"
 
+#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
@@ -74,6 +79,14 @@ using itest::TServerDetails;
 using strings::Substitute;
 
 namespace {
+
+Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
+  auto it = value.FindMember(name);
+  if (it == value.MemberEnd()) {
+    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
+  }
+  return it->value;
+}
 
 static const char* const kAdminToolName = "yb-admin";
 
@@ -144,7 +157,29 @@ class BlacklistChecker {
 class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
  protected:
   // Figure out where the admin tool is.
-  string GetAdminToolPath() const;
+  std::string GetAdminToolPath() const;
+
+  template <class... Args>
+  Result<std::string> CallAdmin(Args&&... args) {
+    std::string result;
+    RETURN_NOT_OK(Subprocess::Call(
+        ToStringVector(
+            GetAdminToolPath(), "-master_addresses", cluster_->master()->bound_rpc_addr(),
+            std::forward<Args>(args)...),
+        &result));
+    return result;
+  }
+
+  template <class... Args>
+  Result<rapidjson::Document> CallJsonAdmin(Args&&... args) {
+    auto raw = VERIFY_RESULT(CallAdmin(std::forward<Args>(args)...));
+    rapidjson::Document result;
+    if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
+    }
+    return result;
+  }
 };
 
 string AdminCliTest::GetAdminToolPath() const {
@@ -214,9 +249,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as PRE_VOTER ...";
   string exe_path = GetAdminToolPath();
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
-      tablet_id_, "ADD_SERVER", new_node->uuid(), "PRE_VOTER")));
+  ASSERT_OK(CallAdmin("change_config", tablet_id_, "ADD_SERVER", new_node->uuid(), "PRE_VOTER"));
 
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -246,9 +279,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   // Now remove the server once again.
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
-      tablet_id_, "REMOVE_SERVER", new_node->uuid())));
+  ASSERT_OK(CallAdmin("change_config", tablet_id_, "REMOVE_SERVER", new_node->uuid()));
 
   ASSERT_EQ(1, active_tablet_servers.erase(new_node->uuid()));
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -274,8 +305,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   string keyspace = kTableName.namespace_name();
 
   string exe_path = GetAdminToolPath();
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
+  ASSERT_OK(CallAdmin("delete_table", keyspace, table_name));
 
   const auto tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
@@ -341,16 +371,14 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   // Delete index.
   string exe_path = GetAdminToolPath();
   LOG(INFO) << "Delete index via yb-admin: " << keyspace << "." << index_name;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_index", keyspace, index_name)));
+  ASSERT_OK(CallAdmin("delete_index", keyspace, index_name));
 
   tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(1 + master::kNumSystemTables, tables.size());
 
   // Delete table.
   LOG(INFO) << "Delete table via yb-admin: " << keyspace << "." << table_name;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
+  ASSERT_OK(CallAdmin("delete_table", keyspace, table_name));
 
   tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
@@ -362,12 +390,10 @@ TEST_F(AdminCliTest, BlackList) {
   const auto exe_path = GetAdminToolPath();
   const auto default_port = 9100;
   vector<HostPort> hosts{{"node1", default_port}, {"node2", default_port}, {"node3", default_port}};
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "change_blacklist", "ADD", unpack(hosts))));
+  ASSERT_OK(CallAdmin("change_blacklist", "ADD", unpack(hosts)));
   const BlacklistChecker checker(exe_path, master_address);
   ASSERT_OK(checker(hosts));
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "change_blacklist", "REMOVE", hosts.back())));
+  ASSERT_OK(CallAdmin("change_blacklist", "REMOVE", hosts.back()));
   hosts.pop_back();
   ASSERT_OK(checker(hosts));
 }
@@ -422,8 +448,6 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
 
 TEST_F(AdminCliTest, TestSnapshotCreation) {
   BuildAndStart();
-  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
-  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
                                        kTableName.namespace_name(),
                                        "extra-table");
@@ -432,26 +456,88 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
   YBSchema schema;
   ASSERT_OK(schemaBuilder.Build(&schema));
-  ASSERT_OK(client->NewTableCreator()->table_name(extra_table)
+  ASSERT_OK(client_->NewTableCreator()->table_name(extra_table)
       .schema(&schema).table_type(yb::client::YBTableType::YQL_TABLE_TYPE).Create());
-  const auto tables = ASSERT_RESULT(client->ListTables(kTableName.table_name(),
+  const auto tables = ASSERT_RESULT(client_->ListTables(kTableName.table_name(),
       /* exclude_ysql */ true));
   ASSERT_EQ(1, tables.size());
-  std::string output;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      GetAdminToolPath(), "-master_addresses", master_address, "create_snapshot",
-      Format("tableid.$0", tables.front().table_id()),
-      extra_table.namespace_name(), extra_table.table_name()),
-                            &output));
+  std::string output = ASSERT_RESULT(CallAdmin(
+      "create_snapshot", Format("tableid.$0", tables.front().table_id()),
+      extra_table.namespace_name(), extra_table.table_name()));
   ASSERT_NE(output.find("Started snapshot creation"), string::npos);
 
-  ASSERT_OK(Subprocess::Call(
-      ToStringVector(
-          GetAdminToolPath(), "-master_addresses", master_address,
-          "list_snapshots", "SHOW_DETAILS"),
-      &output));
+  output = ASSERT_RESULT(CallAdmin("list_snapshots", "SHOW_DETAILS"));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
+}
+
+TEST_F(AdminCliTest, SnapshotSchedule) {
+  BuildAndStart();
+
+  auto out = ASSERT_RESULT(CallJsonAdmin(
+      "create_snapshot_schedule", 0.1, 10, kTableName.namespace_name(), kTableName.table_name()));
+
+  std::string schedule_id = ASSERT_RESULT(Get(out, "schedule_id")).get().GetString();
+  LOG(INFO) << "Schedule id: " << schedule_id;
+  std::this_thread::sleep_for(20s);
+
+  Timestamp last_snapshot_time;
+  ASSERT_OK(WaitFor([this, schedule_id, &last_snapshot_time]() -> Result<bool> {
+    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_schedules"));
+    const auto& schedules = VERIFY_RESULT(Get(out, "schedules")).get().GetArray();
+    SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
+    auto first_schedule_id = VERIFY_RESULT(Get(schedules[0], "id")).get().GetString();
+    SCHECK_EQ(schedule_id, first_schedule_id, IllegalState, "Wrong schedule id");
+    const auto& snapshots = VERIFY_RESULT(Get(schedules[0], "snapshots")).get().GetArray();
+
+    if (snapshots.Size() < 2) {
+      return false;
+    }
+    std::string last_snapshot_time_str;
+    for (const auto& snapshot : snapshots) {
+      std::string snapshot_time = VERIFY_RESULT(
+          Get(snapshot, "snapshot_time_utc")).get().GetString();
+      if (!last_snapshot_time_str.empty()) {
+        std::string previous_snapshot_time = VERIFY_RESULT(
+            Get(snapshot, "previous_snapshot_time_utc")).get().GetString();
+        SCHECK_EQ(previous_snapshot_time, last_snapshot_time_str, IllegalState,
+                  "Wrong previous_snapshot_hybrid_time");
+      }
+      last_snapshot_time_str = snapshot_time;
+    }
+    LOG(INFO) << "Last snapshot time: " << last_snapshot_time_str;
+    last_snapshot_time = VERIFY_RESULT(DateTime::TimestampFromString(last_snapshot_time_str));
+    return true;
+  }, 20s, "At least 2 snapshots"));
+
+  last_snapshot_time.set_value(last_snapshot_time.value() + 1);
+  LOG(INFO) << "Restore at: " << last_snapshot_time.ToFormattedString();
+
+  out = ASSERT_RESULT(CallJsonAdmin(
+      "restore_snapshot_schedule", schedule_id, last_snapshot_time.ToFormattedString()));
+  std::string restoration_id = ASSERT_RESULT(Get(out, "restoration_id")).get().GetString();
+  LOG(INFO) << "Restoration id: " << restoration_id;
+
+  ASSERT_OK(WaitFor([this, restoration_id]() -> Result<bool> {
+    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
+    const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
+    SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
+    auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
+    SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
+    std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
+    master::SysSnapshotEntryPB::State state;
+    if (!master::SysSnapshotEntryPB_State_Parse(state_str, &state)) {
+      return STATUS_FORMAT(IllegalState, "Failed to parse restoration state: $0", state_str);
+    }
+    if (state == master::SysSnapshotEntryPB::RESTORING) {
+      return false;
+    }
+    if (state == master::SysSnapshotEntryPB::RESTORED) {
+      return true;
+    }
+    return STATUS_FORMAT(IllegalState, "Unexpected restoration state: $0",
+                         master::SysSnapshotEntryPB_State_Name(state));
+  }, 20s, "Wait restoration complete"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
@@ -477,12 +563,7 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
   // This should timeout.
   Status s = WaitFor(
       [&]() -> Result<bool> {
-        RETURN_NOT_OK(Subprocess::Call(
-            ToStringVector(
-                GetAdminToolPath(),
-                "-master_addresses", master_address,
-                "get_is_load_balancer_idle"),
-            &output));
+        auto output = VERIFY_RESULT(CallAdmin("get_is_load_balancer_idle"));
         return output.compare("Idle = 0\n") == 0;
       },
       kWaitTime,
@@ -494,15 +575,6 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
 TEST_F(AdminCliTest, TestLeaderStepdown) {
   BuildAndStart();
   std::string out;
-  auto call_admin = [
-      &out,
-      admin_path = GetAdminToolPath(),
-      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
-      const std::initializer_list<std::string>& args) mutable {
-    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
-    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
-    return Subprocess::Call(cmds, &out);
-  };
   auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
     std::smatch match;
     if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
@@ -511,14 +583,15 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
     return match[1];
   };
 
-  ASSERT_OK(call_admin({"list_tablets", kTableName.namespace_name(), kTableName.table_name()}));
+  out = ASSERT_RESULT(CallAdmin(
+      "list_tablets", kTableName.namespace_name(), kTableName.table_name()));
   const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
-  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  out = ASSERT_RESULT(CallAdmin("list_tablet_servers", tablet_id));
   const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
-  ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
+  ASSERT_OK(CallAdmin("leader_stepdown", tablet_id, tserver_id));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    RETURN_NOT_OK(call_admin({"list_tablet_servers", tablet_id}));
+    out = VERIFY_RESULT(CallAdmin("list_tablet_servers", tablet_id));
     return tserver_id == VERIFY_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)"));
   }, 5s, "Leader stepdown"));
 }
@@ -534,28 +607,23 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   auto client = ASSERT_RESULT(YBClientBuilder()
                                   .add_master_server_addr(master_address)
                                   .Build());
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "set_load_balancer_enabled", "0"), &output));
+  output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "0"));
 
   ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("DISABLED"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "set_load_balancer_enabled", "1"), &output));
+  output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "1"));
 
   ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 }
@@ -579,10 +647,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
       .Build());
 
   // Modify the cluster placement policy to consist of 2 zones.
-  std::string output;
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_placement_info", "c.r.z0,c.r.z1", 2, ""),
-   &output));
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0,c.r.z1", 2, ""));
 
   // Create a new table.
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
@@ -602,18 +667,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Use yb-admin_cli to set a custom placement policy different from that of
   // the cluster placement policy for the new table.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, ""),
-   &output));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", kTableName.namespace_name(), "extra-table",
+      "c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
   const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
-  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid),
-   &output));
+  ASSERT_NOK(CallAdmin(
+      "modify_table_placement_info", kTableName.namespace_name(), "extra-table",
+      "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
   ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
@@ -643,18 +706,13 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Perform the same test, but use the table-id instead of table name to set the
   // custom placement policy.
-  const string& id = table->id();
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   Format("tableid.$0", id), "c.r.z1", 1, ""),
-   &output));
+  std::string table_id = "tableid." + table->id();
+  ASSERT_OK(CallAdmin("modify_table_placement_info", table_id, "c.r.z1", 1, ""));
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
-  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   Format("tableid.$0", id), "c.r.z1", 1, random_placement_uuid),
-   &output));
+  ASSERT_NOK(CallAdmin(
+      "modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
   ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
@@ -694,29 +752,18 @@ TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   ts_flags.push_back("--placement_zone=z");
   BuildAndStart(ts_flags, master_flags);
 
-  std::string output;
-  const std::string& master_address = ToString(cluster_->master()->bound_rpc_addr());
-
   // Create the placement config.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_placement_info", "c.r.z", 3, ""),
-   &output));
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z", 3, ""));
 
   // Ensure that the universe config has placement information.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "get_universe_config"),
-   &output));
+  auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") != std::string::npos);
 
   // Clear the placement config.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "clear_placement_info"),
-   &output));
+  ASSERT_OK(CallAdmin("clear_placement_info"));
 
   // Ensure that the placement config is absent.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "get_universe_config"),
-   &output));
+  output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") == std::string::npos);
 }
 
