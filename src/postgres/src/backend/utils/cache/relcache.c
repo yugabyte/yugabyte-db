@@ -4335,6 +4335,7 @@ RelationCacheInitializePhase3(void)
 	 */
 	if (IsYugaByteEnabled())
 	{
+		YBCPgResetCatalogReadTime();
 		YBCGetMasterCatalogVersion(&yb_catalog_cache_version);
 	}
 
@@ -6250,6 +6251,7 @@ load_relcache_init_file(bool shared)
 		}
 
 		/* Else, still need to check with the master version to be sure. */
+		YBCPgResetCatalogReadTime();
 		uint64_t catalog_master_version = 0;
 		YBCGetMasterCatalogVersion(&catalog_master_version);
 
