@@ -54,7 +54,7 @@ DEFINE_int32(load_balancer_initial_delay_secs, 120,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_bool(sys_catalog_respect_affinity_task, false,
+DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 

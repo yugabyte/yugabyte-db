@@ -365,6 +365,10 @@ DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
                  "its tablespace placement policy until the loadbalancer runs.");
 TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
 
+DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
+                 "When set, crash the master process if it performs a sys catalog leader affinity "
+                 "move.");
+
 namespace yb {
 namespace master {
 
@@ -675,9 +679,12 @@ Status CatalogManager::Init() {
       hps.insert(hp);
     }
     RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
-    RETURN_NOT_OK(GetRegistration(&server_registration_));
     RETURN_NOT_OK(EnableBgTasks());
   }
+
+  // Cache the server registration even for shell mode masters. See
+  // https://github.com/yugabyte/yugabyte-db/issues/8065.
+  RETURN_NOT_OK(GetRegistration(&server_registration_));
 
   {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -9201,6 +9208,11 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
 
     for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
       if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
+        if (PREDICT_FALSE(
+            GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
+          LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
+                                    "catalog leader affinity move.";
+        }
         YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
             << "Sys catalog tablet is not in an affinitized zone, "
             << "sending step down request to master uuid "
