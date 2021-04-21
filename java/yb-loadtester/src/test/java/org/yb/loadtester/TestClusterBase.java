@@ -319,15 +319,19 @@ public class TestClusterBase extends BaseCQLTest {
     return newMasters;
   }
 
-  public void performFullMasterMove() throws Exception {
+  public void performFullMasterMove(Map<String, String> extra_args) throws Exception {
     // Create a copy to store original list.
     Map<HostAndPort, MiniYBDaemon> originalMasters = new HashMap<>(miniCluster.getMasters());
     for (HostAndPort originalMaster : originalMasters.keySet()) {
       // Add new master.
-      HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+      HostAndPort masterRpcHostPort = miniCluster.startShellMaster(extra_args);
       addMaster(masterRpcHostPort);
       removeMaster(originalMaster);
     }
+  }
+
+  public void performFullMasterMove() throws Exception {
+    performFullMasterMove(new TreeMap<String, String>());
   }
 
   public Set<HostAndPort> startNewMasters(int numMasters) throws Exception {
