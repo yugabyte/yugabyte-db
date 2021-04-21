@@ -795,6 +795,9 @@ void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
+        if (resp_.has_used_read_time()) {
+          pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+        }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
