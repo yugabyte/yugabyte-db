@@ -41,6 +41,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SanitizerUtil;
 import org.yb.master.Master;
 
@@ -1060,7 +1061,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+  protected static boolean runSystemTableQuery(Statement stmt, String query) throws SQLException {
+    return systemTableQueryHelper(stmt, () -> stmt.execute(query));
+  }
+
+  protected static List<Row> executeSystemTableQuery(
+        Statement stmt, String query) throws SQLException {
+    return systemTableQueryHelper(stmt, () -> {
+      try (ResultSet result = stmt.executeQuery(query)){
+        return getRowList(result);
+      }
+    });
+  }
+
+  private  static <T> T systemTableQueryHelper(
+      Statement stmt, ThrowingCallable<T, SQLException> callable) throws SQLException {
+    String allow_non_ddl_pattern = "SET yb_non_ddl_txn_for_sys_tables_allowed=%d";
+    stmt.execute(String.format(allow_non_ddl_pattern, 1));
+    try {
+      return callable.call();
+    } finally {
+      stmt.execute(String.format(allow_non_ddl_pattern, 0));
+    }
+  }
+
+  protected Row getSingleRow(Statement stmt, String query) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery(query)) {
+      return getSingleRow(rs);
+    }
+  }
+
+  protected static List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
