@@ -174,13 +174,13 @@ class StorageConfiguration extends Component {
           data: dataPayload
         })
         .then((resp) => {
-          if (getPromiseState(this.props.addConfig).isSuccess()) {
+          if (getPromiseState(this.props.updateConfig).isSuccess()) {
             // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
             this.props.reset();
             this.props.fetchCustomerConfigs();
-          } else if (getPromiseState(this.props.addConfig).isError()) {
+          } else if (getPromiseState(this.props.updateConfig).isError()) {
             // show server-side validation errors under form inputs
-            throw new SubmissionError(this.props.addConfig.error);
+            throw new SubmissionError(this.props.updateConfig.error);
           }
         });
     } else {
@@ -244,7 +244,7 @@ class StorageConfiguration extends Component {
    */
   disableInputFields = (fieldKey, enableEdit, activeTab) => {
     const tab = activeTab.toUpperCase();
-    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false
+    return (!enableEdit || fieldKey === `${tab}_BACKUP_LOCATION`) ? true : false
   };
 
   /**
@@ -254,7 +254,7 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab Current Tab.
    * @param {Array<object>} configs Backup config Data.
    */
-  setInitialConfiValues = (activeTab = "nfs", configs) => {
+  setInitialConfigValues = (activeTab, configs) => {
     const tab = activeTab.toUpperCase();
     const data = !isNonEmptyArray(configs) &&
       configs.data.filter((config) => config.name === activeTab.toUpperCase());
@@ -342,7 +342,7 @@ class StorageConfiguration extends Component {
           title={getTabTitle('S3')}
           key={'s3-tab'}
           unmountOnExit={true}
-          onSelect={this.setInitialConfiValues(this.props.activeTab, customerConfigs)}>
+          onSelect={this.setInitialConfigValues(activeTab, customerConfigs)}>
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}

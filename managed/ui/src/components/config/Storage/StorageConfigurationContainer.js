@@ -19,6 +19,7 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 const mapStateToProps = (state) => {  
   return {
     addConfig: state.customer.addConfig,
+    updateConfig: state.customer.updateConfig,
     customerConfigs: state.customer.configs,
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
@@ -38,8 +39,8 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(setInitialConfigValues(initialValues));
     },
 
-    updateCustomerConfig: (configUUID) => {
-      return dispatch(updateCustomerConfig(configUUID)).then((res) => {
+    updateCustomerConfig: (config) => {
+      return dispatch(updateCustomerConfig(config)).then((res) => {
         dispatch(updateCustomerConfigResponse(res.payload));
       });
     },

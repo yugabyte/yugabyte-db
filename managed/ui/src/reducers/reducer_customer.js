@@ -97,6 +97,7 @@ const INITIAL_STATE = {
   yugawareVersion: getInitialState({}),
   profile: getInitialState({}),
   addConfig: getInitialState({}),
+  updateConfig: getInitialState({}),
   setInitialVal: getInitialState({}),
   configs: getInitialState([]),
   deleteConfig: getInitialState({}),
@@ -233,9 +234,9 @@ export default function (state = INITIAL_STATE, action) {
     case ADD_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'addConfig', action);
     case UPDATE_CUSTOMER_CONFIG:
-      return setLoadingState(state, 'addConfig', {});
+      return setLoadingState(state, 'updateConfig', {});
     case UPDATE_CUSTOMER_CONFIG_RESPONSE:
-      return setPromiseResponse(state, 'addConfig', action);
+      return setPromiseResponse(state, 'updateConfig', action);
     case FETCH_CUSTOMER_CONFIGS:
       return setLoadingState(state, 'configs', []);
     case FETCH_CUSTOMER_CONFIGS_RESPONSE:

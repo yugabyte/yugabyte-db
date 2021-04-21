@@ -500,9 +500,9 @@ export function setInitialConfigValues(initialValues) {
   };
 }
 
-export function updateCustomerConfig(payload) {
+export function updateCustomerConfig(config) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/configs/${payload.configUUID}`, payload);
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/configs/${config.configUUID}`, config);
   return {
     type: UPDATE_CUSTOMER_CONFIG,
     payload: request
