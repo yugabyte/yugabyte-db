@@ -387,7 +387,7 @@ class PerTableLoadState {
           if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
             allow_only_leader_balancing_ = true;
             LOG(INFO) << strings::Substitute("Master leader not received "
-                  "heartbeat from ts $0. Only performing leader balancing for tables with replicas",
+                  "heartbeat from ts $0. Only performing leader balancing for tables with replicas"
                   " in this TS.", ts_uuid);
           } else {
             return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
