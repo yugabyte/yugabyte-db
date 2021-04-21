@@ -7,60 +7,26 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
-import org.mockito.ArgumentCaptor;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
 
-import java.util.ArrayList;
+import java.io.IOException;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.io.*;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.*;
-import static play.inject.Bindings.bind;
-import static play.test.Helpers.*;
 import static org.junit.Assert.*;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.fakeRequest;
+import static play.mvc.Http.Status.*;
+import static play.test.Helpers.*;
 
 public class UsersControllerTest extends FakeDBApplication {
   String baseRoute = "/api/customers/%s/users";
@@ -115,8 +81,8 @@ public class UsersControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     ObjectNode params = Json.newObject();
     params.put("email", "foo@bar.com");
-    params.put("password", "new-password");
-    params.put("confirmPassword", "new-password");
+    params.put("password", "new-Password1");
+    params.put("confirmPassword", "new-Password1");
     params.put("role", "ReadOnly");
     Result result = route(fakeRequest("POST",
         String.format(baseRoute, customer1.uuid)).cookie(validCookie).bodyJson(params));
@@ -193,8 +159,8 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(testUser1.getRole(), Role.Admin);
     ObjectNode params = Json.newObject();
     params.put("email", "tc3@test.com");
-    params.put("password", "new-password");
-    params.put("confirmPassword", "new-password");
+    params.put("password", "new-Password1");
+    params.put("confirmPassword", "new-Password1");
     params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result = route(fakeRequest("PUT",
@@ -203,7 +169,38 @@ public class UsersControllerTest extends FakeDBApplication {
         .cookie(validCookie).bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getRole(), Role.Admin);
-    assertTrue(BCrypt.checkpw("new-password", testUser1.passwordHash));
+    assertTrue(BCrypt.checkpw("new-Password1", testUser1.passwordHash));
     assertAuditEntry(0, customer1.uuid);
+  }
+
+  @Test
+  public void testPasswordChangeInvalidPassword() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result = route(fakeRequest("PUT",
+      String.format("%s/%s/change_password",
+        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+      .cookie(validCookie).bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testCreateUserWithInvalidPassword() throws IOException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    ObjectNode params = Json.newObject();
+    params.put("email", "foo@bar.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "ReadOnly");
+    Result result = route(fakeRequest("POST",
+      String.format(baseRoute, customer1.uuid)).cookie(validCookie).bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
   }
 }

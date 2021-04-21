@@ -2,22 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.UNAUTHORIZED;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -25,21 +11,15 @@ import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
 import org.junit.After;
 import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
-
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -49,7 +29,16 @@ import play.test.Helpers;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.Users.Role;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.*;
+import static play.test.Helpers.*;
 
 public class SessionControllerTest {
 
@@ -190,7 +179,7 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
@@ -202,7 +191,7 @@ public class SessionControllerTest {
 
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo2@bar.com");
-    loginJson.put("password", "password");
+    loginJson.put("password", "pAssw_0rd");
     result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     json = Json.parse(contentAsString(result));
 
@@ -212,12 +201,27 @@ public class SessionControllerTest {
   }
 
   @Test
+  public void testRegisterCustomerWrongPassword() {
+    startApp(true);
+    ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
+    registerJson.put("email", "foo2@bar.com");
+    registerJson.put("password", "pAssw0rd");
+    registerJson.put("name", "Foo");
+
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
   public void testRegisterMultiCustomer() {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
@@ -231,7 +235,7 @@ public class SessionControllerTest {
     ObjectNode registerJson2 = Json.newObject();
     registerJson2.put("code", "fb");
     registerJson2.put("email", "foo3@bar.com");
-    registerJson2.put("password", "password");
+    registerJson2.put("password", "pAssw_0rd");
     registerJson2.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register")
@@ -250,7 +254,7 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
@@ -264,7 +268,7 @@ public class SessionControllerTest {
     ObjectNode registerJson2 = Json.newObject();
     registerJson2.put("code", "fb");
     registerJson2.put("email", "foo3@bar.com");
-    registerJson2.put("password", "password");
+    registerJson2.put("password", "pAssw_0rd");
     registerJson2.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register")
@@ -281,7 +285,7 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
@@ -295,7 +299,7 @@ public class SessionControllerTest {
     ObjectNode registerJson2 = Json.newObject();
     registerJson2.put("code", "fb");
     registerJson2.put("email", "foo3@bar.com");
-    registerJson2.put("password", "password");
+    registerJson2.put("password", "pAssw_0rd");
     registerJson2.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register")
@@ -310,7 +314,7 @@ public class SessionControllerTest {
     ObjectNode registerJson3 = Json.newObject();
     registerJson3.put("code", "fb");
     registerJson3.put("email", "foo4@bar.com");
-    registerJson3.put("password", "password");
+    registerJson3.put("password", "pAssw_0rd");
     registerJson3.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register")
@@ -328,7 +332,7 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "abcabcabcabcabcabc");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
@@ -345,7 +349,7 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
-    registerJson.put("password", "password");
+    registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
     Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
     assertBadRequest(result, "Cannot register multiple accounts in Single tenancy.");

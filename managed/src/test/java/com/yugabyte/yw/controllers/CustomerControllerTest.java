@@ -105,8 +105,8 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("code", "tc");
     params.put("email", "foo@bar.com");
     params.put("name", "Test Customer");
-    params.put("password", "new-password");
-    params.put("confirmPassword", "new-password");
+    params.put("password", "new_Passw0rd");
+    params.put("confirmPassword", "new_Passw0rd");
     params.put("callhomeLevel", "LOW");
     Result result =
       route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));

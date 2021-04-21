@@ -43,8 +43,9 @@ class RegisterForm extends Component {
 
       password: Yup.string()
         .required('Enter password')
-        .min(8, 'Password is too short - must be 8 chars minimum.')
-        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/, 'Password must contain, 1 number, 1 uppercase, 1 lowercase, and one of the !@#$%^&*.'),
+        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.'),
 
       confirmPassword: Yup.string()
         .oneOf([Yup.ref('password'), null], "Passwords don't match")

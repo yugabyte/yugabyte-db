@@ -12,11 +12,10 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -59,7 +58,7 @@ public class ShellProcessHandlerTest {
     @Test
     public void testPartialLineOutput() throws IOException {
         List<String> command = new ArrayList<String>();
-        String partialLineCmd = "echo -n foo  && sleep 30 && echo bar";
+        String partialLineCmd = "printf foo && sleep 1 && printf bar";
         String fileName = createTestShellScript(partialLineCmd);
         command.add(fileName);
         ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
