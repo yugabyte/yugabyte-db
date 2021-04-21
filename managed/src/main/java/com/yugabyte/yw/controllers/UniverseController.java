@@ -40,15 +40,15 @@ import play.libs.Json;
 import play.mvc.Http.HeaderNames;
 import play.mvc.Result;
 import play.mvc.Results;
+import play.libs.concurrent.HttpExecutionContext;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletionStage;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
@@ -67,6 +67,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
+
+  @Inject
+  HttpExecutionContext ec;
 
   @Inject
   QueryHelper queryHelper;
@@ -722,33 +725,42 @@ public class UniverseController extends AuthenticatedController {
    * @param nodeName     name of the node
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
-  public synchronized Result downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName)
-    throws IOException {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    NodeDetails node;
-    String storagePath, tarFileName, targetFile;
-    ShellResponse response;
+  public CompletionStage<Result> downloadNodeLogs(
+    UUID customerUUID,
+    UUID universeUUID,
+    String nodeName
+    ) {
+    return CompletableFuture.supplyAsync(() -> {
+      Customer customer = Customer.getOrBadRequest(customerUUID);
+      Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+      NodeDetails node;
+      String storagePath, tarFileName, targetFile;
+      ShellResponse response;
 
-    LOG.debug("Retrieving logs for " + nodeName);
-    node = universe.getNode(nodeName);
-    storagePath = runtimeConfigFactory.staticApplicationConf()
-      .getString("yb.storage.path");
-    tarFileName = nodeName + "-support_package.tar.gz";
-    targetFile = storagePath + "/" + tarFileName;
-    response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
+      LOG.debug("Retrieving logs for " + nodeName);
+      node = universe.getNode(nodeName);
+      storagePath = runtimeConfigFactory.staticApplicationConf()
+        .getString("yb.storage.path");
+      tarFileName = nodeName + "-support_package.tar.gz";
+      targetFile = storagePath + "/" + tarFileName;
+      response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
 
-    if (response.code != 0) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
-    }
+      if (response.code != 0) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+      }
 
-    File file = new File(targetFile);
-    InputStream is = new FileInputStream(file);
-    file.delete();
+      try {
+        File file = new File(targetFile);
+        InputStream is = new FileInputStream(file);
+        file.delete();
+        // return file to client
+        response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
+        return ok(is).as("application/x-compressed");
 
-    // return file to client
-    response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
-    return ok(is).as("application/x-compressed");
+      } catch (FileNotFoundException e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+      }
+    }, ec.current());
   }
 
 
