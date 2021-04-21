@@ -171,6 +171,18 @@ void PggateTest::ConnectDB(const string& db_name) {
   CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 
+void PggateTest::BeginDDLTransaction() {
+  CHECK_YBC_STATUS(YBCPgEnterSeparateDdlTxnMode());
+}
+
+void PggateTest::CommitDDLTransaction() {
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(true /* success */));
+}
+
+void PggateTest::BeginTransaction() {
+  CHECK_YBC_STATUS(YBCPgBeginTransaction());
+}
+
 void PggateTest::CommitTransaction() {
   CHECK_YBC_STATUS(YBCPgCommitTransaction());
 }
