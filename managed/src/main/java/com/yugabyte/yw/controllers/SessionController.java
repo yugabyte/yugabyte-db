@@ -23,6 +23,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
@@ -88,6 +89,9 @@ public class SessionController extends Controller {
   @Inject
   ApiHelper apiHelper;
 
+  @Inject
+  PasswordPolicyService passwordPolicyService;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -116,7 +120,7 @@ public class SessionController extends Controller {
     }
 
     CustomerLoginFormData data = formData.get();
-    Users user = Users.authWithPassword(data.email.toLowerCase(), data.password);
+    Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
 
     if (user == null) {
       responseJson.put("error", "Invalid User Credentials");
@@ -303,7 +307,7 @@ public class SessionController extends Controller {
 
   private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
-      Customer cust = Customer.create(data.code, data.name);
+      Customer cust = Customer.create(data.getCode(), data.getName());
       if (cust == null) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
       }
@@ -311,7 +315,12 @@ public class SessionController extends Controller {
       if (isSuper) {
         role = Role.SuperAdmin;
       }
-      Users user = Users.create(data.email, data.password, role,
+      Result passwordCheckResult = passwordPolicyService
+        .checkPasswordPolicy(cust.getUuid(), data.getPassword());
+      if (passwordCheckResult != null) {
+        return passwordCheckResult;
+      }
+      Users user = Users.create(data.getEmail(), data.getPassword(), role,
         cust.uuid, /* Primary user*/ true);
       String authToken = user.createAuthToken();
       ObjectNode authTokenJson = Json.newObject();

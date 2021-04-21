@@ -2,26 +2,33 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import com.yugabyte.yw.models.CustomerConfig;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.UrlValidator;
+import play.libs.Json;
+
+import javax.inject.Inject;
+import javax.validation.ConstraintViolation;
+import javax.validation.Validator;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.models.CustomerConfig;
-
-import play.libs.Json;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
 
 @Singleton
 public class CustomerConfigValidator {
-
-  private static final String STORAGE_TYPE = "STORAGE";
 
   private static final String NAME_S3 = "S3";
 
@@ -43,31 +50,75 @@ public class CustomerConfigValidator {
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
+  private final Validator validator;
+
   public static abstract class ConfigValidator {
 
-    private final String type;
+    protected final String type;
 
-    private final String name;
+    protected final String name;
 
-    protected final String fieldName;
-
-    public ConfigValidator(String type, String name, String fieldName) {
+    public ConfigValidator(String type, String name) {
       this.type = type;
       this.name = name;
-      this.fieldName = fieldName;
     }
 
     public void validate(String type, String name, JsonNode data, ObjectNode errorsCollector) {
       if (this.type.equals(type) && this.name.equals(name)) {
+        doValidate(data, errorsCollector);
+      }
+    }
+
+    protected abstract void doValidate(JsonNode data, ObjectNode errorsCollector);
+  }
+
+  public static abstract class ConfigFieldValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigFieldValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data, ObjectNode errorsCollector) {
         JsonNode value = data.get(fieldName);
         doValidate(value == null ? "" : value.asText(), errorsCollector);
-      }
     }
 
     protected abstract void doValidate(String value, ObjectNode errorsCollector);
   }
 
-  public static class ConfigValidatorRegEx extends ConfigValidator {
+  public class ConfigObjectValidator<T> extends ConfigValidator {
+    private Class<T> configClass;
+
+    public ConfigObjectValidator(String type, String name, Class<T> configClass) {
+      super(type, name);
+      this.configClass = configClass;
+    }
+
+    @Override
+    protected void doValidate(JsonNode data, ObjectNode errorsCollector) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        T config = mapper.treeToValue(data, configClass);
+        Set<ConstraintViolation<T>> violations = validator.validate(config);
+        if (!violations.isEmpty()) {
+          ArrayNode errors = Json.newArray();
+          violations.stream()
+            .map(ConstraintViolation::getMessage)
+            .forEach(errors::add);
+          errorsCollector.set(name, errors);
+        }
+      } catch (RuntimeException | JsonProcessingException e) {
+        errorsCollector.set(name, Json.newArray()
+          .add("Invalid json for type '" + configClass.getSimpleName() + "'."));
+      }
+    }
+  }
+
+  public static class ConfigValidatorRegEx extends ConfigFieldValidator {
 
     private Pattern pattern;
 
@@ -84,7 +135,7 @@ public class CustomerConfigValidator {
     }
   }
 
-  public static class ConfigValidatorUrl extends ConfigValidator {
+  public static class ConfigValidatorUrl extends ConfigFieldValidator {
 
     private static final String DEFAULT_SCHEME = "https://";
 
@@ -124,17 +175,21 @@ public class CustomerConfigValidator {
 
   private final List<ConfigValidator> validators = new ArrayList<>();
 
-  public CustomerConfigValidator() {
-    validators.add(new ConfigValidatorRegEx(STORAGE_TYPE, NAME_NFS, BACKUP_LOCATION_FIELDNAME,
+  @Inject
+  public CustomerConfigValidator(Validator validator) {
+    this.validator = validator;
+    validators.add(new ConfigValidatorRegEx(STORAGE.name(), NAME_NFS, BACKUP_LOCATION_FIELDNAME,
         NFS_PATH_REGEXP));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, BACKUP_LOCATION_FIELDNAME,
+    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME,
         S3_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_S3, AWS_HOST_BASE_FIELDNAME,
+    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_S3, AWS_HOST_BASE_FIELDNAME,
         S3_URL_SCHEMES, true));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_GCS, BACKUP_LOCATION_FIELDNAME,
+    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME,
         GCS_URL_SCHEMES, false));
-    validators.add(new ConfigValidatorUrl(STORAGE_TYPE, NAME_AZURE, BACKUP_LOCATION_FIELDNAME,
+    validators.add(new ConfigValidatorUrl(STORAGE.name(), NAME_AZURE, BACKUP_LOCATION_FIELDNAME,
         AZ_URL_SCHEMES, false));
+    validators.add(new ConfigObjectValidator<>(
+      PASSWORD_POLICY.name(), CustomerConfig.PASSWORD_POLICY, PasswordPolicyFormData.class));
   }
 
   public ObjectNode validateFormData(JsonNode formData) {
