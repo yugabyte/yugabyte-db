@@ -275,18 +275,22 @@ SELECT agtype_any_sub('null'::agtype, 1);
 SELECT agtype_any_mul('null'::agtype, 1);
 SELECT agtype_any_div('null'::agtype, 1);
 SELECT agtype_any_mod('null'::agtype, 1);
+SELECT agtype_any_add(null, '1'::agtype);
+SELECT agtype_any_sub(null, '1'::agtype);
+SELECT agtype_any_mul(null, '1'::agtype);
+SELECT agtype_any_div(null, '1'::agtype);
+SELECT agtype_any_mod(null, '1'::agtype);
 
 SELECT 1 + 'null'::agtype;
 SELECT 1 - 'null'::agtype;
 SELECT 1 * 'null'::agtype;
 SELECT 1 / 'null'::agtype;
 SELECT 1 % 'null'::agtype;
-
-SELECT agtype_any_add('null'::agtype, 1);
-SELECT agtype_any_sub('null'::agtype, 1);
-SELECT agtype_any_mul('null'::agtype, 1);
-SELECT agtype_any_div('null'::agtype, 1);
-SELECT agtype_any_mod('null'::agtype, 1);
+SELECT '1'::agtype + null;
+SELECT '1'::agtype - null;
+SELECT '1'::agtype * null;
+SELECT '1'::agtype / null;
+SELECT '1'::agtype % null;
 
 SELECT 1 = 'null'::agtype;
 SELECT 1 <> 'null'::agtype;
@@ -294,6 +298,12 @@ SELECT 1 < 'null'::agtype;
 SELECT 1 > 'null'::agtype;
 SELECT 1 <= 'null'::agtype;
 SELECT 1 >= 'null'::agtype;
+SELECT '1'::agtype = null;
+SELECT '1'::agtype <> null;
+SELECT '1'::agtype < null;
+SELECT '1'::agtype > null;
+SELECT '1'::agtype <= null;
+SELECT '1'::agtype >= null;
 
 SELECT agtype_any_eq('null'::agtype, 1);
 SELECT agtype_any_ne('null'::agtype, 1);
@@ -301,6 +311,12 @@ SELECT agtype_any_lt('null'::agtype, 1);
 SELECT agtype_any_gt('null'::agtype, 1);
 SELECT agtype_any_le('null'::agtype, 1);
 SELECT agtype_any_ge('null'::agtype, 1);
+SELECT agtype_any_eq(null, '1'::agtype);
+SELECT agtype_any_ne(null, '1'::agtype);
+SELECT agtype_any_lt(null, '1'::agtype);
+SELECT agtype_any_gt(null, '1'::agtype);
+SELECT agtype_any_le(null, '1'::agtype);
+SELECT agtype_any_ge(null, '1'::agtype);
 
 --
 -- Test orderability of comparison operators =, <>, <, >, <=, >=
