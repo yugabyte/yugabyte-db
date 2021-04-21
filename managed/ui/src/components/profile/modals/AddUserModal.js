@@ -40,8 +40,9 @@ export class AddUserModal extends Component {
       email: Yup.string().required('Email is required').email('Enter a valid email'),
       password: Yup.string()
         .required('Password is required')
-        // eslint-disable-next-line no-template-curly-in-string
-        .min(6, 'Min length is ${min} characters'),
+        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.'),
       confirmPassword: Yup.string().oneOf([Yup.ref('password')], 'Passwords must match'),
       role: Yup.object().required('Role is required')
     });
