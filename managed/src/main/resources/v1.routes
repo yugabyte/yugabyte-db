@@ -161,6 +161,7 @@ GET     /customers/:cUUID/universes/:uniUUID/live_queries                      c
 GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseController.resetSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/setup_universe_2dc                com.yugabyte.yw.controllers.UniverseController.resetVersion(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/:nodeName/downloadNodeLogs        com.yugabyte.yw.controllers.UniverseController.downloadNodeLogs(cUUID: java.util.UUID, uniUUID: java.util.UUID, nodeName: String)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
