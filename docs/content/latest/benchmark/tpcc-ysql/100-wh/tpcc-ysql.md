@@ -6,7 +6,11 @@ threads allow us to configure the number of threads used to load the data. For
 a 3 node c5d.4xlarge cluster, loader threads value of 48 was the most optimal.
 
 ```sh
-$ ./tpccbenchmark --create=true --load=true \
+$ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+```
+
+```sh
+$ ./tpccbenchmark --load=true \
   --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
   --warehouses=100 \
   --loaderthreads 48
@@ -42,14 +46,6 @@ You can then run the workload against the database as follows:
 ```sh
 $ ./tpccbenchmark --execute=true \
   --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100
-```
-
-You can also load and run the benchmark in a single step:
-```sh
-$ ./tpccbenchmark --create=true --load=true --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --loaderthreads 48 \
   --warehouses=100
 ```
 
