@@ -8,7 +8,7 @@ import { YBConfirmModal } from '../../modals';
 import { isDefinedNotNull, isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
-const required = value => value ? undefined : 'This field is required.';
+const required = (value) => (value ? undefined : 'This field is required.');
 
 class AwsStorageConfiguration extends Component {
   state = {
@@ -18,7 +18,7 @@ class AwsStorageConfiguration extends Component {
   iamInstanceToggle = (event) => {
     this.setState({ iamRoleEnabled: event.target.checked });
   };
-  
+
   validateKeys = (value, iamRoleEnabled) => {
     if (!isDefinedNotNull(value) && !iamRoleEnabled) {
       return 'This field is required.';
@@ -26,7 +26,10 @@ class AwsStorageConfiguration extends Component {
   };
 
   disabledInputFields = (config, isEdited, iamRoleEnabled = false) => {
-    if (((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) && !iamRoleEnabled) {
+    if (
+      ((!isEmptyObject(config) && isEdited) || (isEmptyObject(config) && !isEdited)) &&
+      !iamRoleEnabled
+    ) {
       return false;
     } else {
       return true;
@@ -39,10 +42,10 @@ class AwsStorageConfiguration extends Component {
     } = this.props;
     const s3Config = data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
-    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === "true") {
-      this.setState({ iamRoleEnabled: true })
+    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
+      this.setState({ iamRoleEnabled: true });
     }
-  }
+  };
 
   render() {
     const {
@@ -163,7 +166,10 @@ class AwsStorageConfiguration extends Component {
           <Col lg={4}>
             <div className="action-bar">
               {s3Config.inUse && (
-                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                <YBInfoTip
+                  content={
+                    'Storage configuration is in use and cannot be deleted until associated resources are removed.'
+                  }
                   placement="top"
                 >
                   <span className="disable-delete fa-stack fa-2x">
@@ -183,8 +189,8 @@ class AwsStorageConfiguration extends Component {
                 }
               />
               <YBButton
-                btnText='Edit Configuration'
-                btnClass='btn btn-orange'
+                btnText="Edit Configuration"
+                btnClass="btn btn-orange"
                 onClick={onEditConfig}
               />
               {isDefinedNotNull(config) && (

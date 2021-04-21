@@ -93,7 +93,7 @@ class StorageConfiguration extends Component {
 
     this.state = {
       enableEdit: false
-    }
+    };
   }
 
   getConfigByType = (name, customerConfigs) => {
@@ -164,7 +164,7 @@ class StorageConfiguration extends Component {
         break;
     }
 
-    if (values.type === "update") {
+    if (values.type === 'update') {
       this.setState({ enableEdit: false });
       return this.props
         .updateCustomerConfig({
@@ -205,11 +205,10 @@ class StorageConfiguration extends Component {
   };
 
   deleteStorageConfig = (configUUID) => {
-    this.props.deleteCustomerConfig(configUUID)
-      .then(() => {
-        this.props.reset(); // reset form to initial values
-        this.props.fetchCustomerConfigs();
-      });
+    this.props.deleteCustomerConfig(configUUID).then(() => {
+      this.props.reset(); // reset form to initial values
+      this.props.fetchCustomerConfigs();
+    });
   };
 
   showDeleteConfirmModal = (configName) => {
@@ -226,79 +225,80 @@ class StorageConfiguration extends Component {
    */
   onEditConfig = () => {
     this.setState({ enableEdit: true });
-  }
+  };
 
   /**
    * This method will disable the edit input fields.
    */
   disableEditFields = () => {
     this.setState({ enableEdit: false });
-  }
+  };
 
   /**
    * This method will help to disable the backup storage
    * location field.
-   * 
+   *
    * @param {string} fieldKey Input Field Id.
    * @returns Boolean.
    */
   disableInputFields = (fieldKey, enableEdit, activeTab) => {
     const tab = activeTab.toUpperCase();
-    return (!enableEdit || fieldKey === `${tab}_BACKUP_LOCATION`) ? true : false
+    return !enableEdit || fieldKey === `${tab}_BACKUP_LOCATION` ? true : false;
   };
 
   /**
    * This method will help us to setup the initial value props
    * to the redux form.
-   * 
+   *
    * @param {string} activeTab Current Tab.
    * @param {Array<object>} configs Backup config Data.
    */
   setInitialConfigValues = (activeTab, configs) => {
     const tab = activeTab.toUpperCase();
-    const data = !isNonEmptyArray(configs) &&
+    const data =
+      !isNonEmptyArray(configs) &&
       configs.data.filter((config) => config.name === activeTab.toUpperCase());
     let initialValues = data.map((obj) => {
       switch (activeTab) {
-        case "nfs":
+        case 'nfs':
           return {
-            type: "update",
+            type: 'update',
             configUUID: obj?.configUUID,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-          }
-
-        case "gcs":
-          return {
-            type: "update",
-            configUUID: obj?.configUUID,
-            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
-            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION
           };
 
-        case "az":
+        case 'gcs':
           return {
-            type: "update",
+            type: 'update',
             configUUID: obj?.configUUID,
             [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
+            GCS_CREDENTIALS_JSON: obj.data?.GCS_CREDENTIALS_JSON
+          };
+
+        case 'az':
+          return {
+            type: 'update',
+            configUUID: obj?.configUUID,
+            [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
             AZURE_STORAGE_SAS_TOKEN: obj.data?.AZURE_STORAGE_SAS_TOKEN
           };
 
         default:
           return {
-            type: "update",
+            type: 'update',
             configUUID: obj?.configUUID,
             IAM_INSTANCE_PROFILE: obj.data?.IAM_INSTANCE_PROFILE,
-            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || "",
-            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || "",
+            AWS_ACCESS_KEY_ID: obj.data?.AWS_ACCESS_KEY_ID || '',
+            AWS_SECRET_ACCESS_KEY: obj.data?.AWS_SECRET_ACCESS_KEY || '',
             [`${tab}_BACKUP_LOCATION`]: obj.data?.BACKUP_LOCATION,
-            AWS_HOST_BASE: obj.data?.AWS_HOST_BASE,
-          }
+            AWS_HOST_BASE: obj.data?.AWS_HOST_BASE
+          };
       }
     });
 
@@ -307,10 +307,10 @@ class StorageConfiguration extends Component {
     } else {
       initialValues = {
         IAM_INSTANCE_PROFILE: false,
-        AWS_ACCESS_KEY_ID: "",
-        AWS_SECRET_ACCESS_KEY: "",
-        S3_BACKUP_LOCATION: "",
-        AWS_HOST_BASE: ""
+        AWS_ACCESS_KEY_ID: '',
+        AWS_SECRET_ACCESS_KEY: '',
+        S3_BACKUP_LOCATION: '',
+        AWS_HOST_BASE: ''
       };
       this.props.setInitialConfigValues(initialValues);
     }
@@ -342,7 +342,8 @@ class StorageConfiguration extends Component {
           title={getTabTitle('S3')}
           key={'s3-tab'}
           unmountOnExit={true}
-          onSelect={this.setInitialConfigValues(activeTab, customerConfigs)}>
+          onSelect={this.setInitialConfigValues(activeTab, customerConfigs)}
+        >
           <AwsStorageConfiguration
             {...this.props}
             deleteStorageConfig={this.deleteStorageConfig}
@@ -390,7 +391,10 @@ class StorageConfiguration extends Component {
           const configControls = (
             <div className="action-bar">
               {config.inUse && (
-                <YBInfoTip content={"Storage configuration is in use and cannot be deleted until associated resources are removed."}
+                <YBInfoTip
+                  content={
+                    'Storage configuration is in use and cannot be deleted until associated resources are removed.'
+                  }
                   placement="top"
                 >
                   <span className="disable-delete fa-stack fa-2x">
@@ -406,21 +410,22 @@ class StorageConfiguration extends Component {
                   submitting ||
                   loading ||
                   isEmptyObject(config) ||
-                  (enableEdit && activeTab !== "nfs")}
+                  (enableEdit && activeTab !== 'nfs')
+                }
                 btnClass={'btn btn-default'}
                 onClick={
                   isDefinedNotNull(config)
                     ? this.showDeleteConfirmModal.bind(this, config.name)
-                    : () => { }
+                    : () => {}
                 }
               />
-              {activeTab !== "nfs" &&
+              {activeTab !== 'nfs' && (
                 <YBButton
-                  btnText='Edit Configuration'
-                  btnClass='btn btn-orange'
+                  btnText="Edit Configuration"
+                  btnClass="btn btn-orange"
                   onClick={this.onEditConfig}
                 />
-              }
+              )}
               {isDefinedNotNull(config) && (
                 <YBConfirmModal
                   name="delete-storage-config"
@@ -475,30 +480,27 @@ class StorageConfiguration extends Component {
               </YBTabsPanel>
 
               <div className="form-action-button-container">
-                {!isNonEmptyObject(config) ?
+                {!isNonEmptyObject(config) ? (
                   <YBButton
                     btnText={'Save'}
                     btnClass={'btn btn-orange'}
                     disabled={submitting || loading}
                     btnType="submit"
-                  /> :
+                  />
+                ) : (
                   <>
-                    {enableEdit && activeTab !== "nfs" &&
+                    {enableEdit && activeTab !== 'nfs' && (
+                      <YBButton btnText="Update" btnClass={'btn btn-orange'} btnType="submit" />
+                    )}
+                    {enableEdit && activeTab !== 'nfs' && (
                       <YBButton
-                        btnText='Update'
-                        btnClass={'btn btn-orange'}
-                        btnType="submit"
-                      />
-                    }
-                    {enableEdit && activeTab !== "nfs" &&
-                      <YBButton
-                        btnText='Cancel'
+                        btnText="Cancel"
                         btnClass={'btn btn-default'}
                         onClick={this.disableEditFields}
                       />
-                    }
+                    )}
                   </>
-                }
+                )}
               </div>
             </form>
           </Formik>
