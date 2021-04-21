@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.yugabyte.yw.common.YWServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -32,6 +33,7 @@ import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 @Entity
 public class CertificateInfo extends Model {
 
@@ -145,8 +147,24 @@ public class CertificateInfo extends Model {
     return find.byId(certUUID);
   }
 
+  public static CertificateInfo getOrBadRequest(UUID certUUID) {
+    CertificateInfo certificateInfo = get(certUUID);
+    if (certificateInfo == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
+    }
+    return certificateInfo;
+  }
+
   public static CertificateInfo get(String label) {
     return find.query().where().eq("label", label).findOne();
+  }
+
+  public static CertificateInfo getOrBadRequest(String label) {
+    CertificateInfo certificateInfo = get(label);
+    if (certificateInfo == null) {
+      throw new YWServiceException(BAD_REQUEST, "No Certificate with Label: " + label);
+    }
+    return certificateInfo;
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {

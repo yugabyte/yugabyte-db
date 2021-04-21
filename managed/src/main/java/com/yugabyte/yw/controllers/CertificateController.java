@@ -4,6 +4,8 @@ import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -33,17 +35,11 @@ public class CertificateController extends AuthenticatedController {
   play.Configuration appConfig;
 
   @Inject
-  FormFactory formFactory;
-
+  ValidatingFormFactory formFactory;
+  
   public Result upload(UUID customerUUID) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+    Customer.getOrBadRequest(customerUUID);
 
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
@@ -54,14 +50,14 @@ public class CertificateController extends AuthenticatedController {
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     if (certType == CertificateInfo.Type.SelfSigned) {
       if (certContent == null || keyContent == null) {
-        return ApiResponse.error(BAD_REQUEST, "Certificate or Keyfile can't be null.");
+        throw new YWServiceException(BAD_REQUEST, "Certificate or Keyfile can't be null.");
       }
     } else {
       if (customCertInfo == null) {
-        return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
+        throw new YWServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
       } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
                  customCertInfo.rootCertPath == null) {
-        return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
+        throw new YWServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
       }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
@@ -75,19 +71,13 @@ public class CertificateController extends AuthenticatedController {
       return ApiResponse.success(certUUID);
     } catch (Exception e) {
       LOG.error("Could not upload certs for customer {}", customerUUID, e);
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
+      throw new YWServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
-    Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
-                                                 .bindFromRequest();
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
+    Customer.getOrBadRequest(customerUUID);
     Long certTimeMillis = formData.get().certStart;
     Long certExpiryMillis = formData.get().certExpiry;
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
@@ -103,19 +93,15 @@ public class CertificateController extends AuthenticatedController {
         "Error generating client cert for customer {} rootCA {}",
         customerUUID, rootCA, e
       );
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
     }
   }
 
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (CertificateInfo.get(rootCA) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Cert ID: " + rootCA);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo.getOrBadRequest(rootCA);
     if (!CertificateInfo.get(rootCA).customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+      throw new YWServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
     }
     try {
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
@@ -125,34 +111,27 @@ public class CertificateController extends AuthenticatedController {
       return ApiResponse.success(result);
     } catch (Exception e) {
       LOG.error("Could not get root cert {} for customer {}", rootCA, customerUUID, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't fetch root cert.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't fetch root cert.");
     }
   }
 
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     if (certs == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     return ApiResponse.success(certs);
   }
 
   public Result get(UUID customerUUID, String label) {
-    CertificateInfo cert = CertificateInfo.get(label);
-    if (cert == null) {
-      return ApiResponse.error(BAD_REQUEST, "No Certificate with Label: " + label);
-    } else {
-      return ApiResponse.success(cert.uuid);
-    }
+    CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
+    return ApiResponse.success(cert.uuid);
   }
 
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
-    CertificateInfo certificate = CertificateInfo.get(reqCertUUID);
-    if (certificate == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid certificate.");
-    }
+    CertificateInfo certificate = CertificateInfo.getOrBadRequest(reqCertUUID);
     if (!certificate.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+      throw new YWServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
     }
     if (!certificate.getInUse()) {
       if (certificate.delete()) {
@@ -160,34 +139,26 @@ public class CertificateController extends AuthenticatedController {
         LOG.info("Successfully deleted the certificate:" + reqCertUUID);
         return ApiResponse.success();
       } else {
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }
     } else {
-      return ApiResponse.error(BAD_REQUEST, "The certificate is in use.");
+      throw new YWServiceException(BAD_REQUEST, "The certificate is in use.");
     }
   }
 
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-        .bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    CertificateInfo certificate = CertificateInfo.get(rootCA);
-    if (certificate == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Cert ID: " + rootCA);
-    }
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(
+        CertificateParams.class);
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA);
     if (!certificate.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
+      throw new YWServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
     }
     if (certificate.certType == CertificateInfo.Type.SelfSigned) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot edit self-signed cert.");
+      throw new YWServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
     if (certificate.customCertInfo != null) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
+      throw new YWServiceException(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     try {
@@ -195,7 +166,7 @@ public class CertificateController extends AuthenticatedController {
       return ApiResponse.success(certificate);
     } catch (Exception e) {
       LOG.error("Could not set cert info for certificate {}", rootCA, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't set custom cert info.");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't set custom cert info.");
     }
   }
 }
