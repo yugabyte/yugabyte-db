@@ -1807,7 +1807,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
       "tablet_id", req->tablet_id());
   VLOG(2) << "Received Read RPC: " << req->DebugString();
-
   // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
   // the first request to a given tablet by a particular transaction assume that the tablet already
   // has the transaction metadata, including the isolation level, and those requests expect us to
@@ -2066,10 +2065,9 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
 
-  // It was read as part of transaction, but read time was not specified.
-  // I.e. allow_retry is true.
-  // So we just picked a read time and we should tell it back to the caller.
-  if (read_context->req->has_transaction() && read_context->allow_retry) {
+  // In case read time was not specified (i.e. allow_retry is true)
+  // we just picked a read time and we should communicate it back to the caller.
+  if (read_context->allow_retry) {
     read_context->used_read_time.ToPB(read_context->resp->mutable_used_read_time());
   }
 

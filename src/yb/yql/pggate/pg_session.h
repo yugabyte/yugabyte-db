@@ -65,7 +65,7 @@ class PgSessionAsyncRunResult {
   PgSessionAsyncRunResult(PgsqlOpBuffer buffered_operations,
                           std::future<Status> future_status,
                           client::YBSessionPtr session);
-  CHECKED_STATUS GetStatus(const PgSession& session);
+  CHECKED_STATUS GetStatus(PgSession* session);
   bool InProgress() const;
 
  private:
@@ -96,6 +96,11 @@ class RowIdentifier {
   string             ybctid_holder_;
 };
 
+YB_STRONGLY_TYPED_BOOL(IsTransactionalSession);
+YB_STRONGLY_TYPED_BOOL(IsPessimisticLockRequired);
+YB_STRONGLY_TYPED_BOOL(IsReadOnlyOperation);
+YB_STRONGLY_TYPED_BOOL(IsCatalogOperation);
+
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
@@ -111,6 +116,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
             const tserver::TServerSharedObject* tserver_shared_object,
             const YBCPgCallbacks& pg_callbacks);
   virtual ~PgSession();
+
+  // Resets the read point for catalog tables.
+  // Next catalog read operation will read the very latest catalog's state.
+  void ResetCatalogReadPoint();
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -245,7 +254,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                            uint64_t* read_time,
                                            bool force_non_bufferable) {
     SCHECK_GT(ops_count, 0, IllegalState, "Operation list must not be empty");
-    RunHelper runner(relation_id, this, ShouldHandleTransactionally(**op));
+    const IsTransactionalSession transactional(VERIFY_RESULT(ShouldHandleTransactionally(**op)));
+    RunHelper runner(relation_id, this, transactional);
     for (auto end = op + ops_count; op != end; ++op) {
       RETURN_NOT_OK(runner.Apply(*op, read_time, force_non_bufferable));
     }
@@ -313,7 +323,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
 
-  CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id) const;
+  CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
 
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
@@ -324,10 +334,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
  private:
-  using Flusher = std::function<Status(PgsqlOpBuffer, bool)>;
+  using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
 
   CHECKED_STATUS FlushBufferedOperationsImpl(const Flusher& flusher);
-  CHECKED_STATUS FlushOperations(PgsqlOpBuffer ops, bool transactional);
+  CHECKED_STATUS FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession transactional);
   CHECKED_STATUS ApplyOperation(client::YBSession* session,
                                 bool transactional,
                                 const BufferableOperation& bop);
@@ -337,7 +347,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // without moving its implementation details into header file.
   class RunHelper {
    public:
-    RunHelper(const PgObjectId& relation_id, PgSession* pg_session, bool transactional);
+    RunHelper(
+        const PgObjectId& relation_id, PgSession* pg_session, IsTransactionalSession transactional);
     CHECKED_STATUS Apply(std::shared_ptr<client::YBPgsqlOp> op,
                          uint64_t* read_time,
                          bool force_non_bufferable);
@@ -346,7 +357,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
    private:
     const PgObjectId& relation_id_;
     PgSession& pg_session_;
-    const bool transactional_;
+    const IsTransactionalSession transactional_;
     PgsqlOpBuffer& buffer_;
     // pending_ops_ holds previously buffered operations which were applied to YBSession
     // before the very first non-bufferable operation. Result of these operations will be checked
@@ -360,15 +371,20 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //                non-read-only operations we make sure to start a YB transaction.
   // We are returning a raw pointer here because the returned session is owned either by the
   // PgTxnManager or by this object.
-  Result<client::YBSession*> GetSession(bool transactional,
-                                        bool read_only_op,
-                                        bool needs_pessimistic_locking = false);
+  Result<client::YBSession*> GetSession(
+      IsTransactionalSession transactional,
+      IsReadOnlyOperation read_only_op,
+      IsPessimisticLockRequired pessimistic_lock_required = IsPessimisticLockRequired::kFalse,
+      IsCatalogOperation is_catalog_op = IsCatalogOperation::kFalse);
 
   // Flush buffered write operations from the given buffer.
   Status FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional);
 
   // Whether we should use transactional or non-transactional session.
-  bool ShouldHandleTransactionally(const client::YBPgsqlOp& op);
+  // Error is raised in case operation requires transaction session but it has not been created.
+  Result<bool> ShouldHandleTransactionally(const client::YBPgsqlOp& op);
+
+  void SetCatalogReadPoint(const ReadHybridTime& read_ht);
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
   client::YBClient* const client_;
@@ -383,6 +399,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   const scoped_refptr<server::HybridClock> clock_;
+
+  // YBSession to read data from catalog tables.
+  std::shared_ptr<client::YBSession> catalog_session_;
 
   // Execution status.
   Status status_;

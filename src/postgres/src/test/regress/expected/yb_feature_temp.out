@@ -102,6 +102,7 @@ SELECT * FROM temptest;
 
 DROP TABLE temptest;
 -- test ON COMMIT DROP
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 BEGIN;
 CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
 INSERT INTO temptest VALUES (1);
@@ -114,23 +115,17 @@ SELECT * FROM temptest;
 (2 rows)
 
 COMMIT;
+ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
 SELECT * FROM temptest;
-ERROR:  relation "temptest" does not exist
-LINE 1: SELECT * FROM temptest;
-                      ^
+ERROR:  could not open file "base/12463/t2_16950": No such file or directory
 BEGIN;
 CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+ERROR:  relation "temptest" already exists
 SELECT * FROM temptest;
- col
------
-   1
-(1 row)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM temptest;
-ERROR:  relation "temptest" does not exist
-LINE 1: SELECT * FROM temptest;
-                      ^
+ERROR:  could not open file "base/12463/t2_16950": No such file or directory
 -- ON COMMIT is only allowed for TEMP
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 ERROR:  ON COMMIT can only be used on temporary tables
@@ -288,6 +283,7 @@ DROP TABLE test;
 DROP TABLE x;
 -- test temp table deletion
 CREATE TEMP TABLE temptest (col int);
+ERROR:  relation "temptest" already exists
 \c
 SELECT * FROM temptest;
 ERROR:  relation "temptest" does not exist

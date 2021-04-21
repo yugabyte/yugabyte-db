@@ -30,7 +30,6 @@ using namespace std::literals;
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -39,7 +38,6 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
 namespace yb {
@@ -686,7 +684,6 @@ class PgMiniTestManualSysTableTxn : public PgMiniTest {
   virtual void BeforePgProcessStart() {
     // Enable manual transaction control for operations on system tables. Otherwise, they would
     // execute non-transactionally.
-    FLAGS_ysql_enable_manual_sys_table_txn_ctl = true;
     FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
@@ -711,6 +708,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn2.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
 
   size_t commit1_fail_count = 0;
   size_t commit2_fail_count = 0;

@@ -32,6 +32,12 @@ struct varlena;
  */
 extern bool yb_debug_log_docdb_requests;
 
+/*
+ * Guc variable to enable the use of regular transactions for operating on system catalog tables
+ * in case a DDL transaction has not been started.
+ */
+extern bool yb_non_ddl_txn_for_sys_tables_allowed;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;

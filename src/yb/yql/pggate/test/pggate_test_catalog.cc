@@ -92,18 +92,21 @@ TEST_F(PggateTestCatalog, TestDml) {
   const int kInsertRowCount = 7;
   for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
+    // `basic_table` is created in `pg_catalog` schema as a result it is a system table.
+    // Write to a system tables must be performed in DDL transaction.
+    BeginDDLTransaction();
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
-    CommitTransaction();
+    CommitDDLTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed++;
-    YBCPgUpdateConstInt4(expr_empid, seed, false);
-    YBCPgUpdateConstInt2(expr_depcnt, seed, false);
-    YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
-    YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_empid, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", seed);
-    YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
   }
 
   pg_stmt = nullptr;
@@ -115,17 +118,17 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -143,7 +146,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
   bool has_data = false;
-  YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
+  CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
   CHECK(has_data);
 
   // Print result
@@ -171,7 +174,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   string expected_job_name = strings::Substitute("Job_title_$0", empid);
   CHECK_EQ(selected_job_name, expected_job_name);
 
-  YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
+  CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
   CHECK(!has_data);
 
   pg_stmt = nullptr;
@@ -182,17 +185,17 @@ TEST_F(PggateTestCatalog, TestDml) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
@@ -203,7 +206,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     CHECK(has_data) << "Not all inserted rows have been fetched: only "
                     << i << " rows fetched out of " << kInsertRowCount;
 
@@ -269,18 +272,21 @@ TEST_F(PggateTestCatalog, TestDml) {
   for (int i = 0; i < kOddEmpIdRowCount; i++) {
     LOG(INFO) << "Updating row with empid=" << seed;
     // Update the row with the original seed.
+    // `basic_table` is created in `pg_catalog` schema as a result it is a system table.
+    // Write to a system tables must be performed in DDL transaction.
+    BeginDDLTransaction();
     CHECK_YBC_STATUS(YBCPgExecUpdate(pg_stmt));
-    CommitTransaction();
+    CommitDDLTransaction();
 
     // Update the constant expresions to update the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
     seed = seed + 2;
-    YBCPgUpdateConstInt4(expr_empid, seed, false);
-    YBCPgUpdateConstInt2(expr_depcnt, 77 + seed, false);
-    YBCPgUpdateConstInt4(expr_projcnt, 77 + 100 + seed, false);
-    YBCPgUpdateConstFloat4(expr_salary, 77 + seed + 1.0*seed/10.0, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_empid, seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, 77 + seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 77 + 100 + seed, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, 77 + seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", 77 + seed);
-    YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
   }
 
   pg_stmt = nullptr;
@@ -291,17 +297,17 @@ TEST_F(PggateTestCatalog, TestDml) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
@@ -311,7 +317,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   select_row_count = 0;
   for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     if (!has_data) {
       break;
     }
@@ -401,12 +407,16 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   const int kInsertRowCount = 7;
   for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
+    // `basic_table` is created in `pg_catalog` schema as a result it is a system table.
+    // Write to a system tables must be performed in DDL transaction.
+    BeginDDLTransaction();
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
-    CommitTransaction();
+    CommitDDLTransaction();
 
-    YBCPgUpdateConstInt4(expr_key, i+1, false);
-    YBCPgUpdateConstInt4(expr_value, i+11, false);
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_key, i+1, false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_value, i+11, false));
   }
+
   pg_stmt = nullptr;
 
   // COPYDB ----------------------------------------------------------------------------------------
@@ -416,6 +426,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
                                           false /* colocated */,
                                           &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
+  // Fresh state of cache must be read after new DB creation.
+  YBCPgResetCatalogReadTime();
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -425,9 +437,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
@@ -438,7 +450,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(2 * sizeof(bool)));
   for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, 2, values, isnulls, nullptr, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, 2, values, isnulls, nullptr, &has_data));
     CHECK(has_data) << "Not all inserted rows have been fetched";
 
     // Print result

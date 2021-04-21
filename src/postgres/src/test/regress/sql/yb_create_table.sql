@@ -527,6 +527,7 @@ select relname, oid from pg_class where relname = 'with_table_oid';
 create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
 
 -- Test temp tables with (table_oid = x)
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 begin;
 create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
 select relname, oid from pg_class where relname = 'with_table_oid_temp';

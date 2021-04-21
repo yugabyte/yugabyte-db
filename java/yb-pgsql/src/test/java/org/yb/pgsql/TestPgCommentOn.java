@@ -33,8 +33,8 @@ public class TestPgCommentOn extends BasePgSQLTest {
       statement.execute("CREATE TABLE test(id serial PRIMARY KEY)");
       statement.execute("CREATE SEQUENCE some_sequence");
       statement.execute("CREATE VIEW some_view AS SELECT 'Hello World!';");
-      int largeObjectId = firstResult(statement.executeQuery("SELECT lo_create(0)"))
-          .getInt(1);
+      long largeObjectId = executeSystemTableQuery(
+        statement, "SELECT lo_create(0)").get(0).getLong(0);
 
       // Exercise
       statement.execute("COMMENT ON COLUMN test.id IS 'some column comment'");
@@ -79,10 +79,9 @@ public class TestPgCommentOn extends BasePgSQLTest {
           getObjectComment("table constraint", "test, test_pkey")
       );
 
-      String largeObjectComment = firstResult(statement.executeQuery(String.format(
-          "SELECT description FROM pg_description WHERE objoid=%s",
-          largeObjectId
-      ))).getString(1);
+      String largeObjectComment = getSingleRow(statement, String.format(
+          "SELECT description FROM pg_description WHERE objoid=%s", largeObjectId
+      )).getString(0);
       assertEquals("some large object", largeObjectComment);
 
       assertEquals("bit to bigint cast", getObjectComment("cast", "bit", "bigint"));
@@ -98,11 +97,6 @@ public class TestPgCommentOn extends BasePgSQLTest {
       assertEquals("some aggregate comment", getObjectComment("aggregate", "max", "int"));
       assertEquals("some rule comment", getObjectComment("rule", "pg_settings, pg_settings_u"));
     }
-  }
-
-  private static ResultSet firstResult(ResultSet resultSet) throws Exception {
-    resultSet.next();
-    return resultSet;
   }
 
   private static String getObjectComment(String type, String name) throws Exception {

@@ -41,6 +41,8 @@ DEFINE_test_flag(string, process_info_dir, string(),
 
 bool yb_debug_log_docdb_requests = false;
 
+bool yb_non_ddl_txn_for_sys_tables_allowed = false;
+
 namespace yb {
 
 namespace {

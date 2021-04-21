@@ -1289,7 +1289,17 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
     pg_session_->DropBufferedOperations();
   }
 
-  return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(success));
+  ReadHybridTime read_time;
+  if (success) {
+    // Next reads from catalog tables have to see changes made by the DDL transaction.
+    ResetCatalogReadTime();
+  }
+  return Status::OK();
+}
+
+void PgApiImpl::ResetCatalogReadTime() {
+  pg_session_->ResetCatalogReadPoint();
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(

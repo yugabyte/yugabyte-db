@@ -8274,7 +8274,15 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
     RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
     locs_pb->set_tablet_id(tablet->tablet_id());
     locs_pb->set_stale(false);
+    const auto initial_size = locs_pb->replicas_size();
     RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
+    const auto capabilities = Capabilities();
+    // Set capabilities of master node for all newly created system table locations.
+    for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
+        end = locs_pb->mutable_replicas()->end(); i != end; ++i) {
+      *i->mutable_ts_info()->mutable_capabilities() = google::protobuf::RepeatedField<CapabilityId>(
+          capabilities.begin(), capabilities.end());
+    }
     return Status::OK();
   }
 
