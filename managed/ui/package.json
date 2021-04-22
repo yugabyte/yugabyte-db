@@ -10,10 +10,12 @@
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "aws s3 cp s3://$YB_MAP_URL/yb_map.tar.gz build/static && tar -xf build/static/yb_map.tar.gz -C build/static && rm build/static/yb_map.tar.gz",
     "build": "npm run cleanup && REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) react-scripts build && npm run fetch-map",
+    "build:ci": "echo n/a",
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",
-    "test": "react-scripts test"
+    "test": "react-scripts test",
+    "test:ci": "echo n/a"
   },
   "engines": {
     "node": ">=12.1x.x",
