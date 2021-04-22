@@ -5,13 +5,10 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Users;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
-
+import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.*;
 import org.asynchttpclient.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
@@ -19,17 +16,15 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-
 import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import play.libs.Json;
-
-import com.google.common.collect.ImmutableMap;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.*;
@@ -66,9 +61,9 @@ public class CallHomeManagerTest extends FakeDBApplication {
     expectedPayload.put("code", defaultCustomer.code);
     expectedPayload.put("email", defaultUser.email);
     expectedPayload.put("creation_date", defaultCustomer.creationDate.toString());
-    ArrayNode universes = Json.newArray();
+    List<UniverseResp> universes = new ArrayList<>();
     if (universe != null) {
-      universes.add(universe.toJson());
+      universes.add(new UniverseResp(universe, null));
     }
     ArrayNode providers = Json.newArray();
     ObjectNode provider = Json.newObject();
@@ -81,7 +76,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     }
     provider.set("regions", regions);
     providers.add(provider);
-    expectedPayload.set("universes", universes);
+    expectedPayload.set("universes", Json.toJson(universes));
     expectedPayload.set("providers", providers);
     Map<String, Object> ywMetadata = configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
     expectedPayload.put("yugaware_uuid", ywMetadata.get("yugaware_uuid").toString());
