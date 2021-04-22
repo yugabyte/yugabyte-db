@@ -25,10 +25,10 @@ For users not requiring global consistency and automatic resilience to data cent
     <a class="section-link icon-offset" href="3dc-deployment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Three+ data centers (3DC)</div>
+        <div class="title">Three or more data centers (3DC)</div>
       </div>
       <div class="body">
-        Deploy a single cluster across 3 or more DCs with global consistency (based on synchronous replication using Raft).
+        Deploy a single cluster across three or more data centers with global consistency
       </div>
     </a>
   </div>
@@ -37,22 +37,22 @@ For users not requiring global consistency and automatic resilience to data cent
     <a class="section-link icon-offset" href="../kubernetes/multi-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Three+ data centers (3DC) on K8S</div>
+        <div class="title">Three or more data centers (3DC) on K8S</div>
       </div>
       <div class="body">
-        Deploy a single cluster across 3 or more Kubernetes clusters, each deployed in a different DC/region.
+        Deploy a single cluster across three or more Kubernetes clusters, each deployed in a different data center or region
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="2dc-deployment/">
+    <a class="section-link icon-offset" href="async-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Two data centers (2DC)</div>
+        <div class="title">Asynchronous replication </div>
       </div>
       <div class="body">
-        Deploy 2 clusters in 2 DCs in a master-follower or multi-master configuration (based on asynchronous replication using CDC).
+        Enable unidirectional and bidirectional replication
       </div>
     </a>
   </div>
@@ -64,7 +64,7 @@ For users not requiring global consistency and automatic resilience to data cent
         <div class="title">Read replica clusters</div>
       </div>
       <div class="body">
-        Deploy a read replica cluster to serve low-latency reads from a remote DC.
+        Deploy a read replica cluster to serve low-latency reads from a remote data center
       </div>
     </a>
   </div>
