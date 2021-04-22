@@ -1,18 +1,19 @@
+#!/usr/bin/env bash
+#
 # Copyright (c) YugaByte, Inc.
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2021 YugaByte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
+#
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 
-# Save user current directory and move to shell script folder to run shell script
-
 bold="\033[1m"
 normal="\033[0m"
-
+success="success"
 
 function ProgressBar {
 # Process data
@@ -34,37 +35,24 @@ function TaskStatus {
     customer=$2
     success_message=$3
     _end=100
-     python_3="False"
+    python_command="python"
     if [[ "$(python3 -V)" =~ "Python 3" ]]
     then
-        python_3="True"
+        python_command="python3"
     fi
 
     while :
     do
+        percentage_response=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_task_details('$task_id', '$base_url', '$customer', \
+          '$auth_uuid',)")
+        new_percentage_response=$(echo $percentage_response | sed "s/'/\"/g")
+        percentage_status=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_key_value('$new_percentage_response', 'status')")
+        percentage=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_key_value('$new_percentage_response', 'data')")
 
-        if [[ $python_3 == "True" ]]
-        then
-            percentage_response=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_task_details('$task_id', '$base_url', '$customer', \
-              '$auth_uuid',)")
-            new_percentage_response=$(echo $percentage_response | sed "s/'/\"/g")
-            percentage_status=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_key_value('$new_percentage_response', 'status')")
-            percentage=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_key_value('$new_percentage_response', 'data')")
-        else
-            percentage_response=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_task_details('$task_id', '$base_url', '$customer', \
-              '$auth_uuid',)")
-            new_percentage_response=$(echo $percentage_response | sed "s/'/\"/g")
-            percentage_status=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_key_value('$new_percentage_response', 'status')")
-            percentage=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_key_value('$new_percentage_response', 'data')")
-        fi
-
-        if [[ ! $percentage_status == "success" ]]
+        if [[ ! $percentage_status == $success ]]
         then
             echo $percentage
             exit
@@ -88,19 +76,19 @@ function TaskStatus {
 }
 function HelpMessage {
     printf "\n${bold}Script to perform universe actions.$normal\n"
-    printf "\t1. Get existing Universe list. \n"
-    printf "\t2. Get existing Universe details by universe name in json format.\n"
-    printf "\t3. Get existing Universe details by universe UUID in json format\n"
-    printf "\t4. Delete existing Universe by universe name.\n"
-    printf "\t5. Delete existing Universe by universe UUID.\n"
-    printf "\t6. Create a new Universe from a json config file.\n"
+    printf "\t1. Get existing universe list. \n"
+    printf "\t2. Get existing universe details by universe name in json format.\n"
+    printf "\t3. Get existing universe details by universe UUID in json format.\n"
+    printf "\t4. Delete existing universe by universe name.\n"
+    printf "\t5. Delete existing universe by universe UUID.\n"
+    printf "\t6. Create a new universe from a json config file.\n"
     printf "\t7. Get task progress. \n"
-    printf "\t8. Get list of available region with availability zones. \n"
+    printf "\t8. Get list of available regions with availability zones. \n"
     printf "\t9. Get list of available providers. \n"
-    printf "\n${bold}Required to export varible:$normal\n"
+    printf "\n${bold}Required to export variable:$normal\n"
     printf "YB_PLATFORM_URL \n\t API URL for yugabyte\n"
     printf "\t Example: \n\t\t export YB_PLATFORM_URL=http://localhost:9000\n"
-    printf "YB_PLATFORM_API_TOKEN \n\t API Token for Yugabyte API\n"
+    printf "YB_PLATFORM_API_TOKEN \n\t API token for Yugabyte API\n"
     printf "\t Example: \n\t\t export YB_PLATFORM_API_TOKEN=e16d75cf-79af-4c57-8659-2f8c34223551\n"
     printf "\n${bold}Syntax:$normal \n\t bash yb_platform_util.sh <action> [params]\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n"
@@ -108,21 +96,21 @@ function HelpMessage {
     printf "get_universe \n\t Get the details of an existing universe as a json file\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh get_universe\n\n"
     printf "\t Universe json with universe name: \n\t\tbash yb_platform_util.sh get_universe -n test-universe\n\n"
-    printf "add_universe |  create_universe\n\t Create Universe from json file\n"
+    printf "add_universe |  create_universe\n\t Create universe from json file\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe -f test-universe.json"
     printf " -n test-universe-by-name"
-    printf "\n\ndel_universe |  delete_universe\n\t Delete an existing Universe\n"
+    printf "\n\ndel_universe |  delete_universe\n\t Delete an existing universe\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh delete_universe -n test-universe\n\n"
     printf "task_status \n\t To get task status\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh task_status"
     printf " -t f33e3c9b-75ab-4c30-80ad-cba85646ea39"
     printf "\n\nget_provider \n\t To get list of available providers\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh get_provider"
-    printf "\n\nget_region | get_az \n\t list of available region with availability zones.\n"
+    printf "\n\nget_region | get_az \n\t List of available region with availability zones\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh get_region"
     printf "\n\n${bold}Params:$normal\n"
     printf "\n-c | --customer_uuid \n\t Customer UUID;"
-    printf " mandatory if multiple customer uuids present.\n"
+    printf " mandatory if multiple customer uuids present\n"
     printf "\t Example:\n\t\tbash yb_platform_util.sh get_universe"
     printf " -c f8d2490a-f07c-4a40-a523-767f4f3b12da"
     printf "\n\n-u | --universe_uuid \n\t Universe UUID\n"
@@ -130,7 +118,7 @@ function HelpMessage {
     printf " -u f8d2490a-f07c-4a40-a523-767f4f3b12da"
     printf "\n\n-n | --universe_name \n\t Universe name\n"
     printf "\t Example:\n\t\tbash yb_platform_util.sh get_universe -n test-universe\n"
-    printf "\n-f | --file \n\t Json Input/output file for creating universe\n"
+    printf "\n-f | --file \n\t Json input/output file for creating universe\n"
     printf "\t Example: \n\t\tbash yb_platform_util.sh create_universe"
     printf " -f test-universe.json -n test-universe-by-name"
     printf "\n\n-y | --yes \n\t Input yes for all confirmation prompts\n"
@@ -176,30 +164,26 @@ fi
 # unset skip_wait
 # unset task_id
 
-# Loop to fetch all the values fro the user
+# Loop to fetch all the values for the user
 # Example, sh yb_platform_util.sh -c f33e3c9b-75ab-4c30-80ad-cba85646ea39 -n jd-script-8-2-21 -o GET
 # this will set customer id name and opertation as get.
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -c|--customer_uuid)
             customer_uuid="$2"
-            shift # argument
-            shift # value
+            shift 2 #shift argument and value
             ;;
         -u|--universe_uuid)
             universe_uuid="$2"
-            shift # argument
-            shift # value
+            shift 2 #shift argument and value
             ;;
         -n|--universe_name)
             universe_name="$2"
-            shift # argument
-            shift # value
+            shift 2 #shift argument and value
             ;;
         -f|--file)
             input_file="$USER_DIR/$2"
-            shift # argument
-            shift # value
+            shift 2 #shift argument and value
             ;;
         -h|--help)
             help="True"
@@ -215,8 +199,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -t|--task)
             task_id="$2"
-            shift # argument
-            shift # value
+            shift 2 #shift argument and value
             ;;
         *)
             echo "Error: Invalid command line argument"
@@ -230,10 +213,10 @@ done
 # Checking if system has python3 installed.
 # If python3 installed run script using python 3 use 2 otherwise.
 
-python_3="False"
+python_command="python"
 if [[ "$(python3 -V)" =~ "Python 3" ]]
 then
-    python_3="True"
+    python_command="python3"
 fi
 
 # Help message for the users.
@@ -265,40 +248,22 @@ auth_uuid="$YB_PLATFORM_API_TOKEN"
 
 if [[ -z "$customer_uuid" ]]
 then
-    if [[ $python_3 == "True" ]]
-    then
-        customer_response=$(python3 -c "import yb_platform_util_py3;  \
-          yb_platform_util_py3.get_customer_uuid('$base_url', '$auth_uuid')")
-        new_customer_response=$(echo $customer_response | sed "s/'/\"/g")
-        customer_uuid_status=$(python3 -c "import yb_platform_util_py3;  \
-          yb_platform_util_py3.get_key_value('$new_customer_response', 'status')")
-        customer_uuid=$(python3 -c "import yb_platform_util_py3;  \
-          yb_platform_util_py3.get_key_value('$new_customer_response', 'data')")
-    else
-        customer_response=$(python -c "import yb_platform_util_py2;  \
-          yb_platform_util_py2.get_customer_uuid('$base_url', '$auth_uuid')")
-        new_customer_response=$(echo $customer_response | sed "s/'/\"/g")
-        customer_uuid_status=$(python -c "import yb_platform_util_py2;  \
-          yb_platform_util_py2.get_key_value('$new_customer_response', 'status')")
-        customer_uuid=$(python -c "import yb_platform_util_py2;  \
-          yb_platform_util_py2.get_key_value('$new_customer_response', 'data')")
-    fi
+    customer_response=$($python_command -c "import yb_platform_util;  \
+      yb_platform_util.get_customer_uuid('$base_url', '$auth_uuid')")
+    new_customer_response=$(echo $customer_response | sed "s/'/\"/g")
+    customer_uuid_status=$($python_command -c "import yb_platform_util;  \
+      yb_platform_util.get_key_value('$new_customer_response', 'status')")
+    customer_uuid=$($python_command -c "import yb_platform_util;  \
+      yb_platform_util.get_key_value('$new_customer_response', 'data')")
 
-    if [[ ! $customer_uuid_status == "success" ]]
+    if [[ ! $customer_uuid_status == $success ]]
     then
-        if [[ $python_3 == "True" ]]
-        then
-            error_message=$(python3 -c "import yb_platform_util_py3;  \
-              yb_platform_util_py3.get_key_value('$new_customer_response', 'error')")
-        else
-            error_message=$(python -c "import yb_platform_util_py2;  \
-              yb_platform_util_py2.get_key_value('$new_customer_response', 'error')")
-        fi
+        error_message=$($python_command -c "import yb_platform_util;  \
+          yb_platform_util.get_key_value('$new_customer_response', 'error')")
         echo $error_message
         exit
     fi
 fi
-
 
 # Operation can be add/create/get/delete/del all are canse insensitive.
 # Add/create will call python api to create universe
@@ -308,32 +273,21 @@ case $operation in
     ADD_UNIVERSE|CREATE_UNIVERSE)
         if [[ -z "$input_file" ]]
         then
-            printf "Input json file required. Use \`-i|--input <file_path>\` to "
-            printf "pass json input file\n"
+            printf "Input json file required. Use \`-f|--file <file_path>\` to "
+            printf "pass json input file.\n"
             exit 255
         fi
 
-        if [[ $python_3 == "True" ]]
-        then
-            universe_reponse=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.create_universe('$base_url', '$customer_uuid', '$auth_uuid', \
-              '$input_file', '$universe_name')")
-            new_universe_reponse=$(echo $universe_reponse | sed "s/'/\"/g")
-            universe_status=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_key_value('$new_universe_reponse', 'status')")
-            task_id=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_key_value('$new_universe_reponse', 'data')")
-        else
-            universe_reponse=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.create_universe('$base_url', '$customer_uuid', '$auth_uuid', \
-              '$input_file', '$universe_name')")
-            new_universe_reponse=$(echo $universe_reponse | sed "s/'/\"/g")
-            universe_status=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_key_value('$new_universe_reponse', 'status')")
-            task_id=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_key_value('$new_universe_reponse', 'data')")
-        fi
-        if [[ ! $universe_status == "success" ]]
+        universe_reponse=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.create_universe('$base_url', '$customer_uuid', '$auth_uuid', \
+          '$input_file', '$universe_name')")
+        new_universe_reponse=$(echo $universe_reponse | sed "s/'/\"/g")
+        universe_status=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_key_value('$new_universe_reponse', 'status')")
+        task_id=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_key_value('$new_universe_reponse', 'data')")
+
+        if [[ ! $universe_status == $success ]]
         then
             echo $task_id
             exit
@@ -345,51 +299,26 @@ case $operation in
         else
             echo "Universe create requested successfully. "
             echo "Use $task_id as task id to get status of universe."
-            TaskStatus ${task_id} ${customer_uuid} "Universe Creation successfully."
+            TaskStatus ${task_id} ${customer_uuid} "Universe creation successfully."
         fi
         ;;
     GET_UNIVERSE)
         if [[ ! -z "$universe_uuid" ]]
         then
-            # USE python code
-             if [[ $python_3 == "True" ]]
-            then
-                result=$(python3 -c "import yb_platform_util_py3; \
-                  yb_platform_util_py3.get_universe_details_by_uuid('$base_url', \
-                  '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
-                echo $result
-            else
-                result=$(python -c "import yb_platform_util_py2; \
-                  yb_platform_util_py2.get_universe_details_by_uuid('$base_url', \
-                  '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
-                echo $result
-            fi
+            result=$($python_command -c "import yb_platform_util; \
+              yb_platform_util.get_universe_details_by_uuid('$base_url', \
+              '$customer_uuid', '$auth_uuid', '$universe_uuid', '$USER_DIR')")
+            echo $result
         elif [[ ! -z "$universe_name" ]]
         then
-            if [[ $python_3 == "True" ]]
-            then
-                result=$(python3 -c "import yb_platform_util_py3; \
-                  yb_platform_util_py3.get_universe_details('$base_url', '$customer_uuid', \
-                  '$auth_uuid', '$universe_name', '$USER_DIR')")
-                echo $result
-            else
-                result=$(python -c "import yb_platform_util_py2; \
-                  yb_platform_util_py2.get_universe_details('$base_url', '$customer_uuid', \
-                  '$auth_uuid', '$universe_name', '$USER_DIR')")
-                echo $result
-            fi
+            result=$($python_command -c "import yb_platform_util; \
+              yb_platform_util.get_universe_details('$base_url', '$customer_uuid', \
+              '$auth_uuid', '$universe_name', '$USER_DIR')")
+            echo $result
         else
-          if [[ $python_3 == "True" ]]
-          then
-            result=$(python3 -c "import yb_platform_util_py3; \
-              yb_platform_util_py3.get_universe_list('$base_url', '$customer_uuid', \
-              '$auth_uuid')")
-            
-          else
-            result=$(python -c "import yb_platform_util_py2; \
-              yb_platform_util_py2.get_universe_list('$base_url', '$customer_uuid', \
-              '$auth_uuid')")
-          fi
+          result=$($python_command -c "import yb_platform_util; \
+            yb_platform_util.get_universe_list('$base_url', '$customer_uuid', \
+            '$auth_uuid')")
           echo $result
           echo ""
         fi
@@ -407,112 +336,72 @@ case $operation in
             read -p "Continue with deleting universe(y/n)? :" confirmation
             echo
         fi
-        case "$confirmation" in
-            y|Y|yes|YES )
-                if [[ -z "$universe_uuid" ]] && [[ ! -z "$universe_name" ]]
+        if [[ $confirmation =~ ^[yY] ]]; 
+        then
+            if [[ -z "$universe_uuid" ]] && [[ ! -z "$universe_name" ]]
+            then
+                result=$($python_command -c "import yb_platform_util; \
+                  yb_platform_util.get_universe_uuid('$base_url', '$customer_uuid', \
+                  '$auth_uuid', '$universe_name')")
+                new_result=$(echo $result | sed "s/'/\"/g")
+                res=$($python_command -c "import yb_platform_util; \
+                  yb_platform_util.get_key_value('$new_result', 'status')")
+                universe_uuid=$($python_command -c "import yb_platform_util; \
+                  yb_platform_util.get_key_value('$new_result', 'data')")
+                if [[ ! $res == $success ]]
                 then
-                    if [[ $python_3 == "True" ]]
-                    then
-                        result=$(python3 -c "import yb_platform_util_py3; \
-                          yb_platform_util_py3.get_universe_uuid('$base_url', '$customer_uuid', \
-                          '$auth_uuid', '$universe_name')")
-                        new_result=$(echo $result | sed "s/'/\"/g")
-                        res=$(python3 -c "import yb_platform_util_py3; \
-                          yb_platform_util_py3.get_key_value('$new_result', 'status')")
-                        universe_uuid=$(python3 -c "import yb_platform_util_py3; \
-                          yb_platform_util_py3.get_key_value('$new_result', 'data')")
-                    else
-                        result=$(python -c "import yb_platform_util_py2; \
-                          yb_platform_util_py2.get_universe_uuid('$base_url', '$customer_uuid', \
-                          '$auth_uuid', '$universe_name')")
-                        new_result=$(echo $result | sed "s/'/\"/g")
-                        res=$(python -c "import yb_platform_util_py2; \
-                          yb_platform_util_py2.get_key_value('$new_result', 'status')")
-                        universe_uuid=$(python -c "import yb_platform_util_py2; \
-                          yb_platform_util_py2.get_key_value('$new_result', 'data')")
-                    fi
-                    if [[ ! $res == "success" ]]
-                    then
-                        echo $universe_uuid
-                        exit
-                    fi
-                fi
-
-                if [[ $python_3 == "True" ]]
-                then
-                    task_result=$(python3 -c "import yb_platform_util_py3; \
-                      yb_platform_util_py3.delete_universe_by_id('$base_url', '$customer_uuid', \
-                      '$auth_uuid', '$universe_uuid')")
-                    new_task_result=$(echo $task_result | sed "s/'/\"/g")
-                    task_result_status=$(python3 -c "import yb_platform_util_py3; \
-                      yb_platform_util_py3.get_key_value('$new_task_result', 'status')")
-                    task_id=$(python3 -c "import yb_platform_util_py3; \
-                      yb_platform_util_py3.get_key_value('$new_task_result', 'data')")
-                else
-                    task_result=$(python -c "import yb_platform_util_py2; \
-                      yb_platform_util_py2.delete_universe_by_id('$base_url', '$customer_uuid', \
-                      '$auth_uuid', '$universe_uuid')")
-                    new_task_result=$(echo $task_result | sed "s/'/\"/g")
-                    task_result_status=$(python -c "import yb_platform_util_py2; \
-                      yb_platform_util_py2.get_key_value('$new_task_result', 'status')")
-                    task_id=$(python -c "import yb_platform_util_py2; \
-                      yb_platform_util_py2.get_key_value('$new_task_result', 'data')")
-                fi
-                if [[ ! $task_result_status == "success" ]]
-                then
-                    echo $task_id
+                    echo $universe_uuid
                     exit
                 fi
+            fi
 
-                if [[ ! -z "$skip_wait" ]]
-                then
-                    echo "Universe delete requested successfully."
-                    echo "Use $task_id as task id to get status of universe."
-                else
-                    echo "Universe delete requested successfully."
-                    echo "Use $task_id as task id to get status of universe."
-                    TaskStatus ${task_id} ${customer_uuid} "Universe Deletion successfully."
-                fi
-                ;;
-            * ) echo "Aborted Delete universe";;
-        esac
+            task_result=$($python_command -c "import yb_platform_util; \
+              yb_platform_util.delete_universe_by_id('$base_url', '$customer_uuid', \
+              '$auth_uuid', '$universe_uuid')")
+            new_task_result=$(echo $task_result | sed "s/'/\"/g")
+            task_result_status=$($python_command -c "import yb_platform_util; \
+              yb_platform_util.get_key_value('$new_task_result', 'status')")
+            task_id=$($python_command -c "import yb_platform_util; \
+              yb_platform_util.get_key_value('$new_task_result', 'data')")
+            if [[ ! $task_result_status == $success ]]
+            then
+                echo $task_id
+                exit
+            fi
+
+            if [[ ! -z "$skip_wait" ]]
+            then
+                echo "Universe delete requested successfully."
+                echo "Use $task_id as task id to get status of universe."
+            else
+                echo "Universe delete requested successfully."
+                echo "Use $task_id as task id to get status of universe."
+                TaskStatus ${task_id} ${customer_uuid} "Universe Deletion successfully."
+            fi
+        else
+            echo "Aborted Delete universe"
+        fi
         ;;
     TASK_STATUS)
         if [[ -z "$task_id" ]]
         then
-            echo "Task id required to get task status"
+            echo "Task id required to get task status."
             printf " Use \`-t|--task <task_id>\` to pass task_id.\n"
             exit
         fi
         TaskStatus ${task_id} ${customer_uuid} "Task completed successfully."
         ;;
     GET_PROVIDER)
-      if [[ $python_3 == "True" ]]
-      then
-        result=$(python3 -c "import yb_platform_util_py3; \
-          yb_platform_util_py3.get_provider_data('$base_url', '$customer_uuid', \
-          '$auth_uuid')")
-        
-      else
-        result=$(python -c "import yb_platform_util_py2; \
-          yb_platform_util_py2.get_provider_data('$base_url', '$customer_uuid', \
-          '$auth_uuid')")
-      fi
+      result=$($python_command -c "import yb_platform_util; \
+        yb_platform_util.get_provider_data('$base_url', '$customer_uuid', \
+        '$auth_uuid')")
       echo $result
       echo
       ;;
     GET_REGION | GET_AZ)
-      if [[ $python_3 == "True" ]]
-        then
-          result=$(python3 -c "import yb_platform_util_py3; \
-            yb_platform_util_py3.get_regions_data('$base_url', '$customer_uuid', \
-            '$auth_uuid')")
-          
-        else
-          result=$(python -c "import yb_platform_util_py2; \
-            yb_platform_util_py2.get_regions_data('$base_url', '$customer_uuid', \
-            '$auth_uuid')")
-        fi
+        result=$($python_command -c "import yb_platform_util; \
+          yb_platform_util.get_regions_data('$base_url', '$customer_uuid', \
+          '$auth_uuid')")
         echo $result
         echo
       ;;

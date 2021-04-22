@@ -10,15 +10,21 @@
 
 
 import json
-import urllib2
 import collections
+import sys
+python_version = sys.version_info[0]
+if python_version == 2:
+    from urllib2 import HTTPError
+else:
+    from urllib.error import HTTPError
 
 
 def exception_handling(func):
     def inner_function(*args, **kwargs):
+
         try:
             return func(*args, **kwargs)
-        except urllib2.HTTPError as e:
+        except HTTPError as e:
             content = e.read().decode("utf-8")
             if "html>" in content:
                 message = "Invalid YB_PLATFORM_URL URL or params, Getting html page in response"
@@ -37,13 +43,19 @@ def convert_unicode_json(data):
     """
     Function to convert unicode json to dictionary
     {u"name": u"universe"} => {"name": "universe"}
+    
+    :param data: Unicode json data.
+    :return: Converted data
     """
-    if isinstance(data, basestring):
-        return str(data)
-    elif isinstance(data, collections.Mapping):
-        return dict(map(convert_unicode_json, data.iteritems()))
-    elif isinstance(data, collections.Iterable):
-        return type(data)(map(convert_unicode_json, data))
+    if python_version == 2:
+        if isinstance(data, basestring):
+            return str(data)
+        elif isinstance(data, collections.Mapping):
+            return dict(map(convert_unicode_json, data.iteritems()))
+        elif isinstance(data, collections.Iterable):
+            return type(data)(map(convert_unicode_json, data))
+        else:
+            return data
     else:
         return data
 
@@ -53,45 +65,59 @@ def call_api(url, auth_uuid, data=None, is_delete=False):
     Call the corresponding url with auth token, headers and returns the response.
 
     :param url: url to be called.
-    :param auth_uuid: authentication token of the customer.
-    :param data: data for POST request.
-    :param is_delete: to identify the delete call.
-    :return: response of the API call.
+    :param auth_uuid: Authentication token of the customer.
+    :param data: Sata for POST request.
+    :param is_delete: To identify the delete call.
+    :return: Response of the API call.
     """
-    if not is_delete:
+    if python_version == 2:
+        import urllib2
         request = urllib2.Request(url)
-    else:
-        request = urllib2.Request(url)
-        request.get_method = lambda: 'DELETE'
+        if is_delete:
+            request.get_method = lambda: 'DELETE'
 
-    request.add_header('X-AUTH-YW-API-TOKEN', auth_uuid)
-    request.add_header('Content-Type', 'application/json; charset=utf-8')
-    if data:
-        response = urllib2.urlopen(request, json.dumps(data).encode('utf-8'))
+        request.add_header('X-AUTH-YW-API-TOKEN', auth_uuid)
+        request.add_header('Content-Type', 'application/json; charset=utf-8')
+        if data:
+            response = urllib2.urlopen(request, json.dumps(data).encode('utf-8'))
+        else:
+            response = urllib2.urlopen(request)
+        return response
     else:
-        response = urllib2.urlopen(request)
-    return response
+        import urllib.request
+        if not is_delete:
+            request = urllib.request.Request(url)
+        else:
+            request = urllib.request.Request(url, method="DELETE")
+
+        request.add_header('X-AUTH-YW-API-TOKEN', auth_uuid)
+        request.add_header('Content-Type', 'application/json; charset=utf-8')
+        if data:
+            response = urllib.request.urlopen(request, json.dumps(data).encode('utf-8'))
+        else:
+            response = urllib.request.urlopen(request)
+        return response
 
 
 def get_universe_details(base_url, customer_uuid, auth_uuid, universe_name, base_dir):
     """
     Get the universe details and store it in a json file after formatting the json.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param universe_name: Name of the universe to take a json data from.
-    :param base_dir: base directory in which the json file should be stored.
+    :param base_dir: Base directory in which the json file should be stored.
     :return: None
     """
     universe = get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name)
     if universe:
         configure_json = create_universe_config(universe, universe["name"])
-        file = base_dir + '/' + universe["name"] + ".json"
+        file = f"{base_dir}/{universe['name']}.json"
         with open(file, 'w') as file_obj:
             json.dump(configure_json, file_obj)
         response = {
-            "data": "Detail of universe has been saved to " + str(file),
+            "data": f"Detail of universe have been saved to {str(file)}",
             "status": "success",
             "error": ""
         }
@@ -100,7 +126,7 @@ def get_universe_details(base_url, customer_uuid, auth_uuid, universe_name, base
         response = {
             "data": "Universe details not found",
             "status": "failed",
-            "error": "Universe with " + universe_name + " is not found."
+            "error": f"Universe with {universe_name} is not found."
         }
         handle_response(response)
 
@@ -109,21 +135,21 @@ def get_universe_details_by_uuid(base_url, customer_uuid, auth_uuid, universe_uu
     """
     Get universe details from UUID and store it in json after formatting it.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param universe_uuid: UUID of the universe to take a json data from.
-    :param base_dir: base directory in which the json file should be stored.
+    :param base_dir: Base directory in which the json file should be stored.
     :return: None
     """
     universe = get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid)
     if universe:
         configure_json = create_universe_config(universe, universe["name"])
-        file = base_dir + '/' + universe["name"] + ".json"
+        file = f"{base_dir}/{universe['name']}.json"
         with open(file, 'w') as file_obj:
             json.dump(configure_json, file_obj)
         response = {
-            "data": "Detail of universe has been saved to " + str(file),
+            "data": f"Detail of universe have been saved to {str(file)}",
             "status": "success",
             "error": ""
         }
@@ -141,13 +167,13 @@ def create_universe_from_config(universe_config, base_url, customer_uuid, auth_u
     """
     Create the universe from universe config data by calling universe POST API.
 
-    :param universe_config: universe config data.
-    :param base_url: base url of the platform back end.
+    :param universe_config: Universe config data.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    universe_create_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes"
+    universe_create_url = f"{base_url}/api/v1/customers/{customer_uuid}/universes"
     response = call_api(universe_create_url, auth_uuid, universe_config)
     universe_json = convert_unicode_json(json.loads(response.read()))
     task_id = universe_json['taskUUID']
@@ -159,9 +185,9 @@ def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_nam
     """
     Create the universe using the json and provided universe name.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param input_file: Directory of the stored universe json data.
     :param universe_name: Name of the new universe to be created.
     :return: None
@@ -182,9 +208,9 @@ def create_universe(base_url, customer_uuid, auth_uuid, input_file, universe_nam
         create_universe_from_config(universe_config_json, base_url, customer_uuid, auth_uuid)
     else:
         data = {
-            "data": 'Unable to Configure Universe for Customer %s' % customer_uuid,
+            "data": 'Unable to Create Universe for Customer %s' % customer_uuid,
             "status": "failed",
-            "error": 'Unable to Configure Universe for Customer %s' % customer_uuid
+            "error": 'Unable to Create Universe for Customer %s' % customer_uuid
         }
         handle_response(data)
 
@@ -194,12 +220,12 @@ def get_task_details(task_id, base_url, customer_uuid, auth_uuid):
     Get details of the ongoing task.
 
     :param task_id: Task UUID.
-    :param base_url: base url of the platform back end.
-    :param customer_uuid: authentication token for the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param base_url: Base url of the platform back end.
+    :param customer_uuid: Authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    task_url = base_url + "/api/v1/customers/" + customer_uuid + "/tasks/" + task_id
+    task_url = f"{base_url}/api/v1/customers/{customer_uuid}/tasks/{task_id}"
     response = call_api(task_url, auth_uuid)
     universe_json = convert_unicode_json(json.loads(response.read()))
     if universe_json["status"] == "Running":
@@ -257,7 +283,7 @@ def get_cluster_list(clusters, excluded_keys, universe_name):
     :param clusters: List of clusters.
     :param excluded_keys: Keys to be excluded
     :param universe_name: Name of the new universe to be created.
-    :return: cluster list.
+    :return: Cluster list.
     """
     clusters_list = []
     for each_cluster in clusters:
@@ -308,12 +334,12 @@ def post_universe_config(configure_json, base_url, customer_uuid, auth_uuid):
     Call the universe config URL with the updated data.
 
     :param configure_json: Universe config json.
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :return: None
     """
-    universe_config_url = base_url + "/api/v1/customers/" + customer_uuid + "/universe_configure"
+    universe_config_url = f"{base_url}/api/v1/customers/{customer_uuid}/universe_configure"
     response = call_api(universe_config_url, auth_uuid, configure_json)
     universe_config_json = convert_unicode_json(json.loads(response.read()))
     return universe_config_json
@@ -324,13 +350,13 @@ def get_universe_by_name(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get universe data by name of the universe.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param universe_name: Universe name.
     :return: None
     """
-    universe_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes"
+    universe_url = f"{base_url}/api/v1/customers/{customer_uuid}/universes"
     response = call_api(universe_url, auth_uuid)
     data = convert_unicode_json(json.load(response))
     for universe in data:
@@ -343,14 +369,13 @@ def get_universe_by_uuid(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Get universe details by UUID of the universe.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param universe_uuid: UUID of the universe.
     :return: None
     """
-    universe_config_url = base_url + "/api/v1/customers/" + customer_uuid + \
-                          "/universes/" + universe_uuid
+    universe_config_url = f"{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}"
     response = call_api(universe_config_url, auth_uuid)
     return convert_unicode_json(json.load(response))
 
@@ -359,9 +384,9 @@ def get_universe_uuid(base_url, customer_uuid, auth_uuid, universe_name):
     """
     Get the UUID of the universe.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid:  authentication token for the customer.
+    :param auth_uuid:  Authentication token for the customer.
     :param universe_name: Name of the universe.
     :return: None.
     """
@@ -380,15 +405,15 @@ def get_customer_uuid(base_url, auth_uuid):
     """
     Get customer UUID.
 
-    :param base_url: base url of the platform back end.
-    :param auth_uuid: authentication token for the customer.
+    :param base_url: Base url of the platform back end.
+    :param auth_uuid: Authentication token for the customer.
     :return: None
     """
     customer_url = base_url + "/api/v1/customers"
     response = call_api(customer_url, auth_uuid)
     data = convert_unicode_json(json.load(response))
     if (len(data) == 1):
-        response = {"data": data[0], "status": "success", "error": ""}
+        response = {"data": str(data[0]), "status": "success", "error": ""}
         print(response)
     else:
         response = {"data": data, "status": "failed", "error": "Please provide customer UUID"}
@@ -400,14 +425,13 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
     """
     Delete the universe by providing UUID.
 
-    :param base_url: base url of the platform back end.
+    :param base_url: Base url of the platform back end.
     :param customer_uuid: UUID of the customer.
-    :param auth_uuid: authentication token for the customer.
+    :param auth_uuid: Authentication token for the customer.
     :param universe_uuid: UUID of the universe to be deleted.
     :return:
     """
-    universe_delete_url = base_url + "/api/v1/customers/" + customer_uuid + "/universes/" \
-                          + universe_uuid + "?isForceDelete=true"
+    universe_delete_url = f"{base_url}/api/v1/customers/{customer_uuid}/universes/{universe_uuid}?isForceDelete=true"
 
     response = call_api(universe_delete_url, auth_uuid, is_delete=True)
     universe_json = convert_unicode_json(json.loads(response.read()))
@@ -418,9 +442,17 @@ def delete_universe_by_id(base_url, customer_uuid, auth_uuid, universe_uuid):
 
 @exception_handling
 def get_provider_data(base_url, customer_uuid, auth_uuid):
-    provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/providers"
+    """
+    Delete the universe by providing UUID.
+
+    :param base_url: Base url of the platform back end.
+    :param customer_uuid: UUID of the customer.
+    :param auth_uuid: Authentication token for the customer.
+    :return: All available providers
+    """
+    provider_url = f"{base_url}/api/v1/customers/{customer_uuid}/providers"
     response = call_api(provider_url, auth_uuid)
-    provider_data = json.loads(response.read())
+    provider_data = convert_unicode_json(json.loads(response.read()))
     providers = []
     for each in provider_data:
         provider = {}
@@ -432,9 +464,17 @@ def get_provider_data(base_url, customer_uuid, auth_uuid):
 
 @exception_handling
 def get_regions_data(base_url, customer_uuid, auth_uuid):
-    provider_url = base_url + "/api/v1/customers/" + customer_uuid + "/regions"
+    """
+    Delete the universe by providing UUID.
+
+    :param base_url: Base url of the platform back end.
+    :param customer_uuid: UUID of the customer.
+    :param auth_uuid: Authentication token for the customer.
+    :return: All available regions
+    """
+    provider_url = f"{base_url}/api/v1/customers/{customer_uuid}/regions"
     response = call_api(provider_url, auth_uuid)
-    region_data = json.loads(response.read())
+    region_data = convert_unicode_json(json.loads(response.read()))
     regions = []
     for each in region_data:
         zones = []
@@ -454,10 +494,17 @@ def get_regions_data(base_url, customer_uuid, auth_uuid):
 
 @exception_handling
 def get_universe_list(base_url, customer_uuid, auth_uuid):
-    universe_url = base_url + "/api/v1/customers/" + customer_uuid + \
-                          "/universes"
+    """
+    Delete the universe by providing UUID.
+
+    :param base_url: Base url of the platform back end.
+    :param customer_uuid: UUID of the customer.
+    :param auth_uuid: Authentication token for the customer.
+    :return: List of universe name and UUID
+    """
+    universe_url = f"{base_url}/api/v1/customers/{customer_uuid}/universes"
     response = call_api(universe_url, auth_uuid)
-    universe_data = json.loads(response.read())
+    universe_data = convert_unicode_json(json.loads(response.read()))
     universes = []
     for each in universe_data:
         universe = {}
@@ -471,8 +518,8 @@ def get_key_value(data, key):
     """
     Get the value of the response from the key to handle the response in bash.
 
-    :param data: data.
-    :param key: key.
+    :param data: Data.
+    :param key: Key.
     :return: None.
     """
     try:
@@ -489,7 +536,7 @@ def handle_response(response_json):
     """
     Handle the response to bash according to the operations performed in the functions.
 
-    :param response_json: data.
+    :param response_json: Data.
     :return: None
     """
     if response_json.get("status") == "success":
