@@ -2,47 +2,97 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
+import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
+import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.forms.RunInShellFormData;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
+import static junit.framework.TestCase.assertFalse;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
+import static play.test.Helpers.contentAsString;
+import static play.mvc.Http.Status.FORBIDDEN;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
+
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.pac4j.play.CallbackController;
-import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -51,29 +101,6 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.*;
-
-import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.PlacementInfoUtil.*;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseControllerTest extends WithApplication {
@@ -675,7 +702,8 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "universeUUID", u.universeUUID.toString());
     assertNotNull(json.get("universeDetails"));
-    assertNotNull(json.get("universeConfig"));
+    //    assertNotNull(json.get("universeConfig")); Bug in test json NullNode is not 'null'
+    assertFalse(json.has("universeConfig"));
 
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
@@ -1800,7 +1828,7 @@ public class UniverseControllerTest extends WithApplication {
             json.get("universeUUID").asText() +
             "-1.key"
     );
-    assertTrue(!key.exists());
+    assertFalse(key.exists());
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
 
     ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor

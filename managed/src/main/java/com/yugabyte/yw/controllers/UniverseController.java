@@ -627,10 +627,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(new UniverseResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -687,11 +685,9 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(new UniverseResp(universe, taskUUID));
     } catch (Exception e) {
       String errMsg = String.format(
         "Error occurred attempting to %s the universe encryption key",
@@ -794,6 +790,7 @@ public class UniverseController extends AuthenticatedController {
     }
 
     if (universe.nodesInTransit()) {
+      // TODO 503 - Service Unavailable
       return ApiResponse.error(BAD_REQUEST, "Cannot perform an edit operation on universe " +
         universeUUID + " as it has nodes in one of " +
         NodeDetails.IN_TRANSIT_STATES + " states.");
@@ -875,11 +872,9 @@ public class UniverseController extends AuthenticatedController {
         universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
         universe.universeUUID, universe.name);
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      resultNode.put("taskUUID", taskUUID.toString());
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(new UniverseResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -892,17 +887,10 @@ public class UniverseController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     // Verify the customer is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    ArrayNode universes = Json.newArray();
+    List<UniverseResp> universes = new ArrayList<>();
     // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
     for (Universe universe : customer.getUniverses()) {
-      ObjectNode universePayload = (ObjectNode) universe.toJson();
-      try {
-        UniverseResourceDetails details = UniverseResourceDetails.create(universe.getNodes(),
-          universe.getUniverseDetails());
-        universePayload.put("pricePerHour", details.pricePerHour);
-      } catch (Exception e) {
-        LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
-      }
+      UniverseResp universePayload = new UniverseResp(universe, null);
       universes.add(universePayload);
     }
     return ApiResponse.success(universes);
@@ -1010,7 +998,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return Results.status(OK, universe.toJson());
+    return ApiResponse.success(new UniverseResp(universe, null));
   }
 
   public Result pause(UUID customerUUID, UUID universeUUID) {
@@ -1225,10 +1213,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID, universe.universeUUID, universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(new UniverseResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating cluster", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1290,10 +1276,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID, universe.universeUUID, universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(new UniverseResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error deleting cluster ", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
