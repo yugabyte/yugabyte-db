@@ -94,6 +94,7 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
+  @JsonIgnore
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> currConfig = this.getConfig();
     String currConfigStr = Joiner.on(" ").withKeyValueSeparator("=").join(currConfig);
@@ -143,13 +144,14 @@ public class Universe extends Model {
     return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
   }
 
+  @Deprecated
   public JsonNode toJson() {
     ObjectNode json =
       Json.newObject()
-        .put("universeUUID", universeUUID.toString())
-        .put("name", name)
+      .put("universeUUID", universeUUID.toString())
+      .put("name", name)
         .put("creationDate", creationDate.getTime())
-        .put("version", version);
+      .put("version", version);
     String dnsName = getDnsName();
     if (dnsName != null) {
       json.put("dnsName", dnsName);
@@ -159,11 +161,12 @@ public class Universe extends Model {
     try {
       json.set("resources", Json.toJson(UniverseResourceDetails.create(nodes, params)));
     } catch (Exception e) {
+      // TODO: Why do we just silently mask all the bugs in resources generation?
       json.set("resources", null);
     }
 
     ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
-    addNodesActions(universeDetailsJson, nodes);
+    updateNodesDynamicActions(universeDetailsJson, nodes);
 
     ArrayNode clustersArrayJson = Json.newArray();
     for (Cluster cluster : params.clusters) {
@@ -182,7 +185,9 @@ public class Universe extends Model {
    * Adds arrays of allowed actions for nodes depending on the universe state. Actions are added
    * directly into the json representation.
    */
-  void addNodesActions(ObjectNode universeDetailsJson, Collection<NodeDetails> nodes) {
+  @Deprecated
+  private void updateNodesDynamicActions(ObjectNode universeDetailsJson,
+                                 Collection<NodeDetails> nodes) {
     JsonNode nodeDetailsSet = universeDetailsJson.get("nodeDetailsSet");
     if (nodeDetailsSet == null || nodeDetailsSet.isNull() || !nodeDetailsSet.isArray()) {
       return;
@@ -320,9 +325,10 @@ public class Universe extends Model {
   }
 
   /**
-   * Get all the universe UUIDs for a given customer
+   * Fetch ONLY the universeUUID field for all universes.
+   * WARNING: Returns partially filled Universe objects!!
    *
-   * @return list of universe UUIDs.
+   * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
     return ImmutableSet.copyOf(
@@ -358,8 +364,8 @@ public class Universe extends Model {
       && !detailsJson.isNull()
       && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
       UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
-      PlacementInfo placementInfo =
-        Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
+      PlacementInfo placementInfo = Json.fromJson(detailsJson.get("placementInfo"),
+        PlacementInfo.class);
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
 
