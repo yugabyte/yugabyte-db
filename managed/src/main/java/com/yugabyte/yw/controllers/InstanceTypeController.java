@@ -9,11 +9,12 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.models.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -28,12 +29,12 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
   private final Config config;
-  private final FormFactory formFactory;
+  private final ValidatingFormFactory formFactory;
   private final CloudAPI.Factory cloudAPIFactory;
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(Config config, FormFactory formFactory,
+  public InstanceTypeController(Config config, ValidatingFormFactory formFactory,
                                 CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
     this.formFactory = formFactory;
@@ -49,17 +50,14 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Map<String, InstanceType> instanceTypesMap;
     try {
       instanceTypesMap = InstanceType.findByProvider(provider, config).stream()
         .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
     } catch (Exception e) {
       LOG.error("Unable to list Instance types {}:{} in DB.", providerUUID, e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");
     }
 
     return maybeFilterByZoneOfferings(filterByZoneCodes, provider, instanceTypesMap);
@@ -117,16 +115,12 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response of newly created instance type
    */
   public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<InstanceType> formData = formFactory.form(InstanceType.class).bindFromRequest();
+    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);
     if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      throw new YWServiceException(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
-
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     try {
       InstanceType it = InstanceType.upsert(provider.uuid,
         formData.get().getInstanceTypeCode(),
@@ -137,7 +131,7 @@ public class InstanceTypeController extends AuthenticatedController {
       return ApiResponse.success(it);
     } catch (Exception e) {
       LOG.error("Unable to create instance type {}: {}", formData.rawData(), e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create InstanceType");
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create InstanceType");
     }
   }
 
@@ -150,17 +144,10 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response to denote if the delete was successful or not.
    */
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
-    Provider provider = Provider.get(customerUUID, providerUUID);
-
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
     try {
-      InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
-      if (instanceType == null) {
-        return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
-      }
+      InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
 
       instanceType.setActive(false);
       instanceType.save();
@@ -170,7 +157,7 @@ public class InstanceTypeController extends AuthenticatedController {
       return ApiResponse.success(responseJson);
     } catch (Exception e) {
       LOG.error("Unable to delete instance type {}: {}", instanceTypeCode, e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+      throw new YWServiceException(INTERNAL_SERVER_ERROR,
         "Unable to delete InstanceType: " + instanceTypeCode);
     }
   }
@@ -184,16 +171,9 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response with instance type information.
    */
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
-    Provider provider = Provider.get(customerUUID, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    if (provider == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-    }
-
-    InstanceType instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
-    if (instanceType == null) {
-      return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
-    }
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
     // Mount paths are not persisted for non-onprem clouds, but we know the default details.
     if (!provider.code.equals(onprem.toString())) {
       instanceType.instanceTypeDetails.setDefaultMountPaths();
