@@ -5,6 +5,11 @@ package com.yugabyte.yw.models.helpers;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Universe;
+
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -169,6 +174,40 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
+  }
+
+  public Set<NodeActionType> getAllowedActions() {
+    return new HashSet<>(getStaticAllowedActions());
+  }
+
+  @JsonIgnore
+  public Set<NodeActionType> getStaticAllowedActions() {
+    if (state == null) {
+      return ImmutableSet.of();
+    }
+    switch (state) {
+      // Unexpected/abnormal states.
+      case ToBeAdded:
+      case Adding:
+        return ImmutableSet.of(NodeActionType.DELETE);
+      case ToJoinCluster:
+      case ToBeRemoved:
+        return ImmutableSet.of(NodeActionType.REMOVE);
+      case SoftwareInstalled:
+        return ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE);
+
+      // Expected/normal states.
+      case Live:
+        return ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE);
+      case Stopped:
+        return ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE);
+      case Removed:
+        return ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE);
+      case Decommissioned:
+        return ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE);
+      default:
+        return ImmutableSet.of();
+    }
   }
 
   @JsonIgnore
