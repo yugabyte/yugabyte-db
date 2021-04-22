@@ -124,6 +124,46 @@ HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'asexecute';
 */
+-- Create table with primary key.
+CREATE TABLE testschema.foo_pk (i int, PRIMARY KEY(i)) TABLESPACE regress_tblspace;
+\d testschema.foo_pk_pkey
+    Index "testschema.foo_pk_pkey"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ i      | integer | yes  | i
+primary key, lsm, for table "testschema.foo_pk"
+Tablespace: "regress_tblspace"
+
+\d testschema.foo_pk;
+             Table "testschema.foo_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           | not null |
+Indexes:
+    "foo_pk_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
+Tablespace: "regress_tblspace"
+
+-- Create table with primary key after default tablespace is changed.
+SET default_tablespace TO regress_tblspace;
+CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
+\d testschema.foo_pk_default_tblspc_pkey;
+Index "testschema.foo_pk_default_tblspc_pkey"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ i      | integer | yes  | i
+primary key, lsm, for table "testschema.foo_pk_default_tblspc"
+Tablespace: "regress_tblspace"
+
+\d testschema.foo_pk_default_tblspc;
+     Table "testschema.foo_pk_default_tblspc"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           | not null |
+Indexes:
+    "foo_pk_default_tblspc_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
+Tablespace: "regress_tblspace"
+
+SET default_tablespace TO '';
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
@@ -275,6 +315,7 @@ Tablespace: "regress_tblspace"
 --------+---------+------+------------
  id     | integer | yes  | id
 primary key, lsm, for table "testschema.test_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_tab;
             Table "testschema.test_tab"
@@ -282,7 +323,7 @@ primary key, lsm, for table "testschema.test_tab"
 --------+---------+-----------+----------+---------
  id     | integer |           | not null |
 Indexes:
-    "test_tab_pkey" PRIMARY KEY, lsm (id HASH)
+    "test_tab_pkey" PRIMARY KEY, lsm (id HASH), tablespace "regress_tblspace"
     "test_tab_unique" UNIQUE CONSTRAINT, lsm (id HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
 
@@ -355,7 +396,7 @@ DROP TABLESPACE regress_tblspace_renamed;
 */
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA testschema CASCADE;
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 7 other objects
 \set VERBOSITY default
 DROP ROLE regress_tablespace_user1;
 ERROR:  role "regress_tablespace_user1" cannot be dropped because some objects depend on it

@@ -87,6 +87,18 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'asexecute';
 */
 
+-- Create table with primary key.
+CREATE TABLE testschema.foo_pk (i int, PRIMARY KEY(i)) TABLESPACE regress_tblspace;
+\d testschema.foo_pk_pkey
+\d testschema.foo_pk;
+
+-- Create table with primary key after default tablespace is changed.
+SET default_tablespace TO regress_tblspace;
+CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
+\d testschema.foo_pk_default_tblspc_pkey;
+\d testschema.foo_pk_default_tblspc;
+SET default_tablespace TO '';
+
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c

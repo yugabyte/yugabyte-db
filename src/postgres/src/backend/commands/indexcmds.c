@@ -564,7 +564,31 @@ DefineIndex(Oid relationId,
 	 * Select tablespace to use.  If not specified, use default tablespace
 	 * (which may in turn default to database's default).
 	 */
-	if (stmt->tableSpace)
+	if (IsYBRelation(rel) && stmt->primary)
+	{
+		/*
+		 * For Yugabyte enabled clusters, the primary key index is an intrinsic
+		 * part of the table itself. In that case, the tablespace for a primary
+		 * index must always be the same as that of the table.
+		 */
+		tablespaceId = rel->rd_rel->reltablespace;
+
+		/*
+		 * Fail if the user specified a custom tablespace for a primary key
+		 * index and it does not match the tablespace of the indexed table.
+		 */
+		if (stmt->tableSpace)
+		{
+			Oid stmtTablespace = get_tablespace_oid(stmt->tableSpace, false);
+			if (stmtTablespace != tablespaceId)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						errmsg("Tablespace for a primary key index must "
+							   " always match the tablespace of the "
+							   " indexed table.")));
+		}
+	}
+	else if (stmt->tableSpace)
 	{
 		tablespaceId = get_tablespace_oid(stmt->tableSpace, false);
 	}
