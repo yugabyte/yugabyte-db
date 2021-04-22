@@ -3125,7 +3125,18 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
+
+    // Loop through placements and verify that there are sufficient TServers to satisfy the
+    // minimum required replicas.
+    for (const auto& pb : placement_info.placement_blocks()) {
+      RETURN_NOT_OK(FindTServersForPlacementBlock(pb, ts_descs));
+    }
+
+    // Verify that there are enough TServers to match the total required replication factor (which
+    // could be more than the sum of the minimums).
+    RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
   }
+
   return Status::OK();
 }
 
@@ -8113,49 +8124,12 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // match the requested policies. We'll assign the minimum requested replicas in each combination
     // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
     // in any of the allowed areas.
-    unordered_map<string, vector<shared_ptr<TSDescriptor>>> allowed_ts_by_pi;
-    vector<shared_ptr<TSDescriptor>> all_allowed_ts;
-
-    // Keep map from ID to PlacementBlockPB, as protos only have repeated, not maps.
-    unordered_map<string, PlacementBlockPB> pb_by_id;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      const auto& cloud_info = pb.cloud_info();
-      string placement_id = TSDescriptor::generate_placement_id(cloud_info);
-      pb_by_id[placement_id] = pb;
-    }
-
-    // Build the sets of allowed TSs.
-    for (const auto& ts : ts_descs) {
-      bool added_to_all = false;
-      for (const auto& pi_entry : pb_by_id) {
-        if (ts->MatchesCloudInfo(pi_entry.second.cloud_info())) {
-          allowed_ts_by_pi[pi_entry.first].push_back(ts);
-
-          if (!added_to_all) {
-            added_to_all = true;
-            all_allowed_ts.push_back(ts);
-          }
-        }
-      }
-    }
-
-    // Fail early if we don't have enough tablet servers in the areas requested.
-    if (all_allowed_ts.size() < nreplicas) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-          "Not enough tablet servers in the requested placements. Need at least $0, have $1",
-          nreplicas, all_allowed_ts.size());
-    }
+    auto all_allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
 
     // Loop through placements and assign to respective available TSs.
-    for (const auto& entry : allowed_ts_by_pi) {
-      const auto& available_ts_descs = entry.second;
-      int num_replicas = pb_by_id[entry.first].min_num_replicas();
-      num_replicas = num_replicas > 0 ? num_replicas : FLAGS_replication_factor;
-      if (available_ts_descs.size() < num_replicas) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-            "Not enough tablet servers in $0. Need at least $1 but only have $2.", entry.first,
-            num_replicas, available_ts_descs.size());
-      }
+    for (const auto& pb : placement_info.placement_blocks()) {
+      auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+      int num_replicas = pb.min_num_replicas();
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type);
     }
 
@@ -8169,6 +8143,54 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     }
   }
   return Status::OK();
+}
+
+Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
+    const PlacementInfoPB& placement_info,
+    const TSDescriptorVector& ts_descs) {
+
+  vector<shared_ptr<TSDescriptor>> all_allowed_ts;
+  for (const auto& ts : ts_descs) {
+    for (const auto& pb : placement_info.placement_blocks()) {
+      if (ts->MatchesCloudInfo(pb.cloud_info())) {
+        all_allowed_ts.push_back(ts);
+        break;
+      }
+    }
+  }
+
+  // Fail if we don't have enough tablet servers in the areas requested.
+  const int nreplicas = placement_info.num_replicas();
+  if (all_allowed_ts.size() < nreplicas) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "Not enough tablet servers in the requested placements. Need at least $0, have $1",
+        nreplicas, all_allowed_ts.size());
+  }
+
+  return all_allowed_ts;
+}
+
+Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementBlock(
+    const PlacementBlockPB& placement_block,
+    const TSDescriptorVector& ts_descs) {
+
+  vector<shared_ptr<TSDescriptor>> allowed_ts;
+  const auto& cloud_info = placement_block.cloud_info();
+  for (const auto& ts : ts_descs) {
+    if (ts->MatchesCloudInfo(cloud_info)) {
+      allowed_ts.push_back(ts);
+    }
+  }
+
+  // Verify that there are sufficient TServers to satisfy min_num_replicas.
+  int num_replicas = placement_block.min_num_replicas();
+  if (allowed_ts.size() < num_replicas) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+          "Not enough tablet servers in $0. Need at least $1 but only have $2.",
+          TSDescriptor::generate_placement_id(cloud_info), num_replicas, allowed_ts.size());
+  }
+
+return allowed_ts;
 }
 
 Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {

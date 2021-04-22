@@ -1492,6 +1492,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key);
 
+  // From the list of TServers in 'ts_descs', return the ones that match any placement policy
+  // in 'placement_info'. Returns error if there are insufficient TServers to match the
+  // required replication factor in placement_info.
+  // NOTE: This function will only check whether the total replication factor can be
+  // satisfied, and not the individual min_num_replicas in each placement block.
+  Result<TSDescriptorVector> FindTServersForPlacementInfo(
+      const PlacementInfoPB& placement_info,
+      const TSDescriptorVector& ts_descs);
+
+  // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
+  // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
+  // outlined in 'placement_block'.
+  Result<TSDescriptorVector> FindTServersForPlacementBlock(
+      const PlacementBlockPB& placement_block,
+      const TSDescriptorVector& ts_descs);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
