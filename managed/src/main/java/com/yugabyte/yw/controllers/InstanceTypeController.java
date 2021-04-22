@@ -52,13 +52,8 @@ public class InstanceTypeController extends AuthenticatedController {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Map<String, InstanceType> instanceTypesMap;
-    try {
-      instanceTypesMap = InstanceType.findByProvider(provider, config).stream()
-        .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
-    } catch (Exception e) {
-      LOG.error("Unable to list Instance types {}:{} in DB.", providerUUID, e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");
-    }
+    instanceTypesMap = InstanceType.findByProvider(provider, config).stream()
+      .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
 
     return maybeFilterByZoneOfferings(filterByZoneCodes, provider, instanceTypesMap);
   }
@@ -116,23 +111,15 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   public Result create(UUID customerUUID, UUID providerUUID) {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);
-    if (formData.hasErrors()) {
-      throw new YWServiceException(BAD_REQUEST, formData.errorsAsJson());
-    }
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    try {
-      InstanceType it = InstanceType.upsert(provider.uuid,
-        formData.get().getInstanceTypeCode(),
-        formData.get().numCores,
-        formData.get().memSizeGB,
-        formData.get().instanceTypeDetails);
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
-      return ApiResponse.success(it);
-    } catch (Exception e) {
-      LOG.error("Unable to create instance type {}: {}", formData.rawData(), e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create InstanceType");
-    }
+    InstanceType it = InstanceType.upsert(provider.uuid,
+      formData.get().getInstanceTypeCode(),
+      formData.get().numCores,
+      formData.get().memSizeGB,
+      formData.get().instanceTypeDetails);
+    Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
+    return ApiResponse.success(it);
   }
 
   /**
@@ -145,21 +132,13 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    try {
-      InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
-
-      instanceType.setActive(false);
-      instanceType.save();
-      ObjectNode responseJson = Json.newObject();
-      Audit.createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return ApiResponse.success(responseJson);
-    } catch (Exception e) {
-      LOG.error("Unable to delete instance type {}: {}", instanceTypeCode, e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR,
-        "Unable to delete InstanceType: " + instanceTypeCode);
-    }
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
+    instanceType.setActive(false);
+    instanceType.save();
+    ObjectNode responseJson = Json.newObject();
+    Audit.createAuditEntry(ctx(), request());
+    responseJson.put("success", true);
+    return ApiResponse.success(responseJson);
   }
 
   /**

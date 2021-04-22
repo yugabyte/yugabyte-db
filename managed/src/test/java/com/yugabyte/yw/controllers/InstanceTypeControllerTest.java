@@ -404,7 +404,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST))
         .getResult();
     assertErrorNodeValue(Json.parse(contentAsString(result)),
-        "Unable to delete InstanceType: " + fakeInstanceCode);
+        "Instance Type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
   }
 
