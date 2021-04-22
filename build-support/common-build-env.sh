@@ -2095,6 +2095,27 @@ VIRTUALENV DEBUGGING
   export VIRTUAL_ENV
 }
 
+set_pythonpath_called=false
+
+set_pythonpath() {
+  if [[ $set_pythonpath_called == "true" ]]; then
+    return
+  fi
+  set_pythonpath_called=true
+
+  if [[ ! -d ${YB_SRC_ROOT:-} ]]; then
+    fatal "YB_SRC_ROOT is not set or does not exist; ${YB_SRC_ROOT:-undefined}"
+  fi
+
+  local new_entry=$YB_SRC_ROOT/python
+  if [[ -z ${PYTHONPATH:-} ]]; then
+    PYTHONPATH=$new_entry
+  else
+    PYTHONPATH=$new_entry:$PYTHONPATH
+  fi
+  export PYTHONPATH
+}
+
 log_file_existence() {
   expect_num_args 1 "$@"
   local file_name=$1
