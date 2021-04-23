@@ -3774,6 +3774,44 @@ Status CatalogManager::BackfillIndex(
       this, indexed_table, {index_info_pb}, boost::none);
 }
 
+Status CatalogManager::LaunchBackfillIndexForTable(
+    const LaunchBackfillIndexForTableRequestPB* req,
+    LaunchBackfillIndexForTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const TableIdentifierPB& table_id = req->table_identifier();
+
+  scoped_refptr<TableInfo> indexed_table = VERIFY_RESULT(FindTable(table_id));
+  if (indexed_table == nullptr) {
+    Status s = STATUS(NotFound, "Requested table $0 does not exist", table_id.ShortDebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  if (indexed_table->GetTableType() != YQL_TABLE_TYPE) {
+    // This request is only supported for YCQL for now.  YSQL has its own mechanism.
+    return STATUS(InvalidArgument, "Unexpected non-YCQL table $0", table_id.ShortDebugString());
+  }
+
+  uint32_t current_version;
+  {
+    auto l = indexed_table->LockForRead();
+    if (l->pb.state() != SysTablesEntryPB::RUNNING) {
+      Status s = STATUS(TryAgain,
+                        "The table is in state $0. An alter may already be in progress.",
+                        SysTablesEntryPB_State_Name(l->pb.state()));
+      VLOG(2) << "Table " << indexed_table->ToString() << " is not running returning " << s;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+    }
+    current_version = l->pb.version();
+  }
+
+  auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, indexed_table, current_version, /* respect deferrals for backfill */ false);
+  if (!s.ok()) {
+    VLOG(3) << __func__ << " Done failed " << s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {

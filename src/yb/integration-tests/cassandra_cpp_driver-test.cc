@@ -31,11 +31,15 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master.pb.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/clock.h"
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/cql_test_util.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
@@ -858,6 +862,36 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexDeferred, CppCassandraDriverTes
   ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name));
   ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestDeferredIndexBackfillsAfterWait,
+          CppCassandraDriverTestIndex) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  IndexPermissions perm = ASSERT_RESULT(
+      TestBackfillCreateIndexTableSimple(this, /* deferred */ true,
+                                         IndexPermissions::INDEX_PERM_DO_BACKFILL));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+
+  // Ensure there is no progress even if we wait for a while.
+  constexpr auto kWaitSec = 10;
+  SleepFor(MonoDelta::FromSeconds(kWaitSec));
+  perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+
+  // Launch Backfill through yb-admin
+  constexpr auto kAdminRpcTimeout = 5;
+  auto yb_admin_client = std::make_unique<tools::enterprise::ClusterAdminClient>(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(kAdminRpcTimeout));
+  ASSERT_OK(yb_admin_client->Init());
+  ASSERT_OK(yb_admin_client->LaunchBackfillIndexForTable(table_name));
+
+  // Confirm that the backfill should proceed to completion.
+  perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
 TEST_F_EX(

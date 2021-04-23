@@ -154,6 +154,9 @@ class ClusterAdminClient {
   // Delete a single namespace by ID.
   CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
 
+  // Launch backfill for (deferred) indexes on the specified table.
+  CHECKED_STATUS LaunchBackfillIndexForTable(const client::YBTableName& table_name);
+
   // List all tablet servers known to master
   CHECKED_STATUS ListAllTabletServers(bool exclude_dead = false);
 

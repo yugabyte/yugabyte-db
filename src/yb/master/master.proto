@@ -1053,7 +1053,7 @@ message IsTruncateTableDoneResponsePB {
 }
 
 message BackfillIndexRequestPB {
-  // The index to backfill.
+  // The index to backfill. Used for YSQL
   optional TableIdentifierPB index_identifier = 1;
 }
 
@@ -1063,6 +1063,16 @@ message BackfillIndexResponsePB {
 
   // The indexed table to backfill.
   optional TableIdentifierPB table_identifier = 2;
+}
+
+message LaunchBackfillIndexForTableRequestPB {
+  // The indexed table identifier. Used for YCQL tables from yb-admin.
+  optional TableIdentifierPB table_identifier = 1;
+}
+
+message LaunchBackfillIndexForTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
 }
 
 // Delete table request (including index table).
@@ -2040,6 +2050,8 @@ service MasterService {
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
 
   rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+  rpc LaunchBackfillIndexForTable(LaunchBackfillIndexForTableRequestPB)
+          returns (LaunchBackfillIndexForTableResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

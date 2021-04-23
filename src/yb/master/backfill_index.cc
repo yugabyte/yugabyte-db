@@ -438,7 +438,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
-    uint32_t current_version) {
+    uint32_t current_version, bool respect_backfill_deferrals) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
@@ -466,7 +466,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         continue;
       }
       if (idx_pb.index_permissions() == INDEX_PERM_DO_BACKFILL) {
-        if (defer_backfill || idx_pb.is_backfill_deferred()) {
+        if (respect_backfill_deferrals && (defer_backfill || idx_pb.is_backfill_deferred())) {
           LOG(INFO) << "Deferring index-backfill for " << idx_pb.table_id();
           deferred_indexes.emplace_back(idx_pb);
         } else {
