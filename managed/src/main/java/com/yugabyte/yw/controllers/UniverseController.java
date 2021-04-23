@@ -738,7 +738,7 @@ public class UniverseController extends AuthenticatedController {
       node = universe.getNode(nodeName);
       storagePath = runtimeConfigFactory.staticApplicationConf()
         .getString("yb.storage.path");
-      tarFileName = nodeName + "-support_package.tar.gz";
+      tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
       targetFile = storagePath + "/" + tarFileName;
       response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
 
