@@ -79,6 +79,10 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getTlsCertificates()).then((response) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        }
         return dispatch(createUniverseResponse(response.payload));
       });
     },
