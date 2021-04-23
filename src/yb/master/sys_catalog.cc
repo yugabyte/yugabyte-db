@@ -160,14 +160,16 @@ SysCatalogTable::~SysCatalogTable() {
 }
 
 void SysCatalogTable::StartShutdown() {
-  if (tablet_peer()) {
-    CHECK(std::atomic_load(&tablet_peer_)->StartShutdown());
+  auto peer = tablet_peer();
+  if (peer) {
+    CHECK(peer->StartShutdown());
   }
 }
 
 void SysCatalogTable::CompleteShutdown() {
-  if (tablet_peer()) {
-    std::atomic_load(&tablet_peer_)->CompleteShutdown();
+  auto peer = tablet_peer();
+  if (peer) {
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -752,7 +754,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t *catalog_version,
                                                uint64_t *last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
@@ -801,7 +803,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_tablespace_info =
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
@@ -881,7 +883,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(
@@ -1066,12 +1068,12 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   int batch_count = 0, total_count = 0, total_bytes = 0;
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const auto* meta = tablet->metadata();
   for (int i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 
-    const auto* tablet = tablet_peer()->tablet();
-    const auto* meta = tablet->metadata();
     const std::shared_ptr<tablet::TableInfo> source_table_info =
         VERIFY_RESULT(meta->GetTableInfo(source_table_id));
     const std::shared_ptr<tablet::TableInfo> target_table_info =
