@@ -32,7 +32,7 @@ import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
 import Releases from './pages/Releases';
-import { isDefinedNotNull } from './utils/ObjectUtils';
+import { isDefinedNotNull, isNullOrEmpty } from './utils/ObjectUtils';
 import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
@@ -63,6 +63,21 @@ export const clearCredentials = () => {
   Cookies.remove('userId');
   browserHistory.push('/');
 };
+
+function autoLogin(params)
+{
+      const { authToken, customerUUID, userUUID } = params;
+      localStorage.setItem('authToken', authToken);
+      localStorage.setItem('customerId', customerUUID);
+      localStorage.setItem('userId', userUUID);
+      Cookies.set('authToken',authToken)
+      Cookies.set('customerId',customerUUID)
+      Cookies.set('userId',userUUID);
+      browserHistory.replace({
+        search: '',
+      })
+      browserHistory.push('/');
+}
 
 function validateSession(store, replacePath, callback) {
   // Attempt to route to dashboard if tokens and cUUID exists or if insecure mode is on.
@@ -133,6 +148,13 @@ function validateSession(store, replacePath, callback) {
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
+  const params = nextState?.location?.query;
+  
+  if(!isNullOrEmpty(params)) {
+       autoLogin(params);
+       validateSession(store, replace, callback);
+  }
+  else
     validateSession(store, replace, callback);
   };
 
