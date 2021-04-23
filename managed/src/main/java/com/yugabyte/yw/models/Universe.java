@@ -11,7 +11,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
@@ -142,76 +141,6 @@ public class Universe extends Model {
       return null;
     }
     return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
-  }
-
-  @Deprecated
-  public JsonNode toJson() {
-    ObjectNode json =
-      Json.newObject()
-      .put("universeUUID", universeUUID.toString())
-      .put("name", name)
-        .put("creationDate", creationDate.getTime())
-      .put("version", version);
-    String dnsName = getDnsName();
-    if (dnsName != null) {
-      json.put("dnsName", dnsName);
-    }
-    UniverseDefinitionTaskParams params = getUniverseDetails();
-    Collection<NodeDetails> nodes = getNodes();
-    try {
-      json.set("resources", Json.toJson(UniverseResourceDetails.create(nodes, params)));
-    } catch (Exception e) {
-      // TODO: Why do we just silently mask all the bugs in resources generation?
-      json.set("resources", null);
-    }
-
-    ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
-    updateNodesDynamicActions(universeDetailsJson, nodes);
-
-    ArrayNode clustersArrayJson = Json.newArray();
-    for (Cluster cluster : params.clusters) {
-      JsonNode clusterJson = cluster.toJson();
-      if (clusterJson != null) {
-        clustersArrayJson.add(clusterJson);
-      }
-    }
-    universeDetailsJson.set("clusters", clustersArrayJson);
-    json.set("universeDetails", universeDetailsJson);
-    json.set("universeConfig", this.config);
-    return json;
-  }
-
-  /**
-   * Adds arrays of allowed actions for nodes depending on the universe state. Actions are added
-   * directly into the json representation.
-   */
-  @Deprecated
-  private void updateNodesDynamicActions(ObjectNode universeDetailsJson,
-                                 Collection<NodeDetails> nodes) {
-    JsonNode nodeDetailsSet = universeDetailsJson.get("nodeDetailsSet");
-    if (nodeDetailsSet == null || nodeDetailsSet.isNull() || !nodeDetailsSet.isArray()) {
-      return;
-    }
-
-    try {
-      // Preparing a node name -> json node object.
-      Map<String, JsonNode> jsonNodes = new HashMap<>();
-      for (int i = 0; i < nodeDetailsSet.size(); i++) {
-        JsonNode jsonNode = nodeDetailsSet.get(i);
-        jsonNodes.put(jsonNode.get("nodeName").asText(), jsonNode);
-      }
-
-      for (NodeDetails node : nodes) {
-        ObjectNode jsonNode = (ObjectNode) jsonNodes.get(node.nodeName);
-        if (jsonNode == null) {
-          continue;
-        }
-        ArrayNode actions = (ArrayNode) Json.toJson(getNodeActions(node, nodes));
-        jsonNode.set("allowedActions", actions);
-      }
-    } catch (Exception e) {
-      LOG.info("Unable to add allowed actions: " + e);
-    }
   }
 
   @VisibleForTesting

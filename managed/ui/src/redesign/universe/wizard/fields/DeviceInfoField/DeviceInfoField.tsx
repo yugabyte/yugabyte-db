@@ -24,11 +24,14 @@ const DEFAULT_STORAGE_TYPES = {
   [CloudType.azu]: StorageType.Premium_LRS
 };
 
-const DEFAULT_IOPS = 1000;
+const DEFAULT_IOPS_IO1 = 1000;
+const DEFAULT_IOPS_GP3 = 3000;
+const DEFAULT_THROUGHPUT_GP3 = 125;
 
 const AWS_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.IO1, label: 'IO1' },
-  { value: StorageType.GP2, label: 'GP2' }
+  { value: StorageType.GP2, label: 'GP2' },
+  { value: StorageType.GP3, label: 'GP3' }
 ];
 
 const GCP_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
@@ -65,6 +68,7 @@ const getDeviceInfoFromInstance = (instance: InstanceType): DeviceInfo | null =>
       numVolumes: volumeDetailsList.length,
       volumeSize: volumeDetailsList[0].volumeSizeGB,
       diskIops: null,
+      throughput: null,
       storageClass: 'standard',
       storageType: DEFAULT_STORAGE_TYPES[instance.providerCode] ?? null,
       // see original at ClusterFields.js:492
@@ -172,17 +176,30 @@ export const DeviceInfoField: FC = () => {
                           if (storageType === StorageType.IO1) {
                             onChange({
                               ...deviceInfoFormValue,
-                              diskIops: DEFAULT_IOPS,
+                              diskIops: DEFAULT_IOPS_IO1,
+                              throughput: null,
+                              storageType
+                            });
+                          } else if (storageType === StorageType.GP3) {
+                            onChange({
+                              ...deviceInfoFormValue,
+                              diskIops: DEFAULT_IOPS_GP3,
+                              throughput: DEFAULT_THROUGHPUT_GP3,
                               storageType
                             });
                           } else {
-                            onChange({ ...deviceInfoFormValue, diskIops: null, storageType });
+                            onChange({
+                              ...deviceInfoFormValue,
+                              diskIops: null,
+                              throughput: null,
+                              storageType });
                           }
                         }}
                         options={getStorageTypeOptions(formData.cloudConfig.provider?.code)}
                       />
 
-                      {deviceInfoFormValue.storageType === StorageType.IO1 && (
+                      {(deviceInfoFormValue.storageType === StorageType.IO1 ||
+                        deviceInfoFormValue.storageType === StorageType.GP3) && (
                         <>
                           <I18n className="device-info-field__label device-info-field__label--margin-right">Provisioned IOPS</I18n>
                           <Input
@@ -190,10 +207,28 @@ export const DeviceInfoField: FC = () => {
                             min={1}
                             className="device-info-field__num-input"
                             onBlur={onBlur}
-                            value={deviceInfoFormValue.diskIops || DEFAULT_IOPS}
+                            value={deviceInfoFormValue.diskIops ||
+                              (deviceInfoFormValue.storageType === StorageType.IO1 ? DEFAULT_IOPS_IO1 : DEFAULT_IOPS_GP3)}
                             onChange={(event) => {
                               const diskIops = Number(event.target.value.replace(/\D/g, ''));
                               onChange({ ...deviceInfoFormValue, diskIops });
+                            }}
+                          />
+                        </>
+                      )}
+
+                      {(deviceInfoFormValue.storageType === StorageType.GP3) && (
+                        <>
+                          <I18n className="device-info-field__label device-info-field__label--margin-right">Provisioned Throughput (MiB/sec)</I18n>
+                          <Input
+                            type="number"
+                            min={1}
+                            className="device-info-field__num-input"
+                            onBlur={onBlur}
+                            value={deviceInfoFormValue.throughput || DEFAULT_THROUGHPUT_GP3}
+                            onChange={(event) => {
+                              const throughput = Number(event.target.value.replace(/\D/g, ''));
+                              onChange({ ...deviceInfoFormValue, throughput });
                             }}
                           />
                         </>

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -429,8 +430,8 @@ public class UniverseController extends AuthenticatedController {
           .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
           .collect(Collectors.toSet());
       }
-      return ApiResponse.success(UniverseResourceDetails.create(nodesInCluster,
-        taskParams));
+      return ApiResponse.success(UniverseResourceDetails.create(
+        nodesInCluster, taskParams, runtimeConfigFactory.globalRuntimeConf()));
     } catch (Throwable t) {
       t.printStackTrace();
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -628,7 +629,7 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID + ":" + universe.name);
 
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return ApiResponse.success(new UniverseResp(universe, taskUUID));
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -687,7 +688,7 @@ public class UniverseController extends AuthenticatedController {
 
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      return ApiResponse.success(new UniverseResp(universe, taskUUID));
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Exception e) {
       String errMsg = String.format(
         "Error occurred attempting to %s the universe encryption key",
@@ -874,7 +875,7 @@ public class UniverseController extends AuthenticatedController {
         universe.universeUUID, universe.name);
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      return ApiResponse.success(new UniverseResp(universe, taskUUID));
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -890,7 +891,7 @@ public class UniverseController extends AuthenticatedController {
     List<UniverseResp> universes = new ArrayList<>();
     // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
     for (Universe universe : customer.getUniverses()) {
-      UniverseResp universePayload = new UniverseResp(universe, null);
+      UniverseResp universePayload = createResp(universe, null);
       universes.add(universePayload);
     }
     return ApiResponse.success(universes);
@@ -998,7 +999,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return ApiResponse.success(new UniverseResp(universe, null));
+    return ApiResponse.success(createResp(universe, null));
   }
 
   public Result pause(UUID customerUUID, UUID universeUUID) {
@@ -1214,7 +1215,7 @@ public class UniverseController extends AuthenticatedController {
         taskUUID, universe.universeUUID, universe.name);
 
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return ApiResponse.success(new UniverseResp(universe, taskUUID));
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating cluster", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1277,7 +1278,7 @@ public class UniverseController extends AuthenticatedController {
         taskUUID, universe.universeUUID, universe.name);
 
       Audit.createAuditEntry(ctx(), request(), taskUUID);
-      return ApiResponse.success(new UniverseResp(universe, taskUUID));
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error deleting cluster ", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1289,8 +1290,8 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     try {
-      return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
-        universe.getUniverseDetails())));
+      return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(
+        universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
         "Error getting cost for customer " + customerUUID);
@@ -1309,8 +1310,8 @@ public class UniverseController extends AuthenticatedController {
     }
     for (Universe universe : universeSet) {
       try {
-        response.add(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
-          universe.getUniverseDetails())));
+        response.add(Json.toJson(UniverseResourceDetails.create(
+          universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
       } catch (Exception e) {
         LOG.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
@@ -1843,5 +1844,12 @@ public class UniverseController extends AuthenticatedController {
         }
       }
     }
+  }
+
+  private UniverseResp createResp(Universe universe, UUID taskUUID) {
+    UniverseResourceDetails resourceDetails =
+      UniverseResourceDetails.create(universe.getUniverseDetails(),
+        runtimeConfigFactory.globalRuntimeConf());
+    return new UniverseResp(universe, taskUUID, resourceDetails);
   }
 }
