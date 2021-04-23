@@ -723,3 +723,9 @@ export function updateAlertDefinition(alertDefinitionUUID, data) {
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
   return axios.put(endpoint, data);
 }
+
+export function downloadLogs(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
+  window.open(endpoint, '_blank');
+}

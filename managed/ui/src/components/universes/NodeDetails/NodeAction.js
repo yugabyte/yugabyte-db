@@ -7,6 +7,7 @@ import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { downloadLogs } from '../../../actions/universe';
 
 import _ from 'lodash';
 
@@ -64,6 +65,8 @@ export default class NodeAction extends Component {
       caption = 'Show Live Queries';
     } else if (actionType === 'SLOW_QUERIES') {
       caption = 'Show Slow Queries';
+    } else if (actionType === 'DOWNLOAD_LOGS') {
+      caption = 'Download Logs'
     }
     return caption;
   }
@@ -91,6 +94,8 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-search';
     } else if (actionType === 'SLOW_QUERIES') {
       btnIcon = 'fa fa-signal';
+    } else if (actionType === 'DOWNLOAD_LOGS') {
+      btnIcon = 'fa fa-download';
     }
 
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
@@ -122,6 +127,7 @@ export default class NodeAction extends Component {
   render() {
     const {
       currentRow,
+      universeUUID,
       providerUUID,
       hideConnect,
       hideQueries,
@@ -164,6 +170,21 @@ export default class NodeAction extends Component {
       );
     });
 
+    // Add action to download master/tserver logs.
+    const btnId = _.uniqueId('node_action_btn_');
+    actionButtons.push(
+      (
+        <MenuItem
+          key={btnId}
+          eventKey={btnId}
+          disabled={false}
+          onClick={() => downloadLogs(universeUUID, currentRow.name)}
+        >
+          {this.getLabel('DOWNLOAD_LOGS')}
+        </MenuItem>
+      )
+    );
+
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         {!hideConnect && (
@@ -183,7 +204,7 @@ export default class NodeAction extends Component {
               actionType={this.state.actionType}
             />
           </Fragment>
-        ) : null}        
+        ) : null}
       </DropdownButton>
     );
   }
