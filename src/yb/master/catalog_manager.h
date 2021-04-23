@@ -246,6 +246,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       BackfillIndexResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  // Backfill the indexes for the specified table.
+  // Used for backfilling YCQL defered indexes when triggered from yb-admin.
+  CHECKED_STATUS LaunchBackfillIndexForTable(
+      const LaunchBackfillIndexForTableRequestPB* req,
+      LaunchBackfillIndexForTableResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Delete the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,
