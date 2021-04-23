@@ -204,6 +204,7 @@ const formFieldNames = [
   'primary.tserverGFlags',
   'primary.instanceTags',
   'primary.diskIops',
+  'primary.throughput',
   'primary.numVolumes',
   'primary.volumeSize',
   'primary.storageType',
@@ -269,6 +270,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
+    data[clusterType].throughput = userIntent.deviceInfo.throughput;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
@@ -374,11 +376,11 @@ function mapStateToProps(state, ownProps) {
       'primary.masterGFlags',
       'primary.tserverGFlags',
       'primary.instanceTags',
-      'primary.diskIops',
       'primary.numVolumes',
       'primary.volumeSize',
       'primary.storageType',
       'primary.diskIops',
+      'primary.throughput',
       'primary.assignPublicIP',
       'primary.mountPoints',
       'primary.useTimeSync',
@@ -413,6 +415,7 @@ function mapStateToProps(state, ownProps) {
       'async.ybSoftwareVersion',
       'async.accessKeyCode',
       'async.diskIops',
+      'async.throughput',
       'async.numVolumes',
       'async.volumeSize',
       'async.storageType',

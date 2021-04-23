@@ -45,10 +45,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * Unsupported methods are also marked @Deprecated so that IDE finds it easy to tell
  * whats supported and whats not.
  */
-class DelegatingConfig implements Config {
+public class DelegatingConfig implements Config {
   final AtomicReference<Config> delegate;
 
-  protected DelegatingConfig(Config delegatesTo) {
+  public DelegatingConfig(Config delegatesTo) {
     delegate = new AtomicReference<>(delegatesTo);
   }
 

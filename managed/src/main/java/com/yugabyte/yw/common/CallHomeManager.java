@@ -85,7 +85,7 @@ public class CallHomeManager {
     for (UUID universeUUID : c.getUniverseUUIDs()) {
       try {
         Universe u = Universe.getOrBadRequest(universeUUID);
-        universes.add(new UniverseResp(u, null));
+        universes.add(new UniverseResp(u));
       } catch (RuntimeException re) {
         errors.add(re.getMessage());
       }

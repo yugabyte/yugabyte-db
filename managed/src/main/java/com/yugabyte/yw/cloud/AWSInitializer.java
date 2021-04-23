@@ -11,37 +11,29 @@
 
 package com.yugabyte.yw.cloud;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.InputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.PriceComponent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiHelper;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
+import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
+
+import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 // TODO: move pricing data fetch to ybcloud.
@@ -73,8 +65,26 @@ public class AWSInitializer extends AbstractInitializer {
       // Get the price Json object stored locally at conf/aws_pricing.
       for (Region region : provider.regions) {
         JsonNode regionJson = null;
-        try {
-          InputStream regionStream = environment.resourceAsStream("aws_pricing/" + region.code);
+
+        String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
+        try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
+             GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
+             TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream))
+        {
+          TarArchiveEntry currentEntry;
+          boolean pricingFileFound = false;
+          while ((currentEntry = regionStream.getNextTarEntry()) != null) {
+            if (currentEntry.getName().equals(region.code)) {
+              pricingFileFound = true;
+              break;
+            } else {
+              LOG.warn("Unexpected file in pricing archive {}", currentEntry.getName());
+            }
+          }
+          if (!pricingFileFound) {
+            LOG.error("Failed to get region pricing file from {}", pricingFileName);
+            return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
+          }
           ObjectMapper mapper = new ObjectMapper();
           regionJson = mapper.readTree(regionStream);
         } catch (IOException e) {
@@ -105,6 +115,7 @@ public class AWSInitializer extends AbstractInitializer {
 
         // Create the instance types.
         storeInstanceTypeInfoToDB();
+        LOG.info("Successfully stored pricing info for region {}", region.code);
       }
       LOG.info("Successfully finished parsing pricing info.");
     } catch (Exception e) {
@@ -182,17 +193,35 @@ public class AWSInitializer extends AbstractInitializer {
       }
       if (productDetailsJson.get("productFamily") != null) {
         switch (productDetailsJson.get("productFamily").textValue()) {
-          case "Storage":
+          case PRODUCT_FAMILY_STORAGE:
             JsonNode volumeType = attributesJson.get("volumeType");
-            if (volumeType.textValue().equals("Provisioned IOPS")) {
-              storeEBSPriceComponent(sku, PublicCloudConstants.IO1_SIZE, region, onDemandJson);
-            } else if (volumeType.textValue().equals("General Purpose")) {
-              storeEBSPriceComponent(sku, PublicCloudConstants.GP2_SIZE, region, onDemandJson);
+            if (VOLUME_TYPE_PROVISIONED_IOPS.equals(volumeType.textValue())) {
+              storeEBSPriceComponent(sku, IO1_SIZE, region, onDemandJson);
+            } else if (VOLUME_API_GENERAL_PURPOSE.equals(volumeType.textValue())) {
+              JsonNode volumeApiName = attributesJson.get("volumeApiName");
+              if (VOLUME_API_NAME_GP2.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(sku, GP2_SIZE, region, onDemandJson);
+              } else if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(sku, GP3_SIZE, region, onDemandJson);
+              }
             }
             break;
-          case "System Operation":
-            if (attributesJson.get("group").textValue().equals("EBS IOPS")) {
-              storeEBSPriceComponent(sku, PublicCloudConstants.IO1_PIOPS, region, onDemandJson);
+          case PRODUCT_FAMILY_SYSTEM_OPERATION:
+            if (GROUP_EBS_IOPS.equals(attributesJson.get("group").textValue())) {
+              JsonNode volumeApiName = attributesJson.get("volumeApiName");
+              if (VOLUME_API_NAME_IO1.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(sku, IO1_PIOPS, region, onDemandJson);
+              } else if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(sku, GP3_PIOPS, region, onDemandJson);
+              }
+            }
+            break;
+          case PRODUCT_FAMILY_PROVISIONED_THROUGHPUT:
+            if (GROUP_EBS_THROUGHPUT.equals(attributesJson.get("group").textValue())) {
+              JsonNode volumeApiName = attributesJson.get("volumeApiName");
+              if (VOLUME_API_NAME_GP3.equals(volumeApiName.textValue())) {
+                storeEBSPriceComponent(sku, GP3_THROUGHPUT, region, onDemandJson);
+              }
             }
             break;
           default:
@@ -279,7 +308,8 @@ public class AWSInitializer extends AbstractInitializer {
       boolean include = true;
 
       // Make sure this is a compute instance.
-      include &= matches(productAttrs, "productFamily", FilterOp.Equals, "Compute Instance");
+      include &= matches(productAttrs, "productFamily", FilterOp.Equals,
+        PRODUCT_FAMILY_COMPUTE_INSTANCE);
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
@@ -404,7 +434,8 @@ public class AWSInitializer extends AbstractInitializer {
       boolean include = true;
 
       // Make sure this is a compute instance.
-      include &= matches(productAttrs, "productFamily", FilterOp.Equals, "Compute Instance");
+      include &= matches(productAttrs, "productFamily", FilterOp.Equals,
+        PRODUCT_FAMILY_COMPUTE_INSTANCE);
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.

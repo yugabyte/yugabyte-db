@@ -14,14 +14,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
 
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.yugabyte.yw.models.Backup.BackupState.Completed;
-import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
 import static com.yugabyte.yw.models.Backup.BackupState.Failed;
 import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
 import static org.junit.Assert.*;
@@ -57,8 +58,8 @@ public class BackupTest extends FakeDBApplication {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = s3StorageConfig.configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.uuid, params);
     String storageRegex = "s3://foo/univ-" + universeUUID +
         "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";
@@ -75,8 +76,8 @@ public class BackupTest extends FakeDBApplication {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = customerConfig.configUUID;
     params.universeUUID = universeUUID;
-    params.keyspace = "foo";
-    params.tableName = "bar";
+    params.setKeyspace("foo");
+    params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.uuid, params);
     String storageRegex = "univ-" + universeUUID +
         "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar";

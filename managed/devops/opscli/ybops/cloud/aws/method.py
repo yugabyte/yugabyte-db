@@ -44,7 +44,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="AWS Key Pair name")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="AWS comma delimited security group IDs.")
-        self.parser.add_argument("--volume_type", choices=["gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
@@ -156,7 +156,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
     """
     def __init__(self, base_command):
         super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
-        
+
     def add_extra_args(self):
         super(AwsPauseInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
@@ -169,7 +169,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
             get_all=False,
             private_ip=args.node_ip
         )
-       
+
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
@@ -184,7 +184,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
     """
     def __init__(self, base_command):
         super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
-        
+
     def add_extra_args(self):
         super(AwsResumeInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,

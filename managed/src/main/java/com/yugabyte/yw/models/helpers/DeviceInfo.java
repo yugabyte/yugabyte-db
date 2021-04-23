@@ -15,6 +15,9 @@ public class DeviceInfo {
   // Desired Iops for the volumes mounted on this instance (if specified).
   public Integer diskIops;
 
+  // Desired throughput for the volumes mounted on this instance (if specified).
+  public Integer throughput;
+
   // Name of storage class (if specified)
   public String storageClass = "standard";
 
@@ -23,7 +26,7 @@ public class DeviceInfo {
 
   // The type of storage used for this instance (null if instance volume type is not EBS).
   public PublicCloudConstants.StorageType storageType;
-  
+
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
     sb.append("volSize=").append(volumeSize);
@@ -31,8 +34,11 @@ public class DeviceInfo {
     sb.append(", mountPoints=").append(mountPoints);
     if (storageType != null) {
       sb.append(", storageType=").append(storageType);
-      if (storageType.equals(PublicCloudConstants.StorageType.IO1) && diskIops != null) {
+      if (storageType.isIopsProvisioning() && diskIops != null) {
         sb.append(", iops=").append(diskIops);
+      }
+      if (storageType.isThroughputProvisioning() && throughput != null) {
+        sb.append(", throughput=").append(throughput);
       }
     }
     return sb.toString();

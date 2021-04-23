@@ -101,15 +101,15 @@ public class Backup extends Model {
     if (params.tableUUIDList != null) {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/multi-table-%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace);
-    } else if (params.tableName == null && params.keyspace != null) {
+        params.getKeyspace());
+    } else if (params.getTableName() == null && params.getKeyspace() != null) {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/keyspace-%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace);
+        params.getKeyspace());
     } else {
       params.storageLocation = String.format("univ-%s/backup-%s-%d/table-%s.%s",
         params.universeUUID, tsFormat.format(new Date()), abs(backupUUID.hashCode()),
-        params.keyspace, params.tableName);
+        params.getKeyspace(), params.getTableName());
       if (params.tableUUID != null) {
         params.storageLocation = String.format("%s-%s",
           params.storageLocation,

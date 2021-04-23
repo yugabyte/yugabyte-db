@@ -1,15 +1,29 @@
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-
 import java.util.UUID;
 
 public class TableManagerParams extends UniverseTaskParams {
-  public String keyspace;
+  private String keyspace;
 
-  public String tableName;
+  private String tableName;
 
   public UUID tableUUID;
 
   public boolean sse = false;
+
+  public String getKeyspace() {
+    return keyspace;
+  }
+
+  public void setKeyspace(String keyspace) {
+    this.keyspace = keyspace;
+  }
+
+  public String getTableName() {
+    return tableName;
+  }
+
+  public void setTableName(String tableName) {
+    this.tableName = tableName;
+  }
 }

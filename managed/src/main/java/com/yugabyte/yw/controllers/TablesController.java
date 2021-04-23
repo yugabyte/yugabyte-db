@@ -2,47 +2,39 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.List;
-import java.util.UUID;
-import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.HashMap;
-
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.metrics.MetricQueryResponse;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.Common.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
-import org.yb.Common.TableType;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.services.YBClientService;
-
-
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
+
+import java.util.*;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
@@ -397,23 +389,23 @@ public class TablesController extends AuthenticatedController {
           taskParams.cronExpression);
       UUID scheduleUUID = schedule.getScheduleUUID();
       LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
-          tableUUID, taskParams.tableName, scheduleUUID);
+          tableUUID, taskParams.getTableName(), scheduleUUID);
       resultNode.put("scheduleUUID", scheduleUUID.toString());
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
     } else {
       Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
       LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-          tableUUID, taskParams.tableName, taskUUID);
+          tableUUID, taskParams.getTableName(), taskUUID);
       backup.setTaskUUID(taskUUID);
       CustomerTask.create(customer,
           taskParams.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
-          taskParams.tableName);
+          taskParams.getTableName());
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.keyspace, taskParams.tableName);
+          tableUUID, taskParams.getTableNames(), taskParams.getTableName());
       resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     }
@@ -465,16 +457,16 @@ public class TablesController extends AuthenticatedController {
 
       UUID taskUUID = commissioner.submit(TaskType.ImportIntoTable, taskParams);
       LOG.info("Submitted import into table for {}:{}, task uuid = {}.",
-          tableUUID, taskParams.tableName, taskUUID);
+          tableUUID, taskParams.getTableName(), taskUUID);
 
       CustomerTask.create(customer,
           universe.universeUUID,
           taskUUID,
           CustomerTask.TargetType.Table,
           CustomerTask.TaskType.BulkImportData,
-          taskParams.tableName);
+          taskParams.getTableName());
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-          tableUUID, taskParams.keyspace, taskParams.tableName);
+          tableUUID, taskParams.getTableName(), taskParams.getTableName());
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());

@@ -97,8 +97,8 @@ public class BackupsController extends AuthenticatedController {
         subParams.tableUUIDList = null;
         subParams.tableNameList = null;
         subParams.tableUUID = null;
-        subParams.tableName = null;
-        subParams.keyspace = null;
+        subParams.setTableName(null);
+        subParams.setKeyspace(null);
         subParams.universeUUID = universeUUID;
         subParams.parallelism = taskParams.parallelism;
       }
@@ -108,7 +108,7 @@ public class BackupsController extends AuthenticatedController {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    if (taskParams.tableName != null && taskParams.keyspace == null) {
+    if (taskParams.getTableName() != null && taskParams.getKeyspace() == null) {
       String errMsg = "Restore table request must specify keyspace.";
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
@@ -116,26 +116,26 @@ public class BackupsController extends AuthenticatedController {
     Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info("Submitted task to restore table backup to {}.{}, task uuid = {}.",
-        taskParams.keyspace, taskParams.tableName, taskUUID);
+        taskParams.getKeyspace(), taskParams.getTableName(), taskUUID);
     newBackup.setTaskUUID(taskUUID);
-    if (taskParams.tableName != null) {
+    if (taskParams.getTableName() != null) {
       CustomerTask.create(customer,
         universeUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Restore,
-        taskParams.tableName);
+        taskParams.getTableName());
       LOG.info("Saved task uuid {} in customer tasks table for table {}.{}", taskUUID,
-        taskParams.keyspace, taskParams.tableName);
-    } else if (taskParams.keyspace != null) {
+        taskParams.getKeyspace(), taskParams.getTableName());
+    } else if (taskParams.getKeyspace() != null) {
       CustomerTask.create(customer,
         universeUUID,
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Restore,
-        taskParams.keyspace);
+        taskParams.getKeyspace());
       LOG.info("Saved task uuid {} in customer tasks table for keyspace {}", taskUUID,
-        taskParams.keyspace);
+        taskParams.getKeyspace());
     } else {
       CustomerTask.create(customer,
         universeUUID,

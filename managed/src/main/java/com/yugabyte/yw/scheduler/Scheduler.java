@@ -198,16 +198,16 @@ public class Scheduler {
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-      taskParams.tableUUID, taskParams.tableName, taskUUID);
+      taskParams.tableUUID, taskParams.getTableName(), taskUUID);
     backup.setTaskUUID(taskUUID);
     CustomerTask.create(customer,
       taskParams.universeUUID,
       taskUUID,
       CustomerTask.TargetType.Backup,
       CustomerTask.TaskType.Create,
-      taskParams.tableName);
+      taskParams.getTableName());
     LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-      taskParams.tableUUID, taskParams.keyspace, taskParams.tableName);
+      taskParams.tableUUID, taskParams.getKeyspace(), taskParams.getTableName());
   }
 
   private void runMultiTableBackupsTask(Schedule schedule) {

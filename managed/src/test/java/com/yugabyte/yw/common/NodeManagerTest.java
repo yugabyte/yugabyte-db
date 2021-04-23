@@ -163,8 +163,11 @@ public class NodeManagerTest extends FakeDBApplication {
     params.deviceInfo.numVolumes = 2;
     if (testData.cloudType.equals(Common.CloudType.aws)) {
       params.deviceInfo.storageType = testData.storageType;
-      if (testData.storageType != null && testData.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
+      if (testData.storageType != null && testData.storageType.isIopsProvisioning()) {
         params.deviceInfo.diskIops = 240;
+      }
+      if (testData.storageType != null && testData.storageType.isThroughputProvisioning()) {
+        params.deviceInfo.throughput = 250;
       }
     }
   }
@@ -487,9 +490,13 @@ public class NodeManagerTest extends FakeDBApplication {
       if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
         expectedCommand.add("--volume_type");
         expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-        if (deviceInfo.storageType == PublicCloudConstants.StorageType.IO1 && deviceInfo.diskIops != null) {
+        if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
           expectedCommand.add("--disk_iops");
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+        }
+        if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
+          expectedCommand.add("--disk_throughput");
+          expectedCommand.add(Integer.toString(deviceInfo.throughput));
         }
       }
 
