@@ -1173,6 +1173,12 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			ExecuteSqlStatement(AH, "SET row_security = off");
 	}
 
+#ifndef DISABLE_YB_EXTENSIONS
+	if (dopt->include_yb_metadata) {
+		ExecuteSqlStatement(AH, "SET yb_format_funcs_include_yb_metadata = true");
+	}
+#endif  /* DISABLE_YB_EXTENSIONS */
+
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
 	 */
@@ -16531,30 +16537,6 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
-
-#ifndef DISABLE_YB_EXTENSIONS
-		YBCPgTableDesc ybc_tabledesc = NULL;
-		YBCPgTableProperties yb_table_properties;
-
-		if (dopt->include_yb_metadata)
-		{
-			/* Get the table properties from YugaByte. */
-			HandleYBStatus(YBCPgGetTableDesc(dopt->db_oid, indxinfo->dobj.catId.oid, &ybc_tabledesc));
-			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
-
-			if (yb_table_properties.num_hash_key_columns > 0)
-				/* For hash-table. */
-				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
-			else if(yb_table_properties.num_tablets > 1)
-			{
-				/* For range-table. */
-				fprintf(stderr, "Pre-split range tables are not supported yet.\n");
-				exit_nicely(1);
-			}
-			/* else - single shard table - supported, no need to add anything */
-		}
-#endif  /* DISABLE_YB_EXTENSIONS */
-
 		appendPQExpBuffer(q, ";\n");
 
 		/*
