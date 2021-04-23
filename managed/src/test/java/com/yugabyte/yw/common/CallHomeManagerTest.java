@@ -63,7 +63,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     expectedPayload.put("creation_date", defaultCustomer.creationDate.toString());
     List<UniverseResp> universes = new ArrayList<>();
     if (universe != null) {
-      universes.add(new UniverseResp(universe, null));
+      universes.add(new UniverseResp(universe));
     }
     ArrayNode providers = Json.newArray();
     ObjectNode provider = Json.newObject();
