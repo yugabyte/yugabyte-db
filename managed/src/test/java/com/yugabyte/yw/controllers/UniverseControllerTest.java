@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 
 import com.google.common.collect.ImmutableList;
+import com.google.gson.JsonObject;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.RunInShellFormData;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
@@ -56,15 +57,12 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 
-import com.yugabyte.yw.models.helpers.TaskType;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.*;
@@ -1808,9 +1806,14 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.set("nodeDetailsSet", nodeDetailsSet);
     bodyJson.put("nodePrefix", "demo-node");
 
     // TODO: (Daniel) - Add encryptionAtRestConfig to the payload to actually
@@ -1872,9 +1875,20 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    NodeDetails nodeDetails1 = new NodeDetails();
+    nodeDetails1.nodeName = "testing-1";
+    nodeDetails1.cloudInfo = new CloudSpecificInfo();
+    nodeDetails1.cloudInfo.region = "region-1";
+    JsonNode jsonObject = Json.toJson(nodeDetails1);
+
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.set("nodeDetailsSet", nodeDetailsSet);
     bodyJson.put("nodePrefix", "demo-node");
     bodyJson.put(
             "encryptionAtRestConfig",
@@ -1930,9 +1944,14 @@ public class UniverseControllerTest extends WithApplication {
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray = Json.newArray()
             .add(Json.newObject().set("userIntent", userIntentJson));
-    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    ObjectNode cloudInfo = Json.newObject();
+    cloudInfo.put("region", "region1");
+    ObjectNode nodeDetails = Json.newObject();
+    nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.set("cloudInfo", cloudInfo);
+    ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     createBodyJson.set("clusters", clustersJsonArray);
-    createBodyJson.set("nodeDetailsSet", nodeDetails);
+    createBodyJson.set("nodeDetailsSet", nodeDetailsSet);
     createBodyJson.put("nodePrefix", "demo-node");
 
     String createUrl = "/api/customers/" + customer.uuid + "/universes";

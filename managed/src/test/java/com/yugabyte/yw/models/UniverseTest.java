@@ -7,6 +7,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
@@ -282,9 +284,9 @@ public class UniverseTest extends FakeDBApplication {
   @Test
   public void testToJSONSuccess() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
-    Map<String, String> config = new HashMap<>();
-    config.put(Universe.TAKE_BACKUPS, "true");
-    u.setConfig(config);
+    Map<String, String> universeParams = new HashMap<>();
+    universeParams.put(Universe.TAKE_BACKUPS, "true");
+    u.setConfig(universeParams);
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -322,13 +324,13 @@ public class UniverseTest extends FakeDBApplication {
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    UniverseResourceDetails resourceDetails =
+      UniverseResourceDetails.create(u.getUniverseDetails(), getApp().config());
+    JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails));
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
       equalTo(u.universeUUID.toString())));
-    JsonNode resources = Json.toJson(UniverseResourceDetails.create(u.getNodes(),
-      u.getUniverseDetails()));
     assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
-      equalTo(resources.asText())));
+      equalTo(Json.toJson(resourceDetails).asText())));
     JsonNode universeConfig = universeJson.get("universeConfig");
     assertEquals(universeConfig.toString(), "{\"takeBackups\":\"true\"}");
     JsonNode clustersListJson = universeJson.get("universeDetails").get("clusters");

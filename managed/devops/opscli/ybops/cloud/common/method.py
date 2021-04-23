@@ -115,6 +115,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="desired size (gb) of each volume mounted on instance")
         self.parser.add_argument("--disk_iops", type=int, default=1000,
                                  help="desired iops for aws v4 instance volumes")
+        self.parser.add_argument("--disk_throughput", type=int, default=125,
+                                 help="desired throughput for aws gp3 instance volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -157,9 +159,6 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["ask_sudo_pass"] = True
         if args.volume_size:
             updated_args["ssd_size_gb"] = args.volume_size
-
-        if args.disk_iops:
-            updated_args["disk_iops"] = args.disk_iops
 
         if args.mount_points:
             self.mount_points = args.mount_points.strip()
