@@ -324,7 +324,8 @@ static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool attrsOnly, bool keysOnly,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
-					   bool useNonconcurrently);
+					   bool useNonconcurrently,
+					   bool showSplits);
 static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 						 bool attrsOnly, bool missing_ok);
@@ -1106,7 +1107,7 @@ pg_get_indexdef(PG_FUNCTION_ARGS)
 								 false, false,
 								 false, false,
 								 prettyFlags, true,
-								 false);
+								 false, yb_format_funcs_include_yb_metadata);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1129,7 +1130,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 								 colno != 0, false,
 								 false, false,
 								 prettyFlags, true,
-								 false);
+								 false, yb_format_funcs_include_yb_metadata);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1151,7 +1152,8 @@ pg_get_indexdef_string(Oid indexrelid)
 								  false, false,
 								  true, true,
 								  0, false,
-								  IsYugaByteEnabled() /* useNonconcurrently */);
+								  IsYugaByteEnabled() /* useNonconcurrently */,
+								  yb_format_funcs_include_yb_metadata);
 }
 
 /* Internal version that just reports the key-column definitions */
@@ -1166,7 +1168,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 								  true, true,
 								  false, false,
 								  prettyFlags, false,
-								  false);
+								  false, false);
 }
 
 /*
@@ -1183,7 +1185,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool attrsOnly, bool keysOnly,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
-					   bool useNonconcurrently)
+					   bool useNonconcurrently,
+					   bool showSplits)
 {
 	/* might want a separate isConstraint parameter later */
 	bool		isConstraint = (excludeOps != NULL);
@@ -1467,6 +1470,36 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				appendStringInfoString(&buf, " USING INDEX");
 			appendStringInfo(&buf, " TABLESPACE %s",
 							 quote_identifier(get_tablespace_name(tblspc)));
+		}
+
+		/*
+		 * Print SPLIT INTO/AT clause.
+		 */
+		if (showSplits && !idxrec->indisprimary)
+		{
+			YBCPgTableDesc ybc_tabledesc = NULL;
+			YBCPgTableProperties yb_table_properties;
+
+			/* Get the table properties from YugaByte. */
+			HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, indexrelid, &ybc_tabledesc));
+			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+
+			if (yb_table_properties.num_hash_key_columns > 0)
+			{
+				/* For hash-partitioned tables */
+				appendStringInfo(&buf, " SPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
+			}
+			else
+			{
+				/* For range-partitioned tables */
+				if (yb_table_properties.num_tablets > 1)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("Exporting SPLIT clause for range-partitioned "
+									"tables is not yet supported")));
+				}
+			}
 		}
 
 		/*
@@ -2273,6 +2306,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 															  false,
 															  false,
 															  prettyFlags,
+															  false,
 															  false,
 															  false));
 				break;
