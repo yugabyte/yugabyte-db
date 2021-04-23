@@ -1948,6 +1948,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_format_funcs_include_yb_metadata", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Include DocDB metadata (such as tablet splits) in formatting functions exporting system catalog information."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_format_funcs_include_yb_metadata,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
