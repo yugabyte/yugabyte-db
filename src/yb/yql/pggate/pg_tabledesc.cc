@@ -123,7 +123,7 @@ Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
   return PartitionSchema::EncodeMultiColumnHashValue(hash_code);
 }
 
-Result<int> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
+Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   // Find partition index based on ybctid value.
   // - Hash Partition: ybctid -> hashcode -> key -> partition index.
   // - Range Partition: ybctid == key -> partition index.
