@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import io.ebean.Finder;
 import io.ebean.Model;
 import org.slf4j.Logger;
@@ -156,7 +155,8 @@ public class PriceComponent extends Model {
     public enum Unit {
       Hours,
       GBMonth,
-      PIOPMonth
+      PIOPMonth,
+      GiBpsMonth
     }
 
     // The price currency. Note that the case here matters as it matches AWS output.
@@ -198,6 +198,9 @@ public class PriceComponent extends Model {
           break;
         case "IOPS-MO":
           this.unit = Unit.PIOPMonth;
+          break;
+        case "GIBPS-MO":
+          this.unit = Unit.GiBpsMonth;
           break;
         default:
           LOG.error("Invalid price unit provided: " + unit);
