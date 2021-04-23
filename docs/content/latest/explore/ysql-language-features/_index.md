@@ -33,6 +33,7 @@ The following table lists the most important YSQL features which you would find 
 | :----------- | :---------- |
 | <span style="font-size:16px">[Basics](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
 | <span style="font-size:16px">[Data Types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
+| <span style="font-size:16px">[DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/)</span> | Data definition language |
 | <span style="font-size:16px">[Document Data Types](../json-support/jsonb-ysql/)</span> | JSON and JSONB |
 | <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
@@ -52,7 +53,6 @@ The following table lists the most important YSQL features which you would find 
 -->
 See also:
 
-* [Document data types (`JSONB` and `JSON`)](../json-support/jsonb-ysql)
 * [Distributed transactions](../transactions)
 
 <!--
