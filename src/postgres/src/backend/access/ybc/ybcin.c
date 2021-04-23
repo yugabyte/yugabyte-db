@@ -128,9 +128,15 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
 	buildstate.is_backfill = false;
-	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-									 &buildstate, NULL);
-
+	/*
+	 * Primary key index is an implicit part of the base table in Yugabyte.
+	 * We don't need to scan the base table to build a primary key index. (#8024)
+	 */
+	if (!index->rd_index->indisprimary)
+	{
+		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true,
+										 ybcinbuildCallback, &buildstate, NULL);
+	}
 	/*
 	 * Return statistics
 	 */
