@@ -39,27 +39,22 @@ isTocNested: true
 
 </ul>
 
-{{< note title="Note" >}}
+This document describes how to use the standard JDBC binding to run the YCSB benchmark.
 
-For more information about YCSB, see: 
+For additional information about YCSB, see the following: 
 
-* YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
-* Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
+* [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
+* [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
 
-{{< /note >}}
+## Running the Benchmark
 
-## Overview
-This uses the standard JDBC binding to run the YCSB benchmark.
+To run the benchmark, ensure that you meet the prerequisites and complete steps such as starting YugabyteDB and configuring its properties.
 
-## Running the benchmark
+### Prerequisites
 
-### 1. Prerequisites
-
-{{< note title="Note" >}}
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
-{{< /note >}}
 
-Download the YCSB binaries. You can do this by running the following commands.
+Download the YCSB binariesby executing the following commands:
 
 ```sh
 $ cd $HOME
@@ -68,22 +63,19 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+Ensure that you have the YSQL shell `ysqlsh` and that it is exported to the `PATH` variable, as follows:
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
-### 2. Start YugabyteDB
+### Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
+Start your YugabyteDB cluster by following the procedure described in [Manual Deployment](../../deploy/manual-deployment/).
+Take a note of the IP addresses of the nodes in the cluster, as these addresses are required when configuring the properties file.
 
-{{< tip title="Tip" >}}
-You will need the IP addresses of the nodes in the cluster for the next step.
-{{< /tip>}}
+### Configure the Properties File
 
-### 3. Configure `db.properties`
-
-Update the file `db.properties` in the YCSB directory with the following contents. Remember to put the correct values for the IP addresses in the `db.url` field.
+Update the file `db.properties` in the YCSB directory with the following contents, replacing values for the IP addresses in the `db.url` field with the correct values for all the nodes that are part of the cluster:
 
 ```sh
 db.driver=org.postgresql.Driver
@@ -92,107 +84,109 @@ db.user=yugabyte
 db.passwd=
 ```
 
-The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
+The other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties).
 
-{{< note title="Note" >}}
-The db.url field should be populated with the IPs of all the nodes that are part of the cluster.
-{{< /note >}}
+### Run the Benchmark
 
-### 4. Run the benchmark
-There is a handy script `run_jdbc.sh` that loads and runs all the workloads.
+Use the following script `run_jdbc.sh` to load and run all the workloads:
 
 ```sh
 $ ./run_jdbc.sh --ip <ip>
 ```
 
-The above command workload will run the workload on a table with 1 million rows. If you want to run the benchmark on a table with a different row count:
+The preceding command runs the workload on a table with a million rows. If you want to run the benchmark on a table with a different row count, use the following command:
 ```sh
 $ ./run_jdbc.sh --ip <ip> --recordcount <number of rows>
 ```
 
-{{< note title="Note" >}}
-To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you used a threadcount of 32 for the loading phase and 256 for the execution phase.
-{{< /note >}}
 
-### 5. Verify results
+To obtain the maximum performance out of the system, you can tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you use a threadcount of 32 for the loading phase and 256 for the execution phase.
 
-The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example for workloada it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
+### Verify Results
 
-### 6. Run individual workloads (optional)
+The `run_jdbc.sh` script creates two result files per workload: one for the loading and one for the execution phase with the details of throughput and latency.
 
-Connect to the database using `ysqlsh`.
-```sh
-$ ./bin/ysqlsh -h <ip>
-```
+For example for a workload it creates, see `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
 
-Create the `ycsb` database.
-```postgres
-yugabyte=# CREATE DATABASE ycsb;
-```
+### Run Individual Workloads (optional)
 
-Connect to the created database.
-```postgres
-yugabyte=# \c ycsb
-```
+Optionally, you can run individual workloads as follows:
 
-Create the table.
-```postgres
-ycsb=# CREATE TABLE usertable (
-           YCSB_KEY TEXT,
-           FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
-           FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
-           FIELD8 TEXT, FIELD9 TEXT,
-           PRIMARY KEY (YCSB_KEY ASC))
-           SPLIT AT VALUES (('user10'),('user14'),('user18'),
-           ('user22'),('user26'),('user30'),('user34'),('user38'),
-           ('user42'),('user46'),('user50'),('user54'),('user58'),
-           ('user62'),('user66'),('user70'),('user74'),('user78'),
-           ('user82'),('user86'),('user90'),('user94'),('user98'));
-```
+- Connect to the database using by executing the following command:
 
-Before starting the `jdbc` workload, you will need to load the data first.
+  ```sh
+  $ ./bin/ysqlsh -h <ip>
+  ```
 
-```sh
-$ ./bin/ycsb load jdbc -s        \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=32          \
-      -p maxexecutiontime=180
-```
+- Create the `ycsb` database as follows:
 
-Then, you can run the workload:
+  ```postgres
+  yugabyte=# CREATE DATABASE ycsb;
+  ```
 
-```sh
-$ ./bin/ycsb run jdbc -s         \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
-```
+- Connect to the created database as follows:
 
-To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
+  ```postgres
+  yugabyte=# \c ycsb
+  ```
 
-```sh
-$ ./bin/ycsb run jdbc -s         \
-      -P db.properties           \
-      -P workloads/workloadb     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
-```
+- Create the table, as shown in the following example:
 
-## Expected results
+  ```postgres
+  ycsb=# CREATE TABLE usertable (
+             YCSB_KEY TEXT,
+             FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
+             FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
+             FIELD8 TEXT, FIELD9 TEXT,
+             PRIMARY KEY (YCSB_KEY ASC))
+             SPLIT AT VALUES (('user10'),('user14'),('user18'),
+             ('user22'),('user26'),('user30'),('user34'),('user38'),
+             ('user42'),('user46'),('user50'),('user54'),('user58'),
+             ('user62'),('user66'),('user70'),('user74'),('user78'),
+             ('user82'),('user86'),('user90'),('user94'),('user98'));
+  ```
 
-### Setup
-When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ you get the following results:
+- Before starting the `jdbc` workload, you load the data by executing the following command:
 
-### 1 Million Rows
+  ```sh
+  $ ./bin/ycsb load jdbc -s        \
+        -P db.properties           \
+        -P workloads/workloada     \
+        -p recordcount=1000000     \
+        -p operationcount=10000000 \
+        -p threadcount=32          \
+        -p maxexecutiontime=180
+  ```
+
+- Run the workload by executing the following command:
+
+  ```sh
+  $ ./bin/ycsb run jdbc -s         \
+        -P db.properties           \
+        -P workloads/workloada     \
+        -p recordcount=1000000     \
+        -p operationcount=10000000 \
+        -p threadcount=256         \
+        -p maxexecutiontime=180
+  ```
+
+- To run the other workloads (for example, `workloadb`), change the corresponding argument in the preceding command, as follows:
+
+  ```sh
+  $ ./bin/ycsb run jdbc -s         \
+        -P db.properties           \
+        -P workloads/workloadb     \
+        -p recordcount=1000000     \
+        -p operationcount=10000000 \
+        -p threadcount=256         \
+        -p maxexecutiontime=180
+  ```
+
+### Expected Results
+
+When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ, expect to see the following results:
+
+**One Million Rows**
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency
 -------------|-----------|------------|------------|
@@ -202,3 +196,8 @@ Workload C | 77,068 | 3.5ms | Not applicable
 Workload D | 63,676 | 4ms | 7ms insert
 Workload E | 16,642 | 15ms scan | Not applicable
 Workload F | 29,500 | 2ms | 15ms read-modify-write
+
+### Additional Examples
+
+For additional examples, see [Example Using a YCSB Workload with Automatic Tablet Splitting](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).
+
