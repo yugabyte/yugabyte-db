@@ -41,6 +41,8 @@ DEFINE_test_flag(string, process_info_dir, string(),
 
 bool yb_debug_log_docdb_requests = false;
 
+bool yb_format_funcs_include_yb_metadata = false;
+
 namespace yb {
 
 namespace {
