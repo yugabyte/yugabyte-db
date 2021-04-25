@@ -17,8 +17,14 @@
 namespace yb {
 namespace tserver {
 
+class AbortTransactionRequestPB;
+class AbortTransactionResponsePB;
 class GetTabletStatusRequestPB;
 class GetTabletStatusResponsePB;
+class GetTransactionStatusAtParticipantRequestPB;
+class GetTransactionStatusAtParticipantResponsePB;
+class GetTransactionStatusRequestPB;
+class GetTransactionStatusResponsePB;
 class LocalTabletServer;
 class TSTabletManager;
 class TabletPeerLookupIf;
@@ -29,6 +35,8 @@ class TabletServerOptions;
 class TabletServerServiceProxy;
 class TabletSnapshotOpRequestPB;
 class TabletSnapshotOpResponsePB;
+class UpdateTransactionRequestPB;
+class UpdateTransactionResponsePB;
 
 } // namespace tserver
 } // namespace yb

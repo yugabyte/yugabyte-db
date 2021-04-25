@@ -129,7 +129,8 @@ QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
 } // namespace
 
 Result<YBqlWriteOpPtr> Increment(
-    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta) {
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta,
+    Flush flush) {
   auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
   auto value_column_id = table->ColumnId(kValueColumn);
 
@@ -149,6 +150,10 @@ Result<YBqlWriteOpPtr> Increment(
   bfcall->add_operands()->mutable_value()->set_int64_value(delta);
 
   RETURN_NOT_OK(session->Apply(op));
+  if (flush) {
+    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(CheckOp(op.get()));
+  }
 
   return op;
 }

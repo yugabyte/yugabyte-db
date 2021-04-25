@@ -219,6 +219,7 @@ DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC 
 DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
 
 DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
                  "Extra delay to slowdown creation of transaction status table tablet.");
@@ -230,6 +231,8 @@ DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
                  "Amount of time to delay between transaction status check and reading start.");
 
 DEFINE_test_flag(int32, alter_schema_delay_ms, 0, "Delay before processing AlterSchema.");
+
+double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
 namespace tserver {
@@ -940,6 +943,12 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
+  if (req->state().status() == TransactionStatus::CREATED &&
+      RandomActWithProbability(TEST_delay_create_transaction_probability)) {
+    std::this_thread::sleep_for(
+        (FLAGS_transaction_rpc_timeout_ms + RandomUniformInt(-200, 200)) * 1ms);
+  }
+
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
           << ", context: " << context.ToString();
   LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
@@ -1008,7 +1017,7 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 
   PerformAtLeader(req, resp, &context,
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
-    auto* transaction_coordinator = tablet_peer.peer->tablet()->transaction_coordinator();
+    auto* transaction_coordinator = tablet_peer.tablet->transaction_coordinator();
     if (!transaction_coordinator) {
       return STATUS_FORMAT(
           InvalidArgument, "No transaction coordinator at tablet $0",
