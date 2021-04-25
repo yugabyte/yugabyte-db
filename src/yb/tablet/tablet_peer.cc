@@ -1079,12 +1079,15 @@ shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
     std::unique_ptr<Operation>* operation, int64_t term) {
+  if (term == OpId::kUnknownTerm) {
+    return STATUS(InvalidArgument, "Leader operation driver for unknown term");
+  }
   return NewOperationDriver(operation, term);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
     std::unique_ptr<Operation>* operation) {
-  return NewOperationDriver(operation, yb::OpId::kUnknownTerm);
+  return NewOperationDriver(operation, OpId::kUnknownTerm);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation>* operation,
