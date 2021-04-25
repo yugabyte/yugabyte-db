@@ -584,6 +584,7 @@ class TransactionParticipant::Impl
             *client_result,
             &req,
             [this, handle](const Status& status,
+                           const tserver::UpdateTransactionRequestPB& req,
                            const tserver::UpdateTransactionResponsePB& resp) {
               client::UpdateClock(resp, &participant_context_);
               rpcs_.Unregister(handle);
