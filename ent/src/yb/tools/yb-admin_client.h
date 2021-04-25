@@ -102,6 +102,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   CHECKED_STATUS BootstrapProducer(const std::vector<TableId>& table_id);
 
  private:
+  Result<TxnSnapshotId> SuitableSnapshotId(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 

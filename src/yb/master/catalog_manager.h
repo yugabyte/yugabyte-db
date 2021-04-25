@@ -678,18 +678,37 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
-  CHECKED_STATUS FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
-                                       scoped_refptr<NamespaceInfo>* ns_info) const
-      REQUIRES_SHARED(lock_);
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceUnlocked(
+      const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(lock_);
 
-  CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                               scoped_refptr<NamespaceInfo>* ns_info) const;
+  Result<scoped_refptr<NamespaceInfo>> FindNamespace(
+      const NamespaceIdentifierPB& ns_identifier) const EXCLUDES(lock_);
 
-  CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
-                           scoped_refptr<TableInfo>* table_info);
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
+      const NamespaceId& id) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
+      const NamespaceId& id) const REQUIRES_SHARED(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableUnlocked(
+      const TableIdentifierPB& table_identifier) const REQUIRES_SHARED(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTable(
+      const TableIdentifierPB& table_identifier) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const EXCLUDES(lock_);
+
+  Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
+      const TableId& table_id) const REQUIRES_SHARED(lock_);
+
+  Result<bool> TableExists(
+      const std::string& namespace_name, const std::string& table_name) const EXCLUDES(lock_);
 
   Result<TableDescription> DescribeTable(
       const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress);
+
+  Result<TableDescription> DescribeTable(
+      const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
@@ -742,10 +761,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   MonoDelta TimeSinceElectedLeader();
 
   Result<std::vector<TableDescription>> CollectTables(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
       bool add_indexes,
-      bool include_parent_colocated_table = false,
-      bool succeed_if_create_in_progress = false);
+      bool include_parent_colocated_table = false);
+
+  Result<std::vector<TableDescription>> CollectTables(
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+      CollectFlags flags);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1444,6 +1466,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(lock_);
+
+  CHECKED_STATUS CollectTable(
+      const TableDescription& table_description,
+      CollectFlags flags,
+      std::vector<TableDescription>* all_tables,
+      std::unordered_set<NamespaceId>* parent_colocated_table_ids);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

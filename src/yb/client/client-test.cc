@@ -680,12 +680,16 @@ TEST_F(ClientTest, TestListTabletServers) {
   ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);
 }
 
+bool TableNotFound(const Status& status) {
+  return status.IsNotFound()
+         && (master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND);
+}
+
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
   Status s = client_->OpenTable(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "xxx-does-not-exist"), &t);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 // Test that, if the master is down, we experience a network error talking
@@ -1481,8 +1485,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Try to open the deleted table
   Status s = client_table_.Open(kTableName, client_.get());
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
@@ -1503,8 +1506,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   // Verify that a get schema request for a missing table throws not found
   Status s = client_->GetTableSchema(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "MissingTableName"), &schema, &partition_schema);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
@@ -1522,38 +1524,29 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
   auto table_info = std::make_shared<YBTableInfo>();
   ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
-}
-
-void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_TRUE(stream.ok());
-  ASSERT_FALSE(stream->empty());
-  sync->StatusCB(Status::OK());
-}
-
-void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_FALSE(stream.ok());
-  sync->StatusCB(stream.status());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       client_table_.table()->id(), options,
-      std::bind(&CreateCDCStreamCallbackSuccess, &sync, std::placeholders::_1));
-  ASSERT_OK(sync.Wait());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_OK(stream);
+  ASSERT_FALSE(stream->empty());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       "MissingTableId", options,
-      std::bind(&CreateCDCStreamCallbackFailure, &sync, std::placeholders::_1));
-  Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_NOK(stream);
+  ASSERT_TRUE(TableNotFound(stream.status())) << stream.status();
 }
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
@@ -1572,7 +1565,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   Synchronizer sync;
   client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestStaleLocations) {

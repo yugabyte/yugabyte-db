@@ -72,11 +72,11 @@ class SnapshotCoordinatorContext {
 
   virtual const Schema& schema() = 0;
 
-  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
+  virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
   virtual rpc::Scheduler& Scheduler() = 0;
 
-  virtual bool IsLeader() = 0;
+  virtual int64_t LeaderTerm() = 0;
 
   virtual server::Clock* Clock() = 0;
 

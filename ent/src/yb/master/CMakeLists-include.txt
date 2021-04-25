@@ -62,5 +62,6 @@ set(MASTER_ADDITIONAL_TESTS
     catalog_manager-test_ent
     sys_catalog-test_ent
     master-test_ent
+    restore_sys_catalog_state_test
     PARENT_SCOPE)
 set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})

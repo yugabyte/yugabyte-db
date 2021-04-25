@@ -54,12 +54,13 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline);
 
   Result<TxnSnapshotId> CreateForSchedule(
-      const SnapshotScheduleId& schedule_id, CoarseTimePoint deadline);
+      const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline);
 
-  CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
+  CHECKED_STATUS Delete(
+      const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline);
 
   // As usual negative leader_term means that this operation was replicated at the follower.
   CHECKED_STATUS CreateReplicated(
@@ -74,14 +75,16 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
 
-  Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
+  Result<TxnSnapshotRestorationId> Restore(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term);
 
   CHECKED_STATUS ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp);
 
   Result<SnapshotScheduleId> CreateSchedule(
-      const CreateSnapshotScheduleRequestPB& request, CoarseTimePoint deadline);
+      const CreateSnapshotScheduleRequestPB& request, int64_t leader_term,
+      CoarseTimePoint deadline);
 
   CHECKED_STATUS ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp);

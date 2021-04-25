@@ -394,16 +394,12 @@ Status MultiStageAlterTable::StartBackfillingData(
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
 
-  scoped_refptr<NamespaceInfo> ns_info;
-  NamespaceIdentifierPB ns_identifier;
-  ns_identifier.set_id(indexed_table->namespace_id());
-  RETURN_NOT_OK_PREPEND(
-      catalog_manager->FindNamespace(ns_identifier, &ns_info),
-      "Unable to get namespace info for backfill");
+  auto ns_info = catalog_manager->FindNamespaceById(indexed_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for backfill");
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
-      ns_info);
+      *ns_info);
   backfill_table->Launch();
   return Status::OK();
 }
@@ -863,16 +859,9 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
 Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     const TableId &index_table_id) {
   DVLOG(3) << __PRETTY_FUNCTION__;
-  scoped_refptr<TableInfo> index_table_info;
-  TableIdentifierPB index_table_id_pb;
-  index_table_id_pb.set_table_id(index_table_id);
-  RETURN_NOT_OK_PREPEND(
-      master_->catalog_manager()->FindTable(index_table_id_pb,
-                                            &index_table_info),
-      yb::Format("Could not find table info for the index table $0 to enable "
-                 "compactions. "
-                 "This is ok in case somebody issued a delete index.",
-                 yb::ToString(index_table_id)));
+  scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(
+      master_->catalog_manager()->FindTableById(index_table_id),
+      "This is ok in case somebody issued a delete index.");
 
   // Add a sleep here to wait until the Table is fully created.
   bool is_ready = false;
@@ -881,7 +870,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     if (!first_run) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << "Waiting for the previous alter table to "
                                       "complete on the index table "
-                                   << yb::ToString(index_table_id);
+                                   << index_table_id;
       SleepFor(
           MonoDelta::FromMilliseconds(FLAGS_index_backfill_wait_for_alter_table_completion_ms));
     }

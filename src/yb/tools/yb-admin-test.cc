@@ -47,8 +47,11 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_backup.pb.h"
 
@@ -56,11 +59,16 @@
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/random_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace tools {
@@ -76,6 +84,7 @@ using std::shared_ptr;
 using std::vector;
 using itest::TabletServerMap;
 using itest::TServerDetails;
+using pgwrapper::PGConn;
 using strings::Substitute;
 
 namespace {
@@ -83,6 +92,14 @@ namespace {
 Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
   auto it = value.FindMember(name);
   if (it == value.MemberEnd()) {
+    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
+  }
+  return it->value;
+}
+
+Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
+  auto it = value->FindMember(name);
+  if (it == value->MemberEnd()) {
     return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
   }
   return it->value;
@@ -179,6 +196,68 @@ class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
           InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
     }
     return result;
+  }
+
+  Result<rapidjson::Document> GetSnapshotSchedule(const std::string& id = std::string()) {
+    auto out = VERIFY_RESULT(id.empty() ? CallJsonAdmin("list_snapshot_schedules")
+                                        : CallJsonAdmin("list_snapshot_schedules", id));
+    auto schedules = VERIFY_RESULT(Get(&out, "schedules")).get().GetArray();
+    SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
+    rapidjson::Document result;
+    result.CopyFrom(schedules[0], result.GetAllocator());
+    return result;
+  }
+
+  Result<rapidjson::Document> WaitScheduleSnapshot(
+      MonoDelta duration, const std::string& id = std::string(), int num_snashots = 1) {
+    rapidjson::Document result;
+    RETURN_NOT_OK(WaitFor([this, id, num_snashots, &result]() -> Result<bool> {
+      auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
+      auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
+      if (snapshots.Size() < num_snashots) {
+        return false;
+      }
+      result.CopyFrom(snapshots[snapshots.Size() - 1], result.GetAllocator());
+      return true;
+    }, duration, "Wait schedule snapshot"));
+    return result;
+  }
+
+  CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+    auto out = VERIFY_RESULT(CallJsonAdmin(
+        "restore_snapshot_schedule", schedule_id, restore_at.ToFormattedString()));
+    std::string restoration_id = VERIFY_RESULT(Get(out, "restoration_id")).get().GetString();
+    LOG(INFO) << "Restoration id: " << restoration_id;
+
+    return WaitRestorationDone(restoration_id, 20s);
+  }
+
+  CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
+    return WaitFor([this, restoration_id]() -> Result<bool> {
+      auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
+      const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
+      SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
+      auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
+      SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
+      std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
+      master::SysSnapshotEntryPB::State state;
+      if (!master::SysSnapshotEntryPB_State_Parse(state_str, &state)) {
+        return STATUS_FORMAT(IllegalState, "Failed to parse restoration state: $0", state_str);
+      }
+      if (state == master::SysSnapshotEntryPB::RESTORING) {
+        return false;
+      }
+      if (state == master::SysSnapshotEntryPB::RESTORED) {
+        return true;
+      }
+      return STATUS_FORMAT(IllegalState, "Unexpected restoration state: $0",
+                           master::SysSnapshotEntryPB_State_Name(state));
+    }, timeout, "Wait restoration complete");
+  }
+
+  Result<PGConn> PgConnect(const std::string& db_name = std::string()) {
+    auto* ts = cluster_->tablet_server(RandomUniformInt(0, cluster_->num_tablet_servers() - 1));
+    return PGConn::Connect(HostPort(ts->bind_host(), ts->pgsql_rpc_port()), db_name);
   }
 };
 
@@ -483,12 +562,10 @@ TEST_F(AdminCliTest, SnapshotSchedule) {
 
   Timestamp last_snapshot_time;
   ASSERT_OK(WaitFor([this, schedule_id, &last_snapshot_time]() -> Result<bool> {
-    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_schedules"));
-    const auto& schedules = VERIFY_RESULT(Get(out, "schedules")).get().GetArray();
-    SCHECK_EQ(schedules.Size(), 1, IllegalState, "Wrong schedules number");
-    auto first_schedule_id = VERIFY_RESULT(Get(schedules[0], "id")).get().GetString();
-    SCHECK_EQ(schedule_id, first_schedule_id, IllegalState, "Wrong schedule id");
-    const auto& snapshots = VERIFY_RESULT(Get(schedules[0], "snapshots")).get().GetArray();
+    auto schedule = VERIFY_RESULT(GetSnapshotSchedule());
+    auto received_schedule_id = VERIFY_RESULT(Get(schedule, "id")).get().GetString();
+    SCHECK_EQ(schedule_id, received_schedule_id, IllegalState, "Wrong schedule id");
+    const auto& snapshots = VERIFY_RESULT(Get(schedule, "snapshots")).get().GetArray();
 
     if (snapshots.Size() < 2) {
       return false;
@@ -513,31 +590,7 @@ TEST_F(AdminCliTest, SnapshotSchedule) {
   last_snapshot_time.set_value(last_snapshot_time.value() + 1);
   LOG(INFO) << "Restore at: " << last_snapshot_time.ToFormattedString();
 
-  out = ASSERT_RESULT(CallJsonAdmin(
-      "restore_snapshot_schedule", schedule_id, last_snapshot_time.ToFormattedString()));
-  std::string restoration_id = ASSERT_RESULT(Get(out, "restoration_id")).get().GetString();
-  LOG(INFO) << "Restoration id: " << restoration_id;
-
-  ASSERT_OK(WaitFor([this, restoration_id]() -> Result<bool> {
-    auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
-    const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
-    SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
-    auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
-    SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
-    std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
-    master::SysSnapshotEntryPB::State state;
-    if (!master::SysSnapshotEntryPB_State_Parse(state_str, &state)) {
-      return STATUS_FORMAT(IllegalState, "Failed to parse restoration state: $0", state_str);
-    }
-    if (state == master::SysSnapshotEntryPB::RESTORING) {
-      return false;
-    }
-    if (state == master::SysSnapshotEntryPB::RESTORED) {
-      return true;
-    }
-    return STATUS_FORMAT(IllegalState, "Unexpected restoration state: $0",
-                         master::SysSnapshotEntryPB_State_Name(state));
-  }, 20s, "Wait restoration complete"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
@@ -765,6 +818,44 @@ TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   // Ensure that the placement config is absent.
   output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") == std::string::npos);
+}
+
+class AdminCliTestWithYsql : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    opts->enable_ysql = true;
+    opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+  }
+};
+
+TEST_F_EX(AdminCliTest, YB_DISABLE_TEST_IN_TSAN(SnapshotSchedulePgsql), AdminCliTestWithYsql) {
+  const std::string kDbName = "ybtest";
+
+  CreateCluster("raft_consensus-itest-cluster");
+  client_ = ASSERT_RESULT(CreateClient());
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+
+  auto out = ASSERT_RESULT(CallJsonAdmin("create_snapshot_schedule", 0.1, 10, "ysql." + kDbName));
+  std::string schedule_id = ASSERT_RESULT(Get(out, "schedule_id")).get().GetString();
+  ASSERT_OK(WaitScheduleSnapshot(30s, schedule_id));
+
+  conn = ASSERT_RESULT(PgConnect(kDbName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+
+  ASSERT_EQ(res, "before");
 }
 
 }  // namespace tools

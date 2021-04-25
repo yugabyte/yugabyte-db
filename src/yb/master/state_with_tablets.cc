@@ -57,6 +57,9 @@ void StateWithTablets::InitTablets(
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
+  if (tablets_.empty()) {
+    return InitialStateToTerminalState(initial_state_);
+  }
   SysSnapshotEntryPB::State result = initial_state_;
   bool has_initial = false;
   for (const auto& tablet : tablets_) {

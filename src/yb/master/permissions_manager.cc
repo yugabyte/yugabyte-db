@@ -817,7 +817,6 @@ Status PermissionsManager::GrantRevokePermission(
   std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
   TRACE("Acquired catalog manager lock");
   Status s;
-  scoped_refptr<NamespaceInfo> ns;
   scoped_refptr<TableInfo> table;
 
   // Checking if resources exist.
@@ -827,18 +826,19 @@ Status PermissionsManager::GrantRevokePermission(
     // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
     DCHECK(req->has_namespace_());
     const auto& namespace_info = req->namespace_();
-    s = catalog_manager_->FindNamespaceUnlocked(namespace_info, &ns);
+    auto ns = catalog_manager_->FindNamespaceUnlocked(namespace_info);
 
     if (req->resource_type() == ResourceType::KEYSPACE) {
-      if (ns == nullptr) {
+      if (!ns.ok()) {
         // Matches Apache Cassandra's error.
         s = STATUS_SUBSTITUTE(
             NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       }
     } else {
-      if (ns) {
-        table = FindPtrOrNull(catalog_manager_->table_names_map_, {ns->id(), req->resource_name()});
+      if (ns.ok()) {
+        table = FindPtrOrNull(
+            catalog_manager_->table_names_map_, {(**ns).id(), req->resource_name()});
       }
       if (table == nullptr) {
         // Matches Apache Cassandra's error.

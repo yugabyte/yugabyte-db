@@ -53,6 +53,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
@@ -69,6 +70,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -96,6 +98,7 @@ DEFINE_bool(stress_flush_compact, false,
 DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 DECLARE_int32(replication_factor);
+DECLARE_string(ts_flags);
 
 namespace yb {
 

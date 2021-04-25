@@ -64,12 +64,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     RETURN_NOT_OK(table->GetSchema(&schema));
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        table->namespace_id()));
 
-    const string& keyspace_name = nsInfo->name();
+    const string& keyspace_name = ns_info->name();
     const string& table_name = table->name();
 
     // Fill in the hash keys first.
