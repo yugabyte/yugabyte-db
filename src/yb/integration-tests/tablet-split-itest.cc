@@ -1183,8 +1183,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       tablet->ForceRocksDBCompactInTest();
-      scoped_refptr<master::TableInfo> table_info;
-      ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+      auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
 
       expect_split = table_info->NumTablets() < FLAGS_tablet_split_limit_per_table;
 
@@ -1211,8 +1210,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
     return !s.IsTryAgain();
   }, 60s * kTimeMultiplier, "Waiting for successful write"));
 
-  scoped_refptr<master::TableInfo> table_info;
-  ASSERT_OK(catalog_mgr->FindTable(table_id_pb, &table_info));
+  auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
   ASSERT_EQ(table_info->NumTablets(), FLAGS_tablet_split_limit_per_table);
 }
 

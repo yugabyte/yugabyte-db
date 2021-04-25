@@ -80,7 +80,9 @@ SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
 Result<SnapshotScheduleOperation> SnapshotScheduleState::ForceCreateSnapshot(
     HybridTime last_snapshot_time) {
   if (creating_snapshot_id_) {
-    return STATUS_FORMAT(IllegalState, "Creating snapshot in progress: $0", creating_snapshot_id_);
+    return STATUS_EC_FORMAT(
+        IllegalState, MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION),
+        "Creating snapshot in progress: $0", creating_snapshot_id_);
   }
   return MakeCreateSnapshotOperation(last_snapshot_time);
 }

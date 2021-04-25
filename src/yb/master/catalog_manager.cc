@@ -528,16 +528,12 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
   return Status::OK();
 }
 
-#define RETURN_NAMESPACE_NOT_FOUND(s, resp)                                       \
-  do {                                                                            \
-    if (PREDICT_FALSE(!s.ok())) {                                                 \
-      if (s.IsNotFound()) {                                                       \
-        return SetupError(                                                        \
-            resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);        \
-      }                                                                           \
-      return s;                                                                   \
-    }                                                                             \
-  } while (false)
+#define VERIFY_NAMESPACE_FOUND(expr, resp) \
+  __extension__ ({ auto&& __result = (expr); \
+                   if (!__result.ok()) {   \
+                     return SetupError((resp)->mutable_error(), __result.status()); \
+                   } \
+                   WrapMove(std::move(__result)); })
 
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
@@ -2203,8 +2199,7 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   LOG(INFO) << "CreatePgsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
-  scoped_refptr<NamespaceInfo> ns;
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+  auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
   const NamespaceId& namespace_id = ns->id();
   const NamespaceName& namespace_name = ns->name();
 
@@ -2472,8 +2467,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
-  scoped_refptr<NamespaceInfo> ns;
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
+  auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
   auto ns_lock = ns->LockForRead();
   if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
     Status s = STATUS(NotFound, "Namespace not found");
@@ -2969,9 +2963,10 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
     metadata.clear_transaction();
     RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
     if (entry_exists) {
-      LOG(INFO) << "Table transaction succeeded: " << table->ToString();
+      LOG_WITH_PREFIX(INFO) << "Table transaction succeeded: " << table->ToString();
     } else {
-      LOG(WARNING) << "Unknown RPC failure, removing transaction on table: " << table->ToString();
+      LOG_WITH_PREFIX(WARNING)
+          << "Unknown RPC failure, removing transaction on table: " << table->ToString();
     }
     // Commit the in-memory state.
     l->Commit();
@@ -3114,23 +3109,27 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   return Status::OK();
 }
 
-Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc) {
-  TableIdentifierPB table_indentifier;
-  table_indentifier.set_table_name(kTransactionsTableName);
-  table_indentifier.mutable_namespace_()->set_name(kSystemNamespaceName);
-
-  // Check that the namespace exists.
-  scoped_refptr<NamespaceInfo> ns_info;
-  RETURN_NOT_OK(FindNamespace(table_indentifier.namespace_(), &ns_info));
-  if (!ns_info) {
-    return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
+Result<bool> DoesTableExist(const Result<TableInfoPtr>& result) {
+  if (result.ok()) {
+    return true;
   }
+  if (result.status().IsNotFound()
+      && MasterError(result.status()) == MasterErrorPB::OBJECT_NOT_FOUND) {
+    return false;
+  }
+  return result.status();
+}
 
-  // If status table exists, do nothing, otherwise create it.
-  scoped_refptr<TableInfo> table_info;
-  RETURN_NOT_OK(FindTable(table_indentifier, &table_info));
+Result<bool> CatalogManager::TableExists(
+    const std::string& namespace_name, const std::string& table_name) const {
+  TableIdentifierPB table_id_pb;
+  table_id_pb.set_table_name(table_name);
+  table_id_pb.mutable_namespace_()->set_name(namespace_name);
+  return DoesTableExist(FindTable(table_id_pb));
+}
 
-  if (table_info) {
+Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc) {
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kTransactionsTableName))) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
   }
@@ -3165,81 +3164,62 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
 }
 
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
-  TableIdentifierPB table_indentifier;
-  table_indentifier.set_table_name(kMetricsSnapshotsTableName);
-  table_indentifier.mutable_namespace_()->set_name(kSystemNamespaceName);
-
-  // Check that the namespace exists.
-  scoped_refptr<NamespaceInfo> ns_info;
-  RETURN_NOT_OK(FindNamespace(table_indentifier.namespace_(), &ns_info));
-  if (!ns_info) {
-    return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kMetricsSnapshotsTableName))) {
+    return Status::OK();
   }
 
-  // If status table exists do nothing, otherwise create it.
-  scoped_refptr<TableInfo> table_info;
-  RETURN_NOT_OK(FindTable(table_indentifier, &table_info));
+  // Set up a CreateTable request internally.
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
+  req.set_name(kMetricsSnapshotsTableName);
+  req.mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.set_table_type(TableType::YQL_TABLE_TYPE);
 
-  if (!table_info) {
-    // Set up a CreateTable request internally.
-    CreateTableRequestPB req;
-    CreateTableResponsePB resp;
-    req.set_name(kMetricsSnapshotsTableName);
-    req.mutable_namespace_()->set_name(kSystemNamespaceName);
-    req.set_table_type(TableType::YQL_TABLE_TYPE);
-
-    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
-    // will use the same defaults as for regular tables.
-    if (FLAGS_metrics_snapshots_table_num_tablets > 0) {
-      req.mutable_schema()->mutable_table_properties()->set_num_tablets(
-          FLAGS_metrics_snapshots_table_num_tablets);
-      req.set_num_tablets(FLAGS_metrics_snapshots_table_num_tablets);
-    }
-
-    // Schema description: "node" refers to tserver uuid. "entity_type" can be either
-    // "tserver" or "table". "entity_id" is uuid of corresponding tserver or table.
-    // "metric" is the name of the metric and "value" is its val. "ts" is time at
-    // which the snapshot was recorded. "details" is a json column for future extensibility.
-
-    YBSchemaBuilder schemaBuilder;
-    schemaBuilder.AddColumn("node")->Type(STRING)->HashPrimaryKey()->NotNull();
-    schemaBuilder.AddColumn("entity_type")->Type(STRING)->PrimaryKey()->NotNull();
-    schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
-    schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
-    schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
-      SetSortingType(ColumnSchema::SortingType::kDescending);
-    schemaBuilder.AddColumn("value")->Type(INT64);
-    schemaBuilder.AddColumn("details")->Type(JSONB);
-
-    YBSchema ybschema;
-    CHECK_OK(schemaBuilder.Build(&ybschema));
-
-    auto schema = yb::client::internal::GetSchema(ybschema);
-    SchemaToPB(schema, req.mutable_schema());
-
-    Status s = CreateTable(&req, &resp, rpc);
-    // We do not lock here so it is technically possible that the table was already created.
-    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
-    if (!s.ok() && !s.IsAlreadyPresent()) {
-      return s;
-    }
+  // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+  // will use the same defaults as for regular tables.
+  if (FLAGS_metrics_snapshots_table_num_tablets > 0) {
+    req.mutable_schema()->mutable_table_properties()->set_num_tablets(
+        FLAGS_metrics_snapshots_table_num_tablets);
+    req.set_num_tablets(FLAGS_metrics_snapshots_table_num_tablets);
   }
-  return Status::OK();
+
+  // Schema description: "node" refers to tserver uuid. "entity_type" can be either
+  // "tserver" or "table". "entity_id" is uuid of corresponding tserver or table.
+  // "metric" is the name of the metric and "value" is its val. "ts" is time at
+  // which the snapshot was recorded. "details" is a json column for future extensibility.
+
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("node")->Type(STRING)->HashPrimaryKey()->NotNull();
+  schemaBuilder.AddColumn("entity_type")->Type(STRING)->PrimaryKey()->NotNull();
+  schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
+  schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
+  schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
+    SetSortingType(ColumnSchema::SortingType::kDescending);
+  schemaBuilder.AddColumn("value")->Type(INT64);
+  schemaBuilder.AddColumn("details")->Type(JSONB);
+
+  YBSchema ybschema;
+  CHECK_OK(schemaBuilder.Build(&ybschema));
+
+  auto schema = yb::client::internal::GetSchema(ybschema);
+  SchemaToPB(schema, req.mutable_schema());
+
+  Status s = CreateTable(&req, &resp, rpc);
+  // We do not lock here so it is technically possible that the table was already created.
+  // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+  if (s.IsAlreadyPresent()) {
+    return Status::OK();
+  }
+  return s;
 }
 
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<TableInfo> table;
-
-  // 1. Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  // 1. Lookup the table and verify if it exists.
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
   TRACE("Locking table");
   auto l = table->LockForRead();
@@ -3518,117 +3498,127 @@ Status CatalogManager::RemoveTableIdsFromTabletInfo(
   return Status::OK();
 }
 
-Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
-                                 scoped_refptr<TableInfo> *table_info) {
+Result<scoped_refptr<TableInfo>> CatalogManager::FindTable(
+    const TableIdentifierPB& table_identifier) const {
   SharedLock<LockType> l(lock_);
+  return FindTableUnlocked(table_identifier);
+}
 
+Result<scoped_refptr<TableInfo>> CatalogManager::FindTableUnlocked(
+    const TableIdentifierPB& table_identifier) const {
   if (table_identifier.has_table_id()) {
-    *table_info = FindPtrOrNull(*table_ids_map_, table_identifier.table_id());
-  } else if (table_identifier.has_table_name()) {
-    NamespaceId namespace_id;
-
-    if (table_identifier.has_namespace_()) {
-      const auto& namespace_info = table_identifier.namespace_();
-      if (namespace_info.has_id()) {
-        namespace_id = namespace_info.id();
-      } else if (namespace_info.has_name()) {
-        // Find namespace by its name.
-        scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(
-            namespace_names_mapper_[GetDatabaseType(namespace_info)],
-            namespace_info.name());
-
-        if (ns == nullptr) {
-          // The namespace was not found. This is a correct case. Just return NULL.
-          *table_info = nullptr;
-          return Status::OK();
-        }
-
-        // We can't lookup YSQL table by name because Postgres concept of "schemas"
-        // introduces ambiguity.
-        if (ns->database_type() == YQL_DATABASE_PGSQL) {
-          return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
-        }
-
-        namespace_id = ns->id();
-      } else {
-        return STATUS(InvalidArgument, "Neither keyspace id or keyspace name are specified");
-      }
-    }
-
-    if (namespace_id.empty()) {
-      return STATUS(InvalidArgument, "No namespace used");
-    }
-
-    *table_info = FindPtrOrNull(table_names_map_, {namespace_id, table_identifier.table_name()});
-  } else {
-    return STATUS(InvalidArgument, "Neither table id or table name are specified");
+    return FindTableByIdUnlocked(table_identifier.table_id());
   }
-  return Status::OK();
+
+  if (table_identifier.has_table_name()) {
+    auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_identifier.namespace_()));
+
+    // We can't lookup YSQL table by name because Postgres concept of "schemas"
+    // introduces ambiguity.
+    if (namespace_info->database_type() == YQL_DATABASE_PGSQL) {
+      return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
+    }
+
+    auto it = table_names_map_.find({namespace_info->id(), table_identifier.table_name()});
+    if (it == table_names_map_.end()) {
+      return STATUS_EC_FORMAT(
+          NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+          "Table $0.$1 not found", namespace_info->name(), table_identifier.table_name());
+    }
+    return it->second;
+  }
+
+  return STATUS(InvalidArgument, "Neither table id or table name are specified",
+                table_identifier.ShortDebugString());
 }
 
-Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
-                                             scoped_refptr<NamespaceInfo>* ns_info) const {
-  if (ns_identifier.has_id()) {
-    *ns_info = FindPtrOrNull(namespace_ids_map_, ns_identifier.id());
-    if (*ns_info == nullptr) {
-      return STATUS(NotFound, "Keyspace identifier not found", ns_identifier.id());
-    }
-  } else if (ns_identifier.has_name()) {
-    auto db = GetDatabaseType(ns_identifier);
-    *ns_info = FindPtrOrNull(namespace_names_mapper_[db], ns_identifier.name());
-    if (*ns_info == nullptr) {
-      return STATUS(NotFound, "Keyspace name not found", ns_identifier.name());
-    }
-  } else {
-    return STATUS(NotFound, "Neither keyspace id nor keyspace name is specified.");
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                                     scoped_refptr<NamespaceInfo>* ns_info) const {
+Result<scoped_refptr<TableInfo>> CatalogManager::FindTableById(
+    const TableId& table_id) const {
   SharedLock<LockType> l(lock_);
-  return FindNamespaceUnlocked(ns_identifier, ns_info);
+  return FindTableByIdUnlocked(table_id);
+}
+
+Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
+    const TableId& table_id) const {
+  auto it = table_ids_map_->find(table_id);
+  if (it == table_ids_map_->end()) {
+    return STATUS_EC_FORMAT(
+        NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+        "Table with identifier $0 not found", table_id);
+  }
+  return it->second;
+}
+
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceById(
+    const NamespaceId& id) const {
+  SharedLock<LockType> l(lock_);
+  return FindNamespaceByIdUnlocked(id);
+}
+
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceByIdUnlocked(
+    const NamespaceId& id) const {
+  auto it = namespace_ids_map_.find(id);
+  if (it == namespace_ids_map_.end()) {
+    return STATUS(NotFound, "Keyspace identifier not found", id,
+                  MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+  }
+  return it->second;
+}
+
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
+    const NamespaceIdentifierPB& ns_identifier) const {
+  if (ns_identifier.has_id()) {
+    return FindNamespaceByIdUnlocked(ns_identifier.id());
+  }
+
+  if (ns_identifier.has_name()) {
+    auto db = GetDatabaseType(ns_identifier);
+    auto it = namespace_names_mapper_[db].find(ns_identifier.name());
+    if (it == namespace_names_mapper_[db].end()) {
+      return STATUS(NotFound, "Keyspace name not found", ns_identifier.name(),
+                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+    }
+    return it->second;
+  }
+
+  LOG(DFATAL) << __func__ << ": " << ns_identifier.ShortDebugString() << ", \n" << GetStackTrace();
+  return STATUS(NotFound, "Neither keyspace id nor keyspace name is specified",
+                ns_identifier.ShortDebugString(), MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+}
+
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespace(
+    const NamespaceIdentifierPB& ns_identifier) const {
+  SharedLock<LockType> l(lock_);
+  return FindNamespaceUnlocked(ns_identifier);
 }
 
 Result<TableDescription> CatalogManager::DescribeTable(
     const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
-  TableDescription result;
-
-  // Lookup the table and verify it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(table_identifier, &result.table_info));
-  if (result.table_info == nullptr) {
-    return STATUS(NotFound, "Object does not exist", table_identifier.ShortDebugString(),
-                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
+  return DescribeTable(VERIFY_RESULT(FindTable(table_identifier)), succeed_if_create_in_progress);
+}
 
+Result<TableDescription> CatalogManager::DescribeTable(
+    const TableInfoPtr& table_info, bool succeed_if_create_in_progress) {
+  TableDescription result;
+  result.table_info = table_info;
   NamespaceId namespace_id;
   {
     TRACE("Locking table");
-    auto l = result.table_info->LockForRead();
+    auto l = table_info->LockForRead();
 
-    if (!succeed_if_create_in_progress && result.table_info->IsCreateInProgress()) {
-      return STATUS(IllegalState, "Table creation is in progress", result.table_info->ToString(),
+    if (!succeed_if_create_in_progress && table_info->IsCreateInProgress()) {
+      return STATUS(IllegalState, "Table creation is in progress", table_info->ToString(),
                     MasterError(MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS));
     }
 
-    result.table_info->GetAllTablets(&result.tablet_infos);
+    table_info->GetAllTablets(&result.tablet_infos);
 
-    namespace_id = result.table_info->namespace_id();
+    namespace_id = table_info->namespace_id();
   }
 
-  {
-    TRACE("Looking up namespace");
-    SharedLock<LockType> l(lock_);
-
-    result.namespace_info = FindPtrOrNull(namespace_ids_map_, namespace_id);
-    if (result.namespace_info == nullptr) {
-      return STATUS(
-          InvalidArgument, "Could not find namespace by namespace id", namespace_id,
-          MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
-    }
-  }
+  TRACE("Looking up namespace");
+  result.namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
 
   return result;
 }
@@ -3736,17 +3726,10 @@ Status CatalogManager::BackfillIndex(
     const BackfillIndexRequestPB* req,
     BackfillIndexResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableIdentifierPB index_table_identifier = req->index_identifier();
+  const TableIdentifierPB& index_table_identifier = req->index_identifier();
 
-  scoped_refptr<TableInfo> index_table;
-  RETURN_NOT_OK(FindTable(index_table_identifier, &index_table));
-  if (index_table == nullptr) {
-    Status s = STATUS(
-        NotFound,
-        "The index does not exist",
-        index_table_identifier.ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> index_table = VERIFY_RESULT(FindTable(index_table_identifier));
+
   if (index_table->GetTableType() != PGSQL_TABLE_TYPE) {
     // This request is only supported for YSQL for now.  YCQL has its own mechanism.
     return STATUS(
@@ -3796,12 +3779,10 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
   }
 
   if (resp) {
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(indexed_table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        indexed_table->namespace_id()));
     auto* resp_indexed_table = resp->mutable_indexed_table();
-    resp_indexed_table->mutable_namespace_()->set_name(nsInfo->name());
+    resp_indexed_table->mutable_namespace_()->set_name(ns_info->name());
     resp_indexed_table->set_table_name(indexed_table->name());
     resp_indexed_table->set_table_id(indexed_table_id);
   }
@@ -3873,13 +3854,7 @@ Status CatalogManager::DeleteTable(
 
   if (req->is_index_table()) {
     TRACE("Looking up index");
-    TableIdentifierPB table_identifier = req->table();
-    scoped_refptr<TableInfo> table;
-    RETURN_NOT_OK(FindTable(table_identifier, &table));
-    if (table == nullptr) {
-      Status s = STATUS(NotFound, "The object does not exist", table_identifier.ShortDebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-    }
+    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
     TableId table_id = table->id();
     resp->set_table_id(table_id);
     TableId indexed_table_id;
@@ -3985,20 +3960,18 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
 
-  scoped_refptr<TableInfo> table;
-
   // Lookup the table and verify if it exists.
   TRACE(Substitute("Looking up $0", object_type));
-  RETURN_NOT_OK(FindTable(table_identifier, &table));
-  if (table == nullptr) {
+  auto table_result = FindTable(table_identifier);
+  if (!VERIFY_RESULT(DoesTableExist(table_result))) {
     if (cascade_delete_index) {
       LOG(WARNING) << "Index " << table_identifier.DebugString() << " not found";
       return Status::OK();
     } else {
-      Status s = STATUS(NotFound, "The object does not exist", table_identifier.ShortDebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      return table_result.status();
     }
   }
+  auto table = std::move(*table_result);
 
   TRACE(Substitute("Locking $0", object_type));
   auto l = table->LockForWrite();
@@ -4315,15 +4288,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<TableInfo> table;
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
   NamespaceId new_namespace_id;
 
@@ -4336,7 +4303,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     if (table->GetTableType() == PGSQL_TABLE_TYPE && !namespace_identifier.has_id()) {
       namespace_identifier.set_id(table->namespace_id());
     }
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(namespace_identifier, &ns), resp);
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(namespace_identifier), resp);
 
     auto ns_lock = ns->LockForRead();
     new_namespace_id = ns->id();
@@ -4522,15 +4489,9 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                         IsAlterTableDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<TableInfo> table;
-
   // 1. Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
   TRACE("Locking table");
   auto l = table->LockForRead();
@@ -4605,15 +4566,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<TableInfo> table;
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
   // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
   // For YQL tables, we will return the "set of indexes" being applied instead of the ones
@@ -4630,15 +4585,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<TableInfo> table;
-
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+
   TRACE("Locking table");
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
@@ -4692,11 +4642,9 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
   resp->mutable_identifier()->set_table_id(table->id());
   resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
-  NamespaceIdentifierPB nsid;
-  nsid.set_id(table->namespace_id());
-  scoped_refptr<NamespaceInfo> nsinfo;
-  if (FindNamespace(nsid, &nsinfo).ok()) {
-    resp->mutable_identifier()->mutable_namespace_()->set_name(nsinfo->name());
+  auto nsinfo = FindNamespaceById(table->namespace_id());
+  if (nsinfo.ok()) {
+    resp->mutable_identifier()->mutable_namespace_()->set_name((**nsinfo).name());
   }
 
   // Get namespace name by id.
@@ -4726,10 +4674,9 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   RETURN_NOT_OK(CheckOnline());
 
   // Lookup the given parent colocated table and verify if it exists.
-  scoped_refptr<TableInfo> parent_colocated_table;
+  TRACE("Looking up table");
+  auto parent_colocated_table = VERIFY_RESULT(FindTable(req->parent_colocated_table()));
   {
-    TRACE("Looking up table");
-    RETURN_NOT_OK(FindTable(req->parent_colocated_table(), &parent_colocated_table));
     TRACE("Locking table");
     auto l = parent_colocated_table->LockForRead();
     RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
@@ -4756,17 +4703,14 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   // Get the table schema for each colocated table.
   for (const auto& t : ListTablesResp.tables()) {
     // Need to check if this table is colocated first.
-    scoped_refptr<TableInfo> table;
-    TableIdentifierPB t_pb;
-    t_pb.set_table_id(t.id());
     TRACE("Looking up table");
-    RETURN_NOT_OK(FindTable(t_pb, &table));
+    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(t.id()));
 
     if (table->colocated()) {
       // Now we can get the schema for this table.
       GetTableSchemaRequestPB schemaReq;
       GetTableSchemaResponsePB schemaResp;
-      schemaReq.mutable_table()->Swap(&t_pb);
+      schemaReq.mutable_table()->set_table_id(t.id());
       status = GetTableSchema(&schemaReq, &schemaResp);
       if (!status.ok() || schemaResp.has_error()) {
         LOG(ERROR) << "Error while getting table schema: " << status;
@@ -4787,10 +4731,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
   // Validate namespace.
   if (req->has_namespace_()) {
-    scoped_refptr<NamespaceInfo> ns;
-
     // Lookup the namespace and verify if it exists.
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+    auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
     auto ns_lock = ns->LockForRead();
     namespace_id = ns->id();
@@ -4856,13 +4798,12 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       relation_type = SYSTEM_TABLE_RELATION;
     }
 
-    scoped_refptr<NamespaceInfo> ns;
     NamespaceIdentifierPB ns_identifier;
     ns_identifier.set_id(ltm->data().namespace_id());
-    auto s = FindNamespaceUnlocked(ns_identifier, &ns);
-    if (ns.get() == nullptr || ns->state() != SysNamespaceEntryPB::RUNNING) {
+    auto ns = FindNamespaceUnlocked(ns_identifier);
+    if (!ns.ok() || (**ns).state() != SysNamespaceEntryPB::RUNNING) {
       if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
-        RETURN_NAMESPACE_NOT_FOUND(s, resp);
+        VERIFY_NAMESPACE_FOUND(ns, resp);
       }
       LOG(ERROR) << "Unable to find namespace with id " << ltm->data().namespace_id()
                  << " for table " << ltm->data().name();
@@ -4871,10 +4812,10 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
     {
-      auto l = ns->LockForRead();
-      table->mutable_namespace_()->set_id(ns->id());
-      table->mutable_namespace_()->set_name(ns->name());
-      table->mutable_namespace_()->set_database_type(ns->database_type());
+      auto l = (**ns).LockForRead();
+      table->mutable_namespace_()->set_id((**ns).id());
+      table->mutable_namespace_()->set_name((**ns).name());
+      table->mutable_namespace_()->set_database_type((**ns).database_type());
     }
     table->set_id(entry.second->id());
     table->set_name(ltm->data().name());
@@ -6061,12 +6002,11 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
                                              IsCreateNamespaceDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> ns;
   auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
   TRACE("Looking up keyspace");
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(ns_pb, &ns), resp);
+  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(ns_pb), resp);
 
   TRACE("Locking keyspace");
   auto l = ns->LockForRead();
@@ -6126,11 +6066,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> ns;
-
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up keyspace");
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
   if (req->has_database_type() && req->database_type() != ns->database_type()) {
     // Could not find the right database to delete.
@@ -6237,8 +6175,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                           DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
   // Lookup database.
-  scoped_refptr <NamespaceInfo> database;
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &database), resp);
+  auto database = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
   // Make sure this is a YSQL database.
   if (database->database_type() != YQL_DATABASE_PGSQL) {
@@ -6427,13 +6364,12 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
                                              IsDeleteNamespaceDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> ns;
   auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
   TRACE("Looking up keyspace");
-  Status s = FindNamespace(ns_pb, &ns);
-  if (!s.ok()) {
+  auto ns = FindNamespace(ns_pb);
+  if (!ns.ok()) {
     // Namespace no longer exists means success.
     LOG(INFO) << "Servicing IsDeleteNamespaceDone request for "
               << ns_pb.DebugString() << ": deleted (not found)";
@@ -6442,7 +6378,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
   }
 
   TRACE("Locking keyspace");
-  auto l = ns->LockForRead();
+  auto l = (**ns).LockForRead();
   auto& metadata = l->data().pb;
 
   if (metadata.state() == SysNamespaceEntryPB::DELETED) {
@@ -6469,8 +6405,7 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> database;
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &database), resp);
+  auto database = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
   if (req->namespace_().has_database_type() &&
       database->database_type() != req->namespace_().database_type()) {
@@ -6494,7 +6429,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
     const string new_name = req->new_name();
 
     // Verify that the new name does not exist.
-    scoped_refptr<NamespaceInfo> ns;
     NamespaceIdentifierPB ns_identifier;
     ns_identifier.set_name(new_name);
     if (req->namespace_().has_database_type()) {
@@ -6504,13 +6438,12 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
     // namespace_name_map (#1476).
     std::lock_guard<LockType> catalog_lock(lock_);
     TRACE("Acquired catalog manager lock");
-    auto s = FindNamespaceUnlocked(ns_identifier, &ns);
-    if (ns != nullptr && req->namespace_().has_database_type() &&
-        ns->database_type() == req->namespace_().database_type()) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "Keyspace '$0' already exists", ns->name());
-      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed altering keyspace with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
+    auto ns = FindNamespaceUnlocked(ns_identifier);
+    if (ns.ok() && req->namespace_().has_database_type() &&
+        (**ns).database_type() == req->namespace_().database_type()) {
+      Status s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", (**ns).name());
+      LOG(WARNING) << "Found keyspace: " << (**ns).id() << ". Failed altering keyspace with error: "
+                   << s << " Request:\n" << req->DebugString();
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
     }
 
@@ -6564,13 +6497,9 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> ns;
-
   // Look up the namespace and verify if it exists.
-  if (req->has_namespace_()) {
-    TRACE("Looking up namespace");
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
-  }
+  TRACE("Looking up namespace");
+  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
 
   resp->mutable_namespace_()->set_id(ns->id());
   resp->mutable_namespace_()->set_name(ns->name());
@@ -6638,7 +6567,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   // Lookup the namespace and verify if it exists.
   if (req->has_namespace_()) {
     TRACE("Looking up namespace");
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
     if (ns->database_type() != YQLDatabase::YQL_DATABASE_CQL) {
       Status s = STATUS(NotFound, "Namespace not found");
       return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
@@ -6734,7 +6663,7 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
   if (req->type().has_namespace_()) {
     // Lookup the namespace and verify if it exists.
     TRACE("Looking up namespace");
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->type().namespace_(), &ns), resp);
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->type().namespace_()), resp);
   }
 
   {
@@ -6845,7 +6774,7 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   } else if (req->type().has_type_name() && req->type().has_namespace_()) {
     // Lookup the type and verify if it exists.
     TRACE("Looking up namespace");
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->type().namespace_(), &ns), resp);
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->type().namespace_()), resp);
 
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->type().type_name()));
   }
@@ -6881,17 +6810,10 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
-  scoped_refptr<NamespaceInfo> ns;
-
-  // Validate namespace.
-  if (req->has_namespace_()) {
-    scoped_refptr<NamespaceInfo> ns;
-
-    // Lookup the namespace and verify that it exists.
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
-  }
-
   SharedLock<LockType> l(lock_);
+
+  // Lookup the namespace and verify that it exists.
+  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespaceUnlocked(req->namespace_()), resp);
 
   for (const UDTypeInfoByNameMap::value_type& entry : udtype_names_map_) {
     auto ltm = entry.second->LockForRead();
@@ -8424,13 +8346,7 @@ Status CatalogManager::GetTableLocations(
     return STATUS(InvalidArgument, "max_returned_locations must be greater than 0");
   }
 
-  scoped_refptr<TableInfo> table;
-  RETURN_NOT_OK(FindTable(req->table(), &table));
-
-  if (table == nullptr) {
-    Status s = STATUS(NotFound, "The object does not exist", req->table().ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
   if (table->IsCreateInProgress()) {
     resp->set_creating(true);
@@ -9077,39 +8993,32 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
   return s;
 }
 
-Result<vector<TableDescription>> CatalogManager::CollectTables(
-    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
-    bool add_indexes,
-    bool include_parent_colocated_table,
-    bool succeed_if_create_in_progress) {
-  vector<TableDescription> all_tables;
-  unordered_set<NamespaceId> parent_colocated_table_ids;
+Status CatalogManager::CollectTable(
+    const TableDescription& table_description,
+    CollectFlags flags,
+    std::vector<TableDescription>* all_tables,
+    std::unordered_set<NamespaceId>* parent_colocated_table_ids) {
+  if (table_description.table_info->LockForRead()->data().started_deleting()) {
+    return Status::OK();
+  }
+  if (flags.Test(CollectFlag::kIncludeParentColocatedTable) &&
+          table_description.table_info->colocated()) {
+    // If a table is colocated, add its parent colocated table as well.
+    const auto parent_table_id =
+        table_description.namespace_info->id() + kColocatedParentTableIdSuffix;
+    auto result = parent_colocated_table_ids->insert(parent_table_id);
+    if (result.second) {
+      // We have not processed this parent table id yet, so do that now.
+      TableIdentifierPB parent_table_pb;
+      parent_table_pb.set_table_id(parent_table_id);
+      parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+      all_tables->push_back(VERIFY_RESULT(DescribeTable(
+          parent_table_pb, flags.Test(CollectFlag::kSucceedIfCreateInProgress))));
+    }
+  }
+  all_tables->push_back(table_description);
 
-  for (const auto& table_id_pb : tables) {
-    auto table_description = VERIFY_RESULT(DescribeTable(
-        table_id_pb, succeed_if_create_in_progress));
-    if (table_description.table_info->LockForRead()->data().started_deleting()) {
-      continue;
-    }
-    if (include_parent_colocated_table && table_description.table_info->colocated()) {
-      // If a table is colocated, add its parent colocated table as well.
-      const auto parent_table_id =
-          table_description.namespace_info->id() + kColocatedParentTableIdSuffix;
-      auto result = parent_colocated_table_ids.insert(parent_table_id);
-      if (result.second) {
-        // We have not processed this parent table id yet, so do that now.
-        TableIdentifierPB parent_table_pb;
-        parent_table_pb.set_table_id(parent_table_id);
-        parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-        all_tables.push_back(VERIFY_RESULT(DescribeTable(
-            parent_table_pb, succeed_if_create_in_progress)));
-      }
-    }
-    all_tables.push_back(table_description);
-
-    if (!add_indexes) {
-      continue;
-    }
+  if (flags.Test(CollectFlag::kAddIndexes)) {
     TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
     auto l = table_description.table_info->LockForRead();
 
@@ -9132,15 +9041,86 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
       index_id_pb.set_table_id(index_info.table_id());
       index_id_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
       auto index_description = VERIFY_RESULT(DescribeTable(
-          index_id_pb, succeed_if_create_in_progress));
+          index_id_pb, flags.Test(CollectFlag::kSucceedIfCreateInProgress)));
       if (index_description.table_info->LockForRead()->data().started_deleting()) {
         continue;
       }
-      all_tables.push_back(index_description);
+      all_tables->push_back(index_description);
     }
   }
 
+  return Status::OK();
+}
+
+Result<vector<TableDescription>> CatalogManager::CollectTables(
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+    CollectFlags flags) {
+  std::vector<std::pair<TableInfoPtr, CollectFlags>> table_with_flags;
+
+  SharedLock<LockType> l(lock_);
+  {
+    for (const auto& table_id_pb : table_identifiers) {
+      if (table_id_pb.table_name().empty() && table_id_pb.table_id().empty() &&
+          table_id_pb.has_namespace_()) {
+        auto ns_collect_flags = flags;
+        // Don't collect indexes, since they should be in the same namespace and will be collected
+        // as regular tables.
+        // It is necessary because we don't support kAddIndexes for YSQL tables.
+        ns_collect_flags.Reset(CollectFlag::kAddIndexes);
+        auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_id_pb.namespace_()));
+        VLOG_WITH_PREFIX(1)
+            << __func__ << ", collecting all tables from: " << namespace_info->ToString();
+        for (const auto& id_and_table : *table_ids_map_) {
+          if (id_and_table.second->is_system()) {
+            VLOG_WITH_PREFIX(4) << __func__ << ", rejected system table: "
+                                << AsString(id_and_table);
+            continue;
+          }
+          if (id_and_table.second->namespace_id() != namespace_info->id()) {
+            VLOG_WITH_PREFIX(4) << __func__ << ", rejected table from other namespace: "
+                                << AsString(id_and_table);
+            continue;
+          }
+          VLOG_WITH_PREFIX(4) << __func__ << ", accepted: " << AsString(id_and_table);
+          table_with_flags.emplace_back(id_and_table.second, ns_collect_flags);
+        }
+      } else {
+        auto table = VERIFY_RESULT(FindTableUnlocked(table_id_pb));
+        VLOG_WITH_PREFIX(1) << __func__ << ", collecting table: " << table->ToString();
+        table_with_flags.emplace_back(table, flags);
+      }
+    }
+  }
+
+  std::sort(table_with_flags.begin(), table_with_flags.end(), [](const auto& p1, const auto& p2) {
+    return p1.first->id() < p2.first->id();
+  });
+  std::vector<TableDescription> all_tables;
+  std::unordered_set<NamespaceId> parent_colocated_table_ids;
+  const TableId* table_id = nullptr;
+  for (auto& table_and_flags : table_with_flags) {
+    if (table_id && *table_id == table_and_flags.first->id()) {
+      return STATUS_FORMAT(InternalError, "Table collected twice $0", *table_id);
+    }
+    auto description = VERIFY_RESULT(DescribeTable(
+        table_and_flags.first,
+        table_and_flags.second.Test(CollectFlag::kSucceedIfCreateInProgress)));
+    RETURN_NOT_OK(CollectTable(
+        description, table_and_flags.second, &all_tables, &parent_colocated_table_ids));
+    table_id = &table_and_flags.first->id();
+  }
+
   return all_tables;
+}
+
+Result<std::vector<TableDescription>> CatalogManager::CollectTables(
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
+    bool add_indexes,
+    bool include_parent_colocated_table) {
+  CollectFlags flags;
+  flags.SetIf(CollectFlag::kAddIndexes, add_indexes);
+  flags.SetIf(CollectFlag::kIncludeParentColocatedTable, include_parent_colocated_table);
+  return CollectTables(table_identifiers, flags);
 }
 
 Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) {

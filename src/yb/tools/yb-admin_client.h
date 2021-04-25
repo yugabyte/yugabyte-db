@@ -78,6 +78,7 @@ class TableNameResolver {
 
   Result<bool> Feed(const std::string& value);
   std::vector<client::YBTableName>& values();
+  master::NamespaceIdentifierPB last_namespace();
 
  private:
   class Impl;
