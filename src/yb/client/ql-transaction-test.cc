@@ -691,16 +691,15 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
 
     auto w = active_transactions.begin();
     for (auto i = active_transactions.begin(); i != active_transactions.end(); ++i) {
-      const auto txn_id = i->ToString();
       if (!i->commit_future.valid()) {
         if (IsReady(i->flush_future)) {
           auto flush_status = i->flush_future.get();
           if (!flush_status.ok()) {
-            LOG(INFO) << "TXN: " << txn_id << ", flush failed: " << flush_status;
+            LOG(INFO) << "TXN: " << i->ToString() << ", flush failed: " << flush_status;
             continue;
           }
           ++flushed;
-          LOG(INFO) << "TXN: " << txn_id << ", flushed";
+          LOG(INFO) << "TXN: " << i->ToString() << ", flushed";
           if (!i->transaction) {
             ++written;
             continue;
@@ -710,10 +709,10 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
       } else if (IsReady(i->commit_future)) {
         auto commit_status = i->commit_future.get();
         if (!commit_status.ok()) {
-          LOG(INFO) << "TXN: " << txn_id << ", commit failed: " << commit_status;
+          LOG(INFO) << "TXN: " << i->ToString() << ", commit failed: " << commit_status;
           continue;
         }
-        LOG(INFO) << "TXN: " << txn_id << ", committed";
+        LOG(INFO) << "TXN: " << i->ToString() << ", committed";
         ++written;
         continue;
       }
