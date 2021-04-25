@@ -49,6 +49,14 @@ class RestoreSysCatalogState {
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
+  Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table) {
+    return MatchTable(id, table);
+  }
+
+  void TEST_AddNamespace(const NamespaceId& id, const SysNamespaceEntryPB& value) {
+    namespaces_.emplace(id, value);
+  }
+
  private:
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
@@ -57,13 +65,15 @@ class RestoreSysCatalogState {
   CHECKED_STATUS DetermineEntries();
 
   Result<bool> MatchTable(const TableId& id, const SysTablesEntryPB& table);
+  Result<bool> TableMatchesIdentifier(
+      const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier);
 
   template <class PB>
   void AddEntry(const std::pair<const std::string, PB>& id_and_pb, faststring* buffer);
 
   SnapshotScheduleRestoration& restoration_;
   SysRowEntries entries_;
-  std::unordered_map<TableId, SysNamespaceEntryPB> namespaces_;
+  std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces_;
   std::unordered_map<TableId, SysTablesEntryPB> tables_;
   std::unordered_map<TabletId, SysTabletsEntryPB> tablets_;
 };

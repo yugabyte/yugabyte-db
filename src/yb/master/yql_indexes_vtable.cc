@@ -59,14 +59,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+        table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, indexed_table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kIndexName, table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));
