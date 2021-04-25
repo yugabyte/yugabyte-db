@@ -559,16 +559,16 @@ class TransactionState {
     auto txn_status = state.status();
     if (txn_status == TransactionStatus::COMMITTED) {
       status = HandleCommit();
-    } else if (txn_status == TransactionStatus::PENDING) {
+    } else if (txn_status == TransactionStatus::PENDING ||
+               txn_status == TransactionStatus::CREATED) {
+        // Handling txn_status of CREATED when the current status (status_) is PENDING is only
+        // allowed for backward compatibility with versions prior to D11210, which could send
+        // transaction creation retries with the same id.
       if (status_ != TransactionStatus::PENDING) {
         status = STATUS_FORMAT(IllegalState,
             "Transaction in wrong state during heartbeat: $0",
             TransactionStatus_Name(status_));
-      } else {
-        status = Status::OK();
       }
-    } else {
-      status = Status::OK();
     }
 
     if (!status.ok()) {
@@ -908,6 +908,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
         if (!known_txn) {
           if (!leader_safe_time) {
+            // We should pick leader safe time only after managed_mutex_ is locked.
+            // Otherwise applied transaction could be removed after this safe time.
             leader_safe_time = VERIFY_RESULT(context_.LeaderSafeTime());
           }
           // Please note that for known transactions we send 0, that means invalid hybrid time.
@@ -1154,8 +1156,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          auto status = STATUS(Expired, "Transaction expired or aborted by a conflict",
-                               PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+          auto status = STATUS_EC_FORMAT(
+              Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+              "Transaction $0 expired or aborted by a conflict", *id);
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
           request->CompleteWithStatus(status);
           return;
@@ -1247,7 +1250,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           context_.client_future().get(),
           &req,
           [this, handle, action]
-              (const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
+              (const Status& status,
+               const tserver::UpdateTransactionRequestPB& req,
+               const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &context_);
             rpcs_.Unregister(handle);
             if (status.ok()) {

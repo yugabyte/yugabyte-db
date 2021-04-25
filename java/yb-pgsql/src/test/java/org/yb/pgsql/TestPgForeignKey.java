@@ -266,7 +266,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
       extraStmt.execute("DELETE FROM parent WHERE k = 1");
       runInvalidQuery(stmt,
         "COMMIT",
-        "Operation expired: Transaction expired or aborted by a conflict");
+        "expired or aborted by a conflict");
       assertNoRows(stmt, "SELECT * FROM child");
     }
   }
