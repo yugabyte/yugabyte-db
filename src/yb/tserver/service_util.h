@@ -173,8 +173,15 @@ class RpcOperationCompletionCallback : public tablet::OperationCompletionCallbac
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, &context_);
     } else {
+      FillResponse();
       context_.RespondSuccess();
     }
+  }
+
+  virtual void FillResponse() {}
+
+  Response& response() {
+    return *response_;
   }
 
  private:
