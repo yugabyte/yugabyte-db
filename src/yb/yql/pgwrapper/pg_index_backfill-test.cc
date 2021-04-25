@@ -1057,7 +1057,7 @@ TEST_F_EX(PgIndexBackfillTest,
           "Resource unavailable : RocksDB",
           "schema version mismatch",
           "Transaction aborted",
-          "Transaction expired or aborted by a conflict",
+          "expired or aborted by a conflict",
           "Transaction was recently aborted",
         };
         ASSERT_TRUE(std::find_if(
