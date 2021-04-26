@@ -413,31 +413,32 @@ To configure the OpenShift command-line interface (CLI) tool oc, you start by lo
 
 Once you have created and deployed Yugabyte Platform, you can access its web UI and create an account.
 
-### How to Find the IP Address to Access the Web UI
+### How to Find the Location to Access the Web UI
 
-To find the IP address, you can use the OpenShift web console or the command line.
+To find the location (IP address or hostname), you can use the OpenShift web console or the command line.
 
 #### Using the OpenShift Web Console
 
-You can locate the IP address using the OpenShift web console as follows:
+You can obtain the location using the OpenShift web console as follows:
 
 - Use the OCP web console to navigate to **Networking > Services** and select **ybplatform-sample-yugaware-ui** from the list. Ensure that the **yb-platform** project is selected.
-- In the **Service Routing** section of the **Details** tab, locate **External Load Balancer** and copy the IP address, as shown in the following illustration:
+- In the **Service Routing** section of the **Details** tab, locate **External Load Balancer** and copy the value, as shown in the following illustration:
 
 ![Service Details](/images/ee/openshift-service-details.png)
 
-- Open the copied IP in a new instance of your web browser.
+- Open the copied location in a new instance of your web browser.
 
 #### Using the Command Line
 
-Alternatively, you can obtain the information about the IP address via the command line. 
+Alternatively, you can obtain the information about the location via the command line.
 
 In case of the Operator-based installation of Yugabyte Platform, execute the following command: 
 
 ```shell
 oc get services \
   ybplatform-sample-yugaware-ui \
-  -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+  -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}
+              {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
 ```
@@ -450,7 +451,8 @@ In case of the Helm-based installation, execute the following command:
 ```shell
 oc get services \
    yw-test-yugaware-ui \
-  -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+  -ojsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}
+              {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
 ```
