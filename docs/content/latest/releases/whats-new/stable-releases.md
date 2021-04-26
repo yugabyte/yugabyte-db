@@ -43,61 +43,69 @@ Included here are the release notes for all releases in the v2.4 stable release 
 docker pull yugabytedb/yugabyte:2.4.2.0-b42
 ```
 
-### Uncategorized issues
+### Improvements
 
-#### Core Database
+#### Core database
 
-* [BACKPORT 2.4] Update sbt version to 0.13.18
-* [BACKPORT 2.4] [[5383](https://github.com/yugabyte/yugabyte-db/issues/5383)] Fix conflict resolution while adding read intents
+* [BACKPORT 2.4] [[5647](https://github.com/yugabyte/yugabyte-db/issues/5647)] docdb: LB should not move tablets right after splitting
 * [BACKPORT 2.4] [[6241](https://github.com/yugabyte/yugabyte-db/issues/6241)] YSQL: Make row key share lock less restrictive
 * [BACKPORT 2.4] [[6305](https://github.com/yugabyte/yugabyte-db/issues/6305)] Adaptive Heartbeat Reporting
 * [BACKPORT 2.4] [[6445](https://github.com/yugabyte/yugabyte-db/issues/6445)] docdb: Master should rebuild YCQL system.partitions on a background thread
+* [BACKPORT 2.4] [[7079](https://github.com/yugabyte/yugabyte-db/issues/7079)] [[7153](https://github.com/yugabyte/yugabyte-db/issues/7153)] YSQL: Improve configuration and defaults for client to server encryption
+* [BACKPORT 2.4] [[7355](https://github.com/yugabyte/yugabyte-db/issues/7355)] ysql: check backfill bad connection status
+* [BACKPORT 2.4] [[7455](https://github.com/yugabyte/yugabyte-db/issues/7455)] [YCQL] Update index from transaction with cross-key statements.
+* [BACKPORT 2.4] [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] YCQL: Fix checks in index update path that determine full row removal.
+* [BACKPORT 2.4] [[7705](https://github.com/yugabyte/yugabyte-db/issues/7705)] ysql: prioritize internal HBA config
+* [BACKPORT 2.4] [[7813](https://github.com/yugabyte/yugabyte-db/issues/7813)] [YSQL] YSQL dump should always include HASH/ASC/DESC modifier for indexes/pkey.
+
+#### Yugabyte Platform
+
+* [[6668](https://github.com/yugabyte/yugabyte-db/issues/6668)] Support platform backup/restore on Kubernetes
+
+### Bug fixes
+
+#### Core database
+
+* [BACKPORT 2.4] [[5383](https://github.com/yugabyte/yugabyte-db/issues/5383)] Fix conflict resolution while adding read intents
 * [BACKPORT 2.4] [[6747](https://github.com/yugabyte/yugabyte-db/issues/6747)] [[6902](https://github.com/yugabyte/yugabyte-db/issues/6902)] [[7109](https://github.com/yugabyte/yugabyte-db/issues/7109)] [7284] YCQL system.partition bug fixes
 * [BACKPORT 2.4] [[6960](https://github.com/yugabyte/yugabyte-db/issues/6960)] docdb - Register ScopedRWOperation when accessing doc_db data in StillHasParentDataAfterSplit
 * [BACKPORT 2.4] [[7105](https://github.com/yugabyte/yugabyte-db/issues/7105)] Explicitly clear the global PgMemctx map in YBCDestroyPgGate
 * [BACKPORT 2.4] [[7145](https://github.com/yugabyte/yugabyte-db/issues/7145)] Fix wrong propagated safe time
-* [BACKPORT 2.4] [[7289](https://github.com/yugabyte/yugabyte-db/issues/7289)] Test split in progress should not block LB data move if blacklist is set
-* [BACKPORT 2.4] [[7355](https://github.com/yugabyte/yugabyte-db/issues/7355)] ysql: check backfill bad connection status
 * [BACKPORT 2.4] [[7397](https://github.com/yugabyte/yugabyte-db/issues/7397)] Tablet splitting: Crash during generating TSHeartbeat report after split
-* [BACKPORT 2.4] [[7705](https://github.com/yugabyte/yugabyte-db/issues/7705)] ysql: prioritize internal HBA config
 * [BACKPORT 2.4] [[7835](https://github.com/yugabyte/yugabyte-db/issues/7835)] Don't crash when trying to append ValueType::kTombstone to a key
-* [Backport 2.4] Update NFS shared path /n to /Volumes/n
-* [Backport 2.4] [[5647](https://github.com/yugabyte/yugabyte-db/issues/5647)] docdb: LB should not move tablets right after splitting
-* [Backport 2.4] [[7054](https://github.com/yugabyte/yugabyte-db/issues/7054)] Fix undefined variable in ListTables conditional check.
-* [Backport 2.4] [[7079](https://github.com/yugabyte/yugabyte-db/issues/7079)] [[7153](https://github.com/yugabyte/yugabyte-db/issues/7153)] YSQL: Improve configuration and defaults for client to server encryption
-* [Backport 2.4] [[7455](https://github.com/yugabyte/yugabyte-db/issues/7455)] [YCQL] Update index from transaction with cross-key statements.
-* [Backport 2.4] [[7628](https://github.com/yugabyte/yugabyte-db/issues/7628)] Add ldap libraries as special case for yb client packaging
-* [Backport 2.4] [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] YCQL: Fix checks in index update path that determine full row removal.
-* [Backport 2.4] [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
-* [Backport 2.4] [[7813](https://github.com/yugabyte/yugabyte-db/issues/7813)] [YSQL] YSQL dump should always include HASH/ASC/DESC modifier for indexes/pkey.
 
 #### Yugabyte Platform
 
+### Uncategorized issues
+
+#### Yugabyte Platform
+
+* [BACKPORT 2.4] Update sbt version to 0.13.18
+* [BACKPORT 2.4] [[1342](https://github.com/yugabyte/yugabyte-db/issues/1342)] [Platform] Fixing the error message when the get host info call to cloud providers fails
+* [BACKPORT 2.4] [[6698](https://github.com/yugabyte/yugabyte-db/issues/6698)] [[7262](https://github.com/yugabyte/yugabyte-db/issues/7262)] Platform: Cascade delete alert and alert_definition
+* [BACKPORT 2.4] [[7054](https://github.com/yugabyte/yugabyte-db/issues/7054)] [Platform] Add conditional checks for hiding specific platform elements in non-platform mode.
+* [BACKPORT 2.4] [[7268](https://github.com/yugabyte/yugabyte-db/issues/7268)] [Platform] Use the correct SSH user for on-prem node preflight checks
+* [BACKPORT 2.4] [[7385](https://github.com/yugabyte/yugabyte-db/issues/7385)] [Platform] Missing package for s3cmd dependency for airgapped GCP VMs
+* [BACKPORT 2.4] [[7390](https://github.com/yugabyte/yugabyte-db/issues/7390)] [Platform] Preflight checks should handle sudo passwords when given
+* [BACKPORT 2.4] [[7402](https://github.com/yugabyte/yugabyte-db/issues/7402)] [Platform] parsing of df output is fragile and may fail in case of "safe" error in df
+* [BACKPORT 2.4] [[7408](https://github.com/yugabyte/yugabyte-db/issues/7408)] [Platform] Insufficient user feedback in platform for Task Retry
 * [[7416](https://github.com/yugabyte/yugabyte-db/issues/7416)] [Platform] Changed default port of On-Prem provider to 22 (#7599)
+* [BACKPORT 2.4] [[7597](https://github.com/yugabyte/yugabyte-db/issues/7597)] [Platform] Add python modules to PYTHONPATH in non-replicated installations
+* [BACKPORT 2.4] [[7656](https://github.com/yugabyte/yugabyte-db/issues/7656)] [Platform] Use the correct SSH user + port for onprem workflow.
+* [BACKPORT 2.4] [[7698](https://github.com/yugabyte/yugabyte-db/issues/7698)] [Platform] Custom SMTP Configuration API returns unmasked SMTP password
+* [BACKPORT 2.4] [[7703](https://github.com/yugabyte/yugabyte-db/issues/7703)] [Platform] Can't send email for custom SMTP settings without authentication (empty username)
 * [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] [Platform] Backup to S3 fails using Yugaware instance's IAM role
-* [BACKPORT 2.4] [[6668](https://github.com/yugabyte/yugabyte-db/issues/6668)] Update platform backup script to latest revision
-* [BACKPORT 2.4] [[7698](https://github.com/yugabyte/yugabyte-db/issues/7698)] Platform: Custom SMTP Configuration API returns unmasked SMTP password
-* [BACKPORT 2.4] [[7703](https://github.com/yugabyte/yugabyte-db/issues/7703)] Platform: Can't send email for custom SMTP settings without authentication (empty username)
-* [BACKPORT 2.4] [[7771](https://github.com/yugabyte/yugabyte-db/issues/7771)] Platform: A lot of exceptions in logs "Error querying for alerts..."
-* [BACKPORT 2.4] [[7780](https://github.com/yugabyte/yugabyte-db/issues/7780)] Platform: Make backup deletion independent of schedule
+* [BACKPORT 2.4] [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
+* [BACKPORT 2.4] [[7771](https://github.com/yugabyte/yugabyte-db/issues/7771)] [Platform] A lot of exceptions in logs "Error querying for alerts..."
+* [BACKPORT 2.4] [[7780](https://github.com/yugabyte/yugabyte-db/issues/7780)] [Platform] Make backup deletion independent of schedule
 * [BACKPORT 2.4] [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Make delete backup task best effort.
-* [BACKPORT 2.4] [Platform] Use more recent centos-7 base image for GCP universe VMs #7475
-* [BACKPORT 2.4] [Platform] parsing of df output is fragile and may fail in case of "safe" error in df [[7402](https://github.com/yugabyte/yugabyte-db/issues/7402)]
-* [Backport 2.4] [[1342](https://github.com/yugabyte/yugabyte-db/issues/1342)] [Platform] Fixing the error message when the get host info call to cloud providers fails
-* [Backport 2.4] [[6698](https://github.com/yugabyte/yugabyte-db/issues/6698)] [[7262](https://github.com/yugabyte/yugabyte-db/issues/7262)] Platform: Cascade delete alert and alert_definition
-* [Backport 2.4] [[7054](https://github.com/yugabyte/yugabyte-db/issues/7054)] [YW] Add conditional checks for hiding specific platform elements in non-platform mode.
-* [Backport 2.4] [[7268](https://github.com/yugabyte/yugabyte-db/issues/7268)] Platform: Use the correct SSH user for on-prem node preflight checks
-* [Backport 2.4] [[7385](https://github.com/yugabyte/yugabyte-db/issues/7385)] Platform: Missing package for s3cmd dependency for airgapped GCP VMs
-* [Backport 2.4] [[7390](https://github.com/yugabyte/yugabyte-db/issues/7390)] [Platform]: Preflight checks should handle sudo passwords when given
-* [Backport 2.4] [[7408](https://github.com/yugabyte/yugabyte-db/issues/7408)] [Platform] Insufficient user feedback in platform for Task Retry
-* [Backport 2.4] [[7597](https://github.com/yugabyte/yugabyte-db/issues/7597)] Platform: Add python modules to PYTHONPATH in non-replicated installations
-* [Backport 2.4] [[7656](https://github.com/yugabyte/yugabyte-db/issues/7656)] Platform: Use the correct SSH user + port for onprem workflow.
-* [Backport 2.4] [[7862](https://github.com/yugabyte/yugabyte-db/issues/7862)] [Platform]: Shorten shebangs in virtualenv when packaging platform
-* [Backport 2.4] [[7909](https://github.com/yugabyte/yugabyte-db/issues/7909)] Platform: Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
-* [Backport 2.4] [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] Platform: Add us-west2 GCP metadata to YW
-* [Backport 2.4] [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform]: Fix yb_backup.py exit handlers
-* [Backport 2.4] [[7989](https://github.com/yugabyte/yugabyte-db/issues/7989)] [Platform]: Fix TableManagerTest.testCreateBackupWithSSHUser
-* [Backport 2.4] [[8059](https://github.com/yugabyte/yugabyte-db/issues/8059)] Platform: add stub npm commands for CI
+* [BACKPORT 2.4] [[7862](https://github.com/yugabyte/yugabyte-db/issues/7862)] [Platform] Shorten shebangs in virtualenv when packaging platform
+* [BACKPORT 2.4] [[7909](https://github.com/yugabyte/yugabyte-db/issues/7909)] [Platform] Fix issue with signature could not be verified for google-cloud-sdk for GCP VMs
+* [BACKPORT 2.4] [[7918](https://github.com/yugabyte/yugabyte-db/issues/7918)] [Platform] Add us-west2 GCP metadata to YW
+* [BACKPORT 2.4] [[7988](https://github.com/yugabyte/yugabyte-db/issues/7988)] [Platform] Fix yb_backup.py exit handlers
+* [BACKPORT 2.4] [[7989](https://github.com/yugabyte/yugabyte-db/issues/7989)] [Platform] Fix TableManagerTest.testCreateBackupWithSSHUser
+* [BACKPORT 2.4] [[8059](https://github.com/yugabyte/yugabyte-db/issues/8059)] [Platform] add stub npm commands for CI
+* [BACKPORT 2.4] [Platform] Use more recent CentOS-7 base image for GCP universe VMs #7475
 
 ## v2.4.1.1 - March 30, 2021
 
