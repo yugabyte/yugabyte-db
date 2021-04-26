@@ -382,8 +382,6 @@ You start by logging in the OCP's web console as admin user, and then performing
 
   ![Create Machines](/images/ee/openshift-yp-create-machine.png)
 
-- Log out of the admin account and login with your user account.
-
 ### How to Use the Command Line
 
 Alternatively, you can find the availability zone codes via the command line.
