@@ -2468,13 +2468,19 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
-  auto ns_lock = ns->LockForRead();
-  if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
-    Status s = STATUS(NotFound, "Namespace not found");
-    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  bool colocated;
+  NamespaceId namespace_id;
+  NamespaceName namespace_name;
+  {
+    auto ns_lock = ns->LockForRead();
+    if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
+      Status s = STATUS(NotFound, "Namespace not found");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    namespace_id = ns->id();
+    namespace_name = ns->name();
+    colocated = ns->colocated();
   }
-  const NamespaceId& namespace_id = ns->id();
-  const NamespaceName& namespace_name = ns->name();
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
@@ -2493,7 +2499,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Determine if this table should be colocated. If not specified, the table should be colocated if
   // and only if the namespace is colocated.
-  bool colocated = ns->colocated();
   if (!req.colocated()) {
     // Opt out of colocation if the request says so.
     colocated = false;
