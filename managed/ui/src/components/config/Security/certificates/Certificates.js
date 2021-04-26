@@ -270,6 +270,8 @@ class Certificates extends Component {
             <Fragment>
               <BootstrapTable
                 data={certificateArray}
+                search
+                multiColumnSearch
                 pagination
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
