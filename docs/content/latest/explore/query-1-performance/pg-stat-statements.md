@@ -181,716 +181,72 @@ View definition:
 ```sh
 yugabyte=# \x
 Expanded display is on.
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc limit 10;    -- mean
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT r.rulename, trim(trailing $1 from pg_catalog.pg_get_ruledef(r.oid, $2))                                    
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_rewrite r                                                                                      
-                                                                                                                           
-                                            +
-       | WHERE r.ev_class = $3 AND r.rulename != $4 ORDER BY 1
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                                 
-                                                                                                                           
-                                            +
-       |     a   int,                                                                                                      
-                                                                                                                           
-                                            +
-       |     b   int                                                                                                       
-                                                                                                                           
-                                            +
-       | )
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT SUBSTRING(unnest(reloptions) from $1) AS tablegroup                                                        
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_class WHERE oid = $2
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-                                            +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, $1, c.reltablespace, CASE WHEN c.reloftype = $2 THEN $3 ELSE c.reloftype::pg_catalog.regtype::pg_catalo
-g.text END, c.relpersistence, c.relreplident+
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-                                            +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-                                            +
-       | WHERE c.oid = $4
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc lim
-it $1
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | DISCARD TEMP
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
+yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc limit 10;
+  userid  | dbid  |                                                          query                                                         
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+(3 rows)
 ```
+
 ```sh
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit 10;     -- total
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT r.rulename, trim(trailing $1 from pg_catalog.pg_get_ruledef(r.oid, $2))                                    
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_rewrite r                                                                                      
-                                                                                                                           
-                                            +
-       | WHERE r.ev_class = $3 AND r.rulename != $4 ORDER BY 1
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                                 
-                                                                                                                           
-                                            +
-       |     a   int,                                                                                                      
-                                                                                                                           
-                                            +
-       |     b   int                                                                                                       
-                                                                                                                           
-                                            +
-       | )
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT SUBSTRING(unnest(reloptions) from $1) AS tablegroup                                                        
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_class WHERE oid = $2
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-                                            +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, $1, c.reltablespace, CASE WHEN c.reloftype = $2 THEN $3 ELSE c.reloftype::pg_catalog.regtype::pg_catalo
-g.text END, c.relpersistence, c.relreplident+
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-                                            +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-                                            +
-       | WHERE c.oid = $4
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc lim
-it $1
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | DISCARD TEMP
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
+yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit 10;
+  userid  | dbid  |                                                          query                                                       
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+(4 rows)
 ```
 
 ### Top 10 time-consuming queries
 
 ```sh
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit 10;    -- mean time
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-      +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                                 
-                                                                                                                           
-      +
-       |     a   int,                                                                                                      
-                                                                                                                           
-      +
-       |     b   int                                                                                                       
-                                                                                                                           
-      +
-       | )
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT a.attname,                                                                                                 
-                                                                                                                           
-      +
-       |   pg_catalog.format_type(a.atttypid, a.atttypmod),                                                                
-                                                                                                                           
-      +
-       |   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for $1)                                            
-                                                                                                                           
-      +
-       |    FROM pg_catalog.pg_attrdef d                                                                                   
-                                                                                                                           
-      +
-       |    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),                                          
-                                                                                                                           
-      +
-       |   a.attnotnull,                                                                                                   
-                                                                                                                           
-      +
-       |   (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t                                         
-                                                                                                                           
-      +
-       |    WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation,     
-                                                                                                                           
-      +
-       |   a.attidentity,                                                                                                  
-                                                                                                                           
-      +
-       |   a.attstorage,                                                                                                   
-                                                                                                                           
-      +
-       |   pg_catalog.col_description(a.attrelid, a.attnum)                                                                
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_attribute a                                                                                    
-                                                                                                                           
-      +
-       | WHERE a.attrelid = $2 AND a.attnum > $3 AND NOT a.attisdropped                                                    
-                                                                                                                           
-      +
-       | ORDER BY a.attnum
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT a.attname,                                                                                                 
-                                                                                                                           
-      +
-       |   pg_catalog.format_type(a.atttypid, a.atttypmod),                                                                
-                                                                                                                           
-      +
-       |   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for $1)                                            
-                                                                                                                           
-      +
-       |    FROM pg_catalog.pg_attrdef d                                                                                   
-                                                                                                                           
-      +
-       |    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),                                          
-                                                                                                                           
-      +
-       |   a.attnotnull,                                                                                                   
-                                                                                                                           
-      +
-       |   (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t                                         
-                                                                                                                           
-      +
-       |    WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation,     
-                                                                                                                           
-      +
-       |   a.attidentity                                                                                                   
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_attribute a                                                                                    
-                                                                                                                           
-      +
-       | WHERE a.attrelid = $2 AND a.attnum > $3 AND NOT a.attisdropped                                                    
-                                                                                                                           
-      +
-       | ORDER BY a.attnum
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | ANALYZE t1
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT n.nspname as "Schema",                                                                                     
-                                                                                                                           
-      +
-       |   p.proname as "Name",                                                                                            
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_function_result(p.oid) as "Result data type",                                                 
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_function_arguments(p.oid) as "Argument data types",                                           
-                                                                                                                           
-      +
-       |  CASE p.prokind                                                                                                   
-                                                                                                                           
-      +
-       |   WHEN $1 THEN $2                                                                                                 
-                                                                                                                           
-      +
-       |   WHEN $3 THEN $4                                                                                                 
-                                                                                                                           
-      +
-       |   WHEN $5 THEN $6                                                                                                 
-                                                                                                                           
-      +
-       |   ELSE $7                                                                                                         
-                                                                                                                           
-      +
-       |  END as "Type"                                                                                                    
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_proc p                                                                                         
-                                                                                                                           
-      +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace                                                
-                                                                                                                           
-      +
-       | WHERE p.proname OPERATOR(pg_catalog.~) $8                                                                         
-                                                                                                                           
-      +
-       |   AND pg_catalog.pg_function_is_visible(p.oid)                                                                    
-                                                                                                                           
-      +
-       | ORDER BY 1, 2, 4
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.oid,                                                                                                     
-                                                                                                                           
-      +
-       |   n.nspname,                                                                                                      
-                                                                                                                           
-      +
-       |   c.relname                                                                                                       
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-      +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace                                                
-                                                                                                                           
-      +
-       | WHERE c.relname OPERATOR(pg_catalog.~) $1                                                                         
-                                                                                                                           
-      +
-       |   AND pg_catalog.pg_table_is_visible(c.oid)                                                                       
-                                                                                                                           
-      +
-       | ORDER BY 2, 3
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, pg_catalog.array_to_string(c.reloptions || array(select $1 || x from pg_catalog.unnest(tc.reloptions) x
-), $2)+
-       | , c.reltablespace, CASE WHEN c.reloftype = $3 THEN $4 ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END, c
-.relpersistence, c.relreplident                                                                                            
-      +
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-      +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-      +
-       | WHERE c.oid = $5
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirtied) desc li
-mit $1
+yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit 10;
+  userid  | dbid  |                                                          query                                                         
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+(4 rows)
 ```
 
 ```
-yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit 10;      -- total time
--[ RECORD 1 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                             +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 2 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                            +
-       |     a   int,                                                                                                 +
-       |     b   int                                                                                                  +
-       | )
--[ RECORD 3 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | END
--[ RECORD 4 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | BEGIN
--[ RECORD 5 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT a.attname,                                                                                            +
-       |   pg_catalog.format_type(a.atttypid, a.atttypmod),                                                           +
-       |   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for $1)                                       +
-       |    FROM pg_catalog.pg_attrdef d                                                                              +
-       |    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),                                     +
-       |   a.attnotnull,                                                                                              +
-       |   (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t                                    +
-       |    WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation,+
-       |   a.attidentity,                                                                                             +
-       |   a.attstorage,                                                                                              +
-       |   pg_catalog.col_description(a.attrelid, a.attnum)                                                           +
-       | FROM pg_catalog.pg_attribute a                                                                               +
-       | WHERE a.attrelid = $2 AND a.attnum > $3 AND NOT a.attisdropped                                               +
-       | ORDER BY a.attnum
--[ RECORD 6 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
--[ RECORD 7 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT a.attname,                                                                                            +
-       |   pg_catalog.format_type(a.atttypid, a.atttypmod),                                                           +
-       |   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for $1)                                       +
-       |    FROM pg_catalog.pg_attrdef d                                                                              +
-       |    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),                                     +
-       |   a.attnotnull,                                                                                              +
-       |   (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t                                    +
-       |    WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation,+
-       |   a.attidentity                                                                                              +
-       | FROM pg_catalog.pg_attribute a                                                                               +
-       | WHERE a.attrelid = $2 AND a.attnum > $3 AND NOT a.attisdropped                                               +
-       | ORDER BY a.attnum
--[ RECORD 8 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT n.nspname as "Schema",                                                                                +
-       |   p.proname as "Name",                                                                                       +
-       |   pg_catalog.pg_get_function_result(p.oid) as "Result data type",                                            +
-       |   pg_catalog.pg_get_function_arguments(p.oid) as "Argument data types",                                      +
-       |  CASE p.prokind                                                                                              +
-       |   WHEN $1 THEN $2                                                                                            +
-       |   WHEN $3 THEN $4                                                                                            +
-       |   WHEN $5 THEN $6                                                                                            +
-       |   ELSE $7                                                                                                    +
-       |  END as "Type"                                                                                               +
-       | FROM pg_catalog.pg_proc p                                                                                    +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace                                           +
-       | WHERE p.proname OPERATOR(pg_catalog.~) $8                                                                    +
-       |   AND pg_catalog.pg_function_is_visible(p.oid)                                                               +
-       | ORDER BY 1, 2, 4
--[ RECORD 9 ]---------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | ANALYZE t1
--[ RECORD 10 ]--------------------------------------------------------------------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.oid,                                                                                                +
-       |   n.nspname,                                                                                                 +
-       |   c.relname                                                                                                  +
-       | FROM pg_catalog.pg_class c                                                                                   +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace                                           +
-       | WHERE c.relname OPERATOR(pg_catalog.~) $1                                                                    +
-       |   AND pg_catalog.pg_table_is_visible(c.oid)                                                                  +
-       | ORDER BY 2, 3
+yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit 10;
+  userid  | dbid  |                                                          query                                                         
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+(5 rows)
 ```
 
 ### Top 10 response-time outliers
 
 ```sh
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit 10;
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-      +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT a.attname,                                                                                                 
-                                                                                                                           
-      +
-       |   pg_catalog.format_type(a.atttypid, a.atttypmod),                                                                
-                                                                                                                           
-      +
-       |   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for $1)                                            
-                                                                                                                           
-      +
-       |    FROM pg_catalog.pg_attrdef d                                                                                   
-                                                                                                                           
-      +
-       |    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),                                          
-                                                                                                                           
-      +
-       |   a.attnotnull,                                                                                                   
-                                                                                                                           
-      +
-       |   (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t                                         
-                                                                                                                           
-      +
-       |    WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND a.attcollation <> t.typcollation) AS attcollation,     
-                                                                                                                           
-      +
-       |   a.attidentity,                                                                                                  
-                                                                                                                           
-      +
-       |   a.attstorage,                                                                                                   
-                                                                                                                           
-      +
-       |   pg_catalog.col_description(a.attrelid, a.attnum)                                                                
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_attribute a                                                                                    
-                                                                                                                           
-      +
-       | WHERE a.attrelid = $2 AND a.attnum > $3 AND NOT a.attisdropped                                                    
-                                                                                                                           
-      +
-       | ORDER BY a.attnum
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT n.nspname as "Schema",                                                                                     
-                                                                                                                           
-      +
-       |   p.proname as "Name",                                                                                            
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_function_result(p.oid) as "Result data type",                                                 
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_function_arguments(p.oid) as "Argument data types",                                           
-                                                                                                                           
-      +
-       |  CASE p.prokind                                                                                                   
-                                                                                                                           
-      +
-       |   WHEN $1 THEN $2                                                                                                 
-                                                                                                                           
-      +
-       |   WHEN $3 THEN $4                                                                                                 
-                                                                                                                           
-      +
-       |   WHEN $5 THEN $6                                                                                                 
-                                                                                                                           
-      +
-       |   ELSE $7                                                                                                         
-                                                                                                                           
-      +
-       |  END as "Type"                                                                                                    
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_proc p                                                                                         
-                                                                                                                           
-      +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace                                                
-                                                                                                                           
-      +
-       | WHERE p.proname OPERATOR(pg_catalog.~) $8                                                                         
-                                                                                                                           
-      +
-       |   AND pg_catalog.pg_function_is_visible(p.oid)                                                                    
-                                                                                                                           
-      +
-       | ORDER BY 1, 2, 4
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.oid,                                                                                                     
-                                                                                                                           
-      +
-       |   n.nspname,                                                                                                      
-                                                                                                                           
-      +
-       |   c.relname                                                                                                       
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-      +
-       |      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace                                                
-                                                                                                                           
-      +
-       | WHERE c.relname OPERATOR(pg_catalog.~) $1                                                                         
-                                                                                                                           
-      +
-       |   AND pg_catalog.pg_table_is_visible(c.oid)                                                                       
-                                                                                                                           
-      +
-       | ORDER BY 2, 3
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc lim
-it $1
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT r.rulename, trim(trailing $1 from pg_catalog.pg_get_ruledef(r.oid, $2))                                    
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_rewrite r                                                                                      
-                                                                                                                           
-      +
-       | WHERE r.ev_class = $3 AND r.rulename != $4 ORDER BY 1
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, pg_catalog.array_to_string(c.reloptions || array(select $1 || x from pg_catalog.unnest(tc.reloptions) x
-), $2)+
-       | , c.reltablespace, CASE WHEN c.reloftype = $3 THEN $4 ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END, c
-.relpersistence, c.relreplident                                                                                            
-      +
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-      +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-      +
-       | WHERE c.oid = $5
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT SUBSTRING(unnest(reloptions) from $1) AS tablegroup                                                        
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_class WHERE oid = $2
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
-------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT inhparent::pg_catalog.regclass,                                                                            
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_expr(c.relpartbound, inhrelid),                                                               
-                                                                                                                           
-      +
-       |   pg_catalog.pg_get_partition_constraintdef(inhrelid)                                                             
-                                                                                                                           
-      +
-       | FROM pg_catalog.pg_class c JOIN pg_catalog.pg_inherits i ON c.oid = inhrelid                                      
-                                                                                                                           
-      +
-       | WHERE c.oid = $1 AND c.relispartition
+  userid  | dbid  |                                                          query                                                       
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
+(5 rows)
 ```
 
 
@@ -898,97 +254,17 @@ query  | SELECT inhparent::pg_catalog.regclass,
 
 ```sh
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirtied) desc limit 10;
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT r.rulename, trim(trailing $1 from pg_catalog.pg_get_ruledef(r.oid, $2))                                    
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_rewrite r                                                                                      
-                                                                                                                           
-                                            +
-       | WHERE r.ev_class = $3 AND r.rulename != $4 ORDER BY 1
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                                 
-                                                                                                                           
-                                            +
-       |     a   int,                                                                                                      
-                                                                                                                           
-                                            +
-       |     b   int                                                                                                       
-                                                                                                                           
-                                            +
-       | )
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT SUBSTRING(unnest(reloptions) from $1) AS tablegroup                                                        
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_class WHERE oid = $2
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-                                            +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, $1, c.reltablespace, CASE WHEN c.reloftype = $2 THEN $3 ELSE c.reloftype::pg_catalog.regtype::pg_catalo
-g.text END, c.relpersistence, c.relreplident+
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-                                            +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-                                            +
-       | WHERE c.oid = $4
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc lim
-it $1
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | DISCARD TEMP
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit $1
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
+  userid  | dbid  |                                                          query                                                         
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
+(6 rows)
 ```
 
 
@@ -996,97 +272,19 @@ query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
 
 ```sh
 yugabyte=# select userid::regrole, dbid, query from pg_stat_statements order by temp_blks_written desc limit 10;    
--[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | INSERT INTO t1 SELECT i/$1, i/$2                                                                                  
-                                                                                                                           
-                                            +
-       |                  FROM generate_series($3,$4) s(i)
--[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | CREATE TABLE t1 (                                                                                                 
-                                                                                                                           
-                                            +
-       |     a   int,                                                                                                      
-                                                                                                                           
-                                            +
-       |     b   int                                                                                                       
-                                                                                                                           
-                                            +
-       | )
--[ RECORD 3 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/calls desc lim
-it $1
--[ RECORD 4 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) desc limit $1
--[ RECORD 5 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecu
-rity, c.relhasoids, $1, c.reltablespace, CASE WHEN c.reloftype = $2 THEN $3 ELSE c.reloftype::pg_catalog.regtype::pg_catalo
-g.text END, c.relpersistence, c.relreplident+
-       | FROM pg_catalog.pg_class c                                                                                        
-                                                                                                                           
-                                            +
-       |  LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)                                                   
-                                                                                                                           
-                                            +
-       | WHERE c.oid = $4
--[ RECORD 6 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
--[ RECORD 7 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT SUBSTRING(unnest(reloptions) from $1) AS tablegroup                                                        
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_class WHERE oid = $2
--[ RECORD 8 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | DISCARD TEMP
--[ RECORD 9 ]--------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT r.rulename, trim(trailing $1 from pg_catalog.pg_get_ruledef(r.oid, $2))                                    
-                                                                                                                           
-                                            +
-       | FROM pg_catalog.pg_rewrite r                                                                                      
-                                                                                                                           
-                                            +
-       | WHERE r.ev_class = $3 AND r.rulename != $4 ORDER BY 1
--[ RECORD 10 ]-------------------------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------------------------------------
---------------------------------------------
-userid | yugabyte
-dbid   | 12463
-query  | SELECT pg_catalog.pg_get_viewdef($1::pg_catalog.oid, $2)
+  userid  | dbid  |                                                          query                                                        
+----------+-------+--------------------------------------------------------------------------------------------------------
+ yugabyte | 12463 | select pg_stat_statements_reset()
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
+ls desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
+c limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
+ yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirti
+ed) desc limit $1
+(7 rows)
 ```
 
 ## Reset statistics
