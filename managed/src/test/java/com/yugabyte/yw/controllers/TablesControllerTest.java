@@ -15,11 +15,7 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.eq;
@@ -52,11 +48,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
@@ -225,7 +217,9 @@ public class TablesControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + badUUID + "/tables";
     ObjectNode emptyJson = Json.newObject();
 
-    Result r = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson);
+    Result r = assertThrows(YWServiceException.class,
+      () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson))
+      .getResult();
     assertEquals(BAD_REQUEST, r.status());
     String errMsg = "Cannot find universe " + badUUID;
     assertThat(Json.parse(contentAsString(r)).get("error").asText(), containsString(errMsg));

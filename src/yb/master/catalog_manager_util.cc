@@ -281,5 +281,98 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   return Status::OK();
 }
 
+bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
+  bool is_cloud_same = true, is_region_same = true, is_zone_same = true;
+  if (ci1.has_placement_cloud() && ci2.has_placement_cloud()) {
+    is_cloud_same = ci1.placement_cloud() == ci2.placement_cloud();
+  }
+
+  if (ci1.has_placement_region() && ci2.has_placement_region()) {
+    is_region_same = ci1.placement_region() == ci2.placement_region();
+  }
+
+  if (ci1.has_placement_zone() && ci2.has_placement_zone()) {
+    is_zone_same = ci1.placement_zone() == ci2.placement_zone();
+  }
+
+  return is_cloud_same && is_region_same && is_zone_same;
+}
+
+CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
+  // Check for duplicates.
+  unordered_set<string> cloud_info_string;
+
+  for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
+    if (!placement_info.placement_blocks(i).has_cloud_info()) {
+      continue;
+    }
+
+    const CloudInfoPB& ci = placement_info.placement_blocks(i).cloud_info();
+    string ci_string = TSDescriptor::generate_placement_id(ci);
+
+    if (!cloud_info_string.count(ci_string)) {
+      cloud_info_string.insert(ci_string);
+    } else {
+      return STATUS(IllegalState,
+                    Substitute("Placement information specified should not contain duplicates."
+                    "Given placement block: $0 isn't a prefix", ci.ShortDebugString()));
+    }
+  }
+
+  // Validate the placement blocks to be prefixes.
+  for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
+    if (!placement_info.placement_blocks(i).has_cloud_info()) {
+      continue;
+    }
+
+    const CloudInfoPB& pb = placement_info.placement_blocks(i).cloud_info();
+
+    // Four cases for pb to be a prefix.
+    bool contains_cloud = pb.has_placement_cloud();
+    bool contains_region = pb.has_placement_region();
+    bool contains_zone = pb.has_placement_zone();
+    // *.*.*
+    bool star_star_star = !contains_cloud && !contains_region && !contains_zone;
+    // C.*.*
+    bool c_star_star = contains_cloud && !contains_region && !contains_zone;
+    // C.R.*
+    bool c_r_star = contains_cloud && contains_region && !contains_zone;
+    // C.R.Z
+    bool c_r_z = contains_cloud && contains_region && contains_zone;
+
+    if (!star_star_star && !c_star_star && !c_r_star && !c_r_z) {
+      return STATUS(IllegalState,
+                        Substitute("Placement information specified should be prefixes."
+                        "Given placement block: $0 isn't a prefix", pb.ShortDebugString()));
+    }
+  }
+
+  // No two prefixes should overlap.
+  for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
+    for (int j = 0; j < placement_info.placement_blocks_size(); j++) {
+      if (i == j) {
+        continue;
+      } else {
+        if (!placement_info.placement_blocks(i).has_cloud_info() ||
+        !placement_info.placement_blocks(j).has_cloud_info()) {
+          continue;
+        }
+
+        const CloudInfoPB& pb1 = placement_info.placement_blocks(i).cloud_info();
+        const CloudInfoPB& pb2 = placement_info.placement_blocks(j).cloud_info();
+        // pb1 shouldn't be prefix of pb2.
+        if (CatalogManagerUtil::IsCloudInfoPrefix(pb1, pb2)) {
+          return STATUS(IllegalState,
+                        Substitute("Placement information specified should not overlap. $0 and"
+                        " $1 overlap. For instance, c1.r1.z1,c1.r1 is invalid while "
+                        "c1.r1.z1,c1.r1.z2 is valid. Also note that c1.r1,c1.r1 is valid.",
+                        pb1.ShortDebugString(), pb2.ShortDebugString()));
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 } // namespace master
 } // namespace yb

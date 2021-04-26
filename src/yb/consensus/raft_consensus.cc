@@ -165,7 +165,7 @@ METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
                           "1 indicates that the tablet is raft leader");
 
 METRIC_DEFINE_histogram(
-  tablet, dns_resolve_latency_during_update_raft_config,
+  table, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig",
@@ -270,7 +270,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
     const RaftPeerPB& local_peer_pb,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const scoped_refptr<server::Clock>& clock,
     ConsensusContext* consensus_context,
     rpc::Messenger* messenger,
@@ -289,7 +290,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
   // The message queue that keeps track of which operations need to be replicated
   // where.
   auto queue = std::make_unique<PeerMessageQueue>(
-      metric_entity,
+      tablet_metric_entity,
       log,
       server_mem_tracker,
       parent_mem_tracker,
@@ -326,7 +327,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       std::move(queue),
       std::move(peer_manager),
       std::move(raft_pool_token),
-      metric_entity,
+      table_metric_entity,
+      tablet_metric_entity,
       peer_uuid,
       clock,
       consensus_context,
@@ -344,7 +346,8 @@ RaftConsensus::RaftConsensus(
     std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
     std::unique_ptr<ThreadPoolToken> raft_pool_token,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
     ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
@@ -363,18 +366,18 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(&peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
-      follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
+      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateCounter(
           &METRIC_follower_memory_pressure_rejections)),
-      term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
+      term_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
-      is_raft_leader_metric_(metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
+          tablet_metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
+      is_raft_leader_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
                                                               static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
-          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(metric_entity)) {
+          METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)) {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {

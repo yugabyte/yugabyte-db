@@ -6,7 +6,6 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse,
   resetUniverseInfo,
-  closeUniverseDialog,
   getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';
@@ -88,7 +87,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getHealthCheckResponse(response.payload));
       });
     },
-    
+
     fetchCustomerTasks: () => {
       return dispatch(fetchCustomerTasks()).then((response) => {
         if (!response.error) {
@@ -168,7 +167,8 @@ function mapStateToProps(state, ownProps) {
     universeTables: state.tables.universeTablesList,
     modal: state.modal,
     providers: state.cloud.providers,
-    updateAvailable: isUpdateAvailable(state)
+    updateAvailable: isUpdateAvailable(state),
+    featureFlags: state.featureFlags
   };
 }
 

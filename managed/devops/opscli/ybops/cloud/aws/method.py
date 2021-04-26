@@ -207,7 +207,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        self.cloud.start_instance(host_info)
+        self.cloud.start_instance(host_info, int(args.custom_ssh_port))
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -315,7 +315,7 @@ class AwsQueryCurrentHostMethod(AbstractMethod):
         try:
             print(json.dumps(self.cloud.get_current_host_info(args)))
         except YBOpsRuntimeError as ye:
-            print(json.dumps({"error": get_exception_message(ye)}))
+            print(json.dumps(get_exception_message(ye)))
 
 
 class AwsQueryPricingMethod(AbstractMethod):

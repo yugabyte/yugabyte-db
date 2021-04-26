@@ -36,7 +36,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import play.api.i18n.DefaultLangs;
 import play.libs.Json;
 
 import java.util.*;
@@ -85,7 +84,7 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetSingleUniverse() {
     Universe newUniverse = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
-    Universe fetchedUniverse = Universe.get(newUniverse.universeUUID);
+    Universe fetchedUniverse = Universe.getOrBadRequest(newUniverse.universeUUID);
     assertNotNull(fetchedUniverse);
     assertEquals(fetchedUniverse, newUniverse);
   }
@@ -105,7 +104,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u3 = createUniverse("Universe3", defaultCustomer.getCustomerId());
     Set<UUID> uuids = Sets.newHashSet(u1.universeUUID, u2.universeUUID, u3.universeUUID);
 
-    Set<Universe> universes = Universe.get(uuids);
+    Set<Universe> universes = Universe.getAllPresent(uuids);
     assertNotNull(universes);
     assertEquals(universes.size(), 3);
   }
@@ -113,7 +112,7 @@ public class UniverseTest extends FakeDBApplication {
   @Test(expected = RuntimeException.class)
   public void testGetUnknownUniverse() {
     UUID unknownUUID = UUID.randomUUID();
-    Universe u = Universe.get(unknownUUID);
+    Universe u = Universe.getOrBadRequest(unknownUUID);
   }
 
   @Test
@@ -134,7 +133,7 @@ public class UniverseTest extends FakeDBApplication {
     try {
       executor.awaitTermination(120, TimeUnit.SECONDS);
     } catch (InterruptedException e1) { }
-    Universe updUniv = Universe.get(u.universeUUID);
+    Universe updUniv = Universe.getOrBadRequest(u.universeUUID);
     assertEquals(numNodes, updUniv.getNodes().size());
     assertEquals(numNodes + 1, updUniv.version);
   }
@@ -310,12 +309,12 @@ public class UniverseTest extends FakeDBApplication {
     // Add non-EBS instance type with price to each region
     String instanceType = "c3.xlarge";
     double instancePrice = 0.1;
-    InstanceType.upsert(defaultProvider.code, instanceType, 1, 20.0, null);
+    InstanceType.upsert(defaultProvider.uuid, instanceType, 1, 20.0, null);
     PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
     instanceDetails.pricePerHour = instancePrice;
-    PriceComponent.upsert(defaultProvider.code, r1.code, instanceType, instanceDetails);
-    PriceComponent.upsert(defaultProvider.code, r2.code, instanceType, instanceDetails);
-    PriceComponent.upsert(defaultProvider.code, r3.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r1.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r2.code, instanceType, instanceDetails);
+    PriceComponent.upsert(defaultProvider.uuid, r3.code, instanceType, instanceDetails);
 
     // Create userIntent
     UserIntent userIntent = new UserIntent();
@@ -678,9 +677,17 @@ public class UniverseTest extends FakeDBApplication {
       } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
         assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Live) {
-        assertEquals(ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE), allowedActions);
+        assertEquals(ImmutableSet.of(
+          NodeActionType.STOP,
+          NodeActionType.REMOVE,
+          NodeActionType.QUERY
+        ), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE), allowedActions);
+        assertEquals(ImmutableSet.of(
+          NodeActionType.START,
+          NodeActionType.RELEASE,
+          NodeActionType.QUERY
+        ), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Removed) {
         assertEquals(
             ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),

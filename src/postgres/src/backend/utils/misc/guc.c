@@ -3204,6 +3204,31 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	/*
+	 * Default to a 1s delay because commits currently aren't guaranteed to be
+	 * visible across tservers.  Commits cause master to update catalog
+	 * version, but that version is _pulled_ from tservers using heartbeats.
+	 * In the common case, tservers will be behind by at most one heartbeat.
+	 * However, it is possible that some network delays may cause it to not
+	 * successfully heartbeat for times, so use 1s as a decently safe wait time
+	 * without causing user frustration waiting on CREATE INDEX.
+	 *
+	 * TODO(jason): change to 0 once commits are reliably propagated to
+	 * tservers.
+	 */
+	{
+		{"yb_index_state_flags_update_delay", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Delay in milliseconds between stages of online index"
+						 " build."),
+			gettext_noop("Set high to give online transactions more time to"
+						 " complete."),
+			GUC_UNIT_MS
+		},
+		&yb_index_state_flags_update_delay,
+		1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -10663,8 +10688,9 @@ check_temp_buffers(int *newval, void **extra, GucSource source)
 {
 	/*
 	 * Once local buffers have been initialized, it's too late to change this.
+	 * However, if this is only a test call, allow it.
 	 */
-	if (NLocBuffer && NLocBuffer != *newval)
+	if (source != PGC_S_TEST && NLocBuffer && NLocBuffer != *newval)
 	{
 		GUC_check_errdetail("\"temp_buffers\" cannot be changed after any temporary tables have been accessed in the session.");
 		return false;

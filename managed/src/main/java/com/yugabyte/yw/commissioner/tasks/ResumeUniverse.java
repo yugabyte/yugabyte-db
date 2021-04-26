@@ -55,18 +55,18 @@ public class ResumeUniverse extends UniverseTaskBase {
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
       Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
 
+      createStartMasterTasks(masterNodes).setSubTaskGroupType(
+          SubTaskGroupType.StartingNodeProcesses);
+      createWaitForServersTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "start").setSubTaskGroupType(
             SubTaskGroupType.StartingNodeProcesses);
       }
-      createStartMasterTasks(masterNodes).setSubTaskGroupType(
-          SubTaskGroupType.StartingNodeProcesses);
-
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      createWaitForServersTasks(masterNodes, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
+  
       createSwamperTargetUpdateTask(false);
 
       // Mark universe task state to success.

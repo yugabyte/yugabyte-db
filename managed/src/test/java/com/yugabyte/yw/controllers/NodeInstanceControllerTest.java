@@ -41,6 +41,7 @@ import play.mvc.Result;
 
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
+  private final String FAKE_IP_2 = "fake_ip_2";
   private Customer customer;
   private Users user;
   private Provider provider;
@@ -63,13 +64,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     taskType = ArgumentCaptor.forClass(TaskType.class);
     taskParams = ArgumentCaptor.forClass(NodeTaskParams.class);
 
-    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
-    nodeData.ip = FAKE_IP;
-    nodeData.region = region.code;
-    nodeData.zone = zone.code;
-    nodeData.instanceType = "fake_instance_type";
-    nodeData.sshUser = "ssh-user";
-    node = NodeInstance.create(zone.uuid, nodeData);
+    NodeInstanceFormData.NodeInstanceData nodeData1 = new NodeInstanceFormData.NodeInstanceData();
+    nodeData1.ip = FAKE_IP;
+    nodeData1.region = region.code;
+    nodeData1.zone = zone.code;
+    nodeData1.instanceType = "fake_instance_type";
+    nodeData1.sshUser = "ssh-user";
+    node = NodeInstance.create(zone.uuid, nodeData1);
     // Give it a name.
     node.setNodeName("fake_name");
     node.save();
@@ -90,11 +91,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequest("GET", uri);
   }
 
-  private Result createNode(UUID zoneUuid) {
+  private Result createNode(UUID zoneUuid, NodeInstanceFormData.NodeInstanceData details) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes";
     NodeInstanceFormData formData = new NodeInstanceFormData();
     formData.nodes = new LinkedList<>();
-    formData.nodes.add(node.getDetails());
+    formData.nodes.add(details);
     JsonNode body = Json.toJson(formData);
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
@@ -166,7 +167,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testGetNodeWithInvalidUuid() {
     Result r = getNode(UUID.randomUUID());
-    checkNotOk(r, "Null content");
+    checkNotOk(r, "Null content"); // TODO(API): This should cause 4XX not 500
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -191,13 +192,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNodeValid(json.get(0));
     assertAuditEntry(0, customer.uuid);
   }
+
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = listByZone(wrongUuid);
-    String error =
-      "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
-    checkNotOk(r, error);
+    Result r = assertThrows(YWServiceException.class, () -> listByZone(wrongUuid)).getResult();
+    String expectedError = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
+    checkNotOk(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -218,12 +219,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateSuccess() {
-    Result r = createNode(zone.uuid);
-    checkOk(r);
-    JsonNode json = parseResult(r);
+    NodeInstanceFormData.NodeInstanceData testNode = new NodeInstanceFormData.NodeInstanceData();
+    testNode.ip = FAKE_IP_2;
+    testNode.region = region.code;
+    testNode.zone = zone.code;
+    testNode.instanceType = "fake_instance_type";
+    testNode.sshUser = "ssh-user";
+    Result successReq = createNode(zone.uuid, testNode);
+    checkOk(successReq);
+    JsonNode json = parseResult(successReq);
     assertThat(json, is(notNullValue()));
     assertTrue(json.isObject());
-    JsonNode nodeJson = json.get(FAKE_IP);
+    JsonNode nodeJson = json.get(FAKE_IP_2);
     assertThat(nodeJson, is(notNullValue()));
     assertTrue(nodeJson.isObject());
 
@@ -235,11 +242,22 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateFailureDuplicateIp() {
+    Result failedReq = createNode(zone.uuid, node.getDetails());
+    checkNotOk(failedReq,
+      "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = createNode(wrongUuid);
+    Result r = assertThrows(
+      YWServiceException.class,
+      () -> createNode(wrongUuid, node.getDetails()))
+      .getResult();
     String error =
-      "Invalid com.yugabyte.yw.models.AvailabilityZoneUUID: " + wrongUuid.toString();
+      "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
   }
@@ -306,8 +324,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.addUniverseUUID(u.universeUUID);
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
-      Result r = performNodeAction(customer.uuid, u.universeUUID, "fake-n1",
-              nodeActionType, true);
+      Result r = assertThrows(
+        YWServiceException.class,
+        () -> performNodeAction(
+          customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true))
+        .getResult();
       assertBadRequest(r, "Invalid Node fake-n1 for Universe");
       assertAuditEntry(0, customer.uuid);
     }
@@ -316,6 +337,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testValidNodeAction() {
     for (NodeActionType nodeActionType: NodeActionType.values()) {
+      // Skip QUERY b/c it is UI-only flag
+      if (nodeActionType == NodeActionType.QUERY) {
+        continue;
+      }
       UUID fakeTaskUUID = UUID.randomUUID();
       when(mockCommissioner.submit(any(TaskType.class),
               any(UniverseDefinitionTaskParams.class)))
@@ -328,19 +353,23 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.save();
       Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
               nodeActionType, false);
-      verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+      verify(mockCommissioner, times(1))
+        .submit(taskType.capture(), taskParams.capture());
       assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());
       assertOk(r);
       JsonNode json = Json.parse(contentAsString(r));
       assertValue(json, "taskUUID", fakeTaskUUID.toString());
-      CustomerTask ct = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+      CustomerTask ct = CustomerTask.find.query()
+        .where()
+        .eq("task_uuid", fakeTaskUUID)
+        .findOne();
       assertNotNull(ct);
       assertEquals(CustomerTask.TargetType.Node, ct.getTarget());
       assertEquals(nodeActionType.getCustomerTask(), ct.getType());
       assertEquals("host-n1", ct.getTargetName());
       Mockito.reset(mockCommissioner);
     }
-    assertAuditEntry(NodeActionType.values().length, customer.uuid);
+    assertAuditEntry(NodeActionType.values().length - 1, customer.uuid);
   }
 
   @Test

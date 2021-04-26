@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.common.kms.services;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
@@ -150,7 +149,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     }
 
     public byte[] retrieveKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
-        Universe u = Universe.get(universeUUID);
+        Universe u = Universe.getOrBadRequest(universeUUID);
         return retrieveKey(
                 universeUUID,
                 configUUID,

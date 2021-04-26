@@ -111,15 +111,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Used for backfilling the index, where we may want to write with a historic timestamp.
   void SetHybridTimeForWrite(const HybridTime ht);
 
-  // Changed transaction used by this session.
+  // Changes transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
   // Set the timeout for writes made in this session.
-  void SetTimeout(MonoDelta timeout);
+  void SetTimeout(MonoDelta delta);
 
-  MonoDelta timeout() const {
-    return timeout_;
-  }
+  void SetDeadline(CoarseTimePoint deadline);
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op);
 
@@ -222,11 +220,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
 
-  // Return any errors from previous calls. If there were more errors
-  // than could be held in the session's error storage, then sets *overflowed to true.
+  // Return any errors from previous calls.
   //
   // Caller takes ownership of the returned errors.
-  // Note: this doesn't include error returned by Apply calls.
+  // Note: this doesn't include errors returned by Apply calls.
   CollectedErrors GetAndClearPendingErrors();
 
   // Allow local calls to run in the current thread.
@@ -247,12 +244,27 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     return async_rpc_metrics_;
   }
 
-  // Called by Batcher when a flush has finished.
-  void FlushFinished(internal::BatcherPtr b);
+  // Called by Batcher when a flush has started/finished.
+  void FlushStarted(internal::BatcherPtr batcher);
+  void FlushFinished(internal::BatcherPtr batcher);
 
   ConsistentReadPoint* read_point();
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
+
+  struct BatcherConfig {
+    std::weak_ptr<YBSession> session;
+    client::YBClient* client;
+    YBTransactionPtr transaction;
+    std::shared_ptr<ConsistentReadPoint> non_transactional_read_point;
+    bool allow_local_calls_in_curr_thread = true;
+    bool force_consistent_read = false;
+    // HybridTime for Write. Used for Index Backfill.
+    HybridTime hybrid_time_for_write;
+    RejectionScoreSourcePtr rejection_score_source;
+
+    ConsistentReadPoint* read_point() const;
+  };
 
  private:
   friend class YBClient;
@@ -261,13 +273,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   internal::Batcher& Batcher();
   CHECKED_STATUS CheckIfFailed();
 
-  // The client that this session is associated with.
-  client::YBClient* const client_;
-
-  std::unique_ptr<ConsistentReadPoint> read_point_;
-  YBTransactionPtr transaction_;
-  bool allow_local_calls_in_curr_thread_ = true;
-  bool force_consistent_read_ = false;
+  BatcherConfig batcher_config_;
 
   // Lock protecting flushed_batchers_.
   mutable simple_spinlock lock_;
@@ -275,7 +281,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   std::atomic<bool> is_failed_{false};
 
   // Buffer for errors.
-  scoped_refptr<internal::ErrorCollector> error_collector_;
+  std::shared_ptr<internal::ErrorCollector> error_collector_;
 
   // The current batcher being prepared.
   scoped_refptr<internal::Batcher> batcher_;
@@ -290,18 +296,20 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   std::unordered_set<
       internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
 
-  // Timeout for the next batch.
+  // Session only one of deadline and timeout could be active.
+  // When new batcher is created its deadline is set as session deadline or
+  // current time + session timeout.
+  CoarseTimePoint deadline_;
   MonoDelta timeout_;
-
-  // HybridTime for Write. Used for Index Backfill.
-  HybridTime hybrid_time_for_write_;
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 
-  RejectionScoreSourcePtr rejection_score_source_;
-
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
+
+// In case of tablet splitting YBSession can flush an operation to an outdated tablet and this can
+// be retried by the session internally without returning error to upper layers.
+bool ShouldSessionRetryError(const Status& status);
 
 } // namespace client
 } // namespace yb

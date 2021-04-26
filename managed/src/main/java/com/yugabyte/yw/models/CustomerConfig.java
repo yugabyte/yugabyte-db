@@ -9,7 +9,7 @@ import io.ebean.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -18,12 +18,13 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import java.util.Iterator;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 
 @Entity
 public class CustomerConfig extends Model {
@@ -83,15 +84,17 @@ public class CustomerConfig extends Model {
   }
 
   public JsonNode getData() {
-    // MASK any sensitive data.
-    JsonNode maskedData = data.deepCopy();
-    for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
-      String key = it.next();
-      if (key.contains("KEY") || key.contains("SECRET") || key.contains("CREDENTIALS")) {
-        ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll("(?<!^.?).(?!.?$)", "*"));
-      }
-    }
-    return maskedData;
+    return CommonUtils.maskConfig(data);
+  }
+
+  /**
+   * Updates configuration data. If some fields are still masked with asterisks
+   * then these fields remain unchanged.
+   *
+   * @param data
+   */
+  public void setData(JsonNode data) {
+    this.data = CommonUtils.unmaskConfig(this.data, data);
   }
 
   // Returns if there is an in use reference to the object.

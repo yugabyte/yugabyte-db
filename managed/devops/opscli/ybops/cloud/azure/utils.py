@@ -29,7 +29,6 @@ RESOURCE_GROUP = os.environ.get("AZURE_RG")
 SUBNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/networkSecurityGroups/{}"
 VNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}"
-PRIVATE_DNS_ZONE_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/privateDnsZones/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     "ultrassd_lrs": "UltraSSD_LRS"}
@@ -571,9 +570,13 @@ class AzureCloudAdmin():
         if is_edit:
             self.tag_disks(vm, vm_parameters["tags"])
         else:
+            num_disks_attached = len(vm.storage_profile.data_disks)
             for idx, disk_name in enumerate(disk_names):
+                # "Logical Unit Number" - where the data disk will be inserted. Add our disks
+                # after any existing ones.
+                lun = num_disks_attached + idx
                 self.appendDisk(
-                    vm, vm_name, disk_name, volume_size, idx, zone, vol_type, region, tags)
+                    vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags)
         return
 
     def query_vpc(self):
@@ -716,12 +719,7 @@ class AzureCloudAdmin():
                 "subnet": subnet, "nic": nic_name, "id": vm.name}
 
     def list_dns_record_set(self, dns_zone_id):
-        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
-        if not zone_info:
-            return PRIVATE_DNS_ZONE_ID_FORMAT_STRING.format(
-                SUBSCRIPTION_ID, RESOURCE_GROUP, dns_zone_id)
-        return self.dns_client.private_zones.get(
-            zone_info.group('resource_group'), zone_info.group('zone_name'))
+        return self.dns_client.private_zones.get(*self._get_dns_zone_info(dns_zone_id))
 
     def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
         parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
@@ -738,8 +736,7 @@ class AzureCloudAdmin():
 
     def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
         zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
-        rg = zone_info.group('resource_group')
-        zone_name = zone_info.group('zone_name')
+        rg, zone_name = self._get_dns_zone_info(dns_zone_id)
         args = {
             "resource_group_name": rg,
             "private_zone_name": zone_name,
@@ -755,3 +752,13 @@ class AzureCloudAdmin():
             args["parameters"] = params
 
         return args
+
+    def _get_dns_zone_info(self, dns_zone_id):
+        """Returns tuple of (resource_group, dns_zone_name). Assumes dns_zone_id is the zone name
+        if it's not given in Resource ID format.
+        """
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        if zone_info:
+            return zone_info.group('resource_group'), zone_info.group('zone_name')
+        else:
+            return RESOURCE_GROUP, dns_zone_id

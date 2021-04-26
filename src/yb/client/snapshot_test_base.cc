@@ -125,17 +125,14 @@ CHECKED_STATUS SnapshotTestBase::WaitSnapshotDone(
 }
 
 Result<TxnSnapshotRestorationId> SnapshotTestBase::StartRestoration(
-    const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-    int64_t interval) {
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
   master::RestoreSnapshotRequestPB req;
   master::RestoreSnapshotResponsePB resp;
 
   rpc::RpcController controller;
   controller.set_timeout(60s);
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-  if (interval != 0) {
-    req.set_restore_interval(interval);
-  } else if (restore_at) {
+  if (restore_at) {
     req.set_restore_ht(restore_at.ToUint64());
   }
   RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
@@ -145,14 +142,21 @@ Result<TxnSnapshotRestorationId> SnapshotTestBase::StartRestoration(
 Result<bool> SnapshotTestBase::IsRestorationDone(const TxnSnapshotRestorationId& restoration_id) {
   master::ListSnapshotRestorationsRequestPB req;
   master::ListSnapshotRestorationsResponsePB resp;
-
-  rpc::RpcController controller;
-  controller.set_timeout(60s);
   req.set_restoration_id(restoration_id.data(), restoration_id.size());
-  RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
-  LOG(INFO) << "Restoration: " << resp.ShortDebugString();
-  if (resp.has_status()) {
-    return StatusFromPB(resp.status());
+
+  auto deadline = CoarseMonoClock::now() + 60s;
+  for (;;) {
+    rpc::RpcController controller;
+    controller.set_deadline(deadline);
+    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
+    LOG(INFO) << "Restoration: " << resp.ShortDebugString();
+    if (!resp.has_status()) {
+      break;
+    }
+    auto status = StatusFromPB(resp.status());
+    if (!status.IsServiceUnavailable()) {
+      return status;
+    }
   }
   if (resp.restorations().size() != 1) {
     return STATUS_FORMAT(RuntimeError, "Wrong number of restorations, one expected but $0 found",
@@ -162,13 +166,12 @@ Result<bool> SnapshotTestBase::IsRestorationDone(const TxnSnapshotRestorationId&
 }
 
 Status SnapshotTestBase::RestoreSnapshot(
-    const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-    int64_t interval) {
-  auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at, interval));
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id, restore_at));
 
   return WaitFor([this, &restoration_id] {
     return IsRestorationDone(restoration_id);
-  }, kWaitTimeout * kTimeMultiplier, "Restoration done");
+  }, kWaitTimeout * kTimeMultiplier, Format("Restoration $0 done", restoration_id));
 }
 
 } // namespace client
