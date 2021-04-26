@@ -9,6 +9,7 @@ import {
   fetchCloudMetadata
 } from '../../../../../actions/cloud';
 import EditProviderForm from './EditProviderForm';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -20,6 +21,11 @@ const mapDispatchToProps = (dispatch) => {
 
     reloadCloudMetadata: () => {
       dispatch(fetchCloudMetadata());
+    },
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList()).then((response) => {
+        dispatch(fetchUniverseListResponse(response.payload));
+      });
     }
   };
 };
@@ -32,7 +38,8 @@ function mapStateToProps(state, ownProps) {
       secretKey: ownProps.sshKey,
       hostedZoneId: ownProps.hostedZoneId
     },
-    editProvider: state.cloud.editProvider
+    editProvider: state.cloud.editProvider,
+    universeList: state.universe.universeList
   };
 }
 

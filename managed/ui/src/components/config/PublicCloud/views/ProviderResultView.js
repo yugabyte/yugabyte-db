@@ -125,10 +125,7 @@ class ProviderResultView extends Component {
                 disabled={refreshing}
                 onClick={this.refreshPricingData.bind(this, currentProvider)}
               />
-              <YBButton
-                btnText="Edit Configuration"
-                onClick={this.editProviderView.bind(this, currentProvider)}
-              />
+              <YBButton btnText="Edit Configuration" onClick={this.editProviderView} />
               <YBConfirmModal
                 name="deleteProvider"
                 title={'Confirm Delete'}
