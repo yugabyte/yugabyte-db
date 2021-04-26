@@ -47,6 +47,8 @@ To install Yugabyte Platform on an OpenShift cluster, you can use Yugabyte Platf
 
 Before you install Yugabyte Platform on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
+Unless otherwise specified, you can use a user account for executing the steps described in this document. Using admin account for all the steps should work as well.
+
 ## Operator-Based Installation
 
 Installing Yugabyte Platform on an OpenShift cluster using the Yugabyte Platform Operator involves the following:
@@ -129,7 +131,7 @@ You start by creating an instance of Yugabyte Platform in a new project (namespa
 
 #### How to Use the OpenShift Web Console
 
-You can create an instance of Yugabyte Platform via he OpenShift web console as follows:
+You can create an instance of Yugabyte Platform via the OpenShift web console as follows:
 
 - Open the OCP web console and navigate to **Home > Projects > Create Project**.
 - Enter the name yb-platform and click **Create**.
