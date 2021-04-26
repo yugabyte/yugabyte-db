@@ -15,7 +15,7 @@ import githubLogo from '../components/common/footer/images/github-light-small.pn
 import tshirtImage from '../components/common/footer/images/tshirt-yb.png';
 import ybLogo from '../components/common/YBLogo/images/yb_ybsymbol_dark.png';
 
-class AuthenticatedComponent extends Component {
+class AuthenticatedArea extends Component {
   constructor(props) {
     super(props);
     props.bindShortcut(
@@ -117,40 +117,40 @@ class AuthenticatedComponent extends Component {
           >
             <Table responsive>
               <thead>
-                <tr>
-                  <th>Shortcut</th>
-                  <th>Description</th>
-                </tr>
+              <tr>
+                <th>Shortcut</th>
+                <th>Description</th>
+              </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>?</td>
-                  <td>Show help</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT + n</td>
-                  <td>Create new universe</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT + e</td>
-                  <td>Edit universe</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT + c</td>
-                  <td>Provider config</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT + m</td>
-                  <td>View metrics</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT + t</td>
-                  <td>View tasks</td>
-                </tr>
-                <tr>
-                  <td>CTRL + SHIFT +l</td>
-                  <td>View universes</td>
-                </tr>
+              <tr>
+                <td>?</td>
+                <td>Show help</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT + n</td>
+                <td>Create new universe</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT + e</td>
+                <td>Edit universe</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT + c</td>
+                <td>Provider config</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT + m</td>
+                <td>View metrics</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT + t</td>
+                <td>View tasks</td>
+              </tr>
+              <tr>
+                <td>CTRL + SHIFT +l</td>
+                <td>View universes</td>
+              </tr>
               </tbody>
             </Table>
           </YBModal>
@@ -216,4 +216,4 @@ class AuthenticatedComponent extends Component {
   }
 }
 
-export default mouseTrap(AuthenticatedComponent);
+export default mouseTrap(AuthenticatedArea);
