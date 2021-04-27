@@ -60,37 +60,31 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 customerUUID.toString(),
                 keyProvider
         ));
-        try {
-            TaskType taskType = TaskType.CreateKMSConfig;
-            ObjectNode formData = (ObjectNode) request().body().asJson();
-            KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-            taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
-            taskParams.providerConfig = formData;
-            taskParams.customerUUID = customerUUID;
-            taskParams.kmsConfigName = formData.get("name").asText();
-            formData.remove("name");
-            UUID taskUUID = commissioner.submit(taskType, taskParams);
-            LOG.info("Submitted create KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
+        TaskType taskType = TaskType.CreateKMSConfig;
+        ObjectNode formData = (ObjectNode) request().body().asJson();
+        KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
+        taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
+        taskParams.providerConfig = formData;
+        taskParams.customerUUID = customerUUID;
+        taskParams.kmsConfigName = formData.get("name").asText();
+        formData.remove("name");
+        UUID taskUUID = commissioner.submit(taskType, taskParams);
+        LOG.info("Submitted create KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
 
-            // Add this task uuid to the user universe.
-            CustomerTask.create(Customer.get(customerUUID),
-                    customerUUID,
-                    taskUUID,
-                    CustomerTask.TargetType.KMSConfiguration,
-                    CustomerTask.TaskType.Create,
-                    taskParams.getName());
-            LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
-                    customerUUID);
+        // Add this task uuid to the user universe.
+        CustomerTask.create(Customer.get(customerUUID),
+          customerUUID,
+          taskUUID,
+          CustomerTask.TargetType.KMSConfiguration,
+          CustomerTask.TaskType.Create,
+          taskParams.getName());
+        LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
+          customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request(), formData);
-            return Results.status(OK, resultNode);
-        } catch (Exception e) {
-            final String errMsg = "Error caught attempting to create KMS configuration";
-            LOG.error(errMsg, e);
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
-        }
+        ObjectNode resultNode = Json.newObject();
+        resultNode.put("taskUUID", taskUUID.toString());
+        Audit.createAuditEntry(ctx(), request(), formData);
+        return Results.status(OK, resultNode);
     }
 
     public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
@@ -153,35 +147,29 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 configUUID.toString(),
                 customerUUID.toString()
         ));
-        try {
-            KmsConfig config = KmsConfig.get(configUUID);
-            TaskType taskType = TaskType.DeleteKMSConfig;
-            KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-            taskParams.kmsProvider = config.keyProvider;
-            taskParams.customerUUID = customerUUID;
-            taskParams.configUUID = configUUID;
-            UUID taskUUID = commissioner.submit(taskType, taskParams);
-            LOG.info("Submitted delete KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
+        KmsConfig config = KmsConfig.get(configUUID);
+        TaskType taskType = TaskType.DeleteKMSConfig;
+        KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
+        taskParams.kmsProvider = config.keyProvider;
+        taskParams.customerUUID = customerUUID;
+        taskParams.configUUID = configUUID;
+        UUID taskUUID = commissioner.submit(taskType, taskParams);
+        LOG.info("Submitted delete KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
 
-            // Add this task uuid to the user universe.
-            CustomerTask.create(Customer.get(customerUUID),
-                    customerUUID,
-                    taskUUID,
-                    CustomerTask.TargetType.KMSConfiguration,
-                    CustomerTask.TaskType.Delete,
-                    taskParams.getName());
-            LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
-                    customerUUID);
+        // Add this task uuid to the user universe.
+        CustomerTask.create(Customer.get(customerUUID),
+          customerUUID,
+          taskUUID,
+          CustomerTask.TargetType.KMSConfiguration,
+          CustomerTask.TaskType.Delete,
+          taskParams.getName());
+        LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for customer: " +
+          customerUUID);
 
-            ObjectNode resultNode = Json.newObject();
-            resultNode.put("taskUUID", taskUUID.toString());
-            Audit.createAuditEntry(ctx(), request());
-            return Results.status(OK, resultNode);
-        } catch (Exception e) {
-            final String errMsg = "Error caught attempting to delete KMS configuration";
-            LOG.error(errMsg, e);
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
-        }
+        ObjectNode resultNode = Json.newObject();
+        resultNode.put("taskUUID", taskUUID.toString());
+        Audit.createAuditEntry(ctx(), request());
+        return Results.status(OK, resultNode);
     }
 
     public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
@@ -192,31 +180,22 @@ public class EncryptionAtRestController extends AuthenticatedController {
         ));
         byte[] keyRef = null;
         byte[] recoveredKey = null;
-        try {
-            ObjectNode formData = (ObjectNode) request().body().asJson();
-            keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
-            UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
-            recoveredKey = keyManager.getUniverseKey(universeUUID, configUUID, keyRef);
-            if (recoveredKey == null || recoveredKey.length == 0) {
-                final String errMsg = String.format(
-                        "No universe key found for universe %s",
-                        universeUUID.toString()
-                );
-              throw new YWServiceException(INTERNAL_SERVER_ERROR, errMsg);
-            }
-            ObjectNode result = Json.newObject()
-                    .put("reference", keyRef)
-                    .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-            Audit.createAuditEntry(ctx(), request(), formData);
-            return ApiResponse.success(result);
-        } catch (Exception e) {
-            final String errMsg = String.format(
-                    "Could not recover universe key from universe %s",
-                    universeUUID.toString()
-            );
-            LOG.error(errMsg, e);
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
+        ObjectNode formData = (ObjectNode) request().body().asJson();
+        keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
+        UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
+        recoveredKey = keyManager.getUniverseKey(universeUUID, configUUID, keyRef);
+        if (recoveredKey == null || recoveredKey.length == 0) {
+          final String errMsg = String.format(
+            "No universe key found for universe %s",
+            universeUUID.toString()
+          );
+          throw new YWServiceException(INTERNAL_SERVER_ERROR, errMsg);
         }
+        ObjectNode result = Json.newObject()
+          .put("reference", keyRef)
+          .put("value", Base64.getEncoder().encodeToString(recoveredKey));
+        Audit.createAuditEntry(ctx(), request(), formData);
+        return ApiResponse.success(result);
     }
 
     public Result getKeyRefHistory(UUID customerUUID, UUID universeUUID) {
@@ -225,22 +204,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 customerUUID.toString(),
                 universeUUID.toString()
         ));
-        try {
-            return ApiResponse.success(KmsHistory.getAllTargetKeyRefs(
-                    universeUUID,
-                    KmsHistoryId.TargetType.UNIVERSE_KEY
-            )
-                    .stream()
-                    .map(history -> {
-                        return Json.newObject()
-                                .put("reference", history.uuid.keyRef)
-                                .put("configUUID", history.configUuid.toString())
-                                .put("timestamp", history.timestamp.toString());
-                    })
-                    .collect(Collectors.toList()));
-        } catch (Exception e) {
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
-        }
+        return ApiResponse.success(KmsHistory.getAllTargetKeyRefs(
+          universeUUID,
+          KmsHistoryId.TargetType.UNIVERSE_KEY
+        )
+          .stream()
+          .map(history -> {
+            return Json.newObject()
+              .put("reference", history.uuid.keyRef)
+              .put("configUUID", history.configUuid.toString())
+              .put("timestamp", history.timestamp.toString());
+          })
+          .collect(Collectors.toList()));
     }
 
     public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
@@ -249,13 +224,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 customerUUID.toString(),
                 universeUUID.toString()
         ));
-        try {
-            keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-            Audit.createAuditEntry(ctx(), request());
-            return ApiResponse.success("Key ref was successfully removed");
-        } catch (Exception e) {
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
-        }
+        keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
+        Audit.createAuditEntry(ctx(), request());
+        return ApiResponse.success("Key ref was successfully removed");
     }
 
     public Result getCurrentKeyRef(UUID customerUUID, UUID universeUUID) {
@@ -264,21 +235,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
                 customerUUID.toString(),
                 universeUUID.toString()
         ));
-        try {
-            KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
-            String keyRef = activeKey.uuid.keyRef;
-            if (keyRef == null || keyRef.length() == 0) {
-                throw new YWServiceException(BAD_REQUEST, String.format(
-                        "Could not retrieve key service for customer %s and universe %s",
-                        customerUUID.toString(),
-                        universeUUID.toString()
-                ));
-            }
-            return ApiResponse.success(Json.newObject().put(
-                    "reference", keyRef
-            ));
-        } catch (Exception e) {
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
+        String keyRef = activeKey.uuid.keyRef;
+        if (keyRef == null || keyRef.length() == 0) {
+          throw new YWServiceException(BAD_REQUEST, String.format(
+            "Could not retrieve key service for customer %s and universe %s",
+            customerUUID.toString(),
+            universeUUID.toString()
+          ));
         }
+        return ApiResponse.success(Json.newObject().put(
+          "reference", keyRef
+        ));
     }
 }
