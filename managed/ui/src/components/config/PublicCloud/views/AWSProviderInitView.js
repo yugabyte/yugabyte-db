@@ -93,6 +93,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   componentDidUpdate(prevProps) {
     const { zones } = this.props;
     if (!_.isEqual(zones, prevProps.zones)) {
@@ -100,6 +101,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   render() {
     const { fields, zones, regionFormData } = this.props;
     const addFlagItem = function () {
@@ -170,24 +172,24 @@ class renderRegions extends Component {
       </option>,
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
-        _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        ))
+          _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          ))
         : //if edit flow - remove already added regions from region select picker except one to edit and mark it selected
-        _.differenceBy(
-          regionsData,
-          _.filter(
-            formRegions,
-            (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
-          ),
-          'destVpcRegion'
-        ).map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        )))
+          _.differenceBy(
+            regionsData,
+            _.filter(
+              formRegions,
+              (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
+            ),
+            'destVpcRegion'
+          ).map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          )))
     ];
 
     //depending on selected region fetch zones matching this region
@@ -825,7 +827,7 @@ class AWSProviderInitView extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting, error, formRegions } = this.props;
+    const { handleSubmit, submitting, error, formRegions, onBack, isBack } = this.props;
     // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
@@ -911,6 +913,14 @@ class AWSProviderInitView extends Component {
               disabled={submitting}
               btnType="submit"
             />
+            {isBack && (
+              <YBButton
+                onClick={onBack}
+                btnText="Back"
+                btnClass="btn btn-default"
+                disabled={submitting}
+              />
+            )}
           </div>
         </form>
       </div>
