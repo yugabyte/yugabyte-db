@@ -48,7 +48,7 @@ const convertFormDataToPayload = (formData) => {
   return { perRegionMetadata };
 };
 
-export const AzureProviderInitView = ({ createAzureProvider }) => {
+export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) => {
   const [regionsFormData, setRegionsFormData] = useState([]);
 
   const createProviderConfig = (values) => {
@@ -73,7 +73,11 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                     <div className="form-item-custom-label">Provider Name</div>
                   </Col>
                   <Col lg={7}>
-                    <Field name="providerName" placeholder="Provider Name" component={YBFormInput} />
+                    <Field
+                      name="providerName"
+                      placeholder="Provider Name"
+                      component={YBFormInput}
+                    />
                   </Col>
                 </Row>
                 <Row className="config-provider-row">
@@ -81,7 +85,11 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                     <div className="form-item-custom-label">Subscription ID</div>
                   </Col>
                   <Col lg={7}>
-                    <Field name="AZURE_SUBSCRIPTION_ID" placeholder="Subscription ID" component={YBFormInput} />
+                    <Field
+                      name="AZURE_SUBSCRIPTION_ID"
+                      placeholder="Subscription ID"
+                      component={YBFormInput}
+                    />
                   </Col>
                   <Col lg={1} className="config-provider-tooltip">
                     <YBInfoTip
@@ -137,7 +145,11 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                     <div className="form-item-custom-label">Client Secret</div>
                   </Col>
                   <Col lg={7}>
-                    <Field name="AZURE_CLIENT_SECRET" placeholder="Client Secret" component={YBFormInput} />
+                    <Field
+                      name="AZURE_CLIENT_SECRET"
+                      placeholder="Client Secret"
+                      component={YBFormInput}
+                    />
                   </Col>
                   <Col lg={1} className="config-provider-tooltip">
                     <YBInfoTip
@@ -151,7 +163,11 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                     <div className="form-item-custom-label">Private DNS Zone</div>
                   </Col>
                   <Col lg={7}>
-                    <Field name="HOSTED_ZONE_ID" placeholder="Private DNS Zone" component={YBFormInput} />
+                    <Field
+                      name="HOSTED_ZONE_ID"
+                      placeholder="Private DNS Zone"
+                      component={YBFormInput}
+                    />
                   </Col>
                   <Col lg={1} className="config-provider-tooltip">
                     <YBInfoTip
@@ -173,8 +189,12 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                           value={field.value}
                           onChange={field.onChange}
                         >
-                          <option key={1} value="new_vpc" disabled={true}>Create a new Virtual Network</option>
-                          <option key={2} value="existing_vpc">Specify an existing Virtual Network</option>
+                          <option key={1} value="new_vpc" disabled={true}>
+                            Create a new Virtual Network
+                          </option>
+                          <option key={2} value="existing_vpc">
+                            Specify an existing Virtual Network
+                          </option>
                         </select>
                       )}
                     </Field>
@@ -188,14 +208,22 @@ export const AzureProviderInitView = ({ createAzureProvider }) => {
                 </Row>
                 <Row className="config-provider-row">
                   <Col lg={10}>
-                    <AzureRegions regions={regionsFormData} onChange={value => setRegionsFormData(value)} />
+                    <AzureRegions
+                      regions={regionsFormData}
+                      onChange={(value) => setRegionsFormData(value)}
+                    />
                   </Col>
                 </Row>
-
               </Col>
             </Row>
             <div className="form-action-button-container">
-              <YBButton btnType="submit" btnClass="btn btn-default save-btn" btnText="Save" disabled={!isValid} />
+              <YBButton
+                btnType="submit"
+                btnClass="btn btn-default save-btn"
+                btnText="Save"
+                disabled={!isValid}
+              />
+              {isBack && <YBButton onClick={onBack} btnText={'Back'} btnClass="btn btn-default" />}
             </div>
           </Form>
         )}

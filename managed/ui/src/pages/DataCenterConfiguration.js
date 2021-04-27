@@ -6,7 +6,7 @@ import DataCenterConfigurationContainer from '../components/config/ConfigProvide
 class DataCenterConfiguration extends Component {
   render() {
     return (
-      <div className="dashboard-container">
+      <div>
         <DataCenterConfigurationContainer {...this.props} />
       </div>
     );

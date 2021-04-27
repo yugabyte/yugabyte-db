@@ -70,6 +70,21 @@
 }
 
 .provider-config-container {
+  .provider-row-flex {
+    display: flex;
+    align-items: flex-end;
+
+    .add-provider-col {
+      width: max-content;
+    }
+
+    .add-provider-config {
+      margin-bottom: 10px;
+      width: max-content;
+      padding: 10px 15px;
+    }
+  }
+
   .btn-add-region {
     float: none;
     width: 100%;
@@ -410,7 +425,7 @@
       color: $YB_FAIL_COLOR;
     }
   }
-  .provider-config-container button {    
+  .provider-config-container button {
     margin-bottom: 0;
   }
 }

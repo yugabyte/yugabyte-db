@@ -466,6 +466,11 @@ class UniverseDetail extends Component {
         return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
       }) !== undefined;
 
+
+
+
+    
+
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (

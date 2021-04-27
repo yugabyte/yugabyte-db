@@ -10,8 +10,7 @@ import {
   SecurityConfiguration
 } from '../../config';
 import { Tab, Row, Col } from 'react-bootstrap';
-import { YBTabsPanel } from '../../panels';
-import './providerConfig.scss';
+import { YBTabsPanel, YBTabsWithLinksPanel } from '../../panels';
 import awsLogo from './images/aws.svg';
 import azureLogo from './images/azure.png';
 import k8sLogo from './images/k8s.png';
@@ -19,6 +18,7 @@ import openshiftLogo from './images/redhat.png';
 import tanzuLogo from './images/tanzu.png';
 import gcpLogo from './images/gcp.png';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
+import './DataCenterConfiguration.scss';
 
 class DataCenterConfiguration extends Component {
   render() {
@@ -43,9 +43,7 @@ class DataCenterConfiguration extends Component {
         <Col md={4}>
           <img src={openshiftLogo} alt="Red Hat OpenShift" />
         </Col>
-        <Col md={8}>
-          Red Hat OpenShift
-        </Col>
+        <Col md={8}>Red Hat OpenShift</Col>
       </Row>
     );
 
@@ -54,9 +52,7 @@ class DataCenterConfiguration extends Component {
         <Col md={4}>
           <img src={k8sLogo} alt="Managed Kubernetes" />
         </Col>
-        <Col md={8}>
-          Managed Kubernetes Service
-        </Col>
+        <Col md={8}>Managed Kubernetes Service</Col>
       </Row>
     );
 
@@ -65,9 +61,7 @@ class DataCenterConfiguration extends Component {
         <Col md={4}>
           <img src={tanzuLogo} alt="VMware Tanzu" />
         </Col>
-        <Col md={8}>
-          VMware Tanzu
-        </Col>
+        <Col md={8}>VMware Tanzu</Col>
       </Row>
     );
 
@@ -75,15 +69,15 @@ class DataCenterConfiguration extends Component {
       ? 'cloud'
       : 'backup';
     const activeTab = tab || defaultTab;
-
     return (
       <div>
         <h2 className="content-title">Cloud Provider Configuration</h2>
-        <YBTabsPanel
+        <YBTabsWithLinksPanel
           defaultTab={defaultTab}
           activeTab={activeTab}
           routePrefix="/config/"
           id="config-tab-panel"
+          className="universe-detail data-center-config-tab"
         >
           {isAvailable(currentCustomer.data.features, 'config.infra') && (
             <Tab eventKey="cloud" title="Infrastructure" key="cloud-config">
@@ -121,7 +115,12 @@ class DataCenterConfiguration extends Component {
                 <Tab eventKey="tanzu" title={tanzuTabContent} key="tanzu-tab" unmountOnExit={true}>
                   <KubernetesProviderConfigurationContainer type="tanzu" params={params} />
                 </Tab>
-                <Tab eventKey="openshift" title={openshiftTabContent} key="openshift-tab" unmountOnExit={true}>
+                <Tab
+                  eventKey="openshift"
+                  title={openshiftTabContent}
+                  key="openshift-tab"
+                  unmountOnExit={true}
+                >
                   <KubernetesProviderConfigurationContainer type="openshift" params={params} />
                 </Tab>
                 <Tab eventKey="k8s" title={k8sTabContent} key="k8s-tab" unmountOnExit={true}>
@@ -148,7 +147,7 @@ class DataCenterConfiguration extends Component {
               <SecurityConfiguration activeTab={section} />
             </Tab>
           )}
-        </YBTabsPanel>
+        </YBTabsWithLinksPanel>
       </div>
     );
   }
