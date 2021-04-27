@@ -13,154 +13,224 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document provides an overview of tablespaces in YSQL and demonstrates how they can be used to specify data placement in the cloud. 
-
-This document guides you through the process of creating the following:
-
-- Multi-zone and single-zone tablespaces.
-- Tables that use multi-zone and single-zone tablespaces.
-- Indexes for tables that use multi-zone and single-zone tablespaces.
+This document provides an overview of YSQL Tablespaces and demonstrates how they can be used to specify data placement for tables and indexes in the cloud.
 
 ## Overview
 
-YSQL tablespaces are entities that specify how data associated with them should be replicated and distributed across cloud, regions, and zones.
+In a distributed cloud-native database such as YugabyteDB, the location of tables and indexes plays a very important role in achieving optimal performance for any workload. The following diagram illustrates the ping latencies amongst nodes in a geo-distributed cluster. It is very apparent that nodes closer to each other can communicate with visibly lesser latency than nodes physically far away from each other.
 
-In PostgreSQL, tablespaces are used for specifying a location on disk with options to control data access. That is, tablespaces group tables and indexes based on how you intend to store and access the data. For instance, you can choose to place heavily accessed smaller tables and indexes in SSD or “fast” storage compared to other tables.
+![Cluster Ping Latencies](/images/explore/tablespaces/cluster_ping_latencies.png)
 
-For YugabyteDB clusters, however, location does not pertain to disk locations. For a cloud-native distributed database, location pertains to the cloud, region, and zone where the data is supposed to be. Therefore, although YSQL tablespaces are built on PostgreSQL tablespaces that allow you to specify placement of data at a table level, this placement information in YSQL defines the number of replicas for a table and index, as well as how they can be distributed across a set of cloud, regions, and zones. 
+Given the impact of distance on node-to-node communication, it is highly useful to be able to specify at a table level, how its data should be spread across the cluster. This way, you can move tables closer to their clients and decide which tables actually need to be geo-distributed. This can be achieved using YSQL Tablespaces. YSQL Tablespaces are entities that can specify the number of replicas for a set of tables or indexes, and how each of these replicas should be distributed across a set of cloud, regions, zones.
 
-Note that you cannot use a tablespace outside of the cluster in which it is defined.
+This document describes how to create the following:
+* A cluster that is spread across multiple regions across the world.
+* Tablespaces that specify single-zone, multi-zone and multi-region placement policies.
+* Tables associated with the created tablespaces.
 
-## Defining a Tablespace
+This can be summarized in the following diagram:
+![Overview Cluster Diagram](/images/explore/tablespaces/overview_cluster_diagram.png)
 
-You can define a tablespace using the following syntax:
+In addition, this document demonstrates the effect of geo-distribution on basic YSQL commands through an experiment. This experiment, outlined in the following sections, measures the effect of various geo-distribution policies on the latencies observed while running INSERTs and SELECTs. The results can be seen in the following table:
+
+| Geo-Distribution | INSERT Latency (ms) | SELECT Latency (ms) |
+| :--------------- | :------------------ | :------------------ |
+| Single Zone | 4.676 | 1.880 |
+| Multi Zone | 11.825 | 4.145 |
+| Multi Region | 836.616 | 337.154 |
+
+## Cluster Setup
+The differences between single-zone, multi-zone and multi-region configuration becomes apparent when a cluster with the following topology (as per the preceding cluster diagrams) is deployed. This topology is chosen for illustrative purposes as it can allow creation of node, zone, region fault-tolerant placement policies in the same cluster with minimum nodes.
+
+| Region | Zone | Number of nodes |
+| :----- | :--- | :-------------- |
+| us-east-1 (N.Virginia) | us-east-1a | 3 |
+| us-east-1 (N.Virginia) | us-east-1b | 1 |
+| us-east-1 (N.Virginia) | us-east-1c | 1 |
+| ap-south-1 (Mumbai) | ap-south-1a | 1 |
+| eu-west-2 (London) | eu-west-2c | 1 |
+
+### Cluster creation
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
+      <i class="fas fa-cloud" aria-hidden="true"></i>
+      Yugabyte Platform
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
+    {{% includeMarkdown "./tablespaces-yugabyted.md" /%}}
+  </div>
+  <div id="platform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="platform-tab">
+    {{% includeMarkdown "./tablespaces-platform.md" /%}}
+  </div>
+</div>
+
+After cluster creation, verify if the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI
+
+![YB Master UI - Tablet Servers Page](/images/explore/tablespaces/Geo_distributed_cluster_nodes_Master_UI.png)
+
+## Create a single-zone table
+
+By default creating any tables in the preceding cluster will spread all of its data across all regions. By contrast, let us create a table and constrain all of its data within a single zone using tablespaces. The placement policy that we will use can be illustrated using the following diagram:
+
+![Single Zone Table](/images/explore/tablespaces/single_zone_table.png)
+Create a tablespace outlining the preceding placement policy and a table associated with that tablespace:
 
 ```sql
-CREATE TABLESPACE tablespace_name 
-  [OWNER username]
-  WITH (replica_placement = placement_policy_json);
+CREATE TABLESPACE us_east_1a_zone_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":3}]}');
+
+CREATE TABLE single_zone_table (id INTEGER, field text)
+  TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
 ```
 
-In the preceding syntax:
+Note from the preceding cluster configuration that the nodes in us-east-1a were 172.152.29.181, 172.152.27.126 and 172.152.22.180. By navigating to the table view in the YB-Master UI, you can verify that the tablet created for this table was indeed placed in us_east_1a_zone:
 
-- *tablespace_name* represents the name of the tablespace to be created. 
-- *username* represents the name of the user who will own the tablespace, with the name of the user executing the command being the default. Note that only superusers can create tablespaces and grant their ownership to other types of users. 
-- *placement_policy_json* represents a JSON string that specifies the placement policy for this tablespace. The JSON structure contains the following two fields: 
-  - `num_replicas` defines the overall replication factor.
-  - `placement_blocks` is an array of tuples, with each tuple containing the keys `<”cloud”, “region”, “zone”, “min_num_replicas”>` whose values define a placement block. Typically, the sum of `min_num_replicas` across all placement blocks is expected to be equal to `num_replicas`. The aggregate of `min_num_replicas` can be lesser than `num_replicas`, in which case the extra replicas are placed at the YB-Load balancer’s discretion.
+![YB-Master UI: Tablets of single_zone_table](/images/explore/tablespaces/single_zone_table_tablet_distribution.png)
 
-### How to Create a Multi-Zone Tablespace
-
-The following example shows how to create a multi-zone tablespace:
+Now let us measure the latencies incurred for INSERTs and SELECTs on this table, where the client is in us-east-1a zone:
 
 ```sql
-CREATE TABLESPACE us_west_tablespace 
-WITH (replica_placement='{"num_replicas": 3, "placement_blocks":
-[{"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1},
-{"cloud":"aws","region":"us-west","zone":"us-west-1b","min_num_replicas":1},
-{"cloud":"aws","region":"us-west","zone":"us-west-1c","min_num_replicas":1}]}');
+yugabyte=# INSERT INTO single_zone_table VALUES (1, 'field1'), (2, 'field2'), (3, 'field3');
 ```
 
-If you create a table and use the preceding tablespace, each tablet of the table will have three replicas, as per the `num_replicas` value. Since `placement_blocks` contains three placement blocks where `min_num_replicas` is set to 1, YB-Load balancer will ensure that `aws.us-west.us-west-1a`, `aws.us-west.us-west-1b`, and `aws.us-west.us-west-1c` will each have one replica.
-
-The following example demonstrates how to create a tablespace in which the value of `min_num_replicas` does not correspond to `num_replicas`:
-
-```sql
-CREATE TABLESPACE us_east_tablespace 
-WITH (replica_placement='{"num_replicas": 5, "placement_blocks":
-[{"cloud":"aws","region":"us-east","zone":"us-east-1a","min_num_replicas":1},
-{"cloud":"aws","region":"us-east","zone":"us-east-1b","min_num_replicas":1},
-{"cloud":"aws","region":"us-east","zone":"us-east-1c","min_num_replicas":1}]}');
-```
-
-In the preceding example, the three `min_num_replicas` fields sum up to 3, whereas the total required replication factor is 5. As a result, even though `us_east_tablespace` has been created successfully, a notice is displayed after the execution stating that the additional two replicas are to be placed at the YB-Load balancer’s discretion in  `aws.us-east.us-east-1a`, `aws.us-east.us-east-1b`, and `aws.us-east.us-east-1c`. Based on the load, `aws.us-east.us-east-1a` may have three replicas and the other zones may have one, or it might later change such that `aws.us-east.us-east-1a` and `aws.us-east.us-east-1b` have two replicas each, whereas `aws.us-east.us-east-1c` has one replica. YB-Load balancer always honours the value of `min_num_replicas` and have at least one replica in each cloud.region.zone, and the additional replicas may be moved around based on the cluster load. 
-
-### How to Create a Single-Zone Tablespace
-
-To highlight the difference between multi-zone and single-zone tablespaces, the following example shows how to create a single-zone tablespace:
-
-```sql
-CREATE TABLESPACE us_west_1a_tablespace 
-WITH (replica_placement='{"num_replicas": 3, "placement_blocks":
-[{"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":3}]}');
-```
-
-If you create a table that uses `us_west_1a_tablespace`, each tablet of the table will have three replicas, but unlike multi-zone tablespaces, all three replicas for any tables and indexes in this tablespaces will be placed within the `us-west-1a` zone.
-
-## Creating Tables and Indexes in Tablespaces
-
-You can associate new tables and indexes with a corresponding tablespace. This defines the replication factor of the table or index. It also defines how the replicas of the table or index are to be spread across cloud, regions, and zones.
-
-A table and an index can be created in separate tablespaces.
-
-### How to Use a Multi-Zone Tablespace
-
-Using the multi-zone tablespaces defined in [How to Create a Multi-Zone Tablespace](how-to-create-a-multi-zone-tablespace), you can apply the YSQL's `TABLESPACE` option to `CREATE TABLE` and `CREATE INDEX` statements, as follows:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  change_date date
-)
-TABLESPACE us_west_tablespace;
-```
-
-```sql
-CREATE INDEX employee_no_idx ON employees(employee_no) 
-TABLESPACE us_east_tablespace;
-```
-
-The preceding statements ensure that data in the `employees` and `employee_no_idx` tables is present based on the placement policies specified for `us_west_tablespace` and `us_east_tablespace` respectively.
-
-By default, indexes are placed according to the cluster configuration.
-
-### How to Use a Single-Zone Tablespace
-
-There is no difference between creating tables and indexes that use multi-zone tablespaces and those that use single-zone tablespaces. 
-
-Using the single-zone tablespace defined in [How to Create a Single-Zone Tablespace](how-to-create-a-single-zone-tablespace), you can apply the YSQL's `TABLESPACE` option to `CREATE TABLE` and `CREATE INDEX` statements, as follows:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text,
-  change_date date
-)
-TABLESPACE us_west_1a_tablespace;
+```output
+Time: 4.676 ms
 ```
 
 ```sql
-CREATE INDEX employee_no_idx ON employees(employee_no) 
-TABLESPACE us_east_1a_tablespace;
+yugabyte=# SELECT * FROM single_zone_table;
 ```
 
-The preceding statements ensure that data in the `employees` and `employee_no_idx` tables is present based on the placement policies specified for `us_west_1a_tablespace` and `us_east_1a_tablespace` respectively.
+```output
+ id | field
+----+--------
+  2 | field2
+  1 | field1
+  3 | field3
+(3 rows)
 
-## Dropping Tablespaces
+Time: 1.880 ms
+```
 
-You can drop a tablespace in YSQL using the following syntax:
+## Create a multi-zone table
+
+The following diagram is a graphical representation of a table that is spread across multiple zones within the same region:
+
+![Multi Zone Table](/images/explore/tablespaces/multi_zone_table.png)
 
 ```sql
-DROP TABLESPACE tablespace_name;
+CREATE TABLESPACE us_east_region_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1},
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1},
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1c","min_num_replicas":1}]}');
+
+CREATE TABLE multi_zone_table (id INTEGER, field text)
+  TABLESPACE us_east_region_tablespace SPLIT INTO 1 TABLETS;
 ```
 
-The following example shows how to drop one of the tablespaces created in [How to Create a Multi-Zone Tablespace](how-to-create-a-multi-zone-tablespace):
+The following demonstrates how to measure the latencies incurred for INSERTs and SELECTs on this table, where the client is in us-east-1a zone:
 
 ```sql
-DROP TABLESPACE us_west_tablespace;
+yugabyte=# INSERT INTO multi_zone_table VALUES (1, 'field1'), (2, 'field2'), (3, 'field3');
 ```
 
-Note that the preceding operation cannot be performed if the tablespace has associated tables or indexes.
+```output
+Time: 11.825 ms
+```
 
-## Limitations
+```sql
+yugabyte=# SELECT * FROM multi_zone_table;
+```
 
-The current release of YugabyteDB has the following limitations related to tablespaces:
+```output
+ id | field
+----+--------
+  1 | field1
+  3 | field3
+  2 | field2
+(3 rows)
 
-- `ALTER TABLE` in combination with `SET TABLESPACE` is not supported.
-- `ALTER TABLESPACE` is not supported.
-- Setting read replica placements and affinitized leaders using tablespaces is not supported.
-- Setting tablespaces for colocated tables and databases is not supported.
+Time: 4.145 ms
+```
 
+## Create a multi-region table
+
+The following diagram is a graphical representation of a table spread across multiple regions:
+
+![Multi Region Table](/images/explore/tablespaces/multi_region_table.png)
+
+```sql
+CREATE TABLESPACE us_multi_region_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1},
+    {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1},
+    {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2c","min_num_replicas":1}]}');
+
+CREATE TABLE multi_region_table (id INTEGER, field text)
+  TABLESPACE us_multi_region_tablespace SPLIT INTO 1 TABLETS;
+```
+
+The following demonstrates how to measure the latencies incurred for INSERTs and SELECTs on this table, where the client is in us-east-1a zone:
+
+```sql
+yugabyte=# INSERT INTO multi_region_table VALUES (1, 'field1'), (2, 'field2'), (3, 'field3');
+```
+
+```output
+Time: 863.616 ms
+```
+
+```sql
+yugabyte=# SELECT * FROM multi_region_table;
+```
+
+```output
+ id | field
+----+--------
+  3 | field3
+  2 | field2
+  1 | field1
+(3 rows)
+
+Time: 337.154 ms
+```
+
+{{< tip title="Note" >}}
+
+The location of the leader can also play a role in the preceding latency, and the numbers can differ
+based on how far the leader is from the client node. However, controlling leader affinity
+is not supported via tablespaces yet. This feature is tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8100).
+
+{{< /tip >}}
+
+## What's Next?
+
+The following features will be supported in upcoming releases:
+
+* Using `ALTER TABLE` to change the `TABLESPACE` specified for a table.
+* Support `ALTER TABLESPACE`.
+* Setting read replica placements and affinitized leaders using tablespaces.
+* Setting tablespaces for colocated tables and databases.
+
+## Conclusion
+
+YSQL Tablespaces thus allow specifying placement policy on a per-table basis. The ability to control the placement of tables in a fine-grained manner provides the following advantages:
+
+* Tables with critical information can have higher replication factor and increased fault tolerance compared to the rest of the data.
+* Based on the access pattern, a table can be constrained to the region or zone where it is more heavily accessed.
+* A table can have an index with an entirely different placement policy, thus boosting the read performance without affecting the placement policy of the table itself.
+* Coupled with [Table Partitioning](../partitions/), tablespaces can be used to implement [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/). This allows pinning the rows of a table in different geo-locations based on the values of certain columns in that row.
