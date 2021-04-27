@@ -557,7 +557,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 }
 
 std::string RemoteTablet::ToString() const {
-  return YB_CLASS_TO_STRING(tablet_id, partition, split_depth);
+  return YB_CLASS_TO_STRING(tablet_id, partition, partition_list_version, split_depth);
 }
 
 PartitionListVersion RemoteTablet::GetLastKnownPartitionListVersion() const {
@@ -1049,7 +1049,8 @@ Status MetaCache::ProcessTabletLocations(
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
           remote = new RemoteTablet(
-              tablet_id, partition, loc.split_depth(), loc.split_parent_tablet_id());
+              tablet_id, partition, table_partition_list_version, loc.split_depth(),
+              loc.split_parent_tablet_id());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {
