@@ -19,15 +19,15 @@ You can perform deployment via unidirectional (master-follower) or bidirectional
 If you are using Yugabyte Platform to manage universes, you need to call the following REST API endpoint on your Yugabyte Platform instance for the producer universe and the consumer universe involved in the asynchronous replication between two data sources:
 
 ```sh
-PUT /api/customers/<myUUID>/universes/<myUniUUID>/setup_universe_2dc
+PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc
 ```
 
-*myUUID* represents your customer UUID, and *myUniUUID* represents the UUID of the universe (producer or consumer). The request should include an `X-AUTH-YW-API-TOKEN` header with your Yugabyte Platform API key, as shown in the following example `curl` command:
+*customerUUID* represents your customer UUID, and *universeUUID* represents the UUID of the universe (producer or consumer). The request should include an `X-AUTH-YW-API-TOKEN` header with your Yugabyte Platform API key, as shown in the following example `curl` command:
 
 ```sh
 curl -X PUT \
   -H "X-AUTH-YW-API-TOKEN: myPlatformApiToken" \
-  https://myPlatformServer/api/customers/myUUID/universes/myUniUUID/setup_universe_2dc
+https://myPlatformServer/api/customers/customerUUID/universes/universeUUID/setup_universe_2dc
 ```
 
 You can find your customer UUID in Yugabyte Platform as follows:

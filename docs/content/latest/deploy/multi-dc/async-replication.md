@@ -30,12 +30,17 @@ You can create producer and consumer universes as follows:
 
 ## Setting Up Unidirectional Replication
 
-After you've created the required tables, you can set up asysnchronous replication as follows:
+After you created the required tables, you can set up asynchronous replication as follows:
 
-- Look up the producer universe UUID and the table IDs for the two tables and the index table on the master UI:
+- Look up the producer universe UUID and the table IDs for the two tables and the index table:
 
-    - To find a universe's UUID in Yugabyte Platform, open the **Universes** tab, click the name of the universe and notice the URL of the universe's **Overview** page that ends with the universe's UUID (for example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`). 
-    - To find a table's UUID in Yugabyte Platform, click the **Tables** tab on the universe's **Overview** page, then click the table and copy its UUID from its **Overview** tab.
+    - To find a universe's UUID, check `/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
+
+    - To find a table ID, execute the following command as an admin:
+
+      ```shell
+      yb-admin list_tables [include_table_id]
+      ```
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the producer universe:
 
@@ -81,7 +86,7 @@ Once you have set up replication, load data into the producer universe as follow
   - YSQL:
 
   ```sh
-  java -jar yb-sample-apps.jar --workload SqlSecondaryIndex  --nodes 127.0.0.1:5433
+  java -jar yb-sample-apps.jar --workload SqlSecondaryIndex --nodes 127.0.0.1:5433
   ```
 
   - YCQL:
@@ -89,6 +94,8 @@ Once you have set up replication, load data into the producer universe as follow
   ```sh
   java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
   ```
+
+  Note that the IP address needs to correspond to the IP of any T-Servers in the cluster.
 
 - For bidirectional replication, repeat the preceding step in the yugabyte-consumer universe.
 
@@ -106,7 +113,7 @@ For unidirectional replication, connect to the yugabyte-consumer universe using 
 
 For bidirectional replication, repeat the procedure described in [Unidirectional Replication](#unidirectional-replication), but pump data into yugabyte-consumer. 
 
-To avoid primary key conflict errors, keep the key space for the two universes separate.
+To avoid primary key conflict errors, keep the key ranges for the two universes separate.
 
 ### Replication Lag
 
