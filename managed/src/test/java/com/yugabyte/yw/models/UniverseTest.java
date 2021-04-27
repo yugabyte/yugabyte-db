@@ -7,8 +7,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
@@ -70,7 +68,7 @@ public class UniverseTest extends FakeDBApplication {
     assertNotNull(u);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
-    u.setConfig(config);
+    u.updateConfig(config);
     assertEquals(config, u.getConfig());
   }
 
@@ -286,7 +284,7 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Map<String, String> universeParams = new HashMap<>();
     universeParams.put(Universe.TAKE_BACKUPS, "true");
-    u.setConfig(universeParams);
+    u.updateConfig(universeParams);
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");

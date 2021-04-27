@@ -6,13 +6,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -26,23 +24,11 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import play.libs.Json;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.commissioner.tasks.subtasks
-                 .KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
-import static com.yugabyte.yw.commissioner.tasks.subtasks
-                 .KubernetesCommandExecutor.CommandType.APPLY_SECRET;
-import static com.yugabyte.yw.commissioner.tasks.subtasks
-                 .KubernetesCommandExecutor.CommandType.HELM_INSTALL;
-import static com.yugabyte.yw.commissioner.tasks.subtasks
-                 .KubernetesCommandExecutor.CommandType.POD_INFO;
-import static com.yugabyte.yw.commissioner.tasks.subtasks
-                 .KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.*;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -50,13 +36,10 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.*;
 
 
 @RunWith(MockitoJUnitRunner.class)
@@ -97,7 +80,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
     nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
     nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
@@ -117,9 +100,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       config1.put("KUBENAMESPACE", ns1);
       config2.put("KUBENAMESPACE", ns2);
 
-      az1.setConfig(config1);
-      az2.setConfig(config2);
-      az3.setConfig(config3);
+      az1.updateConfig(config1);
+      az2.updateConfig(config2);
+      az3.updateConfig(config3);
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);
@@ -165,7 +148,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
 
     ns = nodePrefix;
@@ -173,7 +156,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       ns = "demo-ns";
       config.put("KUBECONFIG", "test-kc");
       config.put("KUBENAMESPACE", ns);
-      az.setConfig(config);
+      az.updateConfig(config);
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);

@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -38,18 +37,21 @@ import org.yb.client.YBClient;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Http.HeaderNames;
 import play.mvc.Result;
 import play.mvc.Results;
-import play.libs.concurrent.HttpExecutionContext;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
@@ -512,7 +514,7 @@ public class UniverseController extends AuthenticatedController {
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
         if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
-          universe.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+          universe.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
             Universe.HelmLegacy.V3.toString()));
         } else {
           if (primaryCluster.userIntent.enableIPV6) {
@@ -593,7 +595,7 @@ public class UniverseController extends AuthenticatedController {
         }
       }
 
-      universe.setConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -897,7 +899,7 @@ public class UniverseController extends AuthenticatedController {
       } else {
         return ApiResponse.error(BAD_REQUEST, "Invalid Query: Need to specify markActive value");
       }
-      universe.setConfig(config);
+      universe.updateConfig(config);
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success();
     } catch (Exception e) {
@@ -928,7 +930,7 @@ public class UniverseController extends AuthenticatedController {
     try {
       Map<String, String> config = new HashMap<>();
       config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString());
-      universe.setConfig(config);
+      universe.updateConfig(config);
       Audit.createAuditEntry(ctx(), request());
       return ApiResponse.success();
     } catch (Exception e) {
@@ -970,7 +972,7 @@ public class UniverseController extends AuthenticatedController {
         ));
       }
       config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
-      universe.setConfig(config);
+      universe.updateConfig(config);
 
       return ApiResponse.success();
     } catch (Exception e) {

@@ -55,7 +55,7 @@ public class DeleteBackup extends AbstractTaskBase {
       return;
     }
     try {
-      BackupTableParams backupParams = Json.fromJson(backup.backupInfo, BackupTableParams.class);
+      BackupTableParams backupParams = backup.getBackupInfo();
       List<BackupTableParams> backupList =
         backupParams.backupList == null ? ImmutableList.of(backupParams) : backupParams.backupList;
       if (deleteAllBackups(backupList)) {

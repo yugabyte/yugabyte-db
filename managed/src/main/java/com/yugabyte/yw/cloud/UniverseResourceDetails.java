@@ -184,15 +184,19 @@ public class UniverseResourceDetails {
         if (node.placementUuid != null) {
           userIntent = params.getClusterByUuid(node.placementUuid).userIntent;
         }
-        if (userIntent.deviceInfo != null) {
+        if (userIntent.deviceInfo != null &&
+          userIntent.deviceInfo.volumeSize != null &&
+          userIntent.deviceInfo.numVolumes != null) {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
           details.addVolumeSizeGB(
             userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
         }
-        if (node.cloudInfo != null) {
+        if (node.cloudInfo != null &&
+          node.cloudInfo.az != null &&
+          node.cloudInfo.instance_type != null) {
           details.addAz(node.cloudInfo.az);
-        InstanceType instanceType = InstanceType.get(UUID.fromString(userIntent.provider),
-                node.cloudInfo.instance_type);
+          InstanceType instanceType = InstanceType.get(UUID.fromString(userIntent.provider),
+            node.cloudInfo.instance_type);
           if (instanceType == null) {
             LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +
               " for provider " + userIntent.providerType);

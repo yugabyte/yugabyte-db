@@ -3,12 +3,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.*;
 import io.ebean.annotation.DbJson;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -16,7 +14,6 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import java.util.*;
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
@@ -54,7 +51,7 @@ public class AvailabilityZone extends Model {
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public JsonNode config;
+  public Map<String, String> config;
 
   public String getKubeconfigPath() {
     Map<String, String> configMap = this.getConfig();
@@ -62,30 +59,19 @@ public class AvailabilityZone extends Model {
   }
 
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = Json.toJson(currConfig);
+    this.config = configMap;
     this.save();
   }
 
-  @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
+  public void updateConfig(Map<String, String> configMap) {
+    Map<String, String> config = getConfig();
+    config.putAll(configMap);
+    setConfig(config);
   }
 
   @JsonIgnore
   public Map<String, String> getConfig() {
-    if (this.config == null) {
-      return new HashMap();
-    } else {
-      return Json.fromJson(this.config, Map.class);
-    }
+    return this.config == null ? new HashMap<>() : this.config;
   }
 
   /**

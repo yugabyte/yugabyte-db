@@ -4,20 +4,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -26,6 +15,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.pac4j.play.CallbackController;
+import org.pac4j.play.store.PlayCacheSessionStore;
+import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -39,23 +31,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import org.pac4j.play.CallbackController;
-import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
-
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
@@ -103,13 +84,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultRegion = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
     config.put("KUBECONFIG", "test");
-    defaultAZ.setConfig(config);
+    defaultAZ.updateConfig(config);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
     defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(
         defaultUniverse.getUniverseDetails().nodePrefix,
         defaultProvider.customerUUID, "/tmp/certs"));
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V3.toString()));
   }
 
@@ -679,7 +660,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   public void testHelmInstallForAnnotationsAZ() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<String, String>();
     defaultAnnotations.put("OVERRIDES", "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
-    defaultAZ.setConfig(defaultAnnotations);
+    defaultAZ.updateConfig(defaultAnnotations);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
@@ -713,7 +694,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultAnnotations.put("OVERRIDES", "foo: bar");
     defaultProvider.setConfig(defaultAnnotations);
     defaultAnnotations.put("OVERRIDES", "bar: foo");
-    defaultAZ.setConfig(defaultAnnotations);
+    defaultAZ.updateConfig(defaultAnnotations);
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -746,7 +727,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   public void testHelmInstallResourceOverrideMerge() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<String, String>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
-    defaultAZ.setConfig(defaultAnnotations);
+    defaultAZ.updateConfig(defaultAnnotations);
     defaultUniverse = updateUniverseDetails("dev");
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -885,7 +866,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       azConfig.put("KUBECONFIG", "test-kc");
       azConfig.put("KUBENAMESPACE", namespace);
     }
-    defaultAZ.setConfig(azConfig);
+    defaultAZ.updateConfig(azConfig);
 
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message =
@@ -980,9 +961,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       config2.put("KUBENAMESPACE", ns2);
     }
 
-    az1.setConfig(config1);
-    az2.setConfig(config2);
-    az3.setConfig(config3);
+    az1.updateConfig(config1);
+    az2.updateConfig(config2);
+    az3.updateConfig(config3);
 
     String podInfosMessage =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
@@ -1049,7 +1030,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "{\"items\": [{\"metadata\": {\"name\": \"test\"}, \"spec\": {\"clusterIP\": \"None\"," +
         "\"type\":\"clusterIP\"}}]}";
     when(kubernetesManager.getServices(any(), any(), any())).thenReturn(shellResponse);
-    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
                                               Universe.HelmLegacy.V2TO3.toString()));
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     KubernetesCommandExecutor kubernetesCommandExecutor =

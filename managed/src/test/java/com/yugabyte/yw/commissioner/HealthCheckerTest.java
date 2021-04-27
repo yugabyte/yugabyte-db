@@ -4,56 +4,37 @@ package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
-
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.EmailHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.HealthManager.ClusterInfo;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Alert.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.ebean.Model;
+import io.prometheus.client.CollectorRegistry;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.mockito.ArgumentCaptor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
-
 import scala.concurrent.ExecutionContext;
 
-import java.util.*;
-
 import javax.mail.MessagingException;
-
-import io.prometheus.client.CollectorRegistry;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -201,7 +182,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(email, false, false);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
-    u.setConfig(config);
+    u.updateConfig(config);
     return u;
   }
 
