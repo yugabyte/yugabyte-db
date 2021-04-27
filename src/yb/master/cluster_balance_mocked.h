@@ -4,6 +4,8 @@
 #define YB_MASTER_CLUSTER_BALANCE_MOCKED_H
 
 #include "yb/master/cluster_balance.h"
+#include "yb/master/cluster_balance_util.h"
+#include "yb/master/ts_manager.h"
 
 namespace yb {
 namespace master {
@@ -21,11 +23,17 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     table_state->options_ = options;
     state_ = table_state.get();
     per_table_states_[""] = std::move(table_state);
+
+    SetOptions(LIVE, "");
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
   void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const override {
     *ts_descs = ts_descs_;
+  }
+
+  void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const override {
+    *affinitized_zones = affinitized_zones_;
   }
 
   const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
@@ -41,7 +49,8 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
 
   const PlacementInfoPB& GetClusterPlacementInfo() const override {
-    return replication_info_.live_replicas();
+    return state_->options_->type == LIVE ?
+        replication_info_.live_replicas() : replication_info_.read_replicas(0);
   }
 
   const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
@@ -81,6 +90,11 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     per_table_states_[table_id] = std::move(table_state);
   }
 
+  void SetOptions(ReplicaType type, const string& placement_uuid) {
+    state_->options_->type = type;
+    state_->options_->placement_uuid = placement_uuid;
+  }
+
   TSDescriptorVector ts_descs_;
   AffinitizedZonesSet affinitized_zones_;
   TabletInfoMap tablet_map_;
@@ -91,6 +105,8 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   vector<TabletId> pending_add_replica_tasks_;
   vector<TabletId> pending_remove_replica_tasks_;
   vector<TabletId> pending_stepdown_leader_tasks_;
+
+  friend class TestLoadBalancerEnterprise;
 };
 
 } // namespace master

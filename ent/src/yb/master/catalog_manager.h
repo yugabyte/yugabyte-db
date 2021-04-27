@@ -169,7 +169,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
  private:
   friend class SnapshotLoader;
-  friend class ClusterLoadBalancer;
+  friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
 

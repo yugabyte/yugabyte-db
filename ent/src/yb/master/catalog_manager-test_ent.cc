@@ -275,7 +275,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
 
     ResetState();
-    cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
+    cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
     AnalyzeTablets();
     // Now load balance an read_only replica.
     string expected_from_ts = ts_descs_[3]->permanent_uuid();
@@ -316,7 +316,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     string placeholder;
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
-    cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
+    cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
     ResetState();
     AnalyzeTablets();
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -350,8 +350,8 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
 
 TEST(TestLoadBalancerEnterprise, TestLoadBalancerAlgorithm) {
   const TableId table_id = CURRENT_TEST_NAME();
-  auto options = make_shared<yb::master::enterprise::Options>();
-  auto cb = make_shared<yb::master::enterprise::ClusterLoadBalancerMocked>(options.get());
+  auto options = make_shared<Options>();
+  auto cb = make_shared<ClusterLoadBalancerMocked>(options.get());
   auto lb = make_shared<TestLoadBalancerEnterprise>(cb.get(), table_id);
   lb->TestAlgorithm();
 }
