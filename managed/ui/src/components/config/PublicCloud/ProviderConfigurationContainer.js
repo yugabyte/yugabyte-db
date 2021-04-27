@@ -194,17 +194,18 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-const mapStateToProps = (state) => {
+const mapStateToProps = ({ cloud, universe, customer, tasks, featureFlags, modal }) => {
   return {
-    configuredProviders: state.cloud.providers,
-    configuredRegions: state.cloud.supportedRegionList,
-    accessKeys: state.cloud.accessKeys,
-    cloudBootstrap: state.cloud.bootstrap,
-    universeList: state.universe.universeList,
-    hostInfo: state.customer.hostInfo,
-    modal: state.modal,
-    cloud: state.cloud,
-    tasks: state.tasks
+    configuredProviders: cloud.providers,
+    configuredRegions: cloud.supportedRegionList,
+    accessKeys: cloud.accessKeys,
+    cloudBootstrap: cloud.bootstrap,
+    universeList: universe.universeList,
+    hostInfo: customer.hostInfo,
+    modal: modal,
+    cloud: cloud,
+    tasks: tasks,
+    featureFlags: featureFlags
   };
 };
 
