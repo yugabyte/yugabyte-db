@@ -41,6 +41,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/optional/optional_io.hpp>
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
@@ -529,6 +530,7 @@ void Batcher::FlushBuffersIfReady() {
             Aborted, "Tablet resolution failed for some ops, aborted the whole batch.",
             ClientError(ClientErrorCode::kAbortedBatchDueToFailedTabletLookup));
     Abort(tablet_resolution_failed);
+    return;
   }
 
   // All operations were added, and tablets for them were resolved.
@@ -553,6 +555,16 @@ void Batcher::FlushBuffersIfReady() {
   for (auto it = group_start; it != ops_queue_.end(); ++it) {
     const auto it_group = (**it).yb_op->group();
     const auto* it_tablet = (**it).tablet.get();
+    const auto it_table_partition_list_version = (**it).yb_op->partition_list_version();
+    if (it_table_partition_list_version.has_value() &&
+        it_table_partition_list_version != it_tablet->partition_list_version()) {
+      Abort(STATUS_EC_FORMAT(
+          Aborted, ClientError(ClientErrorCode::kTablePartitionListVersionDoesNotMatch),
+          "Operation $0 requested table partition list version $1, but ours is: $2",
+          (**it).yb_op, it_table_partition_list_version.value(),
+          it_tablet->partition_list_version()));
+      return;
+    }
     if (current_tablet != it_tablet || current_group != it_group) {
       ops_info_.groups.emplace_back(group_start, it);
       group_start = it;
