@@ -135,6 +135,7 @@ namespace {
     }
 }
 
+__attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
 namespace {
   constexpr int kDbCacheSizeUsePercentage = -1;
