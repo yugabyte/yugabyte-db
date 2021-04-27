@@ -126,7 +126,7 @@ PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
   // Operation can be part of transaction it is necessary to complete it before transaction commit.
   if (response_.InProgress()) {
-    __attribute__((unused)) auto status = response_.GetStatus(*pg_session_);
+    WARN_NOT_OK(response_.GetStatus(pg_session_.get()), "Operation completion failed");
   }
 }
 
@@ -167,7 +167,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     }
 
     DCHECK(response_.InProgress());
-    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(*pg_session_)));
+    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus(pg_session_.get())));
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!rows.empty() || end_of_data_);

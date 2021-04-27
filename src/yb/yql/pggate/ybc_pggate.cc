@@ -127,6 +127,10 @@ YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx) {
   return ToYBCStatus(pgapi->DestroyMemctx(memctx));
 }
 
+void YBCPgResetCatalogReadTime() {
+  return pgapi->ResetCatalogReadTime();
+}
+
 YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx) {
   return ToYBCStatus(pgapi->ResetMemctx(memctx));
 }

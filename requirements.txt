@@ -6,3 +6,4 @@ psutil
 distro
 boto
 overrides
+downloadutil

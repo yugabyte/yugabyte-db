@@ -22,6 +22,8 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -32,24 +34,34 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
-DECLARE_bool(ycql_consistent_transactional_paging);
+DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
-DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
-DECLARE_bool(TEST_disallow_lmp_failures);
+
+extern double TEST_delay_create_transaction_probability;
 
 namespace yb {
 namespace client {
 
-YB_DEFINE_ENUM(BankAccountsOption, (kTimeStrobe)(kStepDown)(kTimeJump)(kNetworkPartition));
+YB_DEFINE_ENUM(BankAccountsOption,
+               (kTimeStrobe) // Perform time stobe during test.
+               (kStepDown) // Perform leader step downs during test.
+               (kTimeJump) // Perform time jumps during test.
+               (kNetworkPartition) // Partition network during test.
+               (kNoSelectRead)) // Don't use select-read for updating balance, i.e. use only
+                                // "update set balance = balance + delta".
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
 class SnapshotTxnTest
@@ -61,15 +73,21 @@ class SnapshotTxnTest
   }
 
   void TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
-                        int minimal_updates_per_second);
+                        int minimal_updates_per_second, double select_update_probability = 0.5);
   void TestBankAccountsThread(
-     int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool);
+     int accounts, double select_update_probability, std::atomic<bool>* stop,
+     std::atomic<int64_t>* updates, TransactionPool* pool);
   void TestRemoteBootstrap();
   void TestMultiWriteWithRestart();
 };
 
+bool TransactionalFailure(const Status& status) {
+  return status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut();
+}
+
 void SnapshotTxnTest::TestBankAccountsThread(
-    int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool) {
+    int accounts, double select_update_probability, std::atomic<bool>* stop,
+    std::atomic<int64_t>* updates, TransactionPool* pool) {
   auto session = CreateSession();
   YBTransactionPtr txn;
   int32_t key1 = 0, key2 = 0;
@@ -83,59 +101,65 @@ void SnapshotTxnTest::TestBankAccountsThread(
       txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel()));
     }
     session->SetTransaction(txn);
-    auto result = SelectRow(session, key1);
-    int32_t balance1 = -1;
-    if (result.ok()) {
-      balance1 = *result;
-      result = SelectRow(session, key2);
-    }
-    if (!result.ok()) {
-      if (txn->IsRestartRequired()) {
-        ASSERT_TRUE(result.status().IsQLError()) << result;
-        auto txn_result = pool->TakeRestarted(txn);
-        if (!txn_result.ok()) {
-          ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
-          txn = nullptr;
-        } else {
-          txn = *txn_result;
-        }
-        continue;
-      }
-      if (result.status().IsTimedOut() || result.status().IsQLError()) {
-        txn = nullptr;
-        continue;
-      }
-      ASSERT_TRUE(result.ok())
-          << Format("$0, TXN: $0, key1: $1, key2: $2", result.status(), txn->id(), key1, key2);
-    }
-    auto balance2 = *result;
-    if (balance1 == 0) {
-      std::swap(key1, key2);
-      std::swap(balance1, balance2);
-    }
-    if (balance1 == 0) {
-      txn = nullptr;
-      continue;
-    }
-    auto transfer = RandomUniformInt(1, balance1);
+    int transfer = RandomUniformInt(1, 250);
+
     auto txn_id = txn->id();
-    LOG(INFO) << txn_id << " transferring (" << key1 << ", " << balance1 << ") => (" << key2 << ", "
-              << balance2 << "), delta: " << transfer;
-    auto status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
-    if (status.ok()) {
-      status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
+    LOG(INFO) << txn_id << " transferring (" << key1 << ") => (" << key2 << "), delta: "
+              << transfer;
+
+    Status status;
+    if (RandomActWithProbability(select_update_probability)) {
+      auto result = SelectRow(session, key1);
+      int32_t balance1 = -1;
+      if (result.ok()) {
+        balance1 = *result;
+        result = SelectRow(session, key2);
+      }
+      if (!result.ok()) {
+        if (txn->IsRestartRequired()) {
+          ASSERT_TRUE(result.status().IsQLError()) << result;
+          auto txn_result = pool->TakeRestarted(txn);
+          if (!txn_result.ok()) {
+            ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
+            txn = nullptr;
+          } else {
+            txn = *txn_result;
+          }
+          continue;
+        }
+        if (result.status().IsTimedOut() || result.status().IsQLError()) {
+          txn = nullptr;
+          continue;
+        }
+        ASSERT_TRUE(result.ok())
+            << Format("$0, TXN: $0, key1: $1, key2: $2", result.status(), txn->id(), key1, key2);
+      }
+      auto balance2 = *result;
+      status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
+      if (status.ok()) {
+        status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
+      }
+    } else {
+      status = ResultToStatus(kv_table_test::Increment(
+          &table_, session, key1, -transfer, Flush::kTrue));
+      if (status.ok()) {
+        status = ResultToStatus(kv_table_test::Increment(
+            &table_, session, key2, transfer, Flush::kTrue));
+      }
     }
+
     if (status.ok()) {
       status = txn->CommitFuture().get();
     }
     txn = nullptr;
     if (status.ok()) {
-      LOG(INFO) << txn_id << " transferred (" << key1 << ", " << balance1 << ") => (" << key2
-                << ", " << balance2 << "), delta: " << transfer;
+      LOG(INFO) << txn_id << " transferred (" << key1 << ") => (" << key2 << "), delta: "
+                << transfer;
       updates->fetch_add(1);
     } else {
-      ASSERT_TRUE(status.IsTryAgain() || status.IsExpired() || status.IsNotFound() ||
-                  status.IsTimedOut()) << status;
+      ASSERT_TRUE(
+          status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut() ||
+          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED) << status;
     }
   }
 }
@@ -200,8 +224,9 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
   });
 }
 
-void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
-                                       int minimal_updates_per_second) {
+void SnapshotTxnTest::TestBankAccounts(
+    BankAccountsOptions options, CoarseDuration duration, int minimal_updates_per_second,
+    double select_update_probability) {
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
   const int kAccounts = 20;
   const int kThreads = 5;
@@ -252,8 +277,8 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
   for (int i = 0; i != kThreads; ++i) {
     threads.AddThreadFunctor(std::bind(
-        &SnapshotTxnTest::TestBankAccountsThread, this, kAccounts, &threads.stop_flag(), &updates,
-        &pool));
+        &SnapshotTxnTest::TestBankAccountsThread, this, kAccounts, select_update_probability,
+        &threads.stop_flag(), &updates, &pool));
   }
 
   auto end_time = CoarseMonoClock::now() + duration;
@@ -331,6 +356,14 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeJump, BankAccountsOption::kStepDown}, 30s,
       RegularBuildVsSanitizers(3, 1) /* minimal_updates_per_second */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
+  FLAGS_transaction_rpc_timeout_ms = 500 * kTimeMultiplier;
+  TEST_delay_create_transaction_probability = 0.5;
+
+  TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */,
+                   0.0 /* select_update_probability */);
 }
 
 struct PagingReadCounts {
@@ -612,7 +645,7 @@ bool IntermittentTxnFailure(const Status& status) {
     "Service is shutting down"s,
     "Timed out"s,
     "Transaction aborted"s,
-    "Transaction expired"s,
+    "expired or aborted by a conflict"s,
     "Transaction metadata missing"s,
     "Unknown transaction, could be recently aborted"s,
     "Transaction was recently aborted"s,

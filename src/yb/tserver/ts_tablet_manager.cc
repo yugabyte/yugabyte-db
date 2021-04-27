@@ -291,6 +291,9 @@ METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
 THREAD_POOL_METRICS_DEFINE(
     server, post_split_trigger_compaction_pool, "Thread pool for tablet compaction jobs.");
 
+THREAD_POOL_METRICS_DEFINE(
+    server, admin_triggered_compaction_pool, "Thread pool for tablet compaction jobs.");
+
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
 using consensus::RaftConfigPB;
@@ -464,12 +467,17 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_max_queue_size(FLAGS_read_pool_max_queue_size)
                .set_metrics(std::move(read_metrics))
                .Build(&read_pool_));
-  CHECK_OK(ThreadPoolBuilder("compaction")
+  CHECK_OK(ThreadPoolBuilder("tablet-split-compaction")
               .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
               .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), post_split_trigger_compaction_pool))
               .Build(&post_split_trigger_compaction_pool_));
+  CHECK_OK(ThreadPoolBuilder("admin-compaction")
+              .set_max_threads(std::max(docdb::GetGlobalRocksDBPriorityThreadPoolSize(), 0))
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), admin_triggered_compaction_pool))
+              .Build(&admin_triggered_compaction_pool_));
 
   block_based_table_mem_tracker_ = docdb::InitBlockCacheMemTracker(
       kDefaultTserverBlockCacheSizePercentage,
@@ -1546,6 +1554,19 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
+Status TSTabletManager::TriggerCompactionAndWait(const TabletPtrs& tablets) {
+  CountDownLatch latch(tablets.size());
+  auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+  for (auto tablet : tablets) {
+    RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
+      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to submit compaction for tablet.");
+      latch.CountDown();
+    }));
+  }
+  latch.Wait();
+  return Status::OK();
+}
+
 void TSTabletManager::StartShutdown() {
   {
     std::lock_guard<RWMutex> lock(mutex_);
@@ -1645,6 +1666,9 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (post_split_trigger_compaction_pool_) {
     post_split_trigger_compaction_pool_->Shutdown();
+  }
+  if (admin_triggered_compaction_pool_) {
+    admin_triggered_compaction_pool_->Shutdown();
   }
 
   {

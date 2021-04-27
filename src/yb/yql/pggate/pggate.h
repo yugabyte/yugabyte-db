@@ -67,6 +67,8 @@ class PgApiImpl {
     return async_client_init_.client();
   }
 
+  void ResetCatalogReadTime();
+
   // Initialize ENV within which PGSQL calls will be executed.
   CHECKED_STATUS CreateEnv(PgEnv **pg_env);
   CHECKED_STATUS DestroyEnv(PgEnv *pg_env);

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -40,15 +41,15 @@ import play.libs.Json;
 import play.mvc.Http.HeaderNames;
 import play.mvc.Result;
 import play.mvc.Results;
+import play.libs.concurrent.HttpExecutionContext;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletionStage;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
@@ -67,6 +68,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
+
+  @Inject
+  HttpExecutionContext ec;
 
   @Inject
   QueryHelper queryHelper;
@@ -98,31 +102,6 @@ public class UniverseController extends AuthenticatedController {
   @Inject
   public UniverseController(YBClientService service) {
     this.ybService = service;
-  }
-
-  private boolean validateEncryption(ObjectNode formData) {
-    ArrayNode clusters = (ArrayNode) formData.get("clusters");
-    if (clusters == null)
-      return true;
-    for (JsonNode cluster : clusters) {
-      JsonNode userIntent = cluster.get("userIntent");
-      if (userIntent == null)
-        return true;
-
-      JsonNode nodeToNodeEncryptionJson = userIntent.get("enableNodeToNodeEncrypt");
-      JsonNode clientToNodeEncryptionJson = userIntent.get("enableClientToNodeEncrypt");
-
-      boolean nodeToNodeEncryption =
-        nodeToNodeEncryptionJson != null && nodeToNodeEncryptionJson.asBoolean();
-      boolean clientToNodeEncryption =
-        clientToNodeEncryptionJson != null && clientToNodeEncryptionJson.asBoolean();
-
-      if (!nodeToNodeEncryption && clientToNodeEncryption) {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   /**
@@ -426,8 +405,8 @@ public class UniverseController extends AuthenticatedController {
           .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
           .collect(Collectors.toSet());
       }
-      return ApiResponse.success(UniverseResourceDetails.create(nodesInCluster,
-        taskParams));
+      return ApiResponse.success(UniverseResourceDetails.create(
+        nodesInCluster, taskParams, runtimeConfigFactory.globalRuntimeConf()));
     } catch (Throwable t) {
       t.printStackTrace();
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -447,12 +426,6 @@ public class UniverseController extends AuthenticatedController {
       // Get the user submitted form data.
       formData = (ObjectNode) request().body().asJson();
 
-      if (!validateEncryption(formData)) {
-        return ApiResponse.error(
-          BAD_REQUEST,
-          "Node-to-node TLS needs to be enabled for client-to-node TLS to be enabled"
-        );
-      }
       taskParams = bindFormDataToTaskParams(formData);
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
@@ -555,34 +528,47 @@ public class UniverseController extends AuthenticatedController {
             taskParams.rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix,
               customerUUID, appConfig.getString("yb.storage.path"));
           }
-          // If client encryption is enabled, generate the client cert file for each node.
-          if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-            CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
-            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+          CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+          if (cert.certType == CertificateInfo.Type.SelfSigned) {
+            // Check if the platform cert already exists. If not, create one.
+            if (cert.platformCert == null) {
+              CertificateHelper.createPlatformCertificate(taskParams.rootCA,
+                  CertificateHelper.DEFAULT_CLIENT, null, null,
+                  true /* if cert files need to be saved or just returned. */);
               CertificateHelper.createClientCertificate(taskParams.rootCA,
-                String.format(CertificateHelper.CERT_PATH, appConfig.getString("yb.storage.path"),
-                  customerUUID.toString(), taskParams.rootCA.toString()),
-                CertificateHelper.DEFAULT_CLIENT, null, null);
-            } else {
-              if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
+                  CertificateHelper.DEFAULT_CLIENT, null, null,
+                  true /* if cert files need to be saved or just returned. */);
+              cert.setPlatformCert(CertificateHelper.getPlatformCertFile(taskParams.rootCA));
+              cert.setPlatformKey(CertificateHelper.getPlatformKeyFile(taskParams.rootCA));
+            }
+            if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
+              primaryCluster.userIntent.enableNodeToNodeClientVerification = true;
+            }
+          } else {
+            if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(
                 CloudType.onprem)) {
-                return ApiResponse.error(
+              return ApiResponse.error(
                   BAD_REQUEST,
                   "Custom certificates are only supported for onprem providers."
-                );
-              }
-              if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-                String errMsg = String.format("The certificate %s needs info. Update the cert" +
-                    " and retry.",
-                  CertificateInfo.get(taskParams.rootCA).label);
-                LOG.error(errMsg);
-                return ApiResponse.error(BAD_REQUEST, errMsg);
-              }
-              LOG.info(
-                "Skipping client certificate creation for universe {} ({}) " +
-                  "because cert {} (type {})is not a self-signed cert.",
-                universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
               );
+            }
+            if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
+              String errMsg = String.format("The certificate %s needs info. Update the cert" +
+                  " and retry.",
+                CertificateInfo.get(taskParams.rootCA).label);
+              LOG.error(errMsg);
+              return ApiResponse.error(BAD_REQUEST, errMsg);
+            }
+            LOG.info(
+                "Skipping client certificate creation for universe {} ({}) " +
+                "because cert {} (type {})is not a self-signed cert.",
+                universe.name, universe.universeUUID, taskParams.rootCA, cert.certType
+            );
+            // If the platform cert is present, we can use mTLS.
+            if (cert.platformCert != null) {
+              if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
+                primaryCluster.userIntent.enableNodeToNodeClientVerification = true;
+              }
             }
           }
           // Set the flag to mark the universe as using TLS enabled and therefore not allowing
@@ -624,10 +610,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -684,11 +668,9 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
         universe.universeUUID + ":" + universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Exception e) {
       String errMsg = String.format(
         "Error occurred attempting to %s the universe encryption key",
@@ -722,33 +704,42 @@ public class UniverseController extends AuthenticatedController {
    * @param nodeName     name of the node
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
-  public synchronized Result downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName)
-    throws IOException {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    NodeDetails node;
-    String storagePath, tarFileName, targetFile;
-    ShellResponse response;
+  public CompletionStage<Result> downloadNodeLogs(
+    UUID customerUUID,
+    UUID universeUUID,
+    String nodeName
+    ) {
+    return CompletableFuture.supplyAsync(() -> {
+      Customer customer = Customer.getOrBadRequest(customerUUID);
+      Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+      NodeDetails node;
+      String storagePath, tarFileName, targetFile;
+      ShellResponse response;
 
-    LOG.debug("Retrieving logs for " + nodeName);
-    node = universe.getNode(nodeName);
-    storagePath = runtimeConfigFactory.staticApplicationConf()
-      .getString("yb.storage.path");
-    tarFileName = nodeName + "-support_package.tar.gz";
-    targetFile = storagePath + "/" + tarFileName;
-    response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
+      LOG.debug("Retrieving logs for " + nodeName);
+      node = universe.getNode(nodeName);
+      storagePath = runtimeConfigFactory.staticApplicationConf()
+        .getString("yb.storage.path");
+      tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
+      targetFile = storagePath + "/" + tarFileName;
+      response = nodeUniverseManager.downloadNodeLogs(node, universe, targetFile);
 
-    if (response.code != 0) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
-    }
+      if (response.code != 0) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+      }
 
-    File file = new File(targetFile);
-    InputStream is = new FileInputStream(file);
-    file.delete();
+      try {
+        File file = new File(targetFile);
+        InputStream is = new FileInputStream(file);
+        file.delete();
+        // return file to client
+        response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
+        return ok(is).as("application/x-compressed");
 
-    // return file to client
-    response().setHeader("Content-Disposition", "attachment; filename=" + tarFileName);
-    return ok(is).as("application/x-compressed");
+      } catch (FileNotFoundException e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, response.message);
+      }
+    }, ec.current());
   }
 
 
@@ -782,6 +773,7 @@ public class UniverseController extends AuthenticatedController {
     }
 
     if (universe.nodesInTransit()) {
+      // TODO 503 - Service Unavailable
       return ApiResponse.error(BAD_REQUEST, "Cannot perform an edit operation on universe " +
         universeUUID + " as it has nodes in one of " +
         NodeDetails.IN_TRANSIT_STATES + " states.");
@@ -863,11 +855,9 @@ public class UniverseController extends AuthenticatedController {
         universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
         universe.universeUUID, universe.name);
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
       Audit.createAuditEntry(ctx(), request(),
         Json.toJson(formData), taskUUID);
-      resultNode.put("taskUUID", taskUUID.toString());
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -880,17 +870,10 @@ public class UniverseController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     // Verify the customer is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    ArrayNode universes = Json.newArray();
+    List<UniverseResp> universes = new ArrayList<>();
     // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
     for (Universe universe : customer.getUniverses()) {
-      ObjectNode universePayload = (ObjectNode) universe.toJson();
-      try {
-        UniverseResourceDetails details = UniverseResourceDetails.create(universe.getNodes(),
-          universe.getUniverseDetails());
-        universePayload.put("pricePerHour", details.pricePerHour);
-      } catch (Exception e) {
-        LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
-      }
+      UniverseResp universePayload = createResp(universe, null);
       universes.add(universePayload);
     }
     return ApiResponse.success(universes);
@@ -998,7 +981,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return Results.status(OK, universe.toJson());
+    return ApiResponse.success(createResp(universe, null));
   }
 
   public Result pause(UUID customerUUID, UUID universeUUID) {
@@ -1213,10 +1196,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID, universe.universeUUID, universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error creating cluster", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1278,10 +1259,8 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID, universe.universeUUID, universe.name);
 
-      ObjectNode resultNode = (ObjectNode) universe.toJson();
-      resultNode.put("taskUUID", taskUUID.toString());
       Audit.createAuditEntry(ctx(), request(), taskUUID);
-      return Results.status(OK, resultNode);
+      return ApiResponse.success(createResp(universe, taskUUID));
     } catch (Throwable t) {
       LOG.error("Error deleting cluster ", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -1293,8 +1272,8 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     try {
-      return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
-        universe.getUniverseDetails())));
+      return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(
+        universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
         "Error getting cost for customer " + customerUUID);
@@ -1313,8 +1292,8 @@ public class UniverseController extends AuthenticatedController {
     }
     for (Universe universe : universeSet) {
       try {
-        response.add(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
-          universe.getUniverseDetails())));
+        response.add(Json.toJson(UniverseResourceDetails.create(
+          universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf())));
       } catch (Exception e) {
         LOG.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
@@ -1527,11 +1506,12 @@ public class UniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodeToNode();
+    String[] rpcClientCertFiles = universe.getFilesForMutualTLS();
     YBClient client = null;
     // Get and return Leader IP
     try {
-      client = ybService.getClient(hostPorts, certificate);
+      client = ybService.getClient(hostPorts, certificate, rpcClientCertFiles);
       ObjectNode result = Json.newObject()
         .put("privateIP", client.getLeaderMasterHostAndPort().getHost());
       ybService.closeClient(client, hostPorts);
@@ -1847,5 +1827,12 @@ public class UniverseController extends AuthenticatedController {
         }
       }
     }
+  }
+
+  private UniverseResp createResp(Universe universe, UUID taskUUID) {
+    UniverseResourceDetails resourceDetails =
+      UniverseResourceDetails.create(universe.getUniverseDetails(),
+        runtimeConfigFactory.globalRuntimeConf());
+    return new UniverseResp(universe, taskUUID, resourceDetails);
   }
 }

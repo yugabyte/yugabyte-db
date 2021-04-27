@@ -98,9 +98,9 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
   
   private Result deleteCertificate(UUID customerUUID, UUID certUUID) {
-	    String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
-	    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
-	  }
+    String uri = "/api/customers/" + customerUUID + "/certificates/" + certUUID.toString();
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+  }
 
   private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
                                          ObjectNode bodyJson) {
@@ -151,10 +151,10 @@ public class CertificateControllerTest extends FakeDBApplication {
   
   @Test
   public void testDeleteInvalidCertificate() {
-	UUID uuid=UUID.randomUUID();
-	Result result = deleteCertificate(customer.uuid, uuid);
-	JsonNode json = Json.parse(contentAsString(result));
-	assertEquals(BAD_REQUEST, result.status());
+    UUID uuid=UUID.randomUUID();
+    Result result = deleteCertificate(customer.uuid, uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(BAD_REQUEST, result.status());
   }
   
   @Test
@@ -265,12 +265,12 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void testUpdateCustomCertificate() throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
+    CertificateParams.CustomCertInfo customCertInfo = null;
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
     CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", null);
-    CertificateParams.CustomCertInfo customCertInfo =
-        CertificateInfo.get(certUUID).getCustomCertInfo();
+                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo, null, null);
+    customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNull(customCertInfo);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
@@ -300,7 +300,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
     CertificateInfo.create(certUUID, customer.uuid, "test", date, date,
-                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo);
+                           TestHelper.TMP_PATH + "/ca.crt", customCertInfo,
+                           null, null);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);
     ObjectNode bodyJson = Json.newObject();
@@ -320,31 +321,11 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateClientCertificate() {
-    String cert_content = "-----BEGIN CERTIFICATE-----\n" +
-      "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n" +
-      "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n" +
-      "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n" +
-      "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n" +
-      "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n" +
-      "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n" +
-      "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n" +
-      "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n" +
-      "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n" +
-      "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n" +
-      "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n" +
-      "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n" +
-      "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n" +
-      "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n" +
-      "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n" +
-      "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n" +
-      "jZPSP3OuL0IXk96wFHScay8S\n" +
-      "-----END CERTIFICATE-----\n";
     ObjectNode bodyJson = Json.newObject();
     Date date = new Date();
     bodyJson.put("username", "test");
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
-    bodyJson.put("certContent", cert_content);
     UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
                                                  "/tmp");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);

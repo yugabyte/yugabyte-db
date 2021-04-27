@@ -25,6 +25,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
@@ -268,17 +269,26 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
 
 Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
     const TxnSnapshotRestorationId& restoration_id) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
+  auto deadline = CoarseMonoClock::Now() + timeout_;
+
   master::ListSnapshotRestorationsRequestPB req;
   if (restoration_id) {
     req.set_restoration_id(restoration_id.data(), restoration_id.size());
   }
   master::ListSnapshotRestorationsResponsePB resp;
-  RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(req, &resp, &rpc));
-
-  if (resp.has_status()) {
-    return StatusFromPB(resp.status());
+  while (CoarseMonoClock::Now() < deadline) {
+    RpcController rpc;
+    rpc.set_deadline(deadline);
+    RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(req, &resp, &rpc));
+    if (resp.has_status()) {
+      auto status = StatusFromPB(resp.status());
+      // If master is not yet ready, just wait and try another one.
+      if (status.IsServiceUnavailable()) {
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+    }
+    break;
   }
 
   rapidjson::Document result;
@@ -396,40 +406,37 @@ bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime re
          HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
 }
 
-Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
-    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
-  auto deadline = CoarseMonoClock::now() + timeout_;
+Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline) {
+  for (;;) {
+    auto last_snapshot_time = HybridTime::kMin;
+    {
+      RpcController rpc;
+      rpc.set_deadline(deadline);
+      master::ListSnapshotSchedulesRequestPB req;
+      master::ListSnapshotSchedulesResponsePB resp;
+      if (schedule_id) {
+        req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+      }
 
-  auto last_snapshot_time = HybridTime::kMin;
-  auto snapshot_id = TxnSnapshotId::Nil();
-  {
-    RpcController rpc;
-    rpc.set_deadline(deadline);
-    master::ListSnapshotSchedulesRequestPB req;
-    master::ListSnapshotSchedulesResponsePB resp;
-    if (schedule_id) {
-      req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
-    }
+      RETURN_NOT_OK(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc));
 
-    RETURN_NOT_OK(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc));
+      if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+      }
 
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
+      if (resp.schedules().size() < 1) {
+        return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
+      }
 
-    if (resp.schedules().size() < 1) {
-      return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
-    }
-
-    for (const auto& snapshot : resp.schedules()[0].snapshots()) {
-      auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-      last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
-      if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
-        snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
+        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
+        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
+          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+        }
       }
     }
-  }
-  if (snapshot_id.IsNil()) {
     if (last_snapshot_time > restore_at) {
       return STATUS_FORMAT(
           IllegalState, "Cannot restore at $0, last snapshot: $1", restore_at, last_snapshot_time);
@@ -441,10 +448,22 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     req.set_schedule_id(schedule_id.data(), schedule_id.size());
     RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(req, &resp, &rpc));
     if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
+      auto status = StatusFromPB(resp.error().status());
+      if (master::MasterError(status) == master::MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+        std::this_thread::sleep_until(std::min(deadline, CoarseMonoClock::now() + 1s));
+        continue;
+      }
+      return status;
     }
-    snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
+    return FullyDecodeTxnSnapshotId(resp.snapshot_id());
   }
+}
+
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
 
   for (;;) {
     RpcController rpc;

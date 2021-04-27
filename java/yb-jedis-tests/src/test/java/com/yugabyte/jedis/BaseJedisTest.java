@@ -285,7 +285,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void readAndWriteFromDBs(Collection<String> dbs, int numKeys) throws Exception {
+  protected void readAndWriteFromDBs(List<String> dbs, int numKeys) throws Exception {
     RandomStringGenerator generator = new RandomStringGenerator.Builder()
         .withinRange('a', 'z').build();
     ArrayList<String> keys = new ArrayList<String>(numKeys);
